@@ -3,9 +3,10 @@
 {% block title %}Subject Progress - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% set is_teacher_sp = nav_role in ('teachers', 'teacher') %}
 
 {% block sidebar_content %}
-{% if nav_role in ('teachers', 'teacher') %}
+{% if is_teacher_sp %}
 {% set teacher_nav_scope = 'classes' %}
 {% include 'dashboards/includes/teacher_page_sidebar.html' %}
 {% elif nav_role == 'curriculum coordinator' %}
@@ -17,98 +18,730 @@
 {% endif %}
 {% endblock %}
 
+{% block extra_head %}
+<style>
+@keyframes sp-rise {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sp-bar-pop {
+    from { transform: scaleY(0); opacity: 0.3; }
+    to { transform: scaleY(1); opacity: 1; }
+}
+@keyframes sp-fill-slide {
+    from { width: 0; }
+    to { width: var(--fill-pct, 0%); }
+}
+@keyframes sp-ring-grow {
+    from { background: conic-gradient(var(--sp-accent, #10b981) 0deg, transparent 0deg); }
+    to { background: conic-gradient(var(--sp-accent, #10b981) calc(var(--ring-pct, 0) * 3.6deg), transparent calc(var(--ring-pct, 0) * 3.6deg)); }
+}
+@keyframes sp-live-beat {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--sp-glow, rgba(16,185,129,0.5)); }
+    50% { opacity: 0.85; box-shadow: 0 0 10px 2px var(--sp-glow, rgba(16,185,129,0.45)); }
+}
+@keyframes sp-dot-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.35); opacity: 0.55; }
+}
+@keyframes sp-mesh {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+@keyframes sp-wait-dash {
+    to { stroke-dashoffset: -24; }
+}
+@keyframes sp-scan {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+}
+
+.sp-page {
+    --sp-mint: #10b981;
+    --sp-teal: #14b8a6;
+    --sp-ink: #0f172a;
+    padding: max(0.65rem, env(safe-area-inset-top)) max(0.65rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(0.65rem, env(safe-area-inset-left));
+}
+@media (min-width: 640px) { .sp-page { padding: 1rem 1.25rem 1.5rem; } }
+
+.sp-page--teacher {
+    min-height: 100dvh;
+    background: #f0f4f8;
+    background-image:
+        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(16, 185, 129, 0.18), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(20, 184, 166, 0.12), transparent 50%),
+        linear-gradient(180deg, #f8fafc 0%, #fff 40%, #ecfdf5 100%);
+}
+.dark .sp-page--teacher {
+    background: #0a0f1a;
+    background-image:
+        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(16, 185, 129, 0.15), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(6, 182, 212, 0.08), transparent 50%),
+        linear-gradient(180deg, #030712 0%, #0f172a 50%, #052e22 120%);
+}
+
+/* —— Command strip —— */
+.sp-command {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;
+    margin-bottom: 0.875rem;
+    padding: 1rem 1rem 0.875rem;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+    animation: sp-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dark .sp-command {
+    background: rgba(15, 23, 42, 0.75);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+.sp-command__mesh {
+    position: absolute;
+    inset: 0;
+    opacity: 0.5;
+    background: linear-gradient(120deg, rgba(16,185,129,0.08), rgba(99,102,241,0.06), rgba(20,184,166,0.1));
+    background-size: 200% 200%;
+    animation: sp-mesh 12s ease infinite;
+    pointer-events: none;
+}
+.sp-command__inner { position: relative; z-index: 1; }
+
+.sp-command__top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.sp-command__title {
+    margin: 0;
+    font-size: clamp(1.2rem, 3.5vw, 1.45rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--sp-ink);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.dark .sp-command__title { color: #f8fafc; }
+.sp-command__title i {
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    color: #fff;
+    background: linear-gradient(135deg, var(--sp-mint), var(--sp-teal));
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.sp-live-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.65rem 0.25rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #047857;
+    background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(20,184,166,0.1));
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.dark .sp-live-chip { color: #6ee7b7; border-color: rgba(52, 211, 153, 0.35); }
+.sp-live-chip__dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: sp-dot-pulse 1.6s ease-in-out infinite;
+}
+
+.sp-kpis {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+}
+@media (min-width: 480px) { .sp-kpis { grid-template-columns: repeat(3, 1fr); } }
+.sp-kpi {
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.625rem;
+    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+}
+.dark .sp-kpi { background: rgba(30, 41, 59, 0.5); border-color: #334155; }
+.sp-kpi__n {
+    font-size: 1.35rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    background: linear-gradient(135deg, #059669, #0d9488);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.sp-kpi__l {
+    font-size: 0.5625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b;
+    margin-top: 0.2rem;
+}
+
+.sp-search-bar {
+    position: relative;
+    margin-bottom: 0.875rem;
+    animation: sp-rise 0.55s ease-out 0.08s both;
+}
+.sp-search-bar i {
+    position: absolute;
+    left: 0.85rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    pointer-events: none;
+}
+.sp-search-bar input {
+    width: 100%;
+    min-height: 2.65rem;
+    padding: 0 1rem 0 2.35rem;
+    font-size: 0.9375rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--sp-ink);
+    transition: box-shadow 0.2s, border-color 0.2s;
+}
+.dark .sp-search-bar input {
+    background: rgba(30, 41, 59, 0.8);
+    border-color: #475569;
+    color: #f1f5f9;
+}
+.sp-search-bar input:focus {
+    outline: none;
+    border-color: var(--sp-mint);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25), 0 8px 20px rgba(16, 185, 129, 0.1);
+}
+
+/* —— Class channel —— */
+.sp-channel {
+    margin-bottom: 0.75rem;
+    border-radius: 1rem;
+    overflow: hidden;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+    animation: sp-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--sp-stagger, 0s);
+}
+.dark .sp-channel {
+    background: rgba(15, 23, 42, 0.85);
+    border-color: #334155;
+}
+.sp-channel.is-hidden { display: none; }
+
+.sp-channel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.1), transparent 70%);
+    border-bottom: 1px solid #f1f5f9;
+}
+.dark .sp-channel__head { border-color: #1e293b; }
+.sp-channel__cat {
+    margin: 0;
+    font-size: 0.5625rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--sp-mint);
+}
+.sp-channel__name {
+    margin: 0.1rem 0 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--sp-ink);
+}
+.dark .sp-channel__name { color: #f1f5f9; }
+.sp-channel__badge {
+    font-size: 0.625rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.375rem;
+    background: #f1f5f9;
+    color: #64748b;
+    font-variant-numeric: tabular-nums;
+}
+.dark .sp-channel__badge { background: #334155; color: #cbd5e1; }
+
+/* Column labels */
+.sp-col-labels {
+    display: none;
+    grid-template-columns: minmax(5rem, 1.2fr) minmax(5.5rem, 1fr) auto 1.25rem;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    border-bottom: 1px solid #f1f5f9;
+}
+@media (min-width: 640px) {
+    .sp-col-labels { display: grid; }
+}
+.dark .sp-col-labels { border-color: #1e293b; }
+
+/* —— Pulse row —— */
+.sp-pulse-list { list-style: none; margin: 0; padding: 0; }
+
+.sp-pulse-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 1.25rem;
+    grid-template-areas: "subject metrics chev";
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    padding: 0.5rem 0.65rem 0.5rem 0.75rem;
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px solid #f1f5f9;
+    overflow: hidden;
+    transition: background 0.2s ease, padding-left 0.2s ease;
+}
+@media (min-width: 640px) {
+    .sp-pulse-row {
+        grid-template-columns: minmax(5rem, 1.2fr) minmax(5.5rem, 1fr) auto 1.25rem;
+        gap: 0.5rem;
+        padding: 0.45rem 0.75rem;
+    }
+}
+.dark .sp-pulse-row { border-bottom-color: #1e293b; }
+.sp-pulse-row:last-child { border-bottom: none; }
+
+.sp-pulse-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--sp-accent, #94a3b8);
+    opacity: 0.85;
+    transition: width 0.2s ease;
+}
+.sp-pulse-row:hover {
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.07), transparent 85%);
+    padding-left: 0.85rem;
+}
+.sp-pulse-row:hover::before { width: 5px; }
+
+.sp-pulse-row__subject {
+    grid-area: subject;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+.sp-pulse-row__name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--sp-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dark .sp-pulse-row__name { color: #f8fafc; }
+.sp-pulse-row:hover .sp-pulse-row__name { color: #059669; }
+.sp-pulse-row__code {
+    display: inline-block;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    font-family: ui-monospace, monospace;
+    color: #64748b;
+    background: #f1f5f9;
+    border-radius: 0.25rem;
+}
+.dark .sp-pulse-row__code { background: #334155; color: #94a3b8; }
+
+.sp-pulse-row__metrics {
+    grid-area: metrics;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+}
+.sp-pulse-row__chev {
+    grid-area: chev;
+    font-size: 0.55rem;
+    color: #cbd5e1;
+    text-align: center;
+    transition: transform 0.2s ease, color 0.2s;
+}
+.sp-pulse-row:hover .sp-pulse-row__chev {
+    color: var(--sp-mint);
+    transform: translateX(3px);
+}
+
+/* —— Live metrics (partial) —— */
+.sp-live-metrics {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: nowrap;
+}
+.sp-live-metrics--waiting {
+    gap: 0.5rem;
+    opacity: 0.7;
+}
+.sp-wait-line {
+    width: 3.5rem;
+    height: 1.25rem;
+    border-radius: 0.35rem;
+    background: repeating-linear-gradient(90deg, #e2e8f0 0, #e2e8f0 4px, transparent 4px, transparent 8px);
+    position: relative;
+    overflow: hidden;
+}
+.sp-wait-line::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(16,185,129,0.25), transparent);
+    animation: sp-scan 1.8s ease-in-out infinite;
+}
+.sp-wait-label {
+    font-size: 0.5625rem;
+    font-weight: 600;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+.sp-spark {
+    position: relative;
+    width: 4.5rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    border-radius: 0.4rem;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.04), rgba(15, 23, 42, 0.01));
+    overflow: hidden;
+}
+.dark .sp-spark {
+    background: linear-gradient(180deg, rgba(0,0,0,0.25), rgba(255,255,255,0.02));
+}
+.sp-spark__grid {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(rgba(148,163,184,0.15) 1px, transparent 1px);
+    background-size: 100% 50%;
+    pointer-events: none;
+}
+.sp-spark__bars {
+    position: absolute;
+    inset: 0.2rem 0.25rem 0.15rem;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+}
+.sp-spark__col {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+}
+.sp-spark__bar {
+    width: 100%;
+    border-radius: 3px 3px 1px 1px;
+    background: linear-gradient(180deg, var(--sp-accent, #10b981), var(--sp-accent, #059669));
+    filter: brightness(0.92);
+    transform-origin: bottom center;
+    transform: scaleY(0);
+    animation: sp-bar-pop 0.7s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
+    animation-delay: var(--sp-bar-delay, 0s);
+}
+.sp-spark__bar--live {
+    animation: sp-bar-pop 0.7s cubic-bezier(0.34, 1.4, 0.64, 1) forwards, sp-live-beat 2.2s ease-in-out 0.7s infinite;
+    animation-delay: var(--sp-bar-delay, 0s), 0.7s;
+}
+.sp-spark__idle {
+    position: absolute;
+    inset: 0.25rem;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+}
+.sp-spark__idle span {
+    flex: 1;
+    height: 30%;
+    border-radius: 2px;
+    background: #e2e8f0;
+    animation: sp-bar-pop 1.2s ease-in-out infinite alternate;
+}
+.sp-spark__idle span:nth-child(2) { animation-delay: 0.15s; height: 45%; }
+.sp-spark__idle span:nth-child(3) { animation-delay: 0.3s; height: 25%; }
+.sp-spark__idle span:nth-child(4) { animation-delay: 0.45s; height: 55%; }
+.sp-spark__idle span:nth-child(5) { animation-delay: 0.6s; height: 35%; }
+.dark .sp-spark__idle span { background: #475569; }
+
+.sp-ring {
+    position: relative;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+}
+.sp-ring__track {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: #e2e8f0;
+}
+.dark .sp-ring__track { background: #334155; }
+.sp-ring__fill {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(var(--sp-accent, #10b981) calc(var(--ring-pct, 0) * 3.6deg), transparent calc(var(--ring-pct, 0) * 3.6deg));
+}
+.sp-ring__fill--animate {
+    animation: sp-ring-grow 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation-delay: calc(var(--sp-bar-delay, 0s) + 0.1s);
+}
+.sp-ring__num {
+    position: absolute;
+    inset: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 0.5625rem;
+    font-weight: 800;
+    color: var(--sp-ink);
+    background: #fff;
+}
+.dark .sp-ring__num { background: #1e293b; color: #f1f5f9; }
+
+.sp-pace-pill {
+    display: none;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.3rem;
+    font-size: 0.5rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    border: 1px solid transparent;
+}
+@media (min-width: 400px) { .sp-pace-pill { display: inline-flex; } }
+.sp-pace-pill--ahead { color: #047857; background: #ecfdf5; border-color: #a7f3d0; }
+.sp-pace-pill--on_track { color: #4338ca; background: #eef2ff; border-color: #c7d2fe; }
+.sp-pace-pill--steady { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+.sp-pace-pill--behind { color: #be123c; background: #fff1f2; border-color: #fecdd3; }
+.sp-pace-pill--none { color: #64748b; background: #f8fafc; border-color: #e2e8f0; }
+.dark .sp-pace-pill--ahead { color: #6ee7b7; background: rgba(6,78,59,0.5); border-color: #065f46; }
+.dark .sp-pace-pill--on_track { color: #a5b4fc; background: rgba(49,46,129,0.5); border-color: #4338ca; }
+.dark .sp-pace-pill--steady { color: #fcd34d; background: rgba(120,53,15,0.4); border-color: #92400e; }
+.dark .sp-pace-pill--behind { color: #fda4af; background: rgba(136,19,55,0.4); border-color: #9f1239; }
+
+.sp-topics {
+    display: none;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+@media (min-width: 768px) { .sp-topics { display: inline-flex; } }
+.sp-topics__track {
+    width: 1.75rem;
+    height: 0.2rem;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+.dark .sp-topics__track { background: #475569; }
+.sp-topics__fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    width: 0;
+    background: linear-gradient(90deg, #059669, #2dd4bf);
+    animation: sp-fill-slide 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation-delay: var(--sp-fill-delay, 0.2s);
+}
+.sp-topics .tabular-nums {
+    font-size: 0.5rem;
+    font-weight: 800;
+    color: #64748b;
+}
+
+.sp-trend-bar { transform-origin: bottom center; }
+
+.sp-empty, .sp-no-results {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    border-radius: 1rem;
+    color: #64748b;
+    animation: sp-rise 0.45s ease-out both;
+}
+.sp-empty {
+    border: 1px dashed #cbd5e1;
+    background: rgba(255,255,255,0.6);
+}
+.dark .sp-empty { border-color: #475569; background: rgba(15,23,42,0.5); }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    .sp-spark__bar { transform: scaleY(1); opacity: 1; }
+    .sp-topics__fill { width: var(--fill-pct, 0%); }
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
-    {% set role_theme = portal_page_variant|default('default') %}
-    {% set role_hero_eyebrow = 'Classes' %}
-    {% set role_hero_title = 'Subject progress' %}
-    {% if current_term_name %}
-    {% set role_hero_subtitle = 'Session coverage trends per subject · ' ~ current_term_name ~ '.' %}
-    {% else %}
-    {% set role_hero_subtitle = 'Session coverage trends per subject — open any class to see details.' %}
-    {% endif %}
-    {% set role_hero_icon_class = 'fa-chart-line' %}
-    {% include 'dashboards/includes/role_hero.html' %}
+{% set sp_total_subjects = namespace(n=0) %}
+{% for _lv in academic_levels|default([]) %}
+{% set sp_total_subjects.n = sp_total_subjects.n + (_lv.subject_allocations|default([])|length) %}
+{% endfor %}
+
+<div class="sp-page{% if is_teacher_sp %} sp-page--teacher{% endif %} role-page role-page--{% if is_teacher_sp %}teacher{% else %}{{ portal_page_variant|default('default') }}{% endif %} max-w-6xl mx-auto">
 
     {% if academic_levels %}
-    <div class="mb-4 max-w-md">
-        <label for="sp-search" class="sr-only">Search levels or subjects</label>
-        <div class="relative">
-            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" aria-hidden="true"></i>
-            <input id="sp-search" type="search" autocomplete="off" placeholder="Search level or subject…"
-                   class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm pl-9 pr-3 py-2.5 focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary">
+    <section class="sp-command" aria-labelledby="sp-heading">
+        <div class="sp-command__mesh" aria-hidden="true"></div>
+        <div class="sp-command__inner">
+            <div class="sp-command__top">
+                <div>
+                    <h1 id="sp-heading" class="sp-command__title">
+                        <i class="fas fa-wave-square" aria-hidden="true"></i>
+                        Subject progress
+                    </h1>
+                    {% if current_term_name %}
+                    <span class="sp-live-chip" title="Updates when attendance is saved">
+                        <span class="sp-live-chip__dot" aria-hidden="true"></span>
+                        Live · {{ current_term_name }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="sp-kpis" aria-label="Overview">
+                <div class="sp-kpi">
+                    <div class="sp-kpi__n">{{ academic_levels|length }}</div>
+                    <div class="sp-kpi__l">Classes</div>
+                </div>
+                <div class="sp-kpi">
+                    <div class="sp-kpi__n">{{ sp_total_subjects.n }}</div>
+                    <div class="sp-kpi__l">Subjects</div>
+                </div>
+                <div class="sp-kpi">
+                    <div class="sp-kpi__n"><i class="fas fa-bolt text-emerald-500 text-sm" aria-hidden="true"></i></div>
+                    <div class="sp-kpi__l">From attendance</div>
+                </div>
+            </div>
         </div>
+    </section>
+
+    <div class="sp-search-bar">
+        <label for="sp-search" class="sr-only">Search classes or subjects</label>
+        <i class="fas fa-search" aria-hidden="true"></i>
+        <input id="sp-search" type="search" autocomplete="off" placeholder="Find a class or subject…">
     </div>
 
-    <div id="sp-levels" class="space-y-5">
+    <div id="sp-levels">
         {% set cat_ns = namespace(prev='') %}
         {% for level in academic_levels %}
         {% set subs = level.subject_allocations|default([]) %}
-        <section class="sp-level-block rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 overflow-hidden"
+        <section class="sp-channel"
+                 style="--sp-stagger: {{ (loop.index0 * 0.07)|round(2) }}s"
                  data-level-name="{{ (level.level_name or '')|lower }}"
                  data-level-category="{{ (level.level_category or '')|lower }}"
                  data-subject-names="{% for s in subs %}{{ (s.subject_name or '')|lower }} {{ (s.subject_code or '')|lower }} {% endfor %}">
-            <header class="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-gray-700/80 bg-gray-50/80 dark:bg-gray-900/40 flex flex-wrap items-center justify-between gap-2">
+            <header class="sp-channel__head">
                 <div>
                     {% if level.level_category != cat_ns.prev %}
-                    <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-0.5">{{ level.level_category }}</p>
+                    <p class="sp-channel__cat">{{ level.level_category }}</p>
                     {% endif %}
-                    <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{{ level.level_name }}</h2>
+                    <h2 class="sp-channel__name">{{ level.level_name }}</h2>
                 </div>
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">{{ subs|length }} subject{% if subs|length != 1 %}s{% endif %}</span>
+                <span class="sp-channel__badge">{{ subs|length }} subject{% if subs|length != 1 %}s{% endif %}</span>
             </header>
-            <div class="p-4 sm:p-5">
-                {% if subs %}
-                <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 list-none m-0 p-0">
-                    {% for subj in subs %}
-                    <li>
-                        <a href="{{ employee_dash_url('subject-progress/level/' ~ level.id ~ '/subject/' ~ subj.subject_id) }}"
-                           class="sp-subject-link group flex flex-col rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2.5 hover:border-brand-primary/50 hover:bg-brand-primary/5 dark:hover:bg-brand-primary/10 transition-colors h-full">
-                            <span class="flex items-center gap-3">
-                                <span class="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-primary/90 to-brand-secondary text-white flex items-center justify-center shrink-0 text-sm shadow-sm">
-                                    <i class="fas fa-book-open" aria-hidden="true"></i>
-                                </span>
-                                <span class="min-w-0 flex-1">
-                                    <span class="block font-semibold text-sm text-gray-900 dark:text-white truncate group-hover:text-brand-primary dark:group-hover:text-brand-secondary">{{ subj.subject_name }}</span>
-                                    {% if subj.subject_code %}
-                                    <span class="block text-xs text-gray-500 dark:text-gray-400 truncate">{{ subj.subject_code }}</span>
-                                    {% endif %}
-                                </span>
-                                <i class="fas fa-chevron-right text-xs text-gray-400 group-hover:text-brand-primary shrink-0" aria-hidden="true"></i>
-                            </span>
-                            {% with coverage=subj.coverage, compact=true %}
+
+            {% if subs %}
+            <div class="sp-col-labels" aria-hidden="true">
+                <span>Subject</span>
+                <span style="text-align:right">Live trend</span>
+                <span></span>
+                <span></span>
+            </div>
+            <ul class="sp-pulse-list">
+                {% for subj in subs %}
+                {% set pace = subj.coverage.pace_status|default('none') if subj.coverage else 'none' %}
+                {% set accent_map = {'ahead': '#10b981', 'on_track': '#6366f1', 'steady': '#f59e0b', 'behind': '#f43f5e'} %}
+                <li>
+                    <a href="{{ employee_dash_url('subject-progress/level/' ~ level.id ~ '/subject/' ~ subj.subject_id) }}"
+                       class="sp-pulse-row"
+                       style="--sp-accent: {{ accent_map.get(pace, '#94a3b8') }};">
+                        <span class="sp-pulse-row__subject">
+                            <span class="sp-pulse-row__name">{{ subj.subject_name }}</span>
+                            {% if subj.subject_code %}
+                            <span class="sp-pulse-row__code">{{ subj.subject_code }}</span>
+                            {% endif %}
+                        </span>
+                        <span class="sp-pulse-row__metrics">
+                            {% with coverage=subj.coverage, list=true, bar_base_delay=(loop.index0 * 0.06) %}
                             {% include 'dashboards/_subject_progress_coverage.html' %}
                             {% endwith %}
-                        </a>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="text-sm text-gray-500 dark:text-gray-400 m-0">No subjects registered for this level yet.</p>
-                {% endif %}
-            </div>
+                        </span>
+                        <i class="fas fa-chevron-right sp-pulse-row__chev" aria-hidden="true"></i>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-sm text-gray-500 dark:text-gray-400 m-0 px-3 py-2.5">No subjects for this class yet.</p>
+            {% endif %}
         </section>
         {% set cat_ns.prev = level.level_category %}
         {% endfor %}
     </div>
-    <p id="sp-no-results" class="hidden text-sm text-center text-gray-500 dark:text-gray-400 py-8">No levels or subjects match your search.</p>
+    <p id="sp-no-results" class="sp-no-results hidden">Nothing matches — try another search.</p>
+
     {% else %}
-    <div class="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 py-12 text-center text-gray-500 dark:text-gray-400">
-        <i class="fas fa-layer-group text-3xl mb-3 opacity-50" aria-hidden="true"></i>
-        <p class="font-medium">No active academic levels found.</p>
-        <a href="{{ employee_dash_url('academic-subject-registration') }}" class="inline-flex items-center mt-3 text-sm text-brand-primary hover:underline dark:text-brand-secondary">
+    <div class="sp-empty">
+        <i class="fas fa-layer-group text-3xl mb-3 opacity-40" aria-hidden="true"></i>
+        <p class="font-medium m-0">No active classes found.</p>
+        <a href="{{ employee_dash_url('academic-subject-registration') }}" class="inline-flex items-center mt-3 text-sm font-semibold text-emerald-600 hover:underline dark:text-emerald-400">
             Register subjects
         </a>
     </div>
     {% endif %}
 </div>
+
 {% if academic_levels %}
 <script>
 (function () {
     var input = document.getElementById('sp-search');
-    var blocks = [].slice.call(document.querySelectorAll('.sp-level-block'));
+    var blocks = [].slice.call(document.querySelectorAll('.sp-channel'));
     var noResults = document.getElementById('sp-no-results');
     if (!input || !blocks.length) return;
+
     function apply() {
         var q = (input.value || '').toLowerCase().trim();
         var visible = 0;
@@ -117,7 +750,7 @@
                 (el.getAttribute('data-level-category') || '') + ' ' +
                 (el.getAttribute('data-subject-names') || '');
             var show = !q || hay.indexOf(q) !== -1;
-            el.style.display = show ? '' : 'none';
+            el.classList.toggle('is-hidden', !show);
             if (show) visible += 1;
         });
         if (noResults) noResults.classList.toggle('hidden', visible > 0);

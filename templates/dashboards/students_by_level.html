@@ -281,13 +281,6 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     .mark-input { width: 52px; height: 40px; font-size: 16px; }
 }
 
-.marks-scroll-hint {
-    display: none;
-}
-@media (max-width: 767px) {
-    .marks-scroll-hint { display: block; }
-}
-
 .filter-label {
     font-size: 11px;
     line-height: 1;
@@ -330,6 +323,12 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 }
 .dark .marks-toolbar .filter-label {
     color: rgb(148 163 184);
+}
+.marks-toolbar .filter-label--spacer {
+    visibility: hidden;
+    height: 0;
+    margin: 0;
+    overflow: hidden;
 }
 .marks-toolbar-select {
     width: 100%;
@@ -413,11 +412,230 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 .dark .marks-toolbar-btn-reset:hover {
     box-shadow: 0 4px 18px rgb(16 185 129 / 0.15);
 }
+
+/* —— Simplified page shell (responsive) —— */
+.marks-sheet-page {
+    padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+}
+@media (min-width: 640px) {
+    .marks-sheet-page { padding: 1rem 1.25rem 1.5rem; }
+}
+@media (min-width: 1024px) {
+    .marks-sheet-page { padding: 1.25rem 1.5rem 2rem; }
+}
+.marks-sheet-page--teacher {
+    background: linear-gradient(165deg, #f8fafc 0%, #fff 50%, #ecfdf5 100%);
+}
+.dark .marks-sheet-page--teacher {
+    background: linear-gradient(165deg, #030712 0%, #111827 50%, #064e3b 120%);
+}
+
+.ms-page-head { margin-bottom: 0.75rem; }
+@media (min-width: 640px) { .ms-page-head { margin-bottom: 1rem; } }
+
+.ms-page-head__row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin-bottom: 0.625rem;
+}
+.ms-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+    border-radius: 0.625rem;
+    color: #475569;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.dark .ms-back { background: #1f2937; border-color: #374151; color: #e2e8f0; }
+.ms-page-head__title-wrap { min-width: 0; flex: 1; }
+.ms-page-head__title {
+    margin: 0;
+    font-size: clamp(1.125rem, 3.5vw, 1.375rem);
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dark .ms-page-head__title { color: #f8fafc; }
+.ms-page-head__meta {
+    margin: 0.15rem 0 0;
+    font-size: 0.75rem;
+    color: #64748b;
+}
+.dark .ms-page-head__meta { color: #94a3b8; }
+
+.ms-filter-card {
+    padding: 0.625rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.875rem;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.dark .ms-filter-card {
+    background: #1f2937;
+    border-color: #374151;
+}
+@media (min-width: 640px) { .ms-filter-card { padding: 0.75rem; } }
+
+.ms-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-items: end;
+}
+@media (min-width: 768px) {
+    .ms-filter-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.ms-filter-grid .ms-filter-reset {
+    grid-column: 1 / -1;
+}
+@media (min-width: 768px) {
+    .ms-filter-grid .ms-filter-reset { grid-column: auto; }
+}
+
+.marks-sheet-page .marks-toolbar-select {
+    min-height: 2.75rem;
+    font-size: 1rem;
+    border-radius: 0.5rem;
+    padding: 0.5rem 2rem 0.5rem 0.625rem;
+}
+@media (min-width: 640px) {
+    .marks-sheet-page .marks-toolbar-select {
+        min-height: 2.375rem;
+        font-size: 0.875rem;
+    }
+}
+.marks-sheet-page .marks-toolbar-btn-reset {
+    min-height: 2.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
+}
+@media (min-width: 640px) {
+    .marks-sheet-page .marks-toolbar-btn-reset { min-height: 2.375rem; }
+}
+
+.ms-banner {
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    border-radius: 0.625rem;
+}
+.ms-banner--amber {
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+}
+.dark .ms-banner--amber { color: #fde68a; background: rgba(120,53,15,0.25); border-color: #92400e; }
+.ms-banner--slate {
+    color: #475569;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+.dark .ms-banner--slate { color: #cbd5e1; background: #111827; border-color: #374151; }
+.ms-banner--sky {
+    color: #0c4a6e;
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+}
+.dark .ms-banner--sky { color: #bae6fd; background: rgba(12,74,110,0.3); border-color: #0369a1; }
+
+.ms-toolbar-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+@media (min-width: 640px) {
+    .ms-toolbar-row {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+    }
+}
+.ms-sort-select {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #0f172a;
+}
+@media (min-width: 640px) {
+    .ms-sort-select { width: auto; min-width: 12rem; min-height: 2.375rem; }
+}
+.dark .ms-sort-select {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+}
+
+.ms-remarks-card {
+    margin-bottom: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.875rem;
+    background: #fff;
+    overflow: hidden;
+}
+.dark .ms-remarks-card { background: #1f2937; border-color: #374151; }
+.ms-remarks-card__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.dark .ms-remarks-card__head { border-color: #374151; }
+.ms-remarks-card__body { padding: 0.5rem 0.75rem 0.75rem; }
+
+.marks-sheet-page .marks-sheet-wrap {
+    border-radius: 0.875rem;
+    border: 1px solid #e2e8f0;
+}
+.dark .marks-sheet-page .marks-sheet-wrap { border-color: #374151; }
+
+.marks-sheet-page .marks-scroll-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+    padding: 0.35rem;
+    font-size: 0.6875rem;
+    color: #64748b;
+    text-align: center;
+}
+@media (min-width: 768px) {
+    .marks-sheet-page .marks-scroll-hint { display: none; }
+}
+
+.marks-sheet-page .marks-sheet-horizontal-scroll::after {
+    content: '';
+    position: sticky;
+    right: 0;
+    float: right;
+    width: 1rem;
+    height: 1px;
+    pointer-events: none;
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<div x-data="marksSheet()" x-init="init()" class="marks-sheet-page role-page role-page--{{ portal_page_variant|default('default') }} min-w-0 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+<div x-data="marksSheet()" x-init="init()" class="marks-sheet-page{% if is_teacher %} marks-sheet-page--teacher{% endif %} role-page role-page--{% if is_teacher %}teacher{% else %}{{ portal_page_variant|default('default') }}{% endif %} min-w-0 max-w-7xl mx-auto">
     <template x-teleport="body">
         <div x-show="marksCountdownVisible"
              x-cloak
@@ -472,213 +690,105 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             </div>
         </div>
     </template>
-    <!-- Top bar: title + filters (behavior unchanged) -->
-    <header class="marks-toolbar-shell">
-        <div class="marks-toolbar-shell__bg" aria-hidden="true"></div>
-        <div class="relative px-3 py-4 sm:px-5 sm:py-6 max-w-[1680px] mx-auto">
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6 mb-5 sm:mb-6">
-                <div class="flex gap-3 sm:gap-4 min-w-0 flex-1">
-                    <div class="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-900/20 ring-2 ring-white/30 dark:ring-emerald-400/15">
-                        <i class="fas fa-clipboard-check text-lg sm:text-xl" aria-hidden="true"></i>
-                    </div>
-                    <div class="min-w-0 pt-0.5">
-                        <p class="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-emerald-700/90 dark:text-emerald-400/90 mb-1">Marks entry</p>
-                        <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white leading-tight">{{ academic_level.level_name }}</h1>
-                        <div class="mt-2 flex flex-wrap items-center gap-2">
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/90 dark:bg-slate-800/90 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 border border-slate-200/90 dark:border-slate-600 shadow-sm">
-                                <i class="fas fa-users text-emerald-600 dark:text-emerald-400 text-[11px]" aria-hidden="true"></i>
-                                {{ students|length }} students
-                            </span>
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/90 dark:bg-slate-800/90 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 border border-slate-200/90 dark:border-slate-600 shadow-sm">
-                                <i class="fas fa-book text-emerald-600 dark:text-emerald-400 text-[11px]" aria-hidden="true"></i>
-                                {{ subjects|length }} subjects
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                {% set role_theme = portal_page_variant|default('default') %}
-    {% set role_hero_eyebrow = 'Exams' %}
-    {% set role_hero_title = academic_level.level_name ~ ' — marks' %}
-    {% set role_hero_subtitle = 'Enter and review marks for students in this academic level.' %}
-    {% set role_hero_icon_class = 'fa-pen-to-square' %}
-    {% include 'dashboards/includes/role_hero.html' %}
-
-    <a href="{{ employee_dash_url('exams-assessments') }}"
-                   class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-100 bg-white/90 dark:bg-slate-800/90 rounded-xl border border-slate-200/90 dark:border-slate-600 shadow-sm hover:bg-white dark:hover:bg-slate-800 hover:border-emerald-300/80 dark:hover:border-emerald-600/50 hover:text-emerald-800 dark:hover:text-emerald-300 transition-colors shrink-0 touch-manipulation">
-                    <i class="fas fa-arrow-left text-xs opacity-80" aria-hidden="true"></i>
-                    Back
-                </a>
+    <header class="ms-page-head">
+        <div class="ms-page-head__row">
+            <a href="{{ employee_dash_url('exams-assessments') }}" class="ms-back touch-manipulation" title="Back to exams" aria-label="Back to exams">
+                <i class="fas fa-arrow-left" aria-hidden="true"></i>
+            </a>
+            <div class="ms-page-head__title-wrap">
+                <h1 class="ms-page-head__title">{{ academic_level.level_name }}</h1>
+                <p class="ms-page-head__meta">{{ students|length }} students · {{ subjects|length }} subjects</p>
             </div>
-
-            <div class="marks-toolbar rounded-2xl border border-slate-200/90 dark:border-slate-700/90 bg-white/85 dark:bg-slate-900/55 backdrop-blur-md shadow-md shadow-slate-900/[0.06] dark:shadow-black/30 px-4 py-4 sm:px-5 sm:py-5">
-                <div class="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100 dark:border-slate-700/80">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400">
-                        <i class="fas fa-sliders-h text-sm" aria-hidden="true"></i>
-                    </span>
-                    <div>
-                        <h2 class="text-sm font-bold text-slate-900 dark:text-white leading-none">Session &amp; exam</h2>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Choose year, term, then exam — same as before.</p>
-                    </div>
+        </div>
+        <div class="ms-filter-card marks-toolbar">
+            <div class="ms-filter-grid">
+                <div class="min-w-0">
+                    <label class="filter-label block" for="marks-filter-year">Year</label>
+                    <select id="marks-filter-year"
+                            x-model="selectedAcademicYearId" @change="onAcademicYearChange()"
+                            class="marks-toolbar-select touch-manipulation">
+                        <option value="" disabled>Year…</option>
+                        <template x-for="year in academicYears" :key="year.id">
+                            <option :value="String(year.id)" x-text="year.year_name"></option>
+                        </template>
+                    </select>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-4 lg:items-end">
-                    <div class="min-w-0">
-                        <label class="filter-label block" for="marks-filter-year">Academic Year</label>
-                        <select id="marks-filter-year"
-                                x-model="selectedAcademicYearId" @change="onAcademicYearChange()"
-                                class="marks-toolbar-select touch-manipulation">
-                            <option value="" disabled>Select year</option>
-                            <template x-for="year in academicYears" :key="year.id">
-                                <option :value="String(year.id)" x-text="year.year_name"></option>
-                            </template>
-                        </select>
-                    </div>
-                    <div class="min-w-0">
-                        <label class="filter-label block" for="marks-filter-term">Term</label>
-                        <select id="marks-filter-term"
-                                x-model="selectedTermId" @change="onTermChange()"
-                                :disabled="!filteredTerms.length"
-                                class="marks-toolbar-select touch-manipulation">
-                            <option value="" disabled x-text="filteredTerms.length ? 'Select term' : 'No terms'"></option>
-                            <template x-for="term in filteredTerms" :key="term.id">
-                                <option :value="String(term.id)" x-text="term.term_name"></option>
-                            </template>
-                        </select>
-                    </div>
-                    <div class="min-w-0 sm:col-span-2 lg:col-span-1">
-                        <label class="filter-label block" for="marks-filter-exam">Exam</label>
-                        <select id="marks-filter-exam"
-                                x-model="selectedExam" @change="onExamSelected()"
-                                :disabled="!filteredExams.length"
-                                class="marks-toolbar-select touch-manipulation">
-                            <option value="" disabled x-text="filteredExams.length ? 'Select exam' : 'No exams'"></option>
-                            <template x-for="exam in filteredExams" :key="exam.id">
-                                <option :value="String(exam.id)" x-text="exam.exam_name"></option>
-                            </template>
-                        </select>
-                    </div>
-                    <div class="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-1 lg:flex-nowrap lg:items-end">
-                        <button type="button"
-                                @click="resetToSchoolCurrent()"
-                                title="Reset filters to the school's current academic year and term (and a sensible default exam)."
-                                class="marks-toolbar-btn-reset flex-1 touch-manipulation">
-                            <i class="fas fa-rotate-left text-xs opacity-90" aria-hidden="true"></i>
-                            Use current term
-                        </button>
-                    </div>
+                <div class="min-w-0">
+                    <label class="filter-label block" for="marks-filter-term">Term</label>
+                    <select id="marks-filter-term"
+                            x-model="selectedTermId" @change="onTermChange()"
+                            :disabled="!filteredTerms.length"
+                            class="marks-toolbar-select touch-manipulation">
+                        <option value="" disabled x-text="filteredTerms.length ? 'Term…' : 'No terms'"></option>
+                        <template x-for="term in filteredTerms" :key="term.id">
+                            <option :value="String(term.id)" x-text="term.term_name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="min-w-0">
+                    <label class="filter-label block" for="marks-filter-exam">Exam</label>
+                    <select id="marks-filter-exam"
+                            x-model="selectedExam" @change="onExamSelected()"
+                            :disabled="!filteredExams.length"
+                            class="marks-toolbar-select touch-manipulation">
+                        <option value="" disabled x-text="filteredExams.length ? 'Exam…' : 'No exams'"></option>
+                        <template x-for="exam in filteredExams" :key="exam.id">
+                            <option :value="String(exam.id)" x-text="exam.exam_name + (exam.is_locked ? ' (locked)' : '')"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="min-w-0 ms-filter-reset">
+                    <label class="filter-label block filter-label--spacer" aria-hidden="true">&nbsp;</label>
+                    <button type="button"
+                            @click="resetToSchoolCurrent()"
+                            title="Reset to school's current year, term, and default exam"
+                            class="marks-toolbar-btn-reset w-full touch-manipulation">
+                        <i class="fas fa-rotate-left text-xs opacity-90" aria-hidden="true"></i>
+                        Current term
+                    </button>
                 </div>
             </div>
         </div>
     </header>
 
-    <!-- Main Content: avoid overflow-x-hidden so nested horizontal scroll works on mobile -->
-    <div class="p-2 sm:p-4 w-full max-w-full min-w-0">
+    <div class="w-full max-w-full min-w-0">
         {% set is_cc = (role or '')|lower == 'curriculum coordinator' or ((viewing_as_employee_role or '')|lower == 'curriculum coordinator') %}
         {% if not can_edit and is_cc %}
-        <div class="mb-3 rounded-xl border border-sky-200/90 bg-sky-50/90 dark:border-sky-800/80 dark:bg-sky-950/40 px-3 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm text-sky-900 dark:text-sky-100">
-            <p class="font-semibold"><i class="fas fa-eye mr-2 opacity-80" aria-hidden="true"></i>View only</p>
-            <p class="mt-1 text-sky-800/95 dark:text-sky-200/90 leading-relaxed">Curriculum coordinators cannot change marks here. Entry is done by teachers allocated to each subject (or the head of institution).</p>
-        </div>
+        <p class="ms-banner ms-banner--sky"><i class="fas fa-eye mr-1.5 opacity-80" aria-hidden="true"></i>View only — marks are entered by assigned teachers.</p>
         {% endif %}
         {% if students and subjects %}
         {% set combined_subjects = subjects|selectattr('combination_id')|list %}
         
-        <!-- Info Message -->
-        <div x-show="!selectedExam" class="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-            <p class="text-sm text-amber-700 dark:text-amber-300">
-                <i class="fas fa-info-circle mr-2"></i>Select an exam above to enter or view marks.
-            </p>
-        </div>
-        <div x-show="selectedExam" class="mb-3 p-3 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-lg text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-            {% if marks_display_scaled %}
-            Each cell shows <strong>scaled marks (/100)</strong>: raw ÷ that subject&apos;s exam total × 100 (from Exam subject settings).{% if combined_subjects|length > 0 %} Combined columns are already a unified 0–100 %.{% endif %}
-            The <strong>Total</strong> column is the <strong>sum</strong> of those converted marks (one value per subject column). Teachers enter raw marks out of each paper total when editing.
+        <p x-show="!selectedExam" class="ms-banner ms-banner--amber">
+            <i class="fas fa-info-circle mr-1.5" aria-hidden="true"></i>Select year, term, and exam to enter marks.
+        </p>
+        <p x-show="selectedExam && examIsLocked" x-cloak class="ms-banner ms-banner--amber">
+            <i class="fas fa-lock mr-1.5 opacity-80" aria-hidden="true"></i>Exam allocations are locked — you can view marks here; editing is disabled until an administrator unlocks allocations.
+        </p>
+        <p x-show="selectedExam" x-cloak class="ms-banner ms-banner--slate">
+            {% if is_teacher %}
+            Enter marks out of each subject total. {% if marks_summary_column == 'total_scaled' %}<strong>Total</strong>{% else %}<strong>Avg%</strong>{% endif %}, <strong>Code</strong>, and <strong>Points</strong> update from <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>.
+            {% elif marks_display_scaled %}
+            Scaled <strong>/100</strong> view; <strong>Total</strong> sums converted marks. Teachers enter raw marks when editing.
             {% elif combined_subjects|length > 0 %}
-            Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). Combined columns (joined with <strong>/</strong>) use one <strong>unified % (0–100)</strong> applied proportionally to each paper. The <strong>Avg%</strong> column is the mean of column percentages.
+            Marks out of each paper total; combined columns use unified <strong>0–100%</strong>. <strong>Avg%</strong> = mean of column percentages.
             {% else %}
-            Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). The <strong>Avg%</strong> column is the mean of column percentages across subjects with a mark.
+            Marks out of each subject&apos;s exam total. <strong>Avg%</strong> = mean of column percentages with a mark.
             {% endif %}
-            <p class="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-600/80 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-                Use <strong>Student order</strong> below to sort rows by name or by <strong>{% if marks_summary_column == 'total_scaled' %}Total{% else %}Avg%{% endif %}</strong> for the selected exam. <strong>Code</strong> and <strong>Points</strong> use <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold text-slate-800 dark:text-slate-200">Grades Registration</a>{% if uses_class_grading_setting and grading_setting_name %} — grading setting <strong>{{ grading_setting_name }}</strong> assigned to this class{% else %} — school default grade bands{% endif %}: the row&apos;s <strong>mean %</strong> across subjects with a mark is <strong>rounded down to a whole number</strong> (e.g. 89.8% → 89) before matching the band&apos;s code and allocation points.
-            </p>
-        </div>
-
-        <p class="marks-scroll-hint mb-2 text-xs text-gray-500 dark:text-gray-400 px-1">
-            <i class="fas fa-table mr-1"></i>Columns shrink to fit your screen. <strong>Swipe sideways</strong> only if you zoom in or have many subjects.
         </p>
 
-        <div class="mb-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/50 px-3 py-2.5 sm:px-4">
-            <label for="marks-student-sort" class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0 flex items-center gap-2">
-                <i class="fas fa-sort text-slate-400" aria-hidden="true"></i>
-                Student order
-            </label>
+        <p class="marks-scroll-hint md:hidden"><i class="fas fa-arrows-alt-h" aria-hidden="true"></i> Swipe sideways for more subjects</p>
+
+        <div class="ms-toolbar-row">
+            <label for="marks-student-sort" class="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">Sort</label>
             <select id="marks-student-sort"
                     x-model="studentSort"
-                    class="w-full sm:w-auto sm:min-w-[14rem] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-medium py-2 px-3 shadow-sm focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 touch-manipulation">
-                <option value="name_asc">Name · A → Z</option>
-                <option value="name_desc">Name · Z → A</option>
-                <option value="marks_asc">Marks · lowest first ({{ 'total' if marks_summary_column == 'total_scaled' else 'avg %' }})</option>
-                <option value="marks_desc">Marks · highest first ({{ 'total' if marks_summary_column == 'total_scaled' else 'avg %' }})</option>
+                    class="ms-sort-select touch-manipulation">
+                <option value="name_asc">Name A → Z</option>
+                <option value="name_desc">Name Z → A</option>
+                <option value="marks_asc">Marks low → high</option>
+                <option value="marks_desc">Marks high → low</option>
             </select>
-        </div>
-
-        <!-- Grade remarks: saved per grade code for this exam context -->
-        <div x-show="selectedExam"
-             class="mb-4 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/50 shadow-sm overflow-hidden">
-            <div class="px-4 py-3 sm:px-5 sm:py-4 border-b border-slate-100 dark:border-slate-700/70 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div class="min-w-0">
-                    <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                        Grade remarks (report cards)
-                    </h3>
-                    <p class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                        If a remark is left empty, the report card will use the default meaning from
-                        <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>.
-                    </p>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                    <span class="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400" x-show="gradeRemarksStatus" x-text="gradeRemarksStatus"></span>
-                    <button type="button"
-                            @click="saveGradeRemarks()"
-                            :disabled="gradeRemarksSaving"
-                            class="inline-flex items-center justify-center gap-2 min-h-[40px] px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm disabled:opacity-60 disabled:cursor-not-allowed touch-manipulation">
-                        <i class="fas fa-save text-xs opacity-90" aria-hidden="true"></i>
-                        Save remarks
-                    </button>
-                </div>
-            </div>
-            <div class="px-3 py-3 sm:px-5 sm:py-4">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="text-[11px] sm:text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                                <th class="text-left py-2 pr-2 whitespace-nowrap">Code</th>
-                                <th class="text-left py-2 pr-2 min-w-[14rem]">Default meaning</th>
-                                <th class="text-left py-2 min-w-[20rem]">Teacher remark (optional)</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/70">
-                            <template x-for="band in (defaultGradeBands || [])" :key="band.code">
-                                <tr>
-                                    <td class="py-2 pr-2 align-top">
-                                        <span class="inline-flex items-center px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold text-xs">
-                                            <span x-text="(band.code || '').toUpperCase()"></span>
-                                        </span>
-                                    </td>
-                                    <td class="py-2 pr-2 align-top text-slate-700 dark:text-slate-200 text-xs sm:text-sm">
-                                        <span x-text="band.label || ''"></span>
-                                    </td>
-                                    <td class="py-2 align-top">
-                                        <input type="text"
-                                               class="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 touch-manipulation"
-                                               :placeholder="band.label || ''"
-                                               x-model="gradeRemarksByCode[(band.code || '').toUpperCase()]"
-                                               @input="gradeRemarksStatus = 'Unsaved changes'">
-                                    </td>
-                                </tr>
-                            </template>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
         </div>
 
         <!-- Marks grid: same table on phones and desktop (horizontal scroll on narrow screens) -->
@@ -741,24 +851,33 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% for subject in subjects %}
                             <td class="marks-td-subject py-1 sm:py-1 text-center align-middle">
                                 {% if can_edit %}
-                                <input type="text"
-                                       inputmode="decimal"
-                                       maxlength="8"
-                                       :data-row-index="rowIdx"
-                                       data-col-index="{{ loop.index0 }}"
-                                       :value="getMark(student.student_id, {{ subject.id }})"
-                                       @blur="saveMark(student.student_id, {{ subject.id }}, $event.target.value)"
-                                       @keydown.enter="handleEnterKey($event)"
-                                       @keydown.up.prevent="handleArrowKey($event)"
-                                       @keydown.down.prevent="handleArrowKey($event)"
-                                       @keydown.left.prevent="handleArrowKey($event)"
-                                       @keydown.right.prevent="handleArrowKey($event)"
-                                       @keypress="allowMarkChar($event)"
-                                       :disabled="!selectedExam || marksInputsDisabled"
-                                       :class="getStatusClass(student.student_id, {{ subject.id }})"
-                                       class="mark-input touch-manipulation"
-                                       autocomplete="off"
-                                       enterkeyhint="next">
+                                <template x-if="canEnterMarks">
+                                    <input type="text"
+                                           inputmode="decimal"
+                                           maxlength="8"
+                                           :data-row-index="rowIdx"
+                                           data-col-index="{{ loop.index0 }}"
+                                           :value="getMark(student.student_id, {{ subject.id }})"
+                                           @blur="saveMark(student.student_id, {{ subject.id }}, $event.target.value)"
+                                           @keydown.enter="handleEnterKey($event)"
+                                           @keydown.up.prevent="handleArrowKey($event)"
+                                           @keydown.down.prevent="handleArrowKey($event)"
+                                           @keydown.left.prevent="handleArrowKey($event)"
+                                           @keydown.right.prevent="handleArrowKey($event)"
+                                           @keypress="allowMarkChar($event)"
+                                           :disabled="!selectedExam"
+                                           :class="getStatusClass(student.student_id, {{ subject.id }})"
+                                           class="mark-input touch-manipulation"
+                                           autocomplete="off"
+                                           enterkeyhint="next">
+                                </template>
+                                <template x-if="!canEnterMarks">
+                                    <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums"
+                                          :class="examIsLocked && selectedExam ? 'cursor-pointer rounded px-0.5 ring-1 ring-amber-200/60 dark:ring-amber-700/50' : ''"
+                                          :title="examIsLocked && selectedExam ? 'Allocations locked — tap for details' : ''"
+                                          @click="examIsLocked && selectedExam && showLockedExamModal()"
+                                          x-text="getMark(student.student_id, {{ subject.id }}) || '-'"></span>
+                                </template>
                                 {% else %}
                                 <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums" x-text="getMark(student.student_id, {{ subject.id }}) || '-'"></span>
                                 {% endif %}
@@ -803,6 +922,55 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             </div>
         </div>
 
+        <div x-show="selectedExam" x-cloak class="ms-remarks-card mt-4">
+            <div class="ms-remarks-card__head">
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white m-0">Grade remarks (report cards)</h3>
+                <div class="flex items-center gap-2 shrink-0">
+                    <span class="text-xs text-slate-500 dark:text-slate-400" x-show="gradeRemarksStatus" x-text="gradeRemarksStatus"></span>
+                    <button type="button"
+                            @click="saveGradeRemarks()"
+                            :disabled="gradeRemarksSaving"
+                            class="inline-flex items-center justify-center gap-1.5 min-h-[2.5rem] px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60 touch-manipulation">
+                        <i class="fas fa-save text-xs" aria-hidden="true"></i> Save
+                    </button>
+                </div>
+            </div>
+            <div class="ms-remarks-card__body">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-[11px] sm:text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                <th class="text-left py-2 pr-2 whitespace-nowrap">Code</th>
+                                <th class="text-left py-2 pr-2 min-w-[14rem]">Default meaning</th>
+                                <th class="text-left py-2 min-w-[20rem]">Teacher remark (optional)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/70">
+                            <template x-for="band in (defaultGradeBands || [])" :key="band.code">
+                                <tr>
+                                    <td class="py-2 pr-2 align-top">
+                                        <span class="inline-flex items-center px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold text-xs">
+                                            <span x-text="(band.code || '').toUpperCase()"></span>
+                                        </span>
+                                    </td>
+                                    <td class="py-2 pr-2 align-top text-slate-700 dark:text-slate-200 text-xs sm:text-sm">
+                                        <span x-text="band.label || ''"></span>
+                                    </td>
+                                    <td class="py-2 align-top">
+                                        <input type="text"
+                                               class="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 touch-manipulation"
+                                               :placeholder="band.label || ''"
+                                               x-model="gradeRemarksByCode[(band.code || '').toUpperCase()]"
+                                               @input="gradeRemarksStatus = 'Unsaved changes'">
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Loading Indicator -->
         <div x-show="loading" class="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
             <div class="bg-white dark:bg-gray-800 rounded-lg px-6 py-4 shadow-lg">
@@ -811,7 +979,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             </div>
         </div>
 
-        <!-- Locked exam — cannot open marks -->
+        <!-- Locked exam — editing blocked (viewing allowed) -->
         <div x-show="lockedModal" x-cloak
              class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
              @click.self="lockedModal = false">
@@ -821,7 +989,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 </div>
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Exam allocations are locked</h3>
                 <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
-                    This exam has been locked from Exam Registration (timetable allocations). Marks cannot be viewed or edited here until an administrator unlocks allocations.
+                    This exam has been locked from Exam Registration (timetable allocations). You can view marks on this sheet, but you cannot change them until an administrator unlocks allocations.
                 </p>
                 <button type="button" @click="lockedModal = false"
                         class="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all">
@@ -858,13 +1026,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         </div>
 
         {% else %}
-        <!-- Empty State -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
-            <i class="fas fa-clipboard-list text-4xl text-gray-300 dark:text-gray-600 mb-3"></i>
-            <p class="text-gray-500 dark:text-gray-400">
-                {% if not students %}No students enrolled in this level{% else %}No subjects assigned to this level{% endif %}
-            </p>
-        </div>
+        <p class="ms-banner ms-banner--slate text-center py-8">
+            {% if not students %}No students in this class.{% else %}No subjects assigned.{% endif %}
+        </p>
         {% endif %}
     </div>
 </div>
@@ -1108,12 +1272,20 @@ function marksSheet() {
             return !!this.teacherMarksCountdownLabel;
         },
 
-        get marksInputsDisabled() {
+        get canEnterMarks() {
             void this._tick;
-            if (!this.selectedExam || !this.canEdit) return true;
-            if (this.examIsLocked) return true;
-            if (this.isTeacherMarks && (this.marksEntryReadonly || this.teacherMarksPeriodClosed)) return true;
-            return false;
+            if (!this.canEdit || !this.selectedExam) return false;
+            if (this.examIsLocked) return false;
+            if (this.isTeacherMarks && (this.marksEntryReadonly || this.teacherMarksPeriodClosed)) return false;
+            return true;
+        },
+
+        get marksInputsDisabled() {
+            return !this.canEnterMarks;
+        },
+
+        showLockedExamModal() {
+            if (this.examIsLocked) this.lockedModal = true;
         },
 
         sortedStudents() {
@@ -1369,15 +1541,6 @@ function marksSheet() {
             this.marksCountdownInfoModalOpen = false;
             if (!this.selectedExam) {
                 await this.loadMarks();
-                this.gradeRemarksByCode = {};
-                this.gradeRemarksStatus = '';
-                return;
-            }
-            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
-            if (ex && ex.is_locked) {
-                this.lockedModal = true;
-                this.selectedExam = '';
-                this.marks = {};
                 this.gradeRemarksByCode = {};
                 this.gradeRemarksStatus = '';
                 return;
@@ -1785,7 +1948,12 @@ function marksSheet() {
         },
 
         async saveCombinationMark(studentId, columnSubjectId, value) {
-            if (!this.selectedExam || !this.canEdit || this.marksInputsDisabled) return;
+            if (!this.selectedExam || !this.canEdit) return;
+            if (this.examIsLocked) {
+                this.showLockedExamModal();
+                return;
+            }
+            if (this.marksInputsDisabled) return;
             const members = this.getCombinationMembers(columnSubjectId);
             if (!members || !members.length) return;
             const cid = Math.abs(Number(columnSubjectId));
@@ -1827,9 +1995,9 @@ function marksSheet() {
                 });
                 const result = await response.json();
                 if (response.status === 403 && result.locked) {
-                    this.lockedModal = true;
-                    this.selectedExam = '';
+                    this.showLockedExamModal();
                     this.saveStatus[key] = 'error';
+                    await this.loadMarks();
                 } else if (response.status === 403 && result.marks_period_closed) {
                     this.marksEntryReadonly = true;
                     this.saveStatus[key] = 'error';
@@ -1846,7 +2014,12 @@ function marksSheet() {
         },
 
         async saveMark(studentId, subjectId, value) {
-            if (!this.selectedExam || !this.canEdit || this.marksInputsDisabled) return;
+            if (!this.selectedExam || !this.canEdit) return;
+            if (this.examIsLocked) {
+                this.showLockedExamModal();
+                return;
+            }
+            if (this.marksInputsDisabled) return;
 
             if (this.getCombinationMembers(subjectId)) {
                 return this.saveCombinationMark(studentId, subjectId, value);
@@ -1895,9 +2068,9 @@ function marksSheet() {
                 });
                 const result = await response.json();
                 if (response.status === 403 && result.locked) {
-                    this.lockedModal = true;
-                    this.selectedExam = '';
+                    this.showLockedExamModal();
                     this.saveStatus[key] = 'error';
+                    await this.loadMarks();
                 } else if (response.status === 403 && result.marks_period_closed) {
                     this.marksEntryReadonly = true;
                     this.saveStatus[key] = 'error';
@@ -1933,11 +2106,7 @@ function marksSheet() {
                     })
                 });
                 const result = await response.json();
-                if (response.status === 403 && result.locked) {
-                    this.lockedModal = true;
-                    this.selectedExam = '';
-                    this.marks = {};
-                } else if (result.success) {
+                if (result.success) {
                     this.marks = result.marks || {};
                     this.marksEntryReadonly = !!result.teacher_marks_readonly;
                     if (result.subject_exam_max && typeof result.subject_exam_max === 'object') {

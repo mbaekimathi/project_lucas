@@ -11,76 +11,96 @@
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-violet-950/20 py-6 sm:py-8 page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <div class="mb-6 space-y-2">
-            {% for category, message in messages %}
-            <div class="rounded-xl border px-4 py-3 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-100{% endif %}">
-                {{ message }}
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Class books' %}
+{% if teacher_name %}
+{% set role_hero_subtitle = teacher_name ~ ' — issue and track library copies for your classes.' %}
+{% else %}
+{% set role_hero_subtitle = 'Choose a class to view allocated books and issue copies to students by student ID.' %}
+{% endif %}
+{% set role_hero_icon_class = 'fa-book-open' %}
+
+{% if classes and teacher_name %}
+{% set ns = namespace(subjects=0, copies=0) %}
+{% for cls in classes %}
+{% set ns.subjects = ns.subjects + cls.subject_count %}
+{% set ns.copies = ns.copies + cls.books_allocated_to_teacher %}
+{% endfor %}
+{% set role_hero_chips = [
+    {'icon': 'fa-chalkboard', 'text': classes|length ~ ' class' ~ ('es' if classes|length != 1 else '')},
+    {'icon': 'fa-bookmark', 'text': ns.subjects ~ ' subject' ~ ('s' if ns.subjects != 1 else '')},
+    {'icon': 'fa-books', 'text': ns.copies ~ ' library cop' ~ ('ies' if ns.copies != 1 else 'y')}
+] %}
+{% endif %}
+
+<div class="page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+
+        {% include 'dashboards/includes/portal_page_flash.html' %}
+        {% include 'dashboards/includes/role_hero.html' %}
+
+        {% if is_technician and not teacher_name %}
+        <div class="modern-card rounded-2xl p-5 sm:p-6 mb-6 border border-amber-200/80 dark:border-amber-800/60 bg-gradient-to-br from-amber-50 to-orange-50/90 dark:from-amber-950/40 dark:to-orange-950/30 shadow-sm" role="status">
+            <div class="flex flex-col sm:flex-row sm:items-start gap-4">
+                <div class="w-12 h-12 shrink-0 rounded-xl bg-amber-500 flex items-center justify-center shadow-md">
+                    <i class="fas fa-user-tie text-white text-lg" aria-hidden="true"></i>
+                </div>
+                <div class="min-w-0">
+                    <h2 class="text-lg font-bold text-amber-950 dark:text-amber-100">Select a teacher</h2>
+                    <p class="mt-1 text-sm text-amber-900/85 dark:text-amber-200/90 leading-relaxed">
+                        Use the <strong>View as</strong> dropdown in the header to pick a teacher profile, then return here to manage class books.
+                    </p>
+                </div>
             </div>
-            {% endfor %}
         </div>
-        {% endif %}
-        {% endwith %}
-
-        <header class="relative overflow-hidden rounded-2xl sm:rounded-3xl shadow-lg mb-8">
-            <div class="absolute inset-0 bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-700"></div>
-            <div class="relative px-6 py-8 sm:px-8 sm:py-10">
-                <div class="flex flex-col sm:flex-row sm:items-center gap-4">
-                    <div class="w-14 h-14 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
-                        <i class="fas fa-book-open text-white text-2xl" aria-hidden="true"></i>
-                    </div>
-                    <div class="min-w-0">
-                        <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">Class books</h1>
-                        <p class="mt-1 text-sm sm:text-base text-violet-100/95">
-                            {% if teacher_name %}<span class="font-medium text-white">{{ teacher_name }}</span> — {% endif %}
-                            Choose a class to view books and issue copies to students using their student ID.
-                        </p>
-                    </div>
+        {% elif not teacher_name and not is_technician %}
+        <div class="modern-card rounded-2xl p-5 sm:p-6 mb-6 border border-red-200/80 dark:border-red-800/60 bg-red-50/90 dark:bg-red-950/30 shadow-sm" role="alert">
+            <div class="flex gap-4">
+                <div class="w-12 h-12 shrink-0 rounded-xl bg-red-500 flex items-center justify-center">
+                    <i class="fas fa-exclamation text-white" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold text-red-950 dark:text-red-100">Could not load your profile</h2>
+                    <p class="mt-1 text-sm text-red-900/85 dark:text-red-200/90">Sign out and sign in again. Contact the school office if this continues.</p>
                 </div>
             </div>
-        </header>
+        </div>
+        {% elif classes %}
+        <section aria-labelledby="class-books-grid-heading">
+            <div class="mb-4 sm:mb-5">
+                <h2 id="class-books-grid-heading" class="text-lg font-bold text-gray-900 dark:text-white">Your classes</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Open a class to issue or return books</p>
+            </div>
 
-        {% if classes %}
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {% for cls in classes %}
-            <a href="{{ employee_dash_url('class-books/' ~ cls.level_id) }}"
-               class="group block rounded-2xl border border-gray-200/90 bg-white p-5 shadow-sm transition hover:border-violet-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-900/90 dark:hover:border-violet-600/50">
-                <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">{{ cls.level_category }}</p>
-                        <h2 class="mt-1 text-lg font-bold text-gray-900 dark:text-white truncate">{{ cls.level_name }}</h2>
-                        <p class="mt-2 text-xs text-gray-600 dark:text-gray-400 line-clamp-2">{{ cls.subjects_label }}</p>
-                    </div>
-                    <span class="shrink-0 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600 group-hover:bg-violet-100 dark:bg-violet-950/50 dark:text-violet-300">
-                        <i class="fas fa-chevron-right text-sm" aria-hidden="true"></i>
-                    </span>
-                </div>
-                <div class="mt-4 flex flex-wrap gap-2 text-xs">
-                    <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                        <i class="fas fa-bookmark text-violet-500"></i> {{ cls.subject_count }} subject{% if cls.subject_count != 1 %}s{% endif %}
-                    </span>
-                    {% if cls.books_allocated_to_teacher > 0 %}
-                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
-                        <i class="fas fa-books"></i> {{ cls.books_allocated_to_teacher }} librar{% if cls.books_allocated_to_teacher == 1 %}y copy{% else %}y copies{% endif %}
-                    </span>
-                    {% else %}
-                    <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                        No library copies yet
-                    </span>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for cls in classes %}
+                <a href="{{ employee_dash_url('class-books/' ~ cls.level_id) }}" class="role-quick-card">
+                    <i class="fas fa-graduation-cap text-brand-primary dark:opacity-90" aria-hidden="true"></i>
+                    <span>{{ cls.level_name }}</span>
+                    <small>
+                        <span class="font-semibold text-gray-600 dark:text-gray-300">{{ cls.level_category }}</span>
+                        · {{ cls.subject_count }} subject{% if cls.subject_count != 1 %}s{% endif %}
+                        {% if cls.books_allocated_to_teacher > 0 %}
+                        · {{ cls.books_allocated_to_teacher }} cop{% if cls.books_allocated_to_teacher == 1 %}y{% else %}ies{% endif %}
+                        {% else %}
+                        · <span class="text-amber-700 dark:text-amber-300">No copies yet</span>
+                        {% endif %}
+                    </small>
+                    {% if cls.subjects_label %}
+                    <small class="line-clamp-2 normal-case">{{ cls.subjects_label }}</small>
                     {% endif %}
-                </div>
-            </a>
-            {% endfor %}
-        </div>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
         {% else %}
-        <div class="rounded-2xl border border-dashed border-gray-300 bg-white/80 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-900/50">
-            <i class="fas fa-chalkboard-teacher text-4xl text-gray-300 dark:text-gray-600 mb-4" aria-hidden="true"></i>
-            <p class="text-gray-700 dark:text-gray-300 font-medium">No classes assigned yet</p>
-            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-                Your classes appear here after Subject &amp; Class Allocation. Ask the librarian to stock books and allocate copies to you.
+        <div class="modern-card rounded-2xl border border-dashed border-gray-300 dark:border-gray-600 px-6 py-14 sm:py-16 text-center shadow-sm">
+            <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-primary/15 to-brand-secondary/15 flex items-center justify-center mb-5">
+                <i class="fas fa-chalkboard-teacher text-3xl text-brand-primary" aria-hidden="true"></i>
+            </div>
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white">No classes assigned yet</h2>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
+                Your classes appear here after <strong>Subject &amp; Class Allocation</strong>. Ask the librarian to stock books and allocate copies to you.
             </p>
         </div>
         {% endif %}

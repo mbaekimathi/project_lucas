@@ -43,58 +43,7 @@
     </div>
     {% endif %}
 
-    {% if meta and meta.applied_filters %}
-    {% set af = meta.applied_filters %}
-    <div class="mb-6 no-print rounded-2xl border border-slate-200/90 dark:border-slate-700/90 bg-gradient-to-br from-white via-slate-50/90 to-brand-primary/[0.05] dark:from-slate-900 dark:via-slate-900 dark:to-brand-primary/10 shadow-lg shadow-slate-200/35 dark:shadow-none ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06] overflow-hidden">
-        <div class="px-5 py-4 sm:px-6 sm:py-5">
-            <div class="flex flex-col sm:flex-row gap-4 sm:gap-5">
-                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md shadow-brand-primary/25">
-                    <i class="fas fa-sliders-h text-lg" aria-hidden="true"></i>
-                </div>
-                <div class="min-w-0 flex-1">
-                    <p class="text-[11px] font-bold uppercase tracking-wider text-brand-primary dark:text-brand-secondary">Report scope</p>
-                    <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5 leading-snug">{{ title }}</h2>
-                    <dl class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {% if af.academic_year and af.academic_year|string|trim %}
-                        <div class="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/90 dark:bg-slate-800/60 px-3.5 py-2.5">
-                            <dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Academic year</dt>
-                            <dd class="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white leading-snug">{{ af.academic_year }}</dd>
-                        </div>
-                        {% endif %}
-                        {% if af.term and af.term|string|trim %}
-                        <div class="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/90 dark:bg-slate-800/60 px-3.5 py-2.5">
-                            <dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Term</dt>
-                            <dd class="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white leading-snug">{{ af.term }}</dd>
-                        </div>
-                        {% endif %}
-                        {% if af.class_level and af.class_level|string|trim %}
-                        <div class="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/90 dark:bg-slate-800/60 px-3.5 py-2.5 sm:col-span-2 lg:col-span-1">
-                            <dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Class</dt>
-                            <dd class="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white leading-snug">{{ af.class_level }}</dd>
-                        </div>
-                        {% endif %}
-                        {% if af.level_view and af.level_view|string|trim %}
-                        <div class="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/90 dark:bg-slate-800/60 px-3.5 py-2.5">
-                            <dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Level view</dt>
-                            <dd class="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white leading-snug">{{ af.level_view }}</dd>
-                        </div>
-                        {% endif %}
-                        {% if af.exam_name and af.exam_name|string|trim %}
-                        <div class="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/90 dark:bg-slate-800/60 px-3.5 py-2.5 sm:col-span-2 lg:col-span-3">
-                            <dt class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Exam</dt>
-                            <dd class="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white leading-snug">{{ af.exam_name }}</dd>
-                        </div>
-                        {% endif %}
-                    </dl>
-                    <p class="mt-4 text-xs text-slate-500 dark:text-slate-400 flex flex-wrap gap-x-2 gap-y-1">
-                        {% if rows %}<span>{{ rows|length }} record(s)</span>{% endif %}
-                        {% if af.generated_at %}<span class="{% if rows %}text-slate-400 dark:text-slate-500{% endif %}">Generated {{ af.generated_at }}</span>{% endif %}
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
+    {# Removed: report scope summary card (per request). #}
 
     <div class="hidden print:block mb-4 pb-4 border-b border-gray-300">
         <h2 class="text-xl font-bold text-gray-900">{{ school_settings.school_name or 'School' }}</h2>
@@ -654,7 +603,7 @@
                             </div>
                             <div class="ar-rc-badge">
                                 <p class="ar-rc-badge-label">Class rank</p>
-                                <p class="ar-rc-badge-value">{{ row.position }}</p>
+                                <p class="ar-rc-badge-value">{{ row.position }} / {{ rows|length }}</p>
                             </div>
                         </div>
                     </div>
@@ -698,10 +647,10 @@
                             <thead>
                                 <tr>
                                     <th class="ar-rc-th-subj">Subject</th>
-                                    <th>Total</th>
                                     <th>Obtained</th>
                                     <th>Grade</th>
                                     <th>Points</th>
+                                    <th class="ar-rc-th-feedback">Teacher's feedback</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -718,6 +667,7 @@
                                 {% endif %}
                                 {% set sub_grade = namespace(val='-') %}
                                 {% set sub_points = namespace(val='-') %}
+                                {% set sub_feedback = namespace(val='-') %}
                                 {% if mark_raw not in (None, '') and meta and meta.grade_bands %}
                                     {% set m = mark_raw|float|int %}
                                     {% for gb in meta.grade_bands %}
@@ -729,12 +679,25 @@
                                         {% endif %}
                                     {% endfor %}
                                 {% endif %}
+                                {% if sub_grade.val != '-' and meta and meta.grade_code_remarks and row.academic_level_id is not none %}
+                                    {% set _fb_key = (row.academic_level_id|string) ~ '::' ~ (sub_grade.val|string|upper) %}
+                                    {% if meta.grade_code_remarks.get(_fb_key) %}
+                                        {% set sub_feedback.val = meta.grade_code_remarks.get(_fb_key) %}
+                                    {% endif %}
+                                {% endif %}
+                                {% if sub_feedback.val == '-' and sub_grade.val != '-' and meta and meta.grade_bands %}
+                                    {% for gb in meta.grade_bands %}
+                                        {% if (gb.code or gb.label or '')|upper == (sub_grade.val|string|upper) %}
+                                            {% set sub_feedback.val = gb.meaning or gb.label or '-' %}
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
                                 <tr>
                                     <td class="ar-rc-td-subj">{{ sc }}</td>
-                                    <td class="ar-rc-td-num">100</td>
                                     <td class="ar-rc-td-num">{% if mark_raw not in (None, '') %}{{ mark_raw|round|int }}{% else %}-{% endif %}</td>
                                     <td class="ar-rc-td-num">{{ sub_grade.val }}</td>
                                     <td class="ar-rc-td-num">{{ sub_points.val }}</td>
+                                    <td class="ar-rc-td-feedback">{{ sub_feedback.val }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -752,7 +715,7 @@
                                 <tr><td>Mean</td><td>{{ row.mean|round|int }}</td></tr>
                                 <tr><td>Overall grade</td><td>{{ grade }}</td></tr>
                                 <tr><td>GP</td><td>{{ overall_points.val }}</td></tr>
-                                <tr><td>Class rank</td><td>{{ row.position }}</td></tr>
+                                <tr><td>Class rank</td><td>{{ row.position }} / {{ rows|length }}</td></tr>
                             </tbody></table>
                         </div>
                     </div>
@@ -769,8 +732,8 @@
                     {% else %}Configured grade settings{% endif %}
                 </p>
                 <div class="ar-rc-feedback">
-                    <p class="ar-rc-feedback-title">Teacher's feedback</p>
-                    <div class="ar-rc-feedback-lines">
+                    <p class="ar-rc-feedback-title">General comments</p>
+                    <div class="ar-rc-feedback-lines ar-rc-feedback-lines--sheet">
                         <div class="ar-rc-feedback-line"></div>
                         <div class="ar-rc-feedback-line"></div>
                         <div class="ar-rc-feedback-line"></div>
@@ -1019,6 +982,15 @@
 .ar-report-preview-page .ar-rc-table tbody tr:nth-child(even) td { background: #f9fafb; }
 .ar-report-preview-page .ar-rc-table .ar-rc-td-subj { text-align: left; font-weight: 600; }
 .ar-report-preview-page .ar-rc-table .ar-rc-td-num { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+.ar-report-preview-page .ar-rc-table thead th.ar-rc-th-feedback { font-size: 0.58rem; line-height: 1.2; }
+.ar-report-preview-page .ar-rc-table .ar-rc-td-feedback {
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 500;
+    line-height: 1.35;
+    vertical-align: top;
+    word-break: break-word;
+}
 .ar-report-preview-page .ar-rc-summary-box { border: 2px solid var(--ar-rc-navy); border-radius: 4px; overflow: hidden; font-size: 0.75rem; }
 .ar-report-preview-page .ar-rc-summary-box table { width: 100%; border-collapse: collapse; }
 .ar-report-preview-page .ar-rc-summary-box td { border: 1px solid #d1d5db; padding: 0.35rem 0.4rem; font-weight: 600; text-align: center; }
@@ -1042,6 +1014,25 @@
 }
 .ar-report-preview-page .ar-rc-feedback-line { border-bottom: 1px solid #cbd5e1; height: 1.35rem; margin-bottom: 0.35rem; }
 .ar-report-preview-page .ar-rc-feedback-line:last-child { margin-bottom: 0; border-bottom: none; }
+.ar-report-preview-page .ar-rc-feedback-row {
+    display: grid;
+    grid-template-columns: minmax(4.5rem, 34%) 1fr;
+    gap: 0.6rem;
+    align-items: end;
+    padding: 0.15rem 0;
+}
+.ar-report-preview-page .ar-rc-feedback-subject {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.1;
+    word-break: break-word;
+}
+.ar-report-preview-page .ar-rc-feedback-rule {
+    display: block;
+    border-bottom: 1px solid #cbd5e1;
+    height: 1.15rem;
+}
 .ar-report-preview-page .ar-rc-grade-scale { font-size: 0.68rem; color: #4b5563; margin-top: 0.5rem; line-height: 1.4; }
 .ar-report-preview-page .ar-rc-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1rem; font-size: 0.68rem; }
 .ar-report-preview-page .ar-rc-sig-block { border-top: 1px solid #9ca3af; padding-top: 0.35rem; }

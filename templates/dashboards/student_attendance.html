@@ -2,6 +2,8 @@
 
 {% block title %}{% if is_parent_view|default(false) %}Attendance (read-only){% else %}Student Attendance{% endif %} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% block extra_head %}{% if is_teacher_view|default(false) %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endif %}{% endblock %}
+
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
 
 
@@ -70,7 +72,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-3 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }} student-attendance-page">
+<div class="att-page-shell {% if is_teacher_view|default(false) and not is_parent_view|default(false) %}att-page-shell--teacher{% endif %} page-content max-w-7xl mx-auto role-page role-page--{% if is_teacher_view|default(false) %}teacher{% else %}{{ portal_page_variant|default('default') }}{% endif %} student-attendance-page">
     {% if is_parent_view|default(false) and is_technician|default(false) and current_view_role|default('') == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
         <div class="flex items-center justify-between flex-wrap gap-4">
@@ -108,251 +110,708 @@
             <i class="fas fa-arrow-left mr-2"></i>Back to dashboard
         </a>
         {% endif %}
-        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">You are viewing attendance for your child (read-only).</p>
     {% endif %}
-
-    <!-- Modern Hero Header -->
-    <div class="page-hero mb-6 sm:mb-8">
-        <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-            <div class="flex items-center gap-4">
-                <div class="page-hero-icon flex-shrink-0">
-                    <i class="fas fa-check-circle text-white text-xl sm:text-2xl"></i>
-                </div>
-                <div>
-                    <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">{% if is_parent_view|default(false) %}Attendance{% else %}Student Attendance Register{% endif %}</h1>
-                    <p class="text-white/90 text-sm sm:text-base">{% if is_parent_view|default(false) %}View recorded attendance by term and calendar range.{% elif is_teacher_view|default(false) %}Mark attendance for your allocated classes.{% else %}Classes attended by academic term and year.{% endif %}</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <form method="GET" action="{% if is_parent_view|default(false) %}{{ parent_dash_url('attendance/' ~ parent_student_id) }}{% else %}{{ employee_dash_url('student-management/student-attendance') }}{% endif %}" id="{% if not is_parent_view|default(false) %}student-attendance-filter-form{% endif %}" class="filter-bar attendance-filter-bar mb-4 sm:mb-6 modern-card p-3 sm:p-5">
-        <div class="w-full sm:flex-1 sm:min-w-[10rem]">
-            <label for="academic_year_id" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Academic Year</label>
-            <select name="academic_year_id" id="academic_year_id"
-                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="">Select year</option>
-                {% for y in academic_years %}
-                <option value="{{ y.id }}" {% if selected_academic_year_id == y.id %}selected{% endif %}>{{ y.year_name }}{% if y.is_current %} (Current){% endif %}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="w-full sm:flex-1 sm:min-w-[10rem]">
-            <label for="term_id" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Term</label>
-            <select name="term_id" id="term_id"
-                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="">Select term</option>
-                {% for t in terms %}
-                <option value="{{ t.id }}" {% if selected_term_id == t.id %}selected{% endif %}>{{ t.term_name }} {% if t.year_name %}({{ t.year_name }}){% endif %}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="w-full sm:flex-1 sm:min-w-[10rem]">
-            <label for="class_level" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Class</label>
-            <select name="class_level" id="class_level"
-                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="">— Select class —</option>
-                {% for class_name in class_level_options|default([], true) %}
-                <option value="{{ class_name }}" {% if selected_class_level == class_name %}selected{% endif %}>{{ class_name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="w-full sm:flex-1 sm:min-w-[8rem]">
-            <label for="filter_type" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Filter</label>
-            <select name="filter_type" id="filter_type"
-                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="day" {% if selected_filter_type == 'day' %}selected{% endif %}>Single Day</option>
-                <option value="month" {% if selected_filter_type == 'month' %}selected{% endif %}>Month</option>
-                <option value="period" {% if selected_filter_type == 'period' %}selected{% endif %}>Period</option>
-            </select>
-        </div>
-        <div class="w-full sm:flex-1 sm:min-w-[10rem]" id="month-wrap">
-            <label for="month" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Month</label>
-            <input type="month" name="month" id="month" value="{{ selected_month }}"
-                   {% if calendar_month_min %}min="{{ calendar_month_min }}"{% endif %} {% if calendar_month_max %}max="{{ calendar_month_max }}"{% endif %}
-                   class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-        </div>
-        <div class="w-full sm:flex-1 sm:min-w-[10rem]" id="day-wrap">
-            <label for="day" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Day</label>
-            <input type="date" name="day" id="day" value="{{ selected_day }}"
-                   {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
-                   class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-        </div>
-        <div class="w-full sm:flex-1 sm:min-w-[10rem]" id="period-start-wrap">
-            <label for="period_start" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Period From</label>
-            <input type="date" name="period_start" id="period_start" value="{{ selected_period_start }}"
-                   {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
-                   class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-        </div>
-        <div class="w-full sm:flex-1 sm:min-w-[10rem]" id="period-end-wrap">
-            <label for="period_end" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Period To</label>
-            <input type="date" name="period_end" id="period_end" value="{{ selected_period_end }}"
-                   {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
-                   class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-        </div>
-        <input type="hidden" name="page" id="att-page" value="{{ attendance_list_meta.page|default(1) }}">
-        <div class="w-full sm:w-auto flex items-end pt-0 sm:pt-0">
-            <button type="submit" class="touch-btn w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold hover:opacity-95 transition-all shadow-md hover:shadow-lg">
-                <i class="fas fa-sync-alt mr-2"></i>Apply filters
-            </button>
-        </div>
-    </form>
 
     {% if is_teacher_view|default(false) and not is_parent_view|default(false) %}
-    <div class="mb-4 sm:mb-6 rounded-xl border border-violet-200/80 dark:border-violet-800/50 bg-gradient-to-r from-violet-50/90 to-indigo-50/50 dark:from-violet-950/30 dark:to-indigo-950/20 p-3 sm:p-4 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-3">
-        <div class="text-sm text-gray-700 dark:text-gray-300 min-w-0">
-            <i class="fas fa-link text-violet-600 dark:text-violet-400 mr-2" aria-hidden="true"></i>
-            Marking attendance for a subject column updates <strong>Subject progress</strong> (one class completed per session with present students).
-        </div>
-        <a href="{{ subject_progress_url|default(employee_dash_url('subject-progress')) }}"
-           class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md hover:opacity-95 w-full sm:w-auto shrink-0 touch-btn">
-            <i class="fas fa-tasks" aria-hidden="true"></i>
-            Subject progress
+    <header class="att-page-head mb-2 sm:mb-3">
+        <h1 class="att-page-head__title"><i class="fas fa-clipboard-check" aria-hidden="true"></i> Attendance</h1>
+        <a href="{{ subject_progress_url|default(employee_dash_url('subject-progress')) }}" class="att-page-head__link touch-btn" title="Subject progress">
+            <i class="fas fa-tasks" aria-hidden="true"></i><span class="hidden sm:inline">Progress</span>
         </a>
+    </header>
+    {% elif not is_parent_view|default(false) %}
+    <div class="page-hero mb-3 sm:mb-4">
+        <div class="relative px-4 sm:px-5 py-3 sm:py-4">
+            <h1 class="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                <i class="fas fa-check-circle text-lg" aria-hidden="true"></i>
+                Student Attendance
+            </h1>
+        </div>
     </div>
+    {% else %}
+    <h1 class="text-lg font-bold text-gray-900 dark:text-white mb-3">Attendance</h1>
     {% endif %}
+
+    <form method="GET" action="{% if is_parent_view|default(false) %}{{ parent_dash_url('attendance/' ~ parent_student_id) }}{% else %}{{ employee_dash_url('student-management/student-attendance') }}{% endif %}" id="{% if not is_parent_view|default(false) %}student-attendance-filter-form{% endif %}" class="att-filter-toolbar" aria-label="Attendance filters">
+        <div class="att-filter-grid">
+            <div class="att-filter-field">
+                <label for="academic_year_id" class="att-filter-label">Year</label>
+                <select name="academic_year_id" id="academic_year_id" class="att-filter-control">
+                    <option value="">Year…</option>
+                    {% for y in academic_years %}
+                    <option value="{{ y.id }}" {% if selected_academic_year_id == y.id %}selected{% endif %}>{{ y.year_name }}{% if y.is_current %} · Current{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="att-filter-field">
+                <label for="term_id" class="att-filter-label">Term</label>
+                <select name="term_id" id="term_id" class="att-filter-control">
+                    <option value="">Term…</option>
+                    {% for t in terms %}
+                    <option value="{{ t.id }}" {% if selected_term_id == t.id %}selected{% endif %}>{{ t.term_name }}{% if t.year_name %} ({{ t.year_name }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="att-filter-field att-filter-field--class">
+                <label for="class_level" class="att-filter-label">Class</label>
+                <select name="class_level" id="class_level" class="att-filter-control">
+                    <option value="">Class…</option>
+                    {% for class_name in class_level_options|default([], true) %}
+                    <option value="{{ class_name }}" {% if selected_class_level == class_name %}selected{% endif %}>{{ class_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="att-filter-field att-filter-field--narrow">
+                <label for="filter_type" class="att-filter-label">Range</label>
+                <select name="filter_type" id="filter_type" class="att-filter-control">
+                    <option value="day" {% if selected_filter_type == 'day' %}selected{% endif %}>Day</option>
+                    <option value="month" {% if selected_filter_type == 'month' %}selected{% endif %}>Month</option>
+                    <option value="period" {% if selected_filter_type == 'period' %}selected{% endif %}>Period</option>
+                </select>
+            </div>
+            <div class="att-filter-field att-filter-field--date{% if selected_filter_type != 'month' %} hidden{% endif %}" id="month-wrap">
+                <label for="month" class="att-filter-label">Month</label>
+                <input type="month" name="month" id="month" value="{{ selected_month }}"
+                       {% if calendar_month_min %}min="{{ calendar_month_min }}"{% endif %} {% if calendar_month_max %}max="{{ calendar_month_max }}"{% endif %}
+                       class="att-filter-control">
+            </div>
+            <div class="att-filter-field att-filter-field--date{% if selected_filter_type != 'day' %} hidden{% endif %}" id="day-wrap">
+                <label for="day" class="att-filter-label">Date</label>
+                <input type="date" name="day" id="day" value="{{ selected_day }}"
+                       {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
+                       class="att-filter-control">
+            </div>
+            <div class="att-filter-field att-filter-field--date{% if selected_filter_type != 'period' %} hidden{% endif %}" id="period-start-wrap">
+                <label for="period_start" class="att-filter-label">From</label>
+                <input type="date" name="period_start" id="period_start" value="{{ selected_period_start }}"
+                       {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
+                       class="att-filter-control">
+            </div>
+            <div class="att-filter-field att-filter-field--date{% if selected_filter_type != 'period' %} hidden{% endif %}" id="period-end-wrap">
+                <label for="period_end" class="att-filter-label">To</label>
+                <input type="date" name="period_end" id="period_end" value="{{ selected_period_end }}"
+                       {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
+                       class="att-filter-control">
+            </div>
+            <input type="hidden" name="page" id="att-page" value="{{ attendance_list_meta.page|default(1) }}">
+            {% if not is_teacher_view|default(false) or is_parent_view|default(false) %}
+            <div class="att-filter-field att-filter-field--action">
+                <span class="att-filter-label att-filter-label--spacer" aria-hidden="true">&nbsp;</span>
+                <button type="submit" class="att-filter-apply-btn touch-btn" title="Apply filters">
+                    <i class="fas fa-sync-alt" aria-hidden="true"></i>
+                    <span class="hidden sm:inline">Apply</span>
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </form>
 
     <div id="attendance-live-shell">
 {% include 'dashboards/_student_attendance_live_block.html' %}
     </div>
 
     <style>
-    .att-pct-excellent { background: rgba(34, 197, 94, 0.08); }
-    .att-pct-excellent:hover { background: rgba(34, 197, 94, 0.12); }
-    .att-pct-good { background: rgba(59, 130, 246, 0.06); }
-    .att-pct-good:hover { background: rgba(59, 130, 246, 0.1); }
-    .att-pct-fair { background: rgba(245, 158, 11, 0.06); }
-    .att-pct-fair:hover { background: rgba(245, 158, 11, 0.1); }
-    .att-pct-poor { background: rgba(239, 68, 68, 0.06); }
-    .att-pct-poor:hover { background: rgba(239, 68, 68, 0.1); }
-    .attendance-cb { transition: accent-color 0.2s; min-width: 1.25rem; min-height: 1.25rem; }
-
-    /* Mobile-first attendance layout */
-    .student-attendance-page .attendance-filter-bar > div {
-        flex: 1 1 100%;
-        min-width: 0;
+    /* —— Page shell (mobile / tablet / desktop) —— */
+    .student-attendance-page.att-page-shell {
+        padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
     }
     @media (min-width: 640px) {
-        .student-attendance-page .attendance-filter-bar > div {
-            flex: 1 1 auto;
-        }
+        .student-attendance-page.att-page-shell { padding: 1rem 1.25rem 1.5rem; }
+    }
+    @media (min-width: 1024px) {
+        .student-attendance-page.att-page-shell { padding: 1.25rem 1.5rem 2rem; }
+    }
+    .student-attendance-page.att-page-shell--teacher {
+        min-height: 100vh;
+        min-height: 100dvh;
+        background: linear-gradient(165deg, #f8fafc 0%, #fff 45%, #ecfdf5 100%);
+    }
+    .dark .student-attendance-page.att-page-shell--teacher {
+        background: linear-gradient(165deg, #030712 0%, #111827 50%, #064e3b 120%);
     }
 
-    .student-attendance-page .att-register-scroll {
-        position: relative;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior-x: contain;
-        margin: 0 -0.75rem;
-        padding: 0 0.75rem 0.25rem;
+    /* Row tint */
+    .att-pct-excellent { background: rgba(34, 197, 94, 0.07); }
+    .att-pct-good { background: rgba(59, 130, 246, 0.05); }
+    .att-pct-fair { background: rgba(245, 158, 11, 0.05); }
+    .att-pct-poor { background: rgba(239, 68, 68, 0.05); }
+
+    /* —— Header —— */
+    .student-attendance-page .att-page-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
     }
-    @media (min-width: 768px) {
-        .student-attendance-page .att-register-scroll {
-            margin: 0;
-            padding: 0;
+    .student-attendance-page .att-page-head__title {
+        margin: 0;
+        font-size: clamp(1.125rem, 3.5vw, 1.375rem);
+        font-weight: 700;
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .dark .student-attendance-page .att-page-head__title { color: #f8fafc; }
+    .student-attendance-page .att-page-head__title i { color: #059669; }
+    .student-attendance-page .att-page-head__link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        min-height: 2.5rem;
+        padding: 0 0.75rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #047857;
+        background: #fff;
+        border: 1px solid #d1fae5;
+        border-radius: 0.625rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .dark .student-attendance-page .att-page-head__link {
+        color: #6ee7b7;
+        background: #1f2937;
+        border-color: #065f46;
+    }
+
+    /* —— Filters: 2-col mobile → 3-col tablet → row desktop —— */
+    .student-attendance-page .att-filter-toolbar {
+        margin-bottom: 0.75rem;
+        padding: 0.625rem;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.875rem;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    }
+    .dark .student-attendance-page .att-filter-toolbar {
+        background: #1f2937;
+        border-color: #374151;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-filter-toolbar { padding: 0.75rem; margin-bottom: 1rem; }
+    }
+    .student-attendance-page .att-filter-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+        align-items: end;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-filter-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
         }
     }
+    @media (min-width: 1024px) {
+        .student-attendance-page .att-filter-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem 0.625rem;
+        }
+        .student-attendance-page .att-filter-field {
+            flex: 1 1 auto;
+            min-width: 5.5rem;
+            max-width: 10rem;
+        }
+        .student-attendance-page .att-filter-field--class { max-width: 12rem; }
+    }
+    .student-attendance-page .att-filter-field--action {
+        grid-column: 1 / -1;
+    }
+    @media (min-width: 1024px) {
+        .student-attendance-page .att-filter-field--action {
+            grid-column: auto;
+            flex: 0 0 auto;
+        }
+    }
+    .student-attendance-page .att-filter-label {
+        display: block;
+        font-size: 0.625rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 0.2rem;
+    }
+    .student-attendance-page .att-filter-label--spacer { visibility: hidden; height: 0; margin: 0; }
+    .student-attendance-page .att-filter-control {
+        width: 100%;
+        min-height: 2.75rem;
+        padding: 0 0.625rem;
+        font-size: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #0f172a;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-filter-control {
+            min-height: 2.25rem;
+            font-size: 0.875rem;
+        }
+    }
+    .dark .student-attendance-page .att-filter-control {
+        background: #374151;
+        border-color: #4b5563;
+        color: #f9fafb;
+    }
+    .student-attendance-page .att-filter-control:focus {
+        outline: none;
+        border-color: #059669;
+        box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.2);
+        background: #fff;
+    }
+    .student-attendance-page .att-filter-apply-btn {
+        width: 100%;
+        min-height: 2.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #fff;
+        border: none;
+        border-radius: 0.5rem;
+        background: linear-gradient(135deg, #059669, #0d9488);
+    }
+    @media (min-width: 1024px) {
+        .student-attendance-page .att-filter-apply-btn { width: auto; min-width: 5rem; min-height: 2.25rem; }
+    }
+
+    #attendance-live-shell[aria-busy="true"] {
+        opacity: 0.5;
+        pointer-events: none;
+        transition: opacity 0.2s;
+    }
+
+    /* —— Bulk actions —— */
+    .student-attendance-page .att-bulk-bar {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-bulk-bar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+    }
+    .student-attendance-page .att-bulk-btn {
+        min-height: 2.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        border-radius: 0.625rem;
+        border: none;
+    }
+    .student-attendance-page .att-bulk-btn--present { background: #16a34a; color: #fff; }
+    .student-attendance-page .att-bulk-btn--absent { background: #f1f5f9; color: #334155; }
+    .dark .student-attendance-page .att-bulk-btn--absent { background: #4b5563; color: #f3f4f6; }
+
+    /* —— Register card —— */
+    .student-attendance-page .att-register-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.875rem;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    }
+    .dark .student-attendance-page .att-register-card {
+        background: #1f2937;
+        border-color: #374151;
+    }
+    .student-attendance-page .att-register-card__head {
+        padding: 0.625rem 0.875rem;
+    }
+    .student-attendance-page .att-register-card__title {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        font-size: 0.9375rem;
+        font-weight: 700;
+        color: #fff;
+    }
+    .student-attendance-page .att-register-card__meta {
+        font-size: 0.75rem;
+        font-weight: 500;
+        opacity: 0.9;
+    }
+
     .student-attendance-page .att-scroll-hint {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 0.35rem;
-        font-size: 0.6875rem;
-        color: #6b7280;
-        padding: 0.35rem 0.75rem 0.5rem;
         margin: 0;
+        padding: 0.35rem 0.5rem;
+        font-size: 0.6875rem;
+        color: #64748b;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
     }
-    .dark .student-attendance-page .att-scroll-hint { color: #9ca3af; }
-    @media (min-width: 768px) {
-        .student-attendance-page .att-scroll-hint { display: none; }
+    .dark .student-attendance-page .att-scroll-hint {
+        color: #94a3b8;
+        background: #111827;
+        border-color: #374151;
     }
 
-    .student-attendance-page .att-register-table { min-width: 32rem; }
+    /* Horizontal scroll + sticky name column */
+    .student-attendance-page .att-register-scroll-wrap {
+        position: relative;
+    }
+    .student-attendance-page .att-register-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+    }
+    .student-attendance-page .att-register-scroll-wrap::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 1.5rem;
+        pointer-events: none;
+        background: linear-gradient(to left, rgba(255,255,255,0.95), transparent);
+    }
+    .dark .student-attendance-page .att-register-scroll-wrap::after {
+        background: linear-gradient(to left, rgba(31,41,55,0.95), transparent);
+    }
+    @media (min-width: 768px) {
+        .student-attendance-page .att-register-scroll-wrap::after { display: none; }
+    }
+
+    .student-attendance-page .att-register-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 28rem;
+    }
     @media (min-width: 768px) {
         .student-attendance-page .att-register-table { min-width: 100%; }
     }
 
+    .student-attendance-page .att-register-table thead {
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .dark .student-attendance-page .att-register-table thead {
+        background: #111827;
+        border-color: #374151;
+    }
+
+    .student-attendance-page .att-col-num {
+        width: 2rem;
+        padding: 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+        text-align: left;
+    }
+    .student-attendance-page .att-col-student {
+        min-width: 7.5rem;
+        max-width: 42vw;
+        padding: 0.5rem 0.625rem;
+        vertical-align: middle;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-col-student { min-width: 9.5rem; max-width: 14rem; }
+    }
     .student-attendance-page .att-sticky-student {
         position: sticky;
         left: 0;
         z-index: 2;
         background: #fff;
-        box-shadow: 4px 0 8px -4px rgba(0,0,0,0.12);
+        box-shadow: 4px 0 10px -6px rgba(0,0,0,0.15);
     }
-    .dark .student-attendance-page .att-sticky-student { background: rgb(31 41 55); }
-    .student-attendance-page .attendance-row.att-pct-excellent .att-sticky-student { background: rgba(34, 197, 94, 0.08); }
-    .student-attendance-page .attendance-row.att-pct-good .att-sticky-student { background: rgba(59, 130, 246, 0.06); }
-    .student-attendance-page .attendance-row.att-pct-fair .att-sticky-student { background: rgba(245, 158, 11, 0.06); }
-    .student-attendance-page .attendance-row.att-pct-poor .att-sticky-student { background: rgba(239, 68, 68, 0.06); }
+    .dark .student-attendance-page .att-sticky-student { background: #1f2937; }
     .student-attendance-page thead .att-sticky-student {
         z-index: 3;
-        background: rgb(249 250 251);
+        background: #f8fafc;
     }
-    .dark .student-attendance-page thead .att-sticky-student { background: rgba(17, 24, 39, 0.5); }
+    .dark .student-attendance-page thead .att-sticky-student { background: #111827; }
+    .student-attendance-page .attendance-row.att-pct-excellent .att-sticky-student { background: #f0fdf4; }
+    .student-attendance-page .attendance-row.att-pct-good .att-sticky-student { background: #eff6ff; }
+    .student-attendance-page .attendance-row.att-pct-fair .att-sticky-student { background: #fffbeb; }
+    .student-attendance-page .attendance-row.att-pct-poor .att-sticky-student { background: #fef2f2; }
 
-    .student-attendance-page .level-header-card h2 {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.35rem;
+    .student-attendance-page .att-col-date {
+        min-width: 3.5rem;
+        padding: 0.35rem 0.25rem;
+        text-align: center;
+        vertical-align: top;
     }
-    @media (min-width: 480px) {
-        .student-attendance-page .level-header-card h2 {
+    @media (min-width: 640px) {
+        .student-attendance-page .att-col-date { min-width: 4.5rem; padding: 0.5rem 0.35rem; }
+    }
+    .student-attendance-page .att-col-date__inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .student-attendance-page .att-col-date__label {
+        font-size: 0.625rem;
+        font-weight: 600;
+        color: #475569;
+        line-height: 1.2;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-col-date__label { font-size: 0.6875rem; }
+    }
+    .dark .student-attendance-page .att-col-date__label { color: #cbd5e1; }
+    .student-attendance-page .att-col-date__sub {
+        font-size: 0.5625rem;
+        color: #94a3b8;
+        max-width: 4rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .student-attendance-page .att-col-date__actions {
+        display: flex;
+        gap: 0.2rem;
+    }
+    .student-attendance-page .att-col-pa-btn {
+        min-width: 1.75rem;
+        min-height: 1.75rem;
+        padding: 0;
+        font-size: 0.625rem;
+        font-weight: 700;
+        line-height: 1;
+        border: none;
+        border-radius: 0.375rem;
+        cursor: pointer;
+    }
+    .student-attendance-page .att-day-all-present.att-col-pa-btn {
+        background: #dcfce7;
+        color: #166534;
+    }
+    .student-attendance-page .att-day-all-absent.att-col-pa-btn {
+        background: #f1f5f9;
+        color: #475569;
+    }
+
+    /* Student cell */
+    .student-attendance-page .att-student-cell {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+    .student-attendance-page .att-student-avatar {
+        display: none;
+        width: 2rem;
+        height: 2rem;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0.5rem;
+        background: linear-gradient(135deg, #22c55e, #059669);
+        color: #fff;
+        font-size: 0.65rem;
+    }
+    @media (min-width: 768px) {
+        .student-attendance-page .att-student-avatar { display: flex; }
+        .student-attendance-page.role-page--teacher .att-student-avatar { display: none; }
+    }
+    .student-attendance-page .att-student-info { min-width: 0; flex: 1; }
+    .student-attendance-page .att-student-name {
+        display: block;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #0f172a;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .dark .student-attendance-page .att-student-name { color: #f1f5f9; }
+    .student-attendance-page .att-student-id {
+        display: block;
+        font-size: 0.625rem;
+        color: #94a3b8;
+        font-family: ui-monospace, monospace;
+    }
+    .student-attendance-page .attendance-pct {
+        display: block;
+        font-size: 0.625rem;
+        font-weight: 600;
+        color: #059669;
+        margin-top: 0.1rem;
+    }
+
+    /* Checkboxes — touch-friendly */
+    .student-attendance-page .att-col-check {
+        padding: 0.35rem 0.25rem;
+        text-align: center;
+        vertical-align: middle;
+    }
+    .student-attendance-page .att-check-wrap {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+        margin: 0 auto;
+        cursor: pointer;
+    }
+    .student-attendance-page .attendance-cb {
+        width: 1.375rem;
+        height: 1.375rem;
+        margin: 0;
+        cursor: pointer;
+        accent-color: #059669;
+        transition: accent-color 0.15s;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .attendance-cb { width: 1.25rem; height: 1.25rem; }
+        .student-attendance-page .att-check-wrap { min-width: 2.25rem; min-height: 2.25rem; }
+    }
+    .student-attendance-page .attendance-cb--readonly { cursor: default; }
+
+    .student-attendance-page .attendance-row {
+        border-bottom: 1px solid #f1f5f9;
+        transition: background 0.15s;
+    }
+    .dark .student-attendance-page .attendance-row { border-color: #374151; }
+
+    /* Save bar — sticky on phone */
+    .student-attendance-page .att-save-bar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.625rem 0.75rem;
+        border-top: 1px solid #e2e8f0;
+        background: #f8fafc;
+    }
+    .dark .student-attendance-page .att-save-bar {
+        background: #111827;
+        border-color: #374151;
+    }
+    @media (max-width: 767px) {
+        .student-attendance-page .att-save-bar {
+            position: sticky;
+            bottom: 0;
+            z-index: 20;
+            padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+        }
+    }
+    .student-attendance-page .att-level-save-btn {
+        width: 100%;
+        min-height: 2.875rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: #fff;
+        border: none;
+        border-radius: 0.625rem;
+        background: linear-gradient(135deg, #059669, #0d9488);
+        box-shadow: 0 2px 6px rgba(5, 150, 105, 0.25);
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-level-save-btn { width: auto; min-width: 10rem; margin-left: auto; }
+        .student-attendance-page .att-save-bar { flex-direction: row; align-items: center; }
+    }
+    .student-attendance-page .att-level-save-status {
+        font-size: 0.8125rem;
+        margin: 0;
+    }
+    .student-attendance-page .att-level-save-status:not(.hidden) { flex: 1; }
+    .student-attendance-page .att-save-label-short { display: inline; }
+    .student-attendance-page .att-save-label-full { display: none; }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-save-label-short { display: none; }
+        .student-attendance-page .att-save-label-full { display: inline; }
+    }
+
+    /* Pagination */
+    .student-attendance-page .att-pagination {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+        padding: 0 0.25rem;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-pagination {
             flex-direction: row;
             align-items: center;
             justify-content: space-between;
         }
     }
-
-    .student-attendance-page .att-level-save-btn {
-        width: 100%;
+    .student-attendance-page .att-pagination__label {
+        font-size: 0.8125rem;
+        color: #64748b;
+        text-align: center;
     }
     @media (min-width: 640px) {
-        .student-attendance-page .att-level-save-btn {
-            width: auto;
-        }
+        .student-attendance-page .att-pagination__label { text-align: left; }
     }
-
-    .student-attendance-page .att-bulk-actions {
+    .student-attendance-page .att-pagination__actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 0.5rem;
-        width: 100%;
     }
     @media (min-width: 640px) {
-        .student-attendance-page .att-bulk-actions {
+        .student-attendance-page .att-pagination__actions {
             display: flex;
-            flex-wrap: wrap;
-            width: auto;
+            gap: 0.5rem;
         }
+    }
+    .student-attendance-page .att-page-btn {
+        min-height: 2.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        padding: 0 1rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #334155;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.625rem;
+    }
+    .dark .student-attendance-page .att-page-btn {
+        background: #374151;
+        border-color: #4b5563;
+        color: #f1f5f9;
     }
 
     .student-attendance-page #attendance-register-analytics .overflow-x-auto {
         -webkit-overflow-scrolling: touch;
     }
 
-    .student-attendance-page .att-day-all-present,
-    .student-attendance-page .att-day-all-absent {
-        min-width: 1.75rem;
-        min-height: 1.75rem;
-        padding: 0.25rem 0.35rem !important;
+    .student-attendance-page .att-empty {
+        margin: 0;
+        padding: 2.5rem 1rem;
+        text-align: center;
+        font-size: 0.875rem;
+        color: #64748b;
+        background: #fff;
+        border: 1px dashed #e2e8f0;
+        border-radius: 0.875rem;
     }
-
-    @media (max-width: 639px) {
-        .student-attendance-page .attendance-cb {
-            width: 1.375rem;
-            height: 1.375rem;
-        }
-        .student-attendance-page .attendance-pct {
-            display: block;
-            width: 100%;
-            margin-left: 0 !important;
-            margin-top: 0.15rem;
-        }
-        .student-attendance-page .att-student-cell-inner {
-            flex-wrap: wrap;
-        }
-        .student-attendance-page .att-student-avatar {
-            display: none;
-        }
+    .dark .student-attendance-page .att-empty {
+        color: #94a3b8;
+        background: #1f2937;
+        border-color: #374151;
     }
     </style>
 
@@ -804,13 +1263,18 @@
     const dayWrap = document.getElementById('day-wrap');
     const startWrap = document.getElementById('period-start-wrap');
     const endWrap = document.getElementById('period-end-wrap');
+    function setWrapVisible(el, show) {
+        if (!el) return;
+        if (show) el.classList.remove('hidden');
+        else el.classList.add('hidden');
+    }
     function toggle() {
         const v = filter.value;
-        if (monthWrap) monthWrap.style.display = (v === 'month') ? '' : 'none';
-        if (dayWrap) dayWrap.style.display = (v === 'day') ? '' : 'none';
+        setWrapVisible(monthWrap, v === 'month');
+        setWrapVisible(dayWrap, v === 'day');
         const showPeriod = (v === 'period');
-        if (startWrap) startWrap.style.display = showPeriod ? '' : 'none';
-        if (endWrap) endWrap.style.display = showPeriod ? '' : 'none';
+        setWrapVisible(startWrap, showPeriod);
+        setWrapVisible(endWrap, showPeriod);
     }
     window.__studentAttendanceFilterToggle = toggle;
     filter.addEventListener('change', toggle);

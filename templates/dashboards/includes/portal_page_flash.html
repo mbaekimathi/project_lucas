@@ -1,0 +1,31 @@
+{# Shows at most one relevant flash (filters role-switch noise). #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% set ns = namespace(items=[]) %}
+{% for category, message in messages %}
+{% set msg_lower = message|lower %}
+{% if 'role view' not in msg_lower and 'switched back' not in msg_lower and 'now viewing as' not in msg_lower %}
+{% set _ = ns.items.append((category, message)) %}
+{% endif %}
+{% endfor %}
+{% if ns.items %}
+{% set category, message = ns.items[-1] %}
+<div class="mb-5 sm:mb-6"
+     x-data="{ show: true }"
+     x-show="show"
+     x-transition:leave="transition ease-in duration-200"
+     x-transition:leave-start="opacity-100 translate-y-0"
+     x-transition:leave-end="opacity-0 -translate-y-1"
+     role="alert">
+    <div class="flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-sm shadow-sm
+        {% if category == 'success' %}border-emerald-200/90 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-100
+        {% elif category == 'error' %}border-red-200/90 bg-red-50 text-red-950 dark:border-red-900 dark:bg-red-950/50 dark:text-red-100
+        {% else %}border-amber-200/90 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100{% endif %}">
+        <i class="fas mt-0.5 shrink-0 {% if category == 'success' %}fa-circle-check text-emerald-600 dark:text-emerald-400{% elif category == 'error' %}fa-circle-exclamation text-red-600 dark:text-red-400{% else %}fa-circle-info text-amber-600 dark:text-amber-400{% endif %}" aria-hidden="true"></i>
+        <p class="flex-1 min-w-0 leading-relaxed">{{ message }}</p>
+        <button type="button" @click="show = false" class="shrink-0 rounded-lg p-1 opacity-60 hover:opacity-100 transition" aria-label="Dismiss">
+            <i class="fas fa-times text-xs" aria-hidden="true"></i>
+        </button>
+    </div>
+</div>
+{% endif %}
+{% endwith %}

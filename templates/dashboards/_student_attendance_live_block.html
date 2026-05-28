@@ -1,18 +1,11 @@
-    {% if schedule_days_list %}
-    <div class="mb-4 text-xs text-gray-600 dark:text-gray-400">
-        <i class="fas fa-calendar-check mr-1"></i>
-        Showing only scheduled study days: {{ schedule_days_list|join(', ') }}
-    </div>
+    {% if schedule_days_list and not is_teacher_view|default(false) %}
+    <p class="mb-2 text-[0.6875rem] text-gray-500 dark:text-gray-400">Study days: {{ schedule_days_list|join(', ') }}</p>
     {% endif %}
 
     {% include 'dashboards/_attendance_register_analytics_partial.html' %}
 
     {% if not selected_class_level|default('', true) and not is_parent_view|default(false) %}
-    <div class="modern-card p-8 text-center text-gray-600 dark:text-gray-400">
-        <i class="fas fa-graduation-cap text-3xl text-gray-300 mb-3"></i>
-        <p class="font-medium text-gray-800 dark:text-gray-200">Select a class to open the register</p>
-        <p class="text-sm mt-1 max-w-md mx-auto">Students load 50 per page. Choose class, term, and dates above, then click Apply filters.</p>
-    </div>
+    <p class="att-empty">Select class, term, and date range.</p>
     {% elif students_by_level %}
     {% if selected_week_days %}
     {% if is_parent_view|default(false) %}
@@ -32,30 +25,19 @@
     {% endif %}
 
         {% if not is_parent_view|default(false) %}
-        <div class="modern-card p-4 sm:p-5 mb-6 border border-gray-200 dark:border-gray-700">
-            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div>
-                    <h3 class="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
-                        <i class="fas fa-users-cog text-brand-primary"></i>
-                        Bulk attendance
-                    </h3>
-                    <p class="text-xs text-gray-600 dark:text-gray-400 max-w-xl">Checked = <strong>present</strong>, unchecked = <strong>absent</strong>. Mark the register, then click <strong>Save attendance</strong> at the bottom of each class.</p>
-                </div>
-                <div class="att-bulk-actions shrink-0">
-                    <button type="button" id="att-mark-all-present"
-                            class="touch-btn px-3 sm:px-4 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-700 text-white shadow-md transition-all pointer-events-auto">
-                        <i class="fas fa-check-double mr-1 sm:mr-2 pointer-events-none" aria-hidden="true"></i><span class="hidden sm:inline">Mark all </span>Present
-                    </button>
-                    <button type="button" id="att-mark-all-absent"
-                            class="touch-btn px-3 sm:px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white transition-all pointer-events-auto">
-                        <i class="fas fa-times mr-1 sm:mr-2 pointer-events-none" aria-hidden="true"></i><span class="hidden sm:inline">Mark all </span>Absent
-                    </button>
-                </div>
-            </div>
+        <div class="att-bulk-bar">
+            <button type="button" id="att-mark-all-present"
+                    class="touch-btn att-bulk-btn att-bulk-btn--present pointer-events-auto">
+                <i class="fas fa-check-double pointer-events-none" aria-hidden="true"></i><span>All present</span>
+            </button>
+            <button type="button" id="att-mark-all-absent"
+                    class="touch-btn att-bulk-btn att-bulk-btn--absent pointer-events-auto">
+                <i class="fas fa-times pointer-events-none" aria-hidden="true"></i><span>All absent</span>
+            </button>
         </div>
         {% endif %}
 
-    <div class="space-y-6">
+    <div class="{% if is_teacher_view|default(false) %}space-y-3{% else %}space-y-6{% endif %}">
         {% for level_group in students_by_level %}
         {% set level_id = level_group.id|default(none) %}
         {% if use_subject_attendance_columns|default(false) and level_id %}
@@ -63,41 +45,39 @@
         {% else %}
         {% set register_columns = none %}
         {% endif %}
-        <div id="level-{{ loop.index }}" class="attendance-level-card modern-card overflow-hidden scroll-mt-4 rounded-xl" data-level-name="{{ level_group.level_name }}">
-            <div class="level-header-card">
-                <h2 class="text-lg font-bold text-white flex items-center justify-between">
-                    <span>
-                        <i class="fas fa-graduation-cap mr-2"></i>
-                        {{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %}
-                    </span>
-                    <span class="text-white/90 text-sm font-normal">{% set am = attendance_list_meta|default({}) %}{% if am.total %}{{ am.total }} total · page {{ am.page }}/{{ am.pages }}{% else %}{{ level_group.students|length }} on page{% endif %}</span>
+        <div id="level-{{ loop.index }}" class="att-register-card attendance-level-card" data-level-name="{{ level_group.level_name }}">
+            <div class="att-register-card__head level-header-card">
+                <h2 class="att-register-card__title">
+                    <span class="truncate">{{ level_group.level_name }}</span>
+                    <span class="att-register-card__meta tabular-nums">{% set am = attendance_list_meta|default({}) %}{% if am.pages and am.pages > 1 %}{{ am.page }}/{{ am.pages }}{% elif am.total %}{{ am.total }}{% endif %}</span>
                 </h2>
             </div>
             {% if use_subject_attendance_columns|default(false) and register_columns is not none and register_columns|length == 0 %}
-            <p class="px-4 py-6 text-sm text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 border-t border-amber-200/60 dark:border-amber-800/40 m-0">
-                No timetable periods for your subjects in this date range. Add slots in <a href="{{ employee_dash_url('timetable-management') }}" class="font-semibold underline">Timetable management</a>.
+            <p class="px-4 py-4 text-sm text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 border-t border-amber-200/60 dark:border-amber-800/40 m-0">
+                No periods in this range. <a href="{{ employee_dash_url('timetable-management') }}" class="font-semibold underline">Timetable</a>
             </p>
             {% else %}
-            <p class="att-scroll-hint sm:hidden" aria-hidden="true"><i class="fas fa-arrows-alt-h"></i> Swipe sideways to see all dates</p>
-            <div class="table-responsive-wrapper att-register-scroll">
-                <table class="w-full att-register-table">
-                    <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+            <p class="att-scroll-hint md:hidden"><i class="fas fa-arrows-alt-h" aria-hidden="true"></i> Swipe for dates</p>
+            <div class="att-register-scroll-wrap">
+            <div class="att-register-scroll" tabindex="0" role="region" aria-label="Attendance register for {{ level_group.level_name }}">
+                <table class="att-register-table">
+                    <thead>
                         <tr>
-                            <th class="hidden sm:table-cell text-left px-2 sm:px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 w-8 sm:w-10 text-sm">#</th>
-                            <th class="att-sticky-student text-left px-2 sm:px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 min-w-[9rem] sm:min-w-[11rem] max-w-[45vw] sm:max-w-none">Student</th>
+                            <th class="att-col-num hidden sm:table-cell">#</th>
+                            <th class="att-sticky-student att-col-student">Student</th>
                             {% for col in (register_columns if register_columns is not none else selected_week_days) %}
-                            <th class="text-center px-1 sm:px-2 py-2 font-semibold text-gray-700 dark:text-gray-300 min-w-[3.25rem] sm:min-w-[5rem] text-[10px] sm:text-xs align-top whitespace-nowrap" title="{% if col.date_str is defined %}{{ col.date_str }}{% else %}{{ col.date_str }}{% endif %}{% if col.subject_name %} — {{ col.subject_name }}{% endif %}">
-                                <div class="flex flex-col items-center gap-1">
-                                    <span class="leading-tight">{{ col.header_label|default(col.label) }}</span>
+                            <th class="att-col-date" title="{% if col.date_str is defined %}{{ col.date_str }}{% else %}{{ col.date_str }}{% endif %}{% if col.subject_name %} — {{ col.subject_name }}{% endif %}">
+                                <div class="att-col-date__inner">
+                                    <span class="att-col-date__label">{{ col.header_label|default(col.label) }}</span>
                                     {% if use_subject_attendance_columns|default(false) and col.subject_code %}
-                                    <span class="text-[10px] font-normal text-gray-500 dark:text-gray-400 truncate max-w-full">{{ col.subject_name }}</span>
+                                    <span class="att-col-date__sub">{{ col.subject_code or col.subject_name }}</span>
                                     {% endif %}
                                     {% if not is_parent_view|default(false) %}
-                                    <div class="flex gap-0.5 justify-center">
-                                        <button type="button" class="att-day-all-present px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 hover:opacity-90 leading-none pointer-events-auto"
-                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" title="Present for all students">P</button>
-                                        <button type="button" class="att-day-all-absent px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:opacity-90 leading-none pointer-events-auto"
-                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" title="Absent for all students">A</button>
+                                    <div class="att-col-date__actions">
+                                        <button type="button" class="att-day-all-present att-col-pa-btn pointer-events-auto"
+                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" title="All present">P</button>
+                                        <button type="button" class="att-day-all-absent att-col-pa-btn pointer-events-auto"
+                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" title="All absent">A</button>
                                     </div>
                                     {% endif %}
                                 </div>
@@ -105,34 +85,34 @@
                             {% endfor %}
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tbody>
                         {% for student in level_group.students %}
-                        <tr class="attendance-row transition-colors duration-300" data-student-id="{{ student.student_id }}" data-total="{% if register_columns is not none %}{{ register_columns|length }}{% else %}{{ selected_week_days|length }}{% endif %}">
-                            <td class="hidden sm:table-cell px-2 sm:px-3 py-2 text-sm text-gray-600 dark:text-gray-400 font-medium">{{ loop.index }}</td>
-                            <td class="att-sticky-student px-2 sm:px-3 py-2">
-                                <div class="flex items-center gap-2 att-student-cell-inner min-w-0">
-                                    <div class="att-student-avatar w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
-                                        <i class="fas fa-user-graduate text-white text-xs"></i>
-                                    </div>
-                                    <div class="min-w-0 flex-1">
-                                        <span class="font-medium text-gray-900 dark:text-white block text-sm truncate">{{ student.full_name }}</span>
-                                        <span class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 font-mono">{{ student.student_id }}</span>
-                                        <span class="attendance-pct text-[10px] sm:text-xs font-semibold sm:ml-1 block sm:inline"></span>
+                        <tr class="attendance-row" data-student-id="{{ student.student_id }}" data-total="{% if register_columns is not none %}{{ register_columns|length }}{% else %}{{ selected_week_days|length }}{% endif %}">
+                            <td class="att-col-num hidden sm:table-cell">{{ loop.index }}</td>
+                            <td class="att-sticky-student att-col-student">
+                                <div class="att-student-cell">
+                                    <div class="att-student-avatar" aria-hidden="true"><i class="fas fa-user-graduate"></i></div>
+                                    <div class="att-student-info">
+                                        <span class="att-student-name">{{ student.full_name }}</span>
+                                        <span class="att-student-id">{{ student.student_id }}</span>
+                                        <span class="attendance-pct"></span>
                                     </div>
                                 </div>
                             </td>
                             {% for col in (register_columns if register_columns is not none else selected_week_days) %}
                             {% set subj_id = col.subject_id|default(0) %}
                             {% set att_key = (student.student_id, col.date_str, subj_id) %}
-                            <td class="px-1 sm:px-2 py-2 text-center align-middle">
+                            <td class="att-col-check">
+                                <label class="att-check-wrap">
                                 <input type="checkbox"
                                        name="att_{{ student.student_id }}_{{ col.date_str }}{% if subj_id > 0 %}_{{ subj_id }}{% endif %}"
                                        data-date="{{ col.date_str }}"
                                        data-subject-id="{{ subj_id }}"
                                        {% if attendance_records.get(att_key) %}checked{% endif %}
                                        {% if is_parent_view|default(false) %}disabled{% endif %}
-                                       class="attendance-cb w-5 h-5 sm:w-5 sm:h-5 rounded border-2 transition-colors duration-200 {% if is_parent_view|default(false) %}cursor-default opacity-90{% else %}cursor-pointer{% endif %}"
+                                       class="attendance-cb{% if is_parent_view|default(false) %} attendance-cb--readonly{% endif %}"
                                        title="{{ col.header_label|default(col.label) }} — {{ student.full_name }}">
+                                </label>
                             </td>
                             {% endfor %}
                         </tr>
@@ -140,13 +120,13 @@
                     </tbody>
                 </table>
             </div>
+            </div>
             {% if not is_parent_view|default(false) %}
-            <div class="att-level-save-footer px-3 sm:px-5 py-3 sm:py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 flex flex-col gap-3">
-                <p class="att-level-save-status text-sm hidden order-1" role="status" aria-live="polite"></p>
-                <button type="button"
-                        class="att-level-save-btn order-2 touch-btn inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md hover:opacity-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
-                    <i class="fas fa-save pointer-events-none shrink-0" aria-hidden="true"></i>
-                    <span class="truncate">Save — {{ level_group.level_name }}</span>
+            <div class="att-save-bar att-level-save-footer">
+                <p class="att-level-save-status hidden" role="status" aria-live="polite"></p>
+                <button type="button" class="att-level-save-btn touch-btn">
+                    <i class="fas fa-save pointer-events-none" aria-hidden="true"></i>
+                    <span class="att-save-label-full">Save attendance</span><span class="att-save-label-short">Save</span>
                 </button>
             </div>
             {% endif %}
@@ -156,23 +136,17 @@
     </div>
         {% set am = attendance_list_meta|default({}) %}
         {% if am.pages and am.pages > 1 %}
-        <nav class="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 px-2" id="att-page-nav" aria-label="Student pages">
-            <p class="text-xs text-gray-500">Page {{ am.page }} of {{ am.pages }} · {{ am.total }} students in class</p>
-            <div class="flex gap-2">
+        <nav class="att-pagination" id="att-page-nav" aria-label="Student pages">
+            <span class="att-pagination__label tabular-nums">Page {{ am.page }} of {{ am.pages }}</span>
+            <div class="att-pagination__actions">
                 {% if am.page > 1 %}
-                <button type="button" class="att-page-btn touch-btn px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600" data-att-page="{{ am.page - 1 }}">Previous</button>
+                <button type="button" class="att-page-btn touch-btn" data-att-page="{{ am.page - 1 }}"><i class="fas fa-chevron-left" aria-hidden="true"></i><span>Prev</span></button>
                 {% endif %}
                 {% if am.page < am.pages %}
-                <button type="button" class="att-page-btn touch-btn px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600" data-att-page="{{ am.page + 1 }}">Next</button>
+                <button type="button" class="att-page-btn touch-btn" data-att-page="{{ am.page + 1 }}"><span>Next</span><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
                 {% endif %}
             </div>
         </nav>
-        {% endif %}
-        {% if not is_parent_view|default(false) %}
-        <div class="mt-4 text-xs text-gray-500 dark:text-gray-400">
-            <i class="fas fa-info-circle mr-1" aria-hidden="true"></i>
-            Register analytics update after you save each class.
-        </div>
         {% endif %}
     {% if is_parent_view|default(false) %}
     </div>
@@ -216,18 +190,8 @@
     </script>
     {% endif %}
     {% else %}
-    <div class="empty-state modern-card">
-        <div class="empty-state-icon">
-            <i class="fas fa-calendar-week text-gray-400 text-2xl"></i>
-        </div>
-                <p class="text-gray-600 dark:text-gray-400">Select an academic year and term, then apply Month/Day/Period filter to view attendance.</p>
-    </div>
+    <p class="att-empty">Choose year, term, and dates.</p>
     {% endif %}
     {% else %}
-    <div class="empty-state modern-card">
-        <div class="empty-state-icon">
-            <i class="fas fa-graduation-cap text-gray-400 text-3xl"></i>
-        </div>
-        <p class="text-gray-600 dark:text-gray-400">No classes with students found. Add students via admission.</p>
-    </div>
+    <p class="att-empty">No classes found.</p>
     {% endif %}

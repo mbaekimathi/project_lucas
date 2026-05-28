@@ -662,7 +662,7 @@
         table-layout: fixed !important;
     }
     #ar-preview-wrap .ar-rc-individual .ar-rc-table .ar-rc-td-num,
-    #ar-preview-wrap .ar-rc-individual .ar-rc-table thead th:not(.ar-rc-th-subj) {
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table thead th:not(.ar-rc-th-subj):not(.ar-rc-th-feedback) {
         max-width: none !important;
         width: 11% !important;
     }
@@ -938,6 +938,14 @@
     #ar-preview-wrap .ar-rc-table .ar-rc-td-num {
         width: 12% !important;
         max-width: 14mm !important;
+    }
+    #ar-preview-wrap .ar-rc-table thead th.ar-rc-th-feedback,
+    #ar-preview-wrap .ar-rc-table .ar-rc-td-feedback {
+        width: 30% !important;
+        max-width: none !important;
+        text-align: left !important;
+        font-size: 7.5pt !important;
+        line-height: 1.25 !important;
     }
     #ar-preview-wrap .ar-rc-stats-row {
         gap: 2px !important;
@@ -1753,7 +1761,23 @@
     width: 11%;
     max-width: 3.25rem;
 }
-.ar-rc-table thead th:not(.ar-rc-th-subj) {
+.ar-rc-table thead th.ar-rc-th-feedback {
+    font-size: 0.58rem;
+    line-height: 1.2;
+    text-align: left;
+    width: 28%;
+    max-width: none;
+}
+.ar-rc-table .ar-rc-td-feedback {
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 500;
+    line-height: 1.35;
+    vertical-align: top;
+    word-break: break-word;
+    width: 28%;
+}
+.ar-rc-table thead th:not(.ar-rc-th-subj):not(.ar-rc-th-feedback) {
     width: 11%;
     max-width: 3.25rem;
 }
@@ -2057,8 +2081,8 @@
     }
     .ar-preview-scroll {
         flex: 1 1 auto;
-        min-height: 12rem;
-        max-height: min(58vh, 52rem);
+        min-height: 18rem;
+        max-height: min(78vh, 72rem);
         overflow-y: auto;
         overflow-x: hidden;
     }
@@ -2437,7 +2461,7 @@
                     <div id="ar-filter-wrap-exam" class="hidden ar-filter-field">
                         <label for="gf-exam-name" class="ar-filter-label">Exam name</label>
                         <select id="gf-exam-name" class="ar-filter-control">
-                            <option value="">Select exam…</option>
+                            <option value="">All exams</option>
                         </select>
                     </div>
                     <div id="ar-filter-wrap-level-view" class="hidden ar-filter-field">
@@ -2800,7 +2824,7 @@
   const examOptions = {{ (exam_names or [])|tojson|safe }};
   const EXAM_PICK_SEP = '\x1f';
   const registeredCurrentExam = {{ (registered_current_exam or None)|tojson|safe }};
-  /** When true, user chose "Select exam…" (no filter); do not re-apply school current exam after year/term/level sync. */
+  /** When true, user chose "All exams" (no filter); do not re-apply school current exam after year/term/level sync. */
   var userChoseNoExamFilter = false;
 
   function splitExamPick(rv) {
@@ -3253,7 +3277,7 @@
       return true;
     });
 
-    examNameEl.innerHTML = '<option value=\"\">Select exam…</option>';
+    examNameEl.innerHTML = '<option value=\"\">All exams</option>';
     opts.forEach(function(item) {
       const opt = document.createElement('option');
       const rawName = String(item.exam_name || '').trim();
@@ -3814,6 +3838,31 @@
     return null;
   }
 
+  function gradeMeaningFromBands(code, bandsList) {
+    const c = String(code || '').trim().toLowerCase();
+    if (!c) return '';
+    const rowBands = Array.isArray(bandsList) ? bandsList : [];
+    for (let i = 0; i < rowBands.length; i++) {
+      const b = rowBands[i] || {};
+      const bc = String(b.code || b.label || '').trim().toLowerCase();
+      if (bc && bc === c) return String(b.meaning || b.label || '').trim();
+    }
+    return '';
+  }
+
+  function teacherFeedbackForMark(mark, levelId, bandsList, remarksMap) {
+    remarksMap = remarksMap || {};
+    const code = gradeCodeFromMark(mark, bandsList);
+    if (!code || code === '—') return '—';
+    const lid = (levelId != null && levelId !== '') ? String(levelId) : '';
+    if (lid) {
+      const saved = remarksMap[lid + '::' + String(code).toUpperCase()];
+      if (saved && String(saved).trim()) return String(saved).trim();
+    }
+    const meaning = gradeMeaningFromBands(code, bandsList);
+    return meaning || '—';
+  }
+
   function renderReportCardFeedback(descriptorText) {
     return '' +
       '<div class="ar-rc-feedback">' +
@@ -4146,16 +4195,11 @@
       return Array.isArray(perClass) && perClass.length ? perClass : bands;
     }
     function gradeMeaning(code, levelId) {
-      const c = String(code || '').trim().toLowerCase();
-      if (!c) return '';
-      const rowBands = bandsForLevel(levelId);
-      for (let i = 0; i < rowBands.length; i++) {
-        const b = rowBands[i] || {};
-        const bc = String(b.code || b.label || '').trim().toLowerCase();
-        if (bc && bc === c) return String(b.meaning || '').trim();
-      }
-      return '';
+      return gradeMeaningFromBands(code, bandsForLevel(levelId));
     }
+    const gradeCodeRemarksMeta = (meta.grade_code_remarks && typeof meta.grade_code_remarks === 'object')
+      ? meta.grade_code_remarks
+      : {};
     const gradeLegend = bands.length
       ? bands.map(function(g) {
           const code = String(g.code || g.label || '').trim();
@@ -4310,7 +4354,7 @@
       });
     }
 
-    function renderStudentCard(row, classPosition, studentSheetIndex) {
+    function renderStudentCard(row, classPosition, studentSheetIndex, classSize) {
       if (studentSheetIndex === undefined) studentSheetIndex = 0;
       const grade = String(row.grade || '-');
       const rowBands = bandsForLevel(row.academic_level_id);
@@ -4325,6 +4369,8 @@
           ? row.current_grade
           : (row.level_name || af.class_level || '-'));
       const rankVal = classPosition != null ? classPosition : (row.position || '-');
+      const denom = (classSize != null && String(classSize).trim() !== '') ? String(classSize) : '';
+      const rankDisp = denom ? (String(rankVal) + ' / ' + denom) : String(rankVal);
       const termExamLabel = reportTermExamLine(af, ew);
       const photoHtml = row.student_photo && String(row.student_photo).trim()
         ? '<img src="' + escapeHtml(row.student_photo) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
@@ -4336,13 +4382,14 @@
         const mark = markValueForSubject(row, subjectName);
         const subGrade = gradeCodeFromMark(mark, rowBands);
         const subPoints = gradePointsFromMark(mark, rowBands);
+        const subFeedback = teacherFeedbackForMark(mark, row.academic_level_id, rowBands, gradeCodeRemarksMeta);
         return '' +
           '<tr>' +
             '<td class="ar-rc-td-subj">' + escapeHtml(subjectName) + '</td>' +
-            '<td class="ar-rc-td-num">100</td>' +
             '<td class="ar-rc-td-num">' + escapeHtml(formatReportMark(mark)) + '</td>' +
             '<td class="ar-rc-td-num">' + escapeHtml(subGrade) + '</td>' +
             '<td class="ar-rc-td-num">' + escapeHtml(subPoints) + '</td>' +
+            '<td class="ar-rc-td-feedback">' + escapeHtml(subFeedback) + '</td>' +
           '</tr>';
       }).join('');
       return '' +
@@ -4350,7 +4397,7 @@
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
           '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
           '<div class="ar-rc-inner">' +
-            renderReportCardHeader('REPORT CARD', { label: 'Class rank', value: rankVal }) +
+            renderReportCardHeader('REPORT CARD', { label: 'Class rank', value: rankDisp }) +
             renderReportCardMetaWithPhoto([
               { label: 'Student name', value: row.full_name || '-' },
               { label: 'Class / section', value: classLabel },
@@ -4360,7 +4407,7 @@
             '<div class="ar-rc-main-body">' +
               '<table class="ar-rc-table ar-rc-table--subjects">' +
                 '<thead><tr>' +
-                  '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>GP</th>' +
+                  '<th class="ar-rc-th-subj">Subject</th><th>Obtained</th><th>Grade</th><th>GP</th><th class="ar-rc-th-feedback">Teacher\'s feedback</th>' +
                 '</tr></thead>' +
                 '<tbody>' + subjectRows + '</tbody>' +
               '</table>' +
@@ -4369,11 +4416,11 @@
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.mean)) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(grade) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
-                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Class rank</p><p class="ar-rc-stat-value">' + escapeHtml(rankVal) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Class rank</p><p class="ar-rc-stat-value">' + escapeHtml(rankDisp) + '</p></div>' +
               '</div>' +
             '</div>' +
             '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegend + '</p>' +
-            renderReportCardFeedback(meaning || '') +
+            renderReportCardFeedback('') +
             renderReportCardSignatures() +
           '</div>' +
         '</article>';
@@ -4589,7 +4636,7 @@
       const inner = scope === 'class'
         ? renderClassTable(className, list)
         : rankStudentsWithinClass(list).map(function(entry, studentIdx) {
-            return renderStudentCard(entry.row, entry.position, studentIdx);
+            return renderStudentCard(entry.row, entry.position, studentIdx, list.length);
           }).join('');
       const sheetCls = printPageWrapClass(sectionIndex) + ' ar-class-print-sheet rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-md ring-1 ring-slate-900/[0.03] dark:ring-white/[0.06]';
       return '' +
@@ -5425,6 +5472,9 @@
       ? (classGradeBandsInd[String(studentLevelId)] || classGradeBandsInd[studentLevelId] || [])
       : [];
     const activeBands = Array.isArray(studentBands) && studentBands.length ? studentBands : defaultBands;
+    const gradeCodeRemarksInd = (meta.grade_code_remarks && typeof meta.grade_code_remarks === 'object')
+      ? meta.grade_code_remarks
+      : {};
     function gradeFromSettings(subjectId, mark) {
       const n = Number(mark);
       if (!Number.isFinite(n)) return '-';
@@ -5443,7 +5493,23 @@
     rows.forEach(function(r) {
       const subject = String(r.subject_code || r.subject_name || '').trim() || 'Subject';
       const mark = Number(r.marks);
-      if (!bySubject[subject]) bySubject[subject] = { marks: [], subjectId: (r.subject_id == null ? null : r.subject_id), history: [] };
+      if (!bySubject[subject]) {
+        bySubject[subject] = {
+          marks: [],
+          subjectId: (r.subject_id == null ? null : r.subject_id),
+          history: [],
+          feedback: '',
+          minExamOrder: null
+        };
+      }
+      // Preserve the exam subject order (same as exam subject report / marks sheet ordering).
+      if (r.exam_display_order !== undefined && r.exam_display_order !== null && r.exam_display_order !== '') {
+        const eo = parseInt(String(r.exam_display_order), 10);
+        if (!isNaN(eo)) {
+          const prev = bySubject[subject].minExamOrder;
+          if (prev === null || eo < prev) bySubject[subject].minExamOrder = eo;
+        }
+      }
       if (Number.isFinite(mark)) {
         bySubject[subject].marks.push(mark);
         bySubject[subject].history.push({
@@ -5451,11 +5517,19 @@
           examDate: String(r.exam_date || '').trim(),
           mark: mark
         });
+        if (r.grade_remark && String(r.grade_remark).trim()) {
+          bySubject[subject].feedback = String(r.grade_remark).trim();
+        }
         allMarks.push(mark);
       }
     });
 
-    const subjects = Object.keys(bySubject).sort().map(function(subject) {
+    const subjects = Object.keys(bySubject).sort(function(a, b) {
+      const ea = (bySubject[a] && bySubject[a].minExamOrder != null) ? bySubject[a].minExamOrder : 1000000000;
+      const eb = (bySubject[b] && bySubject[b].minExamOrder != null) ? bySubject[b].minExamOrder : 1000000000;
+      if (ea !== eb) return ea - eb;
+      return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+    }).map(function(subject) {
       const marks = bySubject[subject].marks;
       const subjectId = bySubject[subject].subjectId;
       const avg = marks.length ? (marks.reduce((a, b) => a + b, 0) / marks.length) : null;
@@ -5470,12 +5544,15 @@
           return isNaN(m) ? String(item.mark) : String(Math.round(m));
         });
       const trendText = trendValues.length > 1 ? trendValues.join(' -> ') : (trendValues[0] || '-');
+      const feedback = bySubject[subject].feedback
+        || teacherFeedbackForMark(avg, studentLevelId, activeBands, gradeCodeRemarksInd);
       return {
         subject,
         markVal,
         grade,
         points,
-        trendText
+        trendText,
+        feedback
       };
     });
 
@@ -5491,10 +5568,10 @@
           '<td class="ar-rc-td-subj">' + escapeHtml(item.subject) +
             (item.trendText && item.trendText !== '-' ? '<br><span class="text-[10px] font-normal text-gray-500">Trend: ' + escapeHtml(item.trendText) + '</span>' : '') +
           '</td>' +
-          '<td class="ar-rc-td-num">100</td>' +
           '<td class="ar-rc-td-num">' + escapeHtml(item.markVal) + '</td>' +
           '<td class="ar-rc-td-num">' + escapeHtml(item.grade) + '</td>' +
           '<td class="ar-rc-td-num">' + escapeHtml(item.points) + '</td>' +
+          '<td class="ar-rc-td-feedback">' + escapeHtml(item.feedback || '—') + '</td>' +
         '</tr>';
     }).join('');
 
@@ -5531,7 +5608,7 @@
           '<div class="ar-rc-main-body">' +
             '<table class="ar-rc-table ar-rc-table--subjects">' +
               '<thead><tr>' +
-                '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>GP</th>' +
+                '<th class="ar-rc-th-subj">Subject</th><th>Obtained</th><th>Grade</th><th>GP</th><th class="ar-rc-th-feedback">Teacher\'s feedback</th>' +
               '</tr></thead>' +
               '<tbody>' + tableRows + '</tbody>' +
             '</table>' +
@@ -6046,6 +6123,28 @@
   if (registerDateEl && !registerDateEl.value) {
     registerDateEl.value = new Date().toISOString().slice(0, 10);
   }
+  function applyRegisteredCurrentContextDefaults() {
+    if (!registeredCurrentExam) return;
+    if (yearEl && registeredCurrentExam.academic_year_id !== null && registeredCurrentExam.academic_year_id !== undefined) {
+      var wantY = String(registeredCurrentExam.academic_year_id || '').trim();
+      if (wantY && Array.from(yearEl.options || []).some(function(o) { return String(o.value) === wantY; })) {
+        yearEl.value = wantY;
+      }
+    }
+    if (termEl && registeredCurrentExam.term_id !== null && registeredCurrentExam.term_id !== undefined) {
+      var wantT = String(registeredCurrentExam.term_id || '').trim();
+      if (wantT && Array.from(termEl.options || []).some(function(o) { return String(o.value) === wantT; })) {
+        termEl.value = wantT;
+        // Keep year in sync with the chosen term's data-year, matching existing behavior.
+        const opt = termEl.options[termEl.selectedIndex];
+        const y = opt && opt.getAttribute('data-year');
+        if (y && yearEl && Array.from(yearEl.options || []).some(function(o) { return String(o.value) === String(y); })) {
+          yearEl.value = String(y);
+        }
+      }
+    }
+  }
+  applyRegisteredCurrentContextDefaults();
   syncExamNameOptions();
   loadDetails();
 })();

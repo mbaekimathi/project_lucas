@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+
+{% block title %}Find Student - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/role_portal_theme.html' %}
+<style>
+.fs-restricted-wrap { position: relative; }
+.fs-restricted-body--locked {
+    filter: blur(7px);
+    user-select: none;
+    pointer-events: none;
+    opacity: 0.85;
+}
+.fs-restricted-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: color-mix(in srgb, var(--rp-surface, #fff) 55%, transparent);
+    border-radius: 0.75rem;
+}
+.dark .fs-restricted-overlay {
+    background: color-mix(in srgb, var(--rp-surface, #0f172a) 72%, transparent);
+}
+.fs-find-student-detail-head {
+    border-bottom: 1px solid var(--rp-line, #e2e8f0);
+    background: color-mix(in srgb, var(--brand-primary, #800020) 6%, var(--rp-surface, #fff));
+}
+.dark .fs-find-student-detail-head {
+    background: color-mix(in srgb, var(--brand-primary, #800020) 12%, var(--rp-surface, #0f172a));
+}
+</style>
+{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/find_student_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Find student' %}
+{% set role_hero_subtitle = 'Search by name, admission number, or assessment number.' %}
+{% set role_hero_icon_class = 'fa-search' %}
+
+<script type="application/json" id="find-student-config">{{ {
+  'searchApi': employee_dash_url('find-student/search'),
+  'detailApiTemplate': employee_dash_url('find-student') ~ '/__ID__',
+  'canViewContactDetails': can_view_contact_details|default(false),
+  'restrictedMessage': 'You do not have enough authorization to view sponsor and parent/guardian contact details.',
+}|tojson }}</script>
+
+<div class="page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+     x-data="findStudentPage()" x-init="init()">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+
+        {% include 'dashboards/includes/portal_page_flash.html' %}
+        {% include 'dashboards/includes/role_hero.html' %}
+
+        <div class="modern-card p-4 sm:p-6 mb-6">
+            <label for="fs-search" class="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Search</label>
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                </div>
+                <input type="search" id="fs-search" x-model="query" @input="scheduleSearch()" @focus="onSearchFocus()"
+                       autocomplete="off" placeholder="Name, admission no., or assessment no.…"
+                       class="w-full modern-input pl-11 pr-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                <div x-show="searching" class="absolute inset-y-0 right-0 pr-4 flex items-center">
+                    <i class="fas fa-spinner fa-spin text-brand-primary" aria-hidden="true"></i>
+                </div>
+            </div>
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" x-show="!query.trim()">Start typing to see matching students.</p>
+            <p class="mt-2 text-xs text-red-600 dark:text-red-400" x-show="searchError" x-text="searchError"></p>
+
+            <div x-show="showSuggestions" x-cloak
+                 class="mt-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+                <template x-if="!suggestions.length && query.trim().length >= 1 && !searching">
+                    <p class="px-4 py-6 text-sm text-center text-gray-500 dark:text-gray-400">No students match your search.</p>
+                </template>
+                <template x-for="stu in suggestions" :key="stu.student_id">
+                    <button type="button" @click="selectStudent(stu.student_id)"
+                            class="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/60 border-b border-gray-100 dark:border-gray-700/80 last:border-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-inset">
+                        <p class="font-semibold text-gray-900 dark:text-white text-sm" x-text="stu.full_name || '—'"></p>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 flex flex-wrap gap-x-3 gap-y-0.5">
+                            <span><span class="font-medium">Admission:</span> <span class="font-mono" x-text="stu.student_id"></span></span>
+                            <span x-show="stu.assessment_number"><span class="font-medium">Assessment:</span> <span class="font-mono" x-text="stu.assessment_number"></span></span>
+                            <span x-show="stu.current_grade"><span class="font-medium">Class:</span> <span x-text="stu.current_grade"></span></span>
+                        </p>
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        <div x-show="detailLoading" class="modern-card p-8 text-center text-gray-500 dark:text-gray-400">
+            <i class="fas fa-spinner fa-spin text-2xl text-brand-primary mb-2" aria-hidden="true"></i>
+            <p class="text-sm">Loading student details…</p>
+        </div>
+
+        <div x-show="selected && !detailLoading" x-cloak class="modern-card overflow-hidden">
+            <div class="fs-find-student-detail-head px-4 sm:px-6 py-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white" x-text="selected.full_name || '—'"></h2>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300 font-mono" x-text="'Admission: ' + (selected.student_id || '—')"></p>
+                    </div>
+                    <span class="inline-flex px-2.5 py-1 text-xs font-semibold rounded-full capitalize"
+                          :class="statusClass(selected.status)"
+                          x-text="selected.status || '—'"></span>
+                </div>
+            </div>
+
+            <div class="p-4 sm:p-6 space-y-6">
+                <section>
+                    <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                        <i class="fas fa-user-graduate text-brand-primary" aria-hidden="true"></i> Student information
+                    </h3>
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                        <div><dt class="role-stat-label">Assessment number</dt>
+                            <dd class="mt-0.5 font-mono text-gray-900 dark:text-white" x-text="displayVal(selected.assessment_number)"></dd></div>
+                        <div><dt class="role-stat-label">Current class</dt>
+                            <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="displayVal(selected.current_grade)"></dd></div>
+                        <div><dt class="role-stat-label">Date of birth</dt>
+                            <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="displayVal(selected.date_of_birth)"></dd></div>
+                        <div><dt class="role-stat-label">Gender</dt>
+                            <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="displayVal(selected.gender)"></dd></div>
+                        <div><dt class="role-stat-label">Category</dt>
+                            <dd class="mt-0.5 text-gray-900 dark:text-white capitalize" x-text="displayVal(selected.student_category)"></dd></div>
+                        <div><dt class="role-stat-label">Previous school</dt>
+                            <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="displayVal(selected.previous_school)"></dd></div>
+                        <div class="sm:col-span-2"><dt class="role-stat-label">Address</dt>
+                            <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="displayVal(selected.address)"></dd></div>
+                        <div class="sm:col-span-2"><dt class="role-stat-label">Medical information</dt>
+                            <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="displayVal(selected.medical_info)"></dd></div>
+                        <div class="sm:col-span-2"><dt class="role-stat-label">Special needs</dt>
+                            <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="displayVal(selected.special_needs)"></dd></div>
+                    </dl>
+                </section>
+
+                <section class="border-t border-gray-200 dark:border-gray-700 pt-6 fs-restricted-wrap">
+                    <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                        <i class="fas fa-hand-holding-heart text-brand-primary" aria-hidden="true"></i> Sponsor
+                        <i x-show="!canViewContactDetails" class="fas fa-lock text-amber-600 dark:text-amber-400 text-xs ml-1" title="Restricted" aria-hidden="true"></i>
+                    </h3>
+                    <div class="fs-restricted-body" :class="{ 'fs-restricted-body--locked': !canViewContactDetails }">
+                        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            <div><dt class="role-stat-label">Name</dt>
+                                <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="contactDisplay('sponsor_name')"></dd></div>
+                            <div><dt class="role-stat-label">Phone</dt>
+                                <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="contactDisplay('sponsor_phone')"></dd></div>
+                            <div class="sm:col-span-2"><dt class="role-stat-label">Email</dt>
+                                <dd class="mt-0.5 text-gray-900 dark:text-white break-all" x-text="contactDisplay('sponsor_email')"></dd></div>
+                        </dl>
+                    </div>
+                    <div x-show="!canViewContactDetails" x-cloak class="fs-restricted-overlay" role="status">
+                        <div class="max-w-sm rounded-xl border border-amber-200/80 dark:border-amber-800/60 bg-white/95 dark:bg-gray-900/95 shadow-lg px-4 py-3 text-center">
+                            <i class="fas fa-lock text-amber-600 dark:text-amber-400 text-lg mb-2" aria-hidden="true"></i>
+                            <p class="text-sm font-semibold text-gray-900 dark:text-white">Access restricted</p>
+                            <p class="mt-1 text-xs text-gray-600 dark:text-gray-400 leading-relaxed" x-text="restrictedMessage"></p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="border-t border-gray-200 dark:border-gray-700 pt-6 fs-restricted-wrap">
+                    <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                        <i class="fas fa-users text-brand-primary" aria-hidden="true"></i> Parent / guardian
+                        <i x-show="!canViewContactDetails" class="fas fa-lock text-amber-600 dark:text-amber-400 text-xs ml-1" title="Restricted" aria-hidden="true"></i>
+                    </h3>
+                    <div class="fs-restricted-body" :class="{ 'fs-restricted-body--locked': !canViewContactDetails }">
+                        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            <div><dt class="role-stat-label">Name</dt>
+                                <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="contactDisplay('parent_name')"></dd></div>
+                            <div><dt class="role-stat-label">Relationship</dt>
+                                <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="contactDisplay('relationship')"></dd></div>
+                            <div><dt class="role-stat-label">Phone</dt>
+                                <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="contactDisplay('parent_phone')"></dd></div>
+                            <div><dt class="role-stat-label">Email</dt>
+                                <dd class="mt-0.5 text-gray-900 dark:text-white break-all" x-text="contactDisplay('parent_email')"></dd></div>
+                            <div class="sm:col-span-2"><dt class="role-stat-label">Emergency contact</dt>
+                                <dd class="mt-0.5 text-gray-900 dark:text-white" x-text="contactDisplay('emergency_contact')"></dd></div>
+                        </dl>
+                    </div>
+                    <div x-show="!canViewContactDetails" x-cloak class="fs-restricted-overlay" role="status">
+                        <div class="max-w-sm rounded-xl border border-amber-200/80 dark:border-amber-800/60 bg-white/95 dark:bg-gray-900/95 shadow-lg px-4 py-3 text-center">
+                            <i class="fas fa-lock text-amber-600 dark:text-amber-400 text-lg mb-2" aria-hidden="true"></i>
+                            <p class="text-sm font-semibold text-gray-900 dark:text-white">Access restricted</p>
+                            <p class="mt-1 text-xs text-gray-600 dark:text-gray-400 leading-relaxed" x-text="restrictedMessage"></p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function findStudentPage() {
+    var cfg = {};
+    try {
+        cfg = JSON.parse(document.getElementById('find-student-config').textContent || '{}');
+    } catch (e) { cfg = {}; }
+    return {
+        query: '',
+        suggestions: [],
+        selected: null,
+        searching: false,
+        detailLoading: false,
+        searchError: '',
+        showSuggestions: false,
+        canViewContactDetails: !!cfg.canViewContactDetails,
+        restrictedMessage: cfg.restrictedMessage || 'You do not have enough authorization to view sponsor and parent/guardian contact details.',
+        _contactPlaceholders: {
+            sponsor_name: 'Sponsor name hidden',
+            sponsor_phone: '+254 7XX XXX XXX',
+            sponsor_email: 'sponsor@example.com',
+            parent_name: 'Parent name hidden',
+            parent_phone: '+254 7XX XXX XXX',
+            parent_email: 'parent@example.com',
+            relationship: 'Guardian',
+            emergency_contact: '+254 7XX XXX XXX'
+        },
+        _timer: null,
+        init: function () {
+            var self = this;
+            document.addEventListener('click', function (ev) {
+                var box = document.getElementById('fs-search');
+                var card = box ? box.closest('.modern-card') : null;
+                if (box && card && !card.contains(ev.target)) {
+                    self.showSuggestions = false;
+                }
+            });
+        },
+        displayVal: function (v) {
+            if (v === null || v === undefined || v === '') return 'N/A';
+            return String(v);
+        },
+        contactDisplay: function (field) {
+            if (!this.selected) return 'N/A';
+            if (!this.canViewContactDetails) {
+                return this._contactPlaceholders[field] || 'Restricted';
+            }
+            return this.displayVal(this.selected[field]);
+        },
+        statusClass: function (status) {
+            var s = (status || '').toLowerCase();
+            if (s === 'in session') return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
+            if (s === 'pending approval') return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+            if (s === 'suspended' || s === 'expelled') return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
+            return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+        },
+        scheduleSearch: function () {
+            var self = this;
+            clearTimeout(self._timer);
+            self.selected = null;
+            self.searchError = '';
+            var q = (self.query || '').trim();
+            if (!q) {
+                self.suggestions = [];
+                self.showSuggestions = false;
+                return;
+            }
+            self._timer = setTimeout(function () { self.runSearch(); }, 280);
+        },
+        onSearchFocus: function () {
+            if ((this.query || '').trim().length >= 1 && this.suggestions.length) {
+                this.showSuggestions = true;
+            }
+        },
+        runSearch: async function () {
+            var q = (this.query || '').trim();
+            if (!q || !cfg.searchApi) return;
+            this.searching = true;
+            this.searchError = '';
+            try {
+                var res = await fetch(cfg.searchApi + '?q=' + encodeURIComponent(q), {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json' }
+                });
+                var data = await res.json();
+                if (!res.ok || !data.success) {
+                    this.searchError = data.message || 'Search failed';
+                    this.suggestions = [];
+                    return;
+                }
+                this.suggestions = data.students || [];
+                this.showSuggestions = true;
+            } catch (e) {
+                console.error(e);
+                this.searchError = 'Could not search students';
+                this.suggestions = [];
+            } finally {
+                this.searching = false;
+            }
+        },
+        selectStudent: async function (studentId) {
+            if (!studentId || !cfg.detailApiTemplate) return;
+            this.showSuggestions = false;
+            this.detailLoading = true;
+            this.selected = null;
+            try {
+                var url = cfg.detailApiTemplate.replace('__ID__', encodeURIComponent(studentId));
+                var res = await fetch(url, {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json' }
+                });
+                var data = await res.json();
+                if (data.success && data.student) {
+                    this.selected = data.student;
+                    if (typeof data.can_view_contact_details === 'boolean') {
+                        this.canViewContactDetails = data.can_view_contact_details;
+                    }
+                    this.query = (data.student.full_name || '') + ' (' + (data.student.student_id || '') + ')';
+                } else {
+                    this.searchError = data.message || 'Could not load student';
+                }
+            } catch (e) {
+                console.error(e);
+                this.searchError = 'Could not load student details';
+            } finally {
+                this.detailLoading = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

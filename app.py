@@ -15537,6 +15537,197 @@ def assign_grade_settings_to_classes():
     return redirect(employee_dashboard_path('grades-registration'))
 
 
+def _find_student_portal_access():
+    """Teachers and other roles that may view the student register."""
+    return _student_management_has_access()
+
+
+STUDENT_CONTACT_DETAILS_VIEW_ROLES = [
+    'super admin', 'head of institution', 'deputy head of institution',
+    'curriculum coordinator', 'secretary', 'accountant',
+]
+
+_STUDENT_CONTACT_FIELD_KEYS = (
+    'sponsor_name', 'sponsor_phone', 'sponsor_email',
+    'parent_name', 'parent_phone', 'parent_email',
+    'relationship', 'emergency_contact',
+)
+
+
+def _can_view_student_contact_details():
+    """Sponsor and parent/guardian contact details (find student & sensitive views)."""
+    return check_permission_or_role(
+        'view_student_contact_details',
+        allowed_roles=STUDENT_CONTACT_DETAILS_VIEW_ROLES,
+    )
+
+
+def _redact_student_contact_fields(student_dict):
+    if not student_dict:
+        return student_dict
+    redacted = dict(student_dict)
+    for key in _STUDENT_CONTACT_FIELD_KEYS:
+        redacted[key] = None
+    return redacted
+
+
+def _student_row_to_detail_dict(student):
+    """Build student detail JSON from a DB row (students + parents join)."""
+    if not student:
+        return None
+    return {
+        'id': student.get('id'),
+        'student_id': student.get('student_id'),
+        'full_name': student.get('full_name'),
+        'date_of_birth': str(student.get('date_of_birth')) if student.get('date_of_birth') else None,
+        'gender': student.get('gender'),
+        'current_grade': student.get('current_grade'),
+        'previous_school': student.get('previous_school'),
+        'assessment_number': student.get('assessment_number'),
+        'address': student.get('address'),
+        'medical_info': student.get('medical_info'),
+        'special_needs': student.get('special_needs'),
+        'student_category': student.get('student_category'),
+        'sponsor_name': student.get('sponsor_name'),
+        'sponsor_phone': student.get('sponsor_phone'),
+        'sponsor_email': student.get('sponsor_email'),
+        'status': student.get('status'),
+        'parent_name': student.get('parent_name'),
+        'parent_phone': student.get('parent_phone'),
+        'parent_email': student.get('parent_email'),
+        'relationship': student.get('relationship'),
+        'emergency_contact': student.get('emergency_contact'),
+        'created_at': str(student.get('created_at')) if student.get('created_at') else None,
+        'updated_at': str(student.get('updated_at')) if student.get('updated_at') else None,
+    }
+
+
+def _fetch_student_detail_row(cursor, student_id):
+    cursor.execute(
+        """
+        SELECT s.id, s.student_id, s.full_name, s.date_of_birth, s.gender,
+               s.current_grade, s.previous_school, s.assessment_number, s.address,
+               s.medical_info, s.special_needs, s.student_category, s.sponsor_name,
+               s.sponsor_phone, s.sponsor_email, s.status, s.created_at, s.updated_at,
+               p.full_name as parent_name, p.phone as parent_phone,
+               p.email as parent_email, p.relationship, p.emergency_contact
+        FROM students s
+        LEFT JOIN parents p ON s.student_id = p.student_id
+        WHERE s.student_id = %s
+        """,
+        (student_id,),
+    )
+    return cursor.fetchone()
+
+
+def _fetch_find_student_suggestions(cursor, q='', limit=25):
+    """Live search: name, admission (student_id), or assessment number."""
+    q = (q or '').strip()
+    if len(q) < 1:
+        return []
+    limit = max(1, min(int(limit or 25), 50))
+    like = '%' + q + '%'
+    cursor.execute(
+        """
+        SELECT s.student_id, s.full_name, s.current_grade, s.assessment_number, s.status
+        FROM students s
+        WHERE (
+            s.full_name LIKE %s OR s.student_id LIKE %s
+            OR CAST(s.assessment_number AS CHAR) LIKE %s
+        )
+        ORDER BY s.full_name ASC
+        LIMIT %s
+        """,
+        (like, like, like, limit),
+    )
+    rows = []
+    for r in cursor.fetchall() or []:
+        if isinstance(r, dict):
+            rows.append({
+                'student_id': r.get('student_id'),
+                'full_name': r.get('full_name'),
+                'current_grade': r.get('current_grade') or '',
+                'assessment_number': r.get('assessment_number'),
+                'status': r.get('status') or '',
+            })
+        else:
+            rows.append({
+                'student_id': r[0],
+                'full_name': r[1],
+                'current_grade': r[2] if len(r) > 2 else '',
+                'assessment_number': r[3] if len(r) > 3 else None,
+                'status': r[4] if len(r) > 4 else '',
+            })
+    return rows
+
+
+@app.route('/dashboard/employee/find-student')
+@login_required
+def teacher_find_student():
+    """Find student — live search by name, admission number, or assessment number."""
+    if not _find_student_portal_access():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    return render_template(
+        'dashboards/teacher_find_student.html',
+        can_view_contact_details=_can_view_student_contact_details(),
+    )
+
+
+@app.route('/dashboard/employee/find-student/<student_id>', methods=['GET'])
+@login_required
+def teacher_find_student_detail(student_id):
+    """Student detail for find-student page; redacts sponsor/parent fields when unauthorized."""
+    if not _find_student_portal_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            row = _fetch_student_detail_row(cursor, student_id)
+        if not row:
+            return jsonify({'success': False, 'message': 'Student not found.'}), 404
+        can_contact = _can_view_student_contact_details()
+        payload = _student_row_to_detail_dict(row)
+        if not can_contact:
+            payload = _redact_student_contact_fields(payload)
+        return jsonify({
+            'success': True,
+            'student': payload,
+            'can_view_contact_details': can_contact,
+            'contact_details_restricted': not can_contact,
+        })
+    except Exception as e:
+        print(f"teacher_find_student_detail: {e}")
+        return jsonify({'success': False, 'message': 'Error fetching student details.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/find-student/search', methods=['GET'])
+@login_required
+def teacher_find_student_search():
+    """Typeahead JSON for find-student page."""
+    if not _find_student_portal_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 1:
+        return jsonify({'success': True, 'students': []})
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            students = _fetch_find_student_suggestions(cursor, q=q, limit=25)
+        return jsonify({'success': True, 'students': students})
+    except Exception as e:
+        print(f"teacher_find_student_search: {e}")
+        return jsonify({'success': False, 'message': 'Search failed'}), 500
+    finally:
+        connection.close()
+
+
 # Teacher My Classes Route
 @app.route('/dashboard/employee/my-classes')
 @login_required
@@ -15782,10 +15973,6 @@ def teacher_class_books():
     classes = []
     teacher_name = None
     if not teacher_id:
-        if is_technician:
-            flash('Select a teacher profile (View as) to manage class books.', 'info')
-        else:
-            flash('Could not resolve your teacher profile. Please sign out and sign in again.', 'error')
         return render_template(
             'dashboards/teacher_class_books.html',
             role=user_role,
@@ -22723,6 +22910,22 @@ def _student_management_has_access():
     return check_permission_or_role('view_students', allowed_roles=STUDENT_MANAGEMENT_VIEW_ROLES)
 
 
+@app.template_global()
+def can_find_student():
+    """Whether the current session may open Find student (sidebar + page)."""
+    if not has_request_context() or not session.get('user_id'):
+        return False
+    return _student_management_has_access()
+
+
+@app.template_global()
+def can_view_student_contact_details():
+    """Whether sponsor/parent contact fields may be shown in full."""
+    if not has_request_context() or not session.get('user_id'):
+        return False
+    return _can_view_student_contact_details()
+
+
 def _student_management_list_row_dict(row):
     """Lightweight row for the student register table."""
     if isinstance(row, dict):
@@ -22923,48 +23126,14 @@ def get_student(student_id):
     
     try:
         with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT s.id, s.student_id, s.full_name, s.date_of_birth, s.gender, 
-                       s.current_grade, s.previous_school, s.address, s.medical_info, 
-                       s.special_needs, s.student_category, s.sponsor_name, s.sponsor_phone, 
-                       s.sponsor_email, s.status, s.created_at, s.updated_at,
-                       p.full_name as parent_name, p.phone as parent_phone, 
-                       p.email as parent_email, p.relationship, p.emergency_contact
-                FROM students s
-                LEFT JOIN parents p ON s.student_id = p.student_id
-                WHERE s.student_id = %s
-            """, (student_id,))
-            student = cursor.fetchone()
-            
+            student = _fetch_student_detail_row(cursor, student_id)
+
             if not student:
                 return jsonify({'success': False, 'message': 'Student not found.'}), 404
-            
+
             return jsonify({
                 'success': True,
-                'student': {
-                    'id': student.get('id'),
-                    'student_id': student.get('student_id'),
-                    'full_name': student.get('full_name'),
-                    'date_of_birth': str(student.get('date_of_birth')) if student.get('date_of_birth') else None,
-                    'gender': student.get('gender'),
-                    'current_grade': student.get('current_grade'),
-                    'previous_school': student.get('previous_school'),
-                    'address': student.get('address'),
-                    'medical_info': student.get('medical_info'),
-                    'special_needs': student.get('special_needs'),
-                    'student_category': student.get('student_category'),
-                    'sponsor_name': student.get('sponsor_name'),
-                    'sponsor_phone': student.get('sponsor_phone'),
-                    'sponsor_email': student.get('sponsor_email'),
-                    'status': student.get('status'),
-                    'parent_name': student.get('parent_name'),
-                    'parent_phone': student.get('parent_phone'),
-                    'parent_email': student.get('parent_email'),
-                    'relationship': student.get('relationship'),
-                    'emergency_contact': student.get('emergency_contact'),
-                    'created_at': str(student.get('created_at')) if student.get('created_at') else None,
-                    'updated_at': str(student.get('updated_at')) if student.get('updated_at') else None
-                }
+                'student': _student_row_to_detail_dict(student),
             })
     except Exception as e:
         print(f"Error fetching student: {e}")
@@ -44746,12 +44915,7 @@ def get_marks_by_exam():
                         cursor.execute("SELECT 1 FROM exams WHERE id = %s LIMIT 1", (exam_id,))
                         if not cursor.fetchone():
                             return jsonify({'success': False, 'message': 'Exam not found.'}), 404
-                        if max_il:
-                            return jsonify({
-                                'success': False,
-                                'message': 'This exam is locked. Marks cannot be viewed or edited.',
-                                'locked': True
-                            }), 403
+                        exam_allocations_locked = bool(max_il)
                         teacher_marks_readonly = bool(is_teacher and _marks_lock_deadline_passed(mla))
                         if mla and hasattr(mla, 'strftime'):
                             marks_lock_at_str = mla.strftime('%Y-%m-%dT%H:%M:%S')
@@ -44898,16 +45062,19 @@ def get_marks_by_exam():
                     except Exception as _sem:
                         print(f"subject_exam_max for get-marks: {_sem}")
                     
-                    return jsonify({
+                    payload = {
                         'success': True,
                         'marks': student_marks,
                         'subject_exam_max': subject_exam_max_payload,
                         'message': 'Marks fetched successfully',
-                        **({
-                            'teacher_marks_readonly': teacher_marks_readonly,
-                            'marks_lock_at': marks_lock_at_str,
-                        } if exam_id else {}),
-                    })
+                    }
+                    if exam_id:
+                        payload['teacher_marks_readonly'] = teacher_marks_readonly
+                        if marks_lock_at_str:
+                            payload['marks_lock_at'] = marks_lock_at_str
+                        if exam_allocations_locked:
+                            payload['exam_allocations_locked'] = True
+                    return jsonify(payload)
             except Exception as e:
                 print(f"Error fetching marks: {e}")
                 return jsonify({'success': False, 'message': f'Error fetching marks: {str(e)}'}), 500
@@ -49288,11 +49455,15 @@ def _build_academic_report_payload(cursor, report_type, f):
             rank_total_raw = sum(raw_subject_avgs)
             rank_mean_raw = mean_raw
             class_key = _student_class_key(student.get('current_grade'), student.get('level_name'))
-            student_level_id = student.get('academic_level_id')
+            # Grading should match exam-analytics: when viewing an individual class, grade using that class id.
+            # Otherwise, fall back to the per-row exam academic_level_id (or name->id mapping as last resort).
+            student_level_id = None
+            if (not is_combined_level) and level_ids and len(level_ids) == 1:
+                student_level_id = int(level_ids[0])
+            if student_level_id is None:
+                student_level_id = student.get('academic_level_id')
             if student_level_id is None:
                 student_level_id = level_name_to_id.get(class_key)
-            if student_level_id is None and level_ids and len(level_ids) == 1:
-                student_level_id = int(level_ids[0])
             grade = _grade_from_settings(
                 mean_marks, default_grade_bands,
                 level_id=student_level_id, class_bands=class_grade_bands,
@@ -49357,6 +49528,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'level_name': item.get('level_name') or '',
                 'current_grade': item.get('current_grade') or '',
                 'home_class': home_class,
+                'academic_level_id': student_level_id,
                 'student_photo': item.get('student_photo') or '',
                 'rank_sort_total': item.get('_rank_total'),
                 'rank_sort_mean': item.get('_rank_mean'),
@@ -49405,6 +49577,21 @@ def _build_academic_report_payload(cursor, report_type, f):
         perf_title = 'All students — exam performance'
         if is_combined_level:
             perf_title = f"{perf_title} (combined: {level_scope.get('display_name') or '—'})"
+        try:
+            if exam_name and level_ids:
+                ensure_grade_code_remarks_table(cursor)
+                _rmap = fetch_grade_code_remarks_map(
+                    cursor,
+                    academic_year_id=ay,
+                    term_id=tid,
+                    academic_level_ids=level_ids,
+                    exam_name=exam_name,
+                )
+                meta['grade_code_remarks'] = {
+                    f"{k[0]}::{k[1]}": v for k, v in (_rmap or {}).items()
+                }
+        except Exception as e:
+            print(f"Note: grade_code_remarks for all-students report: {e}")
         return {'title': perf_title, 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'exam_teacher_performance':
@@ -49918,6 +50105,13 @@ def _build_academic_report_payload(cursor, report_type, f):
             )
         )
         meta['row_limit'] = 3000
+        try:
+            if exam_name and level_ids_in_rows:
+                meta['grade_code_remarks'] = {
+                    f"{k[0]}::{k[1]}": v for k, v in (remarks_map or {}).items()
+                }
+        except Exception:
+            pass
         title = 'Individual student — exam performance' if report_type == 'exam_individual_performance' else 'Individual exam performance'
         return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -53368,6 +53562,7 @@ def _employee_permission_catalog():
     """Permission definitions for staff role assignment (technician-only keys have empty roles)."""
     return [
         {'key': 'view_students', 'name': 'View Students', 'description': 'View student information and records', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager']},
+        {'key': 'view_student_contact_details', 'name': 'View Student Contact Details', 'description': 'View sponsor and parent/guardian contact information', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'secretary', 'accountant']},
         {'key': 'add_students', 'name': 'Add Students', 'description': 'Add new students to the system', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator']},
         {'key': 'edit_students', 'name': 'Edit Students', 'description': 'Edit existing student information', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary']},
         {'key': 'delete_students', 'name': 'Delete Students', 'description': 'Remove students from the system', 'roles': ['head of institution', 'deputy head of institution']},

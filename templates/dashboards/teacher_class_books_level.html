@@ -2,7 +2,29 @@
 
 {% block title %}Class books — {{ level.level_name if level else 'Class' }} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
+{% block extra_head %}
+{% include 'dashboards/includes/role_portal_theme.html' %}
+<style>
+.cb-table-scroll {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+.cb-table-scroll::-webkit-scrollbar { height: 6px; }
+.cb-table-scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--brand-primary) 35%, #cbd5e1);
+}
+.cb-sticky-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+@media (min-width: 640px) {
+    .cb-sticky-actions { position: static; padding-bottom: 0; }
+}
+</style>
+{% endblock %}
 
 {% block sidebar_content %}
 {% set teacher_nav_scope = 'classes' %}
@@ -10,6 +32,29 @@
 {% endblock %}
 
 {% block content %}
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_eyebrow = level.level_category if level else '' %}
+{% set role_hero_title = level.level_name if level else 'Class' %}
+{% if teacher_name %}
+{% set role_hero_subtitle = teacher_name ~ ' — issue or return books using reference codes for students in this class.' %}
+{% else %}
+{% set role_hero_subtitle = 'Issue or return books using reference codes for students in this class.' %}
+{% endif %}
+{% set role_hero_icon_class = 'fa-book-open' %}
+
+{% set book_ns = namespace(allocated=0, issued=0, available=0) %}
+{% for b in books_for_issue|default([]) %}
+{% set book_ns.allocated = book_ns.allocated + (b.allocated|default(0)) %}
+{% set book_ns.issued = book_ns.issued + (b.active_issues|default(0)) %}
+{% set book_ns.available = book_ns.available + (b.available|default(0)) %}
+{% endfor %}
+{% set role_hero_chips = [
+    {'icon': 'fa-books', 'text': (books_for_issue|default([]))|length ~ ' book' ~ ('s' if (books_for_issue|default([]))|length != 1 else '')},
+    {'icon': 'fa-users', 'text': (students|default([]))|length ~ ' student' ~ ('s' if (students|default([]))|length != 1 else '')},
+    {'icon': 'fa-check-circle', 'text': book_ns.issued ~ ' issued'},
+    {'icon': 'fa-inbox', 'text': book_ns.available ~ ' available'}
+] %}
+
 <script type="application/json" id="class-books-level-data">{{ {
     'level_id': level_id,
     'level_name': level.level_name if level else '',
@@ -18,117 +63,219 @@
     'issue_url': employee_dash_url('class-books/issue'),
     'return_url': employee_dash_url('class-books/return')
 }|tojson }}</script>
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-indigo-950/20 py-6 sm:py-8 page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+
+<div class="page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
      x-data="teacherClassBooksLevel()">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <div class="mb-6 space-y-2">
-            {% for category, message in messages %}
-            <div class="rounded-xl border px-4 py-3 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-100{% endif %}">
-                {{ message }}
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-        {% endwith %}
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
 
-        <div class="mb-6">
-            <a href="{{ employee_dash_url('class-books') }}"
-               class="inline-flex items-center gap-2 text-sm font-medium text-violet-700 hover:text-violet-900 dark:text-violet-300">
-                <i class="fas fa-arrow-left" aria-hidden="true"></i> All classes
-            </a>
-        </div>
+        {% include 'dashboards/includes/portal_page_flash.html' %}
 
-        <header class="rounded-2xl border border-gray-200/90 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/90 p-6 sm:p-8 mb-6">
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">{{ level.level_category }}</p>
-            <h1 class="mt-1 text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ level.level_name }}</h1>
-            {% if teacher_name %}
-            <p class="mt-1 text-sm font-medium text-violet-700 dark:text-violet-300">{{ teacher_name }}</p>
-            {% endif %}
-            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                Issue or return books using reference codes for students in this class.
-            </p>
-            <div class="mt-4 flex flex-wrap gap-2 text-xs">
-                <span class="rounded-full bg-violet-100 px-3 py-1 font-semibold text-violet-900 dark:bg-violet-950/50 dark:text-violet-200">
-                    {{ (books_for_issue|default([]))|length }} book{% if (books_for_issue|default([]))|length != 1 %}s{% endif %} allocated to you
-                </span>
-                <span class="rounded-full bg-emerald-100 px-3 py-1 font-semibold text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200">
-                    {{ students|default([])|length }} students
-                </span>
-            </div>
-        </header>
+        <nav class="mb-4 sm:mb-5 text-sm" aria-label="Breadcrumb">
+            <ol class="flex flex-wrap items-center gap-2 text-gray-500 dark:text-gray-400">
+                <li>
+                    <a href="{{ employee_dash_url('class-books') }}" class="font-medium text-brand-primary hover:opacity-90 dark:text-brand-secondary">
+                        Class books
+                    </a>
+                </li>
+                <li aria-hidden="true" class="text-gray-300 dark:text-gray-600">/</li>
+                <li class="font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[14rem] sm:max-w-none" aria-current="page">
+                    {{ level.level_name if level else 'Class' }}
+                </li>
+            </ol>
+        </nav>
+
+        {% include 'dashboards/includes/role_hero.html' %}
 
         {% if not books_for_issue %}
-        <div class="rounded-2xl border border-dashed border-amber-300 bg-amber-50/80 px-6 py-10 text-center dark:border-amber-800 dark:bg-amber-950/30">
-            <i class="fas fa-book text-3xl text-amber-500 mb-3" aria-hidden="true"></i>
-            <p class="font-medium text-amber-900 dark:text-amber-100">No books allocated to you for this class</p>
-            <p class="mt-2 text-sm text-amber-800/90 dark:text-amber-200/80">Ask the librarian to stock books and allocate copies to you from Book inventory stock.</p>
+        <div class="modern-card rounded-2xl border border-dashed border-amber-300 dark:border-amber-800 px-6 py-12 sm:py-14 text-center">
+            <div class="mx-auto w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center mb-4">
+                <i class="fas fa-book text-2xl text-amber-600 dark:text-amber-400" aria-hidden="true"></i>
+            </div>
+            <h2 class="text-lg font-bold text-amber-950 dark:text-amber-100">No books allocated for this class</h2>
+            <p class="mt-2 text-sm text-amber-900/85 dark:text-amber-200/90 max-w-md mx-auto leading-relaxed">
+                Ask the librarian to stock books and allocate copies to you from <strong>Book inventory</strong>.
+            </p>
+            <a href="{{ employee_dash_url('class-books') }}"
+               class="mt-6 inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 shadow-sm hover:bg-amber-50 dark:border-amber-700 dark:bg-gray-900 dark:text-amber-100">
+                <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to all classes
+            </a>
         </div>
         {% else %}
-        <div class="rounded-2xl border border-violet-200/80 bg-white shadow-sm dark:border-violet-900/40 dark:bg-gray-900/90 mb-8 ring-1 ring-violet-100/80 dark:ring-violet-900/30">
-            <div class="border-b border-violet-100 px-4 py-4 dark:border-violet-900/50 sm:px-6">
-                <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">Student book transactions</h2>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Issue copies to students or record returns by reference code.</p>
+
+        {% if books_for_issue|length > 0 %}
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6">
+            <div class="role-stat">
+                <p class="role-stat-label">Books</p>
+                <p class="role-stat-value tabular-nums">{{ books_for_issue|length }}</p>
+            </div>
+            <div class="role-stat">
+                <p class="role-stat-label">Copies allocated</p>
+                <p class="role-stat-value tabular-nums">{{ book_ns.allocated }}</p>
+            </div>
+            <div class="role-stat">
+                <p class="role-stat-label">Issued to students</p>
+                <p class="role-stat-value tabular-nums text-emerald-700 dark:text-emerald-400">{{ book_ns.issued }}</p>
+            </div>
+            <div class="role-stat col-span-2 lg:col-span-1">
+                <p class="role-stat-label">Still available</p>
+                <p class="role-stat-value tabular-nums">{{ book_ns.available }}</p>
+            </div>
+        </div>
+
+        <section class="mb-5 sm:mb-6" aria-labelledby="cb-books-heading">
+            <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-3">
+                <div>
+                    <h2 id="cb-books-heading" class="text-base font-bold text-gray-900 dark:text-white">Your allocated books</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Select a book to issue or return copies</p>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">
+                    <i class="fas fa-hand-pointer mr-1" aria-hidden="true"></i> Tap a card to select
+                </p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <template x-for="book in books" :key="book.book_id">
+                    <button type="button"
+                            @click="selectBookForActiveTab(book.book_id)"
+                            class="text-left rounded-2xl border p-4 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2"
+                            :class="isBookSelected(book.book_id)
+                                ? 'border-brand-primary bg-gradient-to-br from-brand-primary/8 to-brand-secondary/5 shadow-md ring-1 ring-brand-primary/25 dark:from-brand-primary/15 dark:to-brand-secondary/10'
+                                : 'border-gray-200 bg-white hover:border-brand-primary/40 hover:shadow-sm dark:border-gray-700 dark:bg-gray-900/90 dark:hover:border-brand-primary/50'">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0 flex-1">
+                                <p class="font-bold text-gray-900 dark:text-white truncate" x-text="book.book_name"></p>
+                                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 truncate" x-show="book.subject_name" x-text="book.subject_name"></p>
+                            </div>
+                            <span class="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg"
+                                  :class="isBookSelected(book.book_id) ? 'bg-brand-primary text-white' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'">
+                                <i class="fas fa-book text-sm" aria-hidden="true"></i>
+                            </span>
+                        </div>
+                        <div class="mt-3 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                                <span x-text="book.allocated"></span> alloc.
+                            </span>
+                            <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                                <span x-text="book.active_issues"></span> issued
+                            </span>
+                            <span class="rounded-full bg-sky-50 px-2 py-0.5 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
+                                <span x-text="book.available"></span> free
+                            </span>
+                        </div>
+                    </button>
+                </template>
+            </div>
+        </section>
+        {% endif %}
+
+        <div class="dashboard-card modern-card rounded-2xl overflow-hidden">
+            <div class="border-b border-gray-200 dark:border-gray-700 px-4 py-4 sm:px-6 bg-gradient-to-r from-slate-50/90 to-white dark:from-gray-800/50 dark:to-gray-900/90">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="min-w-0">
+                        <h2 class="text-base font-bold text-gray-900 dark:text-white sm:text-lg">Student transactions</h2>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Issue reference codes or record returns</p>
                     </div>
-                    <div class="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-950" role="tablist">
+                    <div class="inline-flex w-full sm:w-auto rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-950" role="tablist">
                         <button type="button" role="tab" :aria-selected="activeTab === 'issue'"
                                 @click="activeTab = 'issue'"
-                                class="rounded-lg px-4 py-2 text-sm font-semibold transition"
-                                :class="activeTab === 'issue' ? 'bg-violet-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'">
+                                class="flex-1 sm:flex-none rounded-lg px-4 py-2.5 text-sm font-semibold transition"
+                                :class="activeTab === 'issue' ? 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-sm' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'">
                             <i class="fas fa-arrow-right mr-1.5" aria-hidden="true"></i>Issue
                         </button>
                         <button type="button" role="tab" :aria-selected="activeTab === 'return'"
                                 @click="activeTab = 'return'; onReturnBookChange()"
-                                class="rounded-lg px-4 py-2 text-sm font-semibold transition"
-                                :class="activeTab === 'return' ? 'bg-slate-700 text-white shadow-sm dark:bg-slate-500' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'">
+                                class="flex-1 sm:flex-none rounded-lg px-4 py-2.5 text-sm font-semibold transition"
+                                :class="activeTab === 'return' ? 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-sm' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'">
                             <i class="fas fa-undo mr-1.5" aria-hidden="true"></i>Return
                         </button>
                     </div>
                 </div>
             </div>
 
+            <!-- Issue panel -->
             <div class="px-4 py-5 sm:px-6 space-y-5" x-show="activeTab === 'issue'" id="issue-panel">
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <div class="sm:col-span-2 lg:col-span-1">
+                <div class="grid gap-4 lg:grid-cols-12 lg:items-end">
+                    <div class="lg:col-span-4">
                         <label for="teacher_issue_book_select" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Book</label>
                         <select id="teacher_issue_book_select" x-ref="bookSelect" x-model="selectedBookId" @change="onBookChange()"
-                                class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                                class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
                             <option value="">Select a book…</option>
                         </select>
                     </div>
-                    <div class="flex flex-wrap items-end gap-3 sm:col-span-2" x-show="selectedBook" x-cloak>
+                    <div class="lg:col-span-5" x-show="selectedBook" x-cloak>
+                        <label for="cb_student_search" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Find student</label>
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" aria-hidden="true"></i>
+                            <input type="search" id="cb_student_search" x-model="studentSearch" autocomplete="off"
+                                   placeholder="Search by ID or name…"
+                                   class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                        </div>
+                    </div>
+                    <div class="lg:col-span-3 flex flex-wrap gap-2" x-show="selectedBook" x-cloak>
                         <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                            <span class="text-gray-500">Your allocation</span>
+                            <span class="text-gray-500">Alloc.</span>
                             <span class="tabular-nums" x-text="selectedBook.allocated"></span>
                         </span>
                         <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-                            <span class="opacity-80">Issued by you</span>
-                            <span class="tabular-nums" x-text="selectedBook.active_issues"></span>
-                        </span>
-                        <span class="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
-                            <span class="opacity-80">Available</span>
-                            <span class="tabular-nums" x-text="selectedBook.available"></span>
+                            <span class="tabular-nums" x-text="issueStats.issued"></span>/<span x-text="students.length"></span> issued
                         </span>
                     </div>
                 </div>
 
-                <div x-show="selectedBook" x-cloak>
-                    <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div x-show="selectedBook" x-cloak class="space-y-4">
+                    <div class="hidden sm:flex flex-wrap items-center justify-between gap-3">
                         <p class="text-sm text-gray-600 dark:text-gray-400">
-                            <span class="font-semibold text-gray-900 dark:text-white" x-text="students.length"></span> students in this class
+                            <span class="font-semibold text-gray-900 dark:text-white" x-text="filteredStudents.length"></span>
+                            <span x-show="studentSearch.trim()"> matching</span>
+                            student<span x-show="filteredStudents.length !== 1">s</span>
                         </p>
                         <button type="button" @click="saveIssues()" :disabled="submitting || !hasPendingIssues()"
-                                class="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
+                                class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">
                             <i class="fas fa-save" x-show="!submitting"></i>
                             <i class="fas fa-spinner fa-spin" x-show="submitting"></i>
                             <span x-text="submitting ? 'Saving…' : 'Save reference codes'"></span>
                         </button>
                     </div>
 
-                    <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                    <!-- Mobile cards -->
+                    <div class="md:hidden space-y-2">
+                        <template x-for="(stu, idx) in filteredStudents" :key="stu.student_id">
+                            <div class="rounded-xl border border-gray-200 bg-white p-3.5 dark:border-gray-700 dark:bg-gray-900/80">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="min-w-0">
+                                        <p class="font-mono text-xs font-bold text-brand-primary dark:text-brand-secondary" x-text="stu.student_id"></p>
+                                        <p class="font-medium text-gray-900 dark:text-white truncate" x-text="stu.full_name"></p>
+                                    </div>
+                                    <span class="shrink-0 text-xs text-gray-400 tabular-nums" x-text="'#' + (idx + 1)"></span>
+                                </div>
+                                <div class="mt-3">
+                                    <template x-if="existingIssue(stu.student_id)">
+                                        <span class="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 font-mono text-sm font-bold uppercase text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+                                              x-text="existingIssue(stu.student_id).copy_code"></span>
+                                    </template>
+                                    <template x-if="!existingIssue(stu.student_id)">
+                                        <input type="text" maxlength="4" autocomplete="off"
+                                               :list="'teacher-copy-codes-' + selectedBookId"
+                                               x-model="refInputs[stu.student_id]"
+                                               @input="refInputs[stu.student_id] = ($event.target.value || '').toUpperCase()"
+                                               placeholder="Ref e.g. A001"
+                                               class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                                    </template>
+                                </div>
+                                <div class="mt-2">
+                                    <template x-if="existingIssue(stu.student_id)">
+                                        <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Issued</span>
+                                    </template>
+                                    <template x-if="!existingIssue(stu.student_id) && (refInputs[stu.student_id] || '').trim()">
+                                        <span class="text-xs font-semibold text-amber-700 dark:text-amber-300">Pending save</span>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                        <p x-show="selectedBook && !filteredStudents.length" class="text-center text-sm text-gray-500 py-6">No students match your search.</p>
+                    </div>
+
+                    <!-- Desktop table -->
+                    <div class="hidden md:block overflow-x-auto cb-table-scroll rounded-xl border border-gray-200 dark:border-gray-700">
                         <table class="min-w-[640px] w-full border-collapse text-left text-sm">
                             <thead>
                                 <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
@@ -140,8 +287,8 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                                <template x-for="(stu, idx) in students" :key="stu.student_id">
-                                    <tr class="hover:bg-violet-50/30 dark:hover:bg-violet-950/20">
+                                <template x-for="(stu, idx) in filteredStudents" :key="stu.student_id">
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                         <td class="px-3 py-3 tabular-nums text-gray-400 sm:px-4" x-text="idx + 1"></td>
                                         <td class="px-3 py-3 font-mono text-xs font-semibold text-gray-800 dark:text-gray-200 sm:px-4" x-text="stu.student_id"></td>
                                         <td class="px-3 py-3 font-medium text-gray-900 dark:text-white sm:px-4" x-text="stu.full_name"></td>
@@ -156,7 +303,7 @@
                                                        x-model="refInputs[stu.student_id]"
                                                        @input="refInputs[stu.student_id] = ($event.target.value || '').toUpperCase()"
                                                        placeholder="e.g. A001"
-                                                       class="w-full max-w-[7rem] rounded-lg border border-gray-200 bg-white px-2.5 py-2 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                                                       class="w-full max-w-[7rem] rounded-lg border border-gray-200 bg-white px-2.5 py-2 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
                                             </template>
                                         </td>
                                         <td class="px-3 py-3 sm:px-4">
@@ -174,53 +321,96 @@
                                 </template>
                             </tbody>
                         </table>
+                        <p x-show="!filteredStudents.length" class="text-center text-sm text-gray-500 py-8">No students match your search.</p>
                     </div>
+
                     <datalist :id="'teacher-copy-codes-' + selectedBookId">
                         <template x-for="code in (selectedBook ? selectedBook.copies_in_stock : [])" :key="code">
                             <option :value="code"></option>
                         </template>
                     </datalist>
-                    <p class="mt-3 text-xs text-gray-500 dark:text-gray-400" x-show="saveMessage" x-text="saveMessage"
-                       :class="saveOk ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'"></p>
+
+                    <div x-show="saveMessage"
+                         class="rounded-xl border px-4 py-3 text-sm"
+                         :class="saveOk ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100' : 'border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100'"
+                         x-text="saveMessage" role="status"></div>
+
+                    <div class="cb-sticky-actions sm:hidden">
+                        <button type="button" @click="saveIssues()" :disabled="submitting || !hasPendingIssues()"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-3.5 text-sm font-semibold text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-50">
+                            <i class="fas fa-save" x-show="!submitting"></i>
+                            <i class="fas fa-spinner fa-spin" x-show="submitting"></i>
+                            <span x-text="submitting ? 'Saving…' : 'Save reference codes'"></span>
+                        </button>
+                    </div>
                 </div>
 
-                <div x-show="!selectedBook && books.length" class="rounded-xl border border-dashed border-gray-200 px-6 py-10 text-center dark:border-gray-700">
-                    <i class="fas fa-hand-pointer text-3xl text-gray-300 dark:text-gray-600 mb-3"></i>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a book above to list students and enter reference codes.</p>
+                <div x-show="!selectedBook && books.length" class="modern-card rounded-xl border border-dashed border-gray-200 px-6 py-12 text-center dark:border-gray-700">
+                    <div class="mx-auto w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3">
+                        <i class="fas fa-hand-pointer text-xl text-brand-primary" aria-hidden="true"></i>
+                    </div>
+                    <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Select a book above</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose from the cards or dropdown to list students and enter reference codes.</p>
                 </div>
             </div>
 
-            <div class="border-t border-violet-100 px-4 py-5 sm:px-6 space-y-5 dark:border-violet-900/50" x-show="activeTab === 'return'" id="return-panel" x-cloak>
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <div class="sm:col-span-2 lg:col-span-1">
+            <!-- Return panel -->
+            <div class="border-t border-gray-200 dark:border-gray-700 px-4 py-5 sm:px-6 space-y-5" x-show="activeTab === 'return'" id="return-panel" x-cloak>
+                <div class="grid gap-4 lg:grid-cols-12 lg:items-end">
+                    <div class="lg:col-span-4">
                         <label for="teacher_return_book_select" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Filter by book</label>
                         <select id="teacher_return_book_select" x-ref="returnBookSelect" x-model="selectedReturnBookId" @change="onReturnBookChange()"
-                                class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                                class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
                             <option value="">All books</option>
                         </select>
                     </div>
-                    <div class="flex flex-wrap items-end gap-3 sm:col-span-2">
+                    <div class="lg:col-span-5">
+                        <label for="cb_return_search" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Find student</label>
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" aria-hidden="true"></i>
+                            <input type="search" id="cb_return_search" x-model="returnSearch" autocomplete="off"
+                                   placeholder="Search by ID, name, or ref…"
+                                   class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                        </div>
+                    </div>
+                    <div class="lg:col-span-3 flex flex-wrap items-end gap-2">
                         <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-                            <span class="opacity-80">Students with books</span>
-                            <span class="tabular-nums" x-text="returnRows.length"></span>
+                            <span x-text="filteredReturnRows.length"></span> with books
                         </span>
                     </div>
                 </div>
 
-                <div x-show="returnRows.length" x-cloak>
-                    <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p class="text-sm text-gray-600 dark:text-gray-400">
-                            Students who currently have a copy issued to them. Enter the reference code on each returned book.
+                <div x-show="filteredReturnRows.length" x-cloak class="space-y-4">
+                    <div class="hidden sm:flex flex-wrap items-center justify-between gap-3">
+                        <p class="text-sm text-gray-600 dark:text-gray-400 max-w-xl">
+                            Enter the reference code on each returned copy. Codes must match the issued copy.
                         </p>
                         <button type="button" @click="saveReturns()" :disabled="returnSubmitting || !hasPendingReturns()"
-                                class="inline-flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-600 dark:hover:bg-slate-500">
+                                class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">
                             <i class="fas fa-undo" x-show="!returnSubmitting"></i>
                             <i class="fas fa-spinner fa-spin" x-show="returnSubmitting"></i>
                             <span x-text="returnSubmitting ? 'Saving…' : 'Save returns'"></span>
                         </button>
                     </div>
 
-                    <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                    <div class="md:hidden space-y-2">
+                        <template x-for="(row, idx) in filteredReturnRows" :key="row.rowKey">
+                            <div class="rounded-xl border border-gray-200 bg-white p-3.5 dark:border-gray-700 dark:bg-gray-900/80">
+                                <p class="font-mono text-xs font-bold text-brand-primary" x-text="row.student_id"></p>
+                                <p class="font-medium text-gray-900 dark:text-white" x-text="row.full_name"></p>
+                                <p class="text-xs text-gray-500 mt-0.5" x-show="!selectedReturnBookId" x-text="row.book_name"></p>
+                                <p class="mt-2 text-xs text-gray-500">Issued: <span class="font-mono font-bold text-emerald-800 dark:text-emerald-300" x-text="row.copy_code"></span></p>
+                                <input type="text" maxlength="4" autocomplete="off"
+                                       :list="'teacher-return-codes-' + row.book_id"
+                                       x-model="returnRefInputs[row.rowKey]"
+                                       @input="returnRefInputs[row.rowKey] = ($event.target.value || '').toUpperCase(); clearReturnHint(row.rowKey)"
+                                       :placeholder="row.copy_code"
+                                       class="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 font-mono text-sm uppercase tracking-wide focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="hidden md:block overflow-x-auto cb-table-scroll rounded-xl border border-gray-200 dark:border-gray-700">
                         <table class="min-w-[720px] w-full border-collapse text-left text-sm">
                             <thead>
                                 <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
@@ -234,8 +424,8 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                                <template x-for="(row, idx) in returnRows" :key="row.rowKey">
-                                    <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-950/30">
+                                <template x-for="(row, idx) in filteredReturnRows" :key="row.rowKey">
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                         <td class="px-3 py-3 tabular-nums text-gray-400 sm:px-4" x-text="idx + 1"></td>
                                         <td class="px-3 py-3 font-mono text-xs font-semibold text-gray-800 dark:text-gray-200 sm:px-4" x-text="row.student_id"></td>
                                         <td class="px-3 py-3 font-medium text-gray-900 dark:text-white sm:px-4" x-text="row.full_name"></td>
@@ -250,7 +440,7 @@
                                                    x-model="returnRefInputs[row.rowKey]"
                                                    @input="returnRefInputs[row.rowKey] = ($event.target.value || '').toUpperCase(); clearReturnHint(row.rowKey)"
                                                    :placeholder="row.copy_code"
-                                                   class="w-full max-w-[7rem] rounded-lg border border-gray-200 bg-white px-2.5 py-2 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                                                   class="w-full max-w-[7rem] rounded-lg border border-gray-200 bg-white px-2.5 py-2 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
                                         </td>
                                         <td class="px-3 py-3 sm:px-4">
                                             <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold"
@@ -262,6 +452,7 @@
                             </tbody>
                         </table>
                     </div>
+
                     <template x-for="book in books" :key="'rdl-' + book.book_id">
                         <datalist :id="'teacher-return-codes-' + book.book_id">
                             <template x-for="code in (book.copies_issued || [])" :key="book.book_id + '-' + code">
@@ -269,14 +460,18 @@
                             </template>
                         </datalist>
                     </template>
-                    <p class="mt-3 text-xs" x-show="returnSaveMessage" x-text="returnSaveMessage"
-                       :class="returnSaveOk ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'"></p>
-                    <div class="mt-3 space-y-2" x-show="returnHints.length">
+
+                    <div x-show="returnSaveMessage"
+                         class="rounded-xl border px-4 py-3 text-sm"
+                         :class="returnSaveOk ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100' : 'border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100'"
+                         x-text="returnSaveMessage" role="status"></div>
+
+                    <div class="space-y-2" x-show="returnHints.length">
                         <template x-for="hint in returnHints" :key="hint.rowKey + '-' + hint.copy_code">
-                            <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                            <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
                                 <span class="font-semibold" x-text="hint.student_id + ' · ' + hint.copy_code"></span>
-                                <span class="block mt-0.5" x-text="hint.message"></span>
-                                <span class="block mt-1 font-medium text-amber-900 dark:text-amber-200" x-show="hint.owner">
+                                <span class="block mt-1" x-text="hint.message"></span>
+                                <span class="block mt-1 font-medium" x-show="hint.owner">
                                     Suggested holder:
                                     <span x-text="(hint.owner.student_name || '') + ' (' + (hint.owner.student_id || '') + ')'"></span>
                                     <span x-show="hint.owner.copy_code" class="font-mono" x-text="' — ref ' + hint.owner.copy_code"></span>
@@ -284,11 +479,24 @@
                             </div>
                         </template>
                     </div>
+
+                    <div class="cb-sticky-actions sm:hidden">
+                        <button type="button" @click="saveReturns()" :disabled="returnSubmitting || !hasPendingReturns()"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-3.5 text-sm font-semibold text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-50">
+                            <i class="fas fa-undo" x-show="!returnSubmitting"></i>
+                            <i class="fas fa-spinner fa-spin" x-show="returnSubmitting"></i>
+                            <span x-text="returnSubmitting ? 'Saving…' : 'Save returns'"></span>
+                        </button>
+                    </div>
                 </div>
 
-                <div x-show="!returnRows.length" class="rounded-xl border border-dashed border-gray-200 px-6 py-10 text-center dark:border-gray-700">
-                    <i class="fas fa-check-circle text-3xl text-gray-300 dark:text-gray-600 mb-3"></i>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">No students currently have books issued from your allocation.</p>
+                <div x-show="!filteredReturnRows.length" class="modern-card rounded-xl border border-dashed border-gray-200 px-6 py-12 text-center dark:border-gray-700">
+                    <div class="mx-auto w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center mb-3">
+                        <i class="fas fa-check-circle text-xl text-emerald-600 dark:text-emerald-400" aria-hidden="true"></i>
+                    </div>
+                    <p class="text-sm font-medium text-gray-700 dark:text-gray-300" x-show="!returnSearch.trim()">No students currently have books issued</p>
+                    <p class="text-sm font-medium text-gray-700 dark:text-gray-300" x-show="returnSearch.trim()">No matches for your search</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-show="!returnSearch.trim()">All copies from your allocation are available or not yet issued.</p>
                 </div>
             </div>
         </div>
@@ -316,6 +524,8 @@ document.addEventListener('alpine:init', function () {
       activeTab: 'issue',
       selectedBookId: '',
       selectedReturnBookId: '',
+      studentSearch: '',
+      returnSearch: '',
       refInputs: {},
       returnRefInputs: {},
       submitting: false,
@@ -328,6 +538,54 @@ document.addEventListener('alpine:init', function () {
       init: function () {
         this.renderBookOptions();
         this.renderReturnBookOptions();
+        if (this.books.length === 1) {
+          this.selectedBookId = String(this.books[0].book_id);
+          this.onBookChange();
+        }
+      },
+      isBookSelected: function (bookId) {
+        var id = String(bookId);
+        if (this.activeTab === 'return') {
+          if (!this.selectedReturnBookId) return false;
+          return String(this.selectedReturnBookId) === id;
+        }
+        return String(this.selectedBookId) === id;
+      },
+      selectBookForActiveTab: function (bookId) {
+        var id = String(bookId);
+        if (this.activeTab === 'return') {
+          this.selectedReturnBookId = id;
+          if (this.$refs.returnBookSelect) this.$refs.returnBookSelect.value = id;
+          this.onReturnBookChange();
+        } else {
+          this.selectedBookId = id;
+          if (this.$refs.bookSelect) this.$refs.bookSelect.value = id;
+          this.onBookChange();
+        }
+      },
+      get filteredStudents() {
+        var q = (this.studentSearch || '').trim().toUpperCase();
+        if (!q) return this.students || [];
+        return (this.students || []).filter(function (s) {
+          return (s.student_id || '').toUpperCase().indexOf(q) >= 0 ||
+            (s.full_name || '').toUpperCase().indexOf(q) >= 0;
+        });
+      },
+      get filteredReturnRows() {
+        var q = (this.returnSearch || '').trim().toUpperCase();
+        var rows = this.returnRows || [];
+        if (!q) return rows;
+        return rows.filter(function (row) {
+          return (row.student_id || '').toUpperCase().indexOf(q) >= 0 ||
+            (row.full_name || '').toUpperCase().indexOf(q) >= 0 ||
+            (row.copy_code || '').toUpperCase().indexOf(q) >= 0 ||
+            (row.book_name || '').toUpperCase().indexOf(q) >= 0;
+        });
+      },
+      get issueStats() {
+        var book = this.selectedBook;
+        if (!book || !book.issues_by_student) return { issued: 0 };
+        return { issued: Object.keys(book.issues_by_student).length };
       },
       renderBookOptions: function () {
         var sel = this.$refs.bookSelect;
@@ -378,7 +636,7 @@ document.addEventListener('alpine:init', function () {
         }
         return null;
       },
-      get returnRows() {
+      get returnRows: function () {
         var self = this;
         var filterId = this.selectedReturnBookId ? String(this.selectedReturnBookId) : '';
         var rows = [];
@@ -410,17 +668,9 @@ document.addEventListener('alpine:init', function () {
         });
         return rows;
       },
-      get selectedBook() {
+      get selectedBook: function () {
         if (!this.selectedBookId) return null;
         var id = String(this.selectedBookId);
-        for (var i = 0; i < this.books.length; i++) {
-          if (String(this.books[i].book_id) === id) return this.books[i];
-        }
-        return null;
-      },
-      get selectedReturnBook() {
-        if (!this.selectedReturnBookId) return null;
-        var id = String(this.selectedReturnBookId);
         for (var i = 0; i < this.books.length; i++) {
           if (String(this.books[i].book_id) === id) return this.books[i];
         }
@@ -430,12 +680,14 @@ document.addEventListener('alpine:init', function () {
         this.refInputs = {};
         this.saveMessage = '';
         this.saveOk = false;
+        this.studentSearch = '';
       },
       onReturnBookChange: function () {
         this.returnRefInputs = {};
         this.returnSaveMessage = '';
         this.returnSaveOk = false;
         this.returnHints = [];
+        this.returnSearch = '';
       },
       clearReturnHint: function (rowKey) {
         this.returnHints = (this.returnHints || []).filter(function (h) {
