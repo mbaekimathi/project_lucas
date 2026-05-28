@@ -42573,6 +42573,8 @@ def _compute_exams_assessments_timetable_bundle(
                 timetable_query = f"""
                     SELECT
                         e.id,
+                        e.subject_id,
+                        e.supervisor_id,
                         e.exam_name,
                         e.exam_type,
                         e.exam_date,
@@ -42648,27 +42650,27 @@ def _compute_exams_assessments_timetable_bundle(
                 for row in rows:
                     timetable_rows.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
-                        'subject_id': row.get('subject_id') if isinstance(row, dict) else None,
-                        'supervisor_id': row.get('supervisor_id') if isinstance(row, dict) else None,
-                        'exam_name': _coerce_str(row.get('exam_name', '') if isinstance(row, dict) else row[1]),
-                        'exam_type': _coerce_str(row.get('exam_type', '') if isinstance(row, dict) else row[2]),
-                        'exam_date': _format_date_value(row.get('exam_date') if isinstance(row, dict) else row[3]),
-                        'session_type': _coerce_str(row.get('session_type', '') if isinstance(row, dict) else row[4]),
-                        'start_time': _format_time_value(row.get('start_time') if isinstance(row, dict) else row[5]),
-                        'end_time': _format_time_value(row.get('end_time') if isinstance(row, dict) else row[6]),
-                        'venue': _coerce_str(row.get('venue', '') if isinstance(row, dict) else row[7]),
-                        'status': _coerce_str(row.get('status', 'scheduled') if isinstance(row, dict) else (row[8] if len(row) > 8 else 'scheduled')) or 'scheduled',
-                        'level_id': row.get('level_id') if isinstance(row, dict) else row[9],
-                        'level_name': _coerce_str(row.get('level_name', '') if isinstance(row, dict) else (row[10] if len(row) > 10 else '')),
-                        'level_category': _coerce_str(row.get('level_category', '') if isinstance(row, dict) else (row[11] if len(row) > 11 else '')),
-                        'subject_name': _coerce_str(row.get('subject_name', '') if isinstance(row, dict) else (row[12] if len(row) > 12 else '')),
-                        'subject_code': _coerce_str(row.get('subject_code', '') if isinstance(row, dict) else (row[13] if len(row) > 13 else '')),
-                        'teacher_name': _coerce_str(row.get('teacher_name', '') if isinstance(row, dict) else (row[14] if len(row) > 14 else '')),
-                        'teacher_employee_id': _coerce_str(row.get('teacher_employee_id', '') if isinstance(row, dict) else (row[15] if len(row) > 15 else '')),
-                        'year_name': _coerce_str(row.get('year_name', '') if isinstance(row, dict) else (row[16] if len(row) > 16 else '')),
-                        'term_name': _coerce_str(row.get('term_name', '') if isinstance(row, dict) else (row[17] if len(row) > 17 else '')),
+                        'subject_id': row.get('subject_id') if isinstance(row, dict) else (row[1] if len(row) > 1 else None),
+                        'supervisor_id': row.get('supervisor_id') if isinstance(row, dict) else (row[2] if len(row) > 2 else None),
+                        'exam_name': _coerce_str(row.get('exam_name', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else '')),
+                        'exam_type': _coerce_str(row.get('exam_type', '') if isinstance(row, dict) else (row[4] if len(row) > 4 else '')),
+                        'exam_date': _format_date_value(row.get('exam_date') if isinstance(row, dict) else (row[5] if len(row) > 5 else None)),
+                        'session_type': _coerce_str(row.get('session_type', '') if isinstance(row, dict) else (row[6] if len(row) > 6 else '')),
+                        'start_time': _format_time_value(row.get('start_time') if isinstance(row, dict) else (row[7] if len(row) > 7 else None)),
+                        'end_time': _format_time_value(row.get('end_time') if isinstance(row, dict) else (row[8] if len(row) > 8 else None)),
+                        'venue': _coerce_str(row.get('venue', '') if isinstance(row, dict) else (row[9] if len(row) > 9 else '')),
+                        'status': _coerce_str(row.get('status', 'scheduled') if isinstance(row, dict) else (row[10] if len(row) > 10 else 'scheduled')) or 'scheduled',
+                        'level_id': row.get('level_id') if isinstance(row, dict) else (row[11] if len(row) > 11 else None),
+                        'level_name': _coerce_str(row.get('level_name', '') if isinstance(row, dict) else (row[12] if len(row) > 12 else '')),
+                        'level_category': _coerce_str(row.get('level_category', '') if isinstance(row, dict) else (row[13] if len(row) > 13 else '')),
+                        'subject_name': _coerce_str(row.get('subject_name', '') if isinstance(row, dict) else (row[14] if len(row) > 14 else '')),
+                        'subject_code': _coerce_str(row.get('subject_code', '') if isinstance(row, dict) else (row[15] if len(row) > 15 else '')),
+                        'teacher_name': _coerce_str(row.get('teacher_name', '') if isinstance(row, dict) else (row[16] if len(row) > 16 else '')),
+                        'teacher_employee_id': _coerce_str(row.get('teacher_employee_id', '') if isinstance(row, dict) else (row[17] if len(row) > 17 else '')),
+                        'year_name': _coerce_str(row.get('year_name', '') if isinstance(row, dict) else (row[18] if len(row) > 18 else '')),
+                        'term_name': _coerce_str(row.get('term_name', '') if isinstance(row, dict) else (row[19] if len(row) > 19 else '')),
                         'exam_is_locked': (
-                            bool(row.get('exam_is_locked', 0) if isinstance(row, dict) else (row[18] if len(row) > 18 else 0))
+                            bool(row.get('exam_is_locked', 0) if isinstance(row, dict) else (row[20] if len(row) > 20 else 0))
                             if include_exam_lock else False
                         ),
                     })

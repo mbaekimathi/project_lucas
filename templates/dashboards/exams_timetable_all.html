@@ -140,44 +140,7 @@
         from { transform: translateY(10px) scale(0.99); opacity: 0; }
         to { transform: translateY(0) scale(1); opacity: 1; }
     }
-    .exam-tt-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        padding: 0.25rem 0.55rem;
-        border-radius: 9999px;
-        font-size: 0.72rem;
-        font-weight: 800;
-        border: 1px solid rgba(148, 163, 184, 0.55);
-        background: rgba(148, 163, 184, 0.12);
-        color: rgb(30 41 59);
-        white-space: nowrap;
-    }
-    .dark .exam-tt-chip {
-        border-color: rgba(148, 163, 184, 0.28);
-        background: rgba(148, 163, 184, 0.12);
-        color: rgb(226 232 240);
-    }
-    .exam-tt-chip--accent {
-        border-color: rgba(245, 158, 11, 0.55);
-        background: rgba(245, 158, 11, 0.12);
-        color: rgb(146 64 14);
-    }
-    .dark .exam-tt-chip--accent {
-        border-color: rgba(245, 158, 11, 0.35);
-        background: rgba(245, 158, 11, 0.18);
-        color: rgb(253 230 138);
-    }
-    .exam-tt-section-title {
-        font-size: 0.72rem;
-        font-weight: 900;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: rgb(107 114 128);
-    }
-    .dark .exam-tt-section-title {
-        color: rgb(156 163 175);
-    }
+    /* keep modal simple: no extra chips/sections */
     .exam-tt-field {
         outline: none;
         transition: box-shadow 0.15s ease, border-color 0.15s ease;
@@ -188,6 +151,41 @@
     }
     .dark .exam-tt-field:focus {
         box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.22);
+    }
+    .exam-tt-select {
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        cursor: pointer;
+        padding-right: 2.4rem !important;
+        background-image: linear-gradient(to bottom, rgba(255,255,255,0.98), rgba(249,250,251,0.98));
+    }
+    .dark .exam-tt-select {
+        background-image: linear-gradient(to bottom, rgba(17,24,39,0.98), rgba(31,41,55,0.98));
+    }
+    .exam-tt-select-wrap:hover .exam-tt-select {
+        border-color: rgba(245, 158, 11, 0.55);
+    }
+    .exam-tt-select-icon {
+        pointer-events: none;
+        position: absolute;
+        right: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 1.6rem;
+        height: 1.6rem;
+        border-radius: 0.6rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(245, 158, 11, 0.12);
+        border: 1px solid rgba(245, 158, 11, 0.28);
+        color: rgb(146 64 14);
+    }
+    .dark .exam-tt-select-icon {
+        background: rgba(245, 158, 11, 0.16);
+        border-color: rgba(245, 158, 11, 0.35);
+        color: rgb(253 230 138);
     }
     @media print {
         .exam-tt-sheet { break-inside: avoid; page-break-inside: avoid; }
@@ -326,106 +324,143 @@
             No exam timetables match this filter.
         </div>
         {% else %}
+        {# Timetable per class: each class gets its own grid (days x sessions) #}
+        {% set ns = namespace(class_map={}) %}
+        {% for day in timetable_by_date %}
+            {% for slot in day.slots %}
+                {% set ck = (slot.level_id|string) if slot.level_id is not none else (slot.level_name or 'unknown') %}
+                {% if ck not in ns.class_map %}
+                    {% set _ = ns.class_map.update({ ck: {'id': slot.level_id, 'name': slot.level_name or '—', 'category': slot.level_category or ''} }) %}
+                {% endif %}
+            {% endfor %}
+        {% endfor %}
+        {% set class_keys = ns.class_map.keys()|list|sort %}
+
         <div class="space-y-8 exam-tt-sheet">
+            {% for ck in class_keys %}
+            {% set cls = ns.class_map[ck] %}
+
+            {# sessions for this class only #}
+            {% set nsS = namespace(session_map={}) %}
             {% for day in timetable_by_date %}
-            <section aria-labelledby="exam-tt-{{ loop.index }}-title">
-                <div id="exam-tt-{{ loop.index }}-title" class="exam-tt-banner flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    {% if day.weekday %}
-                    <span class="text-lg font-extrabold tracking-tight">{{ day.weekday }}</span>
-                    <span class="text-sm font-semibold opacity-95">{{ day.date_heading }}</span>
-                    {% else %}
-                    <span class="text-lg font-extrabold tracking-tight">{{ day.date_heading }}</span>
+                {% for slot in day.slots %}
+                    {% if (slot.level_id|string) == (cls.id|string) %}
+                        {% set sk = (slot.start_time or '') ~ '-' ~ (slot.end_time or '') ~ '|' ~ (slot.session_type or '') %}
+                        {% if sk not in nsS.session_map %}
+                            {% set _ = nsS.session_map.update({ sk: {'start': slot.start_time or '', 'end': slot.end_time or '', 'type': slot.session_type or ''} }) %}
+                        {% endif %}
                     {% endif %}
-                    <span class="text-xs opacity-85 ml-auto font-medium">{{ day.slots|length }} period{{ '' if day.slots|length == 1 else 's' }}</span>
+                {% endfor %}
+            {% endfor %}
+            {# Build a sortable session list for stable time-row ordering #}
+            {% set session_list = [] %}
+            {% for _k, _v in nsS.session_map.items() %}
+                {% set st = (_v.start or '') %}
+                {% set en = (_v.end or '') %}
+                {% set ty = (_v.type or '') %}
+                {% set sort_key = (st ~ '|' ~ en ~ '|' ~ ty) %}
+                {% set _ = session_list.append({'k': _k, 'v': _v, 'sort': sort_key}) %}
+            {% endfor %}
+            {% set session_list = session_list|sort(attribute='sort') %}
+
+            <section class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+                <div class="px-4 sm:px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-baseline justify-between gap-3">
+                    <div class="text-base sm:text-lg font-black text-gray-900 dark:text-gray-100">
+                        {{ cls.name }}
+                        {% if cls.category %}<span class="exam-tt-muted font-semibold"> ({{ cls.category }})</span>{% endif %}
+                    </div>
+                    <div class="exam-tt-muted font-semibold text-xs">
+                        {{ session_list|length }} session{{ '' if session_list|length == 1 else 's' }}
+                    </div>
                 </div>
+
                 <div class="exam-tt-table-wrap shadow-inner">
-                    <table class="exam-tt-table">
+                    <table class="exam-tt-table" style="min-width: 60rem;">
                         <thead>
                             <tr>
-                                <th class="exam-tt-period">#</th>
-                                <th>Time</th>
-                                <th>Class</th>
-                                <th>Subject</th>
-                                <th title="Supervisor record reference: auto-generated employees.id (not portal code or profile ID number)">Supervisor (ref. ID)</th>
-                                <th>Venue</th>
-                                <th>Paper</th>
-                                <th>Status</th>
+                                <th class="exam-tt-period" style="width: 14rem; text-align:left;">Day</th>
+                                {% for sess in session_list %}
+                                {% set s = sess.v %}
+                                <th>
+                                    <span class="exam-tt-time font-extrabold">
+                                        {% if s.start or s.end %}{{ s.start or '—' }}–{{ s.end or '—' }}{% else %}—{% endif %}
+                                    </span>
+                                    {% if s.type %}<div class="exam-tt-muted font-semibold mt-0.5">{{ s.type }}</div>{% endif %}
+                                </th>
+                                {% endfor %}
                             </tr>
                         </thead>
                         <tbody>
-                            {% for slot in day.slots %}
-                            <tr
-                                {% if management_mode and not slot.exam_is_locked %}
-                                class="exam-tt-editable-row cursor-pointer hover:bg-amber-50/50 dark:hover:bg-amber-900/10"
-                                data-exam-id="{{ slot.id }}"
-                                data-level-id="{{ slot.level_id }}"
-                                data-exam-date="{{ slot.exam_date }}"
-                                data-session-type="{{ slot.session_type }}"
-                                data-subject-id="{{ slot.subject_id or '' }}"
-                                data-supervisor-id="{{ slot.supervisor_id or '' }}"
-                                data-venue="{{ slot.venue or '' }}"
-                                onclick="window.__openExamTTEdit && window.__openExamTTEdit(this)"
-                                {% endif %}
-                            >
-                                <td class="exam-tt-period">
-                                    <div class="flex items-center justify-center gap-1">
-                                        <span>{{ loop.index }}</span>
-                                        {% if management_mode and not slot.exam_is_locked %}
-                                        <i class="fas fa-pen text-[10px] text-amber-700 dark:text-amber-300" title="Click row to edit"></i>
-                                        {% elif management_mode and slot.exam_is_locked %}
-                                        <i class="fas fa-lock text-[10px] text-gray-500 dark:text-gray-300" title="Locked"></i>
-                                        {% endif %}
+                            {% for day in timetable_by_date %}
+                            <tr>
+                                <td class="text-gray-900 dark:text-gray-100">
+                                    <div class="font-extrabold">
+                                        {% if day.weekday %}{{ day.weekday }}{% endif %}
+                                        {% if day.weekday %}<span class="exam-tt-muted font-semibold"> · </span>{% endif %}
+                                        <span class="opacity-95">{{ day.date_heading }}</span>
+                                    </div>
+                                    <div class="exam-tt-muted font-semibold mt-0.5">
+                                        {{ day.slots|length }} slot{{ '' if day.slots|length == 1 else 's' }}
                                     </div>
                                 </td>
-                                <td class="exam-tt-time text-gray-900 dark:text-gray-100">
-                                    {% if slot.start_time or slot.end_time %}
-                                    {{ slot.start_time or '—' }}–{{ slot.end_time or '—' }}
-                                    {% endif %}
-                                    {% if slot.session_type %}
-                                    {% if slot.start_time or slot.end_time %}<br>{% endif %}
-                                    <span class="exam-tt-muted font-semibold">{{ slot.session_type }}</span>
-                                    {% elif not slot.start_time and not slot.end_time %}
-                                    <span class="exam-tt-muted">—</span>
-                                    {% endif %}
-                                </td>
-                                <td class="text-gray-900 dark:text-gray-100">
-                                    <span class="font-semibold">{{ slot.level_name or '—' }}</span>
-                                    {% if slot.level_category %}
-                                    <br><span class="exam-tt-muted">{{ slot.level_category }}</span>
-                                    {% endif %}
-                                </td>
-                                <td class="text-gray-900 dark:text-gray-100">
-                                    {% if slot.subject_code %}
-                                    <span class="exam-tt-code text-emerald-800 dark:text-emerald-300">{{ slot.subject_code }}</span>
-                                    {% if slot.subject_name %}<br><span class="exam-tt-muted">{{ slot.subject_name }}</span>{% endif %}
-                                    {% elif slot.subject_name %}
-                                    {{ slot.subject_name }}
-                                    {% else %}
-                                    <span class="exam-tt-muted">—</span>
-                                    {% endif %}
-                                </td>
-                                <td class="exam-tt-code text-gray-900 dark:text-gray-100">{{ slot.teacher_employee_id or slot.teacher_code or '—' }}</td>
-                                <td class="exam-tt-code text-gray-800 dark:text-gray-200">{{ slot.venue or '—' }}</td>
-                                <td class="text-gray-900 dark:text-gray-100">
-                                    <span class="font-semibold">{{ slot.exam_name or '—' }}</span>
-                                    {% if slot.exam_type %}
-                                    <br><span class="exam-tt-muted">{{ slot.exam_type }}</span>
-                                    {% endif %}
-                                </td>
+                                {% for sess in session_list %}
+                                {% set sk = sess.k %}
                                 <td>
-                                    {% set st = (slot.status or 'scheduled')|lower %}
-                                    <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase
-                                        {% if st == 'scheduled' %}bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300
-                                        {% elif st == 'ongoing' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
-                                        {% elif st == 'completed' %}bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200
-                                        {% elif st == 'cancelled' %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300
-                                        {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{% endif %}">
-                                        {{ slot.status or 'scheduled' }}
-                                    </span>
-                                    {% if slot.year_name or slot.term_name %}
-                                    <div class="exam-tt-muted mt-1">{{ slot.year_name or '—' }} · {{ slot.term_name or '—' }}</div>
+                                    {% set ns2 = namespace(items=[]) %}
+                                    {% for slot in day.slots %}
+                                        {% if (slot.level_id|string) == (cls.id|string) %}
+                                            {% set sk2 = (slot.start_time or '') ~ '-' ~ (slot.end_time or '') ~ '|' ~ (slot.session_type or '') %}
+                                            {% if sk2 == sk %}
+                                                {% set _ = ns2.items.append(slot) %}
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+
+                                    {% if not ns2.items %}
+                                        <span class="exam-tt-muted">—</span>
+                                    {% else %}
+                                        <div class="space-y-2">
+                                            {% for slot in ns2.items %}
+                                            <div
+                                                class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 p-2.5 {% if management_mode and not slot.exam_is_locked %}cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-900/10{% endif %}"
+                                                {% if management_mode and not slot.exam_is_locked %}
+                                                data-exam-id="{{ slot.id }}"
+                                                data-level-id="{{ slot.level_id }}"
+                                                data-exam-date="{{ slot.exam_date }}"
+                                                data-session-type="{{ slot.session_type }}"
+                                                data-subject-id="{{ slot.subject_id or '' }}"
+                                                data-supervisor-id="{{ slot.supervisor_id or '' }}"
+                                                data-venue="{{ slot.venue or '' }}"
+                                                onclick="window.__openExamTTEdit && window.__openExamTTEdit(this)"
+                                                {% endif %}
+                                            >
+                                                <div class="flex items-start justify-between gap-2">
+                                                    <div class="text-xs font-extrabold text-gray-900 dark:text-gray-100">
+                                                        {{ slot.subject_code or slot.subject_name or '—' }}
+                                                    </div>
+                                                    {% if management_mode %}
+                                                        {% if slot.exam_is_locked %}
+                                                        <i class="fas fa-lock text-[11px] text-gray-500 dark:text-gray-300" title="Locked"></i>
+                                                        {% else %}
+                                                        <i class="fas fa-pen text-[11px] text-amber-700 dark:text-amber-300" title="Click to edit"></i>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                </div>
+                                                <div class="mt-1 text-[12px] text-gray-700 dark:text-gray-200">
+                                                    <span class="font-semibold">{{ slot.teacher_name or '—' }}</span>
+                                                    {% if slot.teacher_employee_id or slot.teacher_code %}
+                                                    <span class="exam-tt-code"> ({{ slot.teacher_employee_id or slot.teacher_code }})</span>
+                                                    {% endif %}
+                                                    {% if slot.venue %}
+                                                    <span class="exam-tt-muted"> · {{ slot.venue }}</span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
                                     {% endif %}
                                 </td>
+                                {% endfor %}
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -442,7 +477,7 @@
         <div class="absolute inset-0 bg-black/40" onclick="window.__closeExamTTEdit && window.__closeExamTTEdit()"></div>
         <div class="relative w-full px-4 py-6 sm:py-10 flex items-center justify-center min-h-[100svh]">
             <div id="exam-tt-edit-card" class="exam-tt-modal-card rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5">
-                <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3 bg-gradient-to-r from-amber-50 via-white to-white dark:from-amber-900/10 dark:via-gray-900 dark:to-gray-900">
+                <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3 bg-white dark:bg-gray-900">
                     <div>
                         <div class="flex items-center gap-2">
                             <span class="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-sm">
@@ -452,9 +487,6 @@
                                 <div class="text-base font-black tracking-tight text-gray-900 dark:text-gray-100">Edit exam timetable slot</div>
                                 <div id="exam-tt-edit-subtitle" class="text-xs text-gray-600 dark:text-gray-300 mt-0.5 font-semibold"></div>
                             </div>
-                        </div>
-                        <div class="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
-                            Tip: press <span class="font-extrabold">Esc</span> to close.
                         </div>
                     </div>
                     <button type="button" class="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-sm font-extrabold bg-white/90 dark:bg-gray-900/60 hover:bg-white dark:hover:bg-gray-900"
@@ -467,42 +499,32 @@
                 </div>
 
                 <div class="exam-tt-modal-scroll p-4 sm:p-5 space-y-4">
-                    <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/40 p-4">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <span class="exam-tt-section-title mr-1">Slot details</span>
-                            <span id="exam-tt-chip-date" class="exam-tt-chip exam-tt-chip--accent"><i class="fas fa-calendar-day"></i> —</span>
-                            <span id="exam-tt-chip-session" class="exam-tt-chip"><i class="fas fa-clock"></i> —</span>
-                            <span id="exam-tt-chip-class" class="exam-tt-chip"><i class="fas fa-users"></i> —</span>
-                        </div>
-                    </div>
-
-                    <div class="exam-tt-section-title">Edit fields</div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Subject</label>
-                            <div id="exam-tt-current-subject" class="mb-2 text-[12px] font-semibold text-gray-700 dark:text-gray-200"></div>
-                            <select id="exam-tt-edit-subject" class="exam-tt-field w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
-                                <option value="">Select subject</option>
-                                {% for s in subjects_for_edit %}
-                                <option value="{{ s.id }}">{{ s.subject_name }}{% if s.subject_code %} ({{ s.subject_code }}){% endif %}</option>
-                                {% endfor %}
-                            </select>
-                            <div class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Pick the replacement subject from the list.</div>
+                            <div class="exam-tt-select-wrap relative">
+                                <select id="exam-tt-edit-subject" class="exam-tt-field exam-tt-select w-full rounded-xl border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
+                                    <option value="">Select subject</option>
+                                    {% for s in subjects_for_edit %}
+                                    <option value="{{ s.id }}">{{ s.subject_name }}{% if s.subject_code %} ({{ s.subject_code }}){% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                                <span class="exam-tt-select-icon" aria-hidden="true"><i class="fas fa-chevron-down text-[12px]"></i></span>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Supervisor</label>
-                            <select id="exam-tt-edit-supervisor" class="exam-tt-field w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
-                                <option value="">Select supervisor</option>
-                                {% for t in teachers_for_edit %}
-                                <option value="{{ t.id }}">{{ t.full_name }}{% if t.employee_id %} ({{ t.employee_id }}){% endif %}</option>
-                                {% endfor %}
-                            </select>
+                            <div class="exam-tt-select-wrap relative">
+                                <select id="exam-tt-edit-supervisor" class="exam-tt-field exam-tt-select w-full rounded-xl border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
+                                    <option value="">Select supervisor</option>
+                                    {% for t in teachers_for_edit %}
+                                    <option value="{{ t.id }}">{{ t.full_name }}{% if t.employee_id %} ({{ t.employee_id }}){% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                                <span class="exam-tt-select-icon" aria-hidden="true"><i class="fas fa-chevron-down text-[12px]"></i></span>
+                            </div>
                             <div id="exam-tt-supervisor-loading" class="hidden mt-2 text-[11px] text-gray-500 dark:text-gray-400">
                                 Loading supervisor availability...
-                            </div>
-                            <div class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-                                Supervisors are highlighted: <span class="font-extrabold text-emerald-700 dark:text-emerald-300">green = available</span>,
-                                <span class="font-extrabold text-rose-700 dark:text-rose-300">red = busy</span> (shows where they are supervising).
                             </div>
                         </div>
                     </div>
@@ -513,7 +535,6 @@
                             <input id="exam-tt-edit-venue" type="text"
                                    class="exam-tt-field w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm"
                                    placeholder="E.g. HALL A or FORM 1A">
-                            <div class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Leave as default class name unless using a special room.</div>
                         </div>
                         <div>
                             <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Session</label>
@@ -544,16 +565,12 @@
             const modal = document.getElementById('exam-tt-edit-modal');
             const card = document.getElementById('exam-tt-edit-card');
             const subtitleEl = document.getElementById('exam-tt-edit-subtitle');
-            const currentSubjectEl = document.getElementById('exam-tt-current-subject');
             const subjectEl = document.getElementById('exam-tt-edit-subject');
             const supervisorEl = document.getElementById('exam-tt-edit-supervisor');
             const venueEl = document.getElementById('exam-tt-edit-venue');
             const sessionEl = document.getElementById('exam-tt-edit-session');
             const saveBtn = document.getElementById('exam-tt-edit-save');
             const errEl = document.getElementById('exam-tt-edit-error');
-            const chipDateEl = document.getElementById('exam-tt-chip-date');
-            const chipSessionEl = document.getElementById('exam-tt-chip-session');
-            const chipClassEl = document.getElementById('exam-tt-chip-class');
             const supLoadingEl = document.getElementById('exam-tt-supervisor-loading');
 
             const allSupervisorOptions = Array.from(supervisorEl.querySelectorAll('option'))
@@ -580,22 +597,6 @@
                 };
 
                 subtitleEl.textContent = `${current.exam_date || '—'} · ${current.session_type || '—'}`;
-                if (chipDateEl) chipDateEl.innerHTML = `<i class="fas fa-calendar-day"></i> ${current.exam_date || '—'}`;
-                if (chipSessionEl) chipSessionEl.innerHTML = `<i class="fas fa-clock"></i> ${current.session_type || '—'}`;
-                if (chipClassEl) {
-                    const classCell = row.querySelector('td:nth-child(3)');
-                    const classText = classCell ? String(classCell.textContent || '').trim().replace(/\s+/g, ' ') : '';
-                    chipClassEl.innerHTML = `<i class="fas fa-users"></i> ${classText || '—'}`;
-                }
-
-                if (currentSubjectEl) {
-                    const subjCell = row.querySelector('td:nth-child(4)');
-                    const subjText = subjCell ? String(subjCell.textContent || '').trim().replace(/\s+/g, ' ') : '';
-                    currentSubjectEl.innerHTML = subjText
-                        ? `Currently: <span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 font-extrabold">${subjText}</span>`
-                        : '';
-                }
-
                 subjectEl.value = current.subject_id || '';
                 supervisorEl.value = current.supervisor_id || '';
                 venueEl.value = current.venue || '';
@@ -780,13 +781,11 @@
         return escHtml(s).replace(/`/g, '&#096;');
     }
 
-    function statusBadgeClasses(stRaw) {
-        const st = (stRaw || 'scheduled').toLowerCase();
-        if (st === 'scheduled') return 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300';
-        if (st === 'ongoing') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
-        if (st === 'completed') return 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200';
-        if (st === 'cancelled') return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300';
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+    function sessionKey(slot) {
+        const st = slot && slot.start_time ? String(slot.start_time) : '';
+        const en = slot && slot.end_time ? String(slot.end_time) : '';
+        const ty = slot && slot.session_type ? String(slot.session_type) : '';
+        return st + '-' + en + '|' + ty;
     }
 
     function slotTimeCell(slot) {
@@ -812,28 +811,59 @@
         return '<span class="exam-tt-muted">—</span>';
     }
 
-    function renderDaySection(day, sectionIndex) {
-        const bannerId = 'exam-tt-js-' + sectionIndex + '-title';
-        let ban = '';
-        if (day.weekday) {
-            ban = '<span class="text-lg font-extrabold tracking-tight">' + escHtml(day.weekday) + '</span>' +
-                  '<span class="text-sm font-semibold opacity-95">' + escHtml(day.date_heading) + '</span>';
-        } else {
-            ban = '<span class="text-lg font-extrabold tracking-tight">' + escHtml(day.date_heading) + '</span>';
-        }
-        const n = day.slots ? day.slots.length : 0;
-        const plural = n === 1 ? '' : 's';
-        ban += '<span class="text-xs opacity-85 ml-auto font-medium">' + n + ' period' + plural + '</span>';
+    function cmpTime(a, b) {
+        // sort by start_time then end_time then session_type (strings work for HH:MM)
+        const ak = (a.start_time || '') + '|' + (a.end_time || '') + '|' + (a.session_type || '');
+        const bk = (b.start_time || '') + '|' + (b.end_time || '') + '|' + (b.session_type || '');
+        if (ak < bk) return -1;
+        if (ak > bk) return 1;
+        return 0;
+    }
 
-        let rows = '';
-        (day.slots || []).forEach(function (slot, i) {
-            const stCls = statusBadgeClasses(slot.status);
-            const yt = ((slot.year_name || '—') + ' · ' + (slot.term_name || '—'));
+    function renderGrid(timetableByDate) {
+        const days = timetableByDate || [];
+
+        function dayCell(day) {
+            const wd = day.weekday ? escHtml(day.weekday) : '';
+            const dot = day.weekday ? '<span class="exam-tt-muted font-semibold"> · </span>' : '';
+            const heading = '<span class="opacity-95">' + escHtml(day.date_heading || '') + '</span>';
+            const n = (day.slots || []).length;
+            const sub = '<div class="exam-tt-muted font-semibold mt-0.5">' + n + ' slot' + (n === 1 ? '' : 's') + '</div>';
+            return '<div class="font-extrabold">' + wd + dot + heading + '</div>' + sub;
+        }
+
+        function classKey(slot) {
+            return String(slot && slot.level_id != null ? slot.level_id : (slot.level_name || 'unknown'));
+        }
+
+        // unique classes
+        const classesByKey = new Map();
+        days.forEach(function (day) {
+            (day.slots || []).forEach(function (slot) {
+                const ck = classKey(slot);
+                if (!classesByKey.has(ck)) {
+                    classesByKey.set(ck, {
+                        key: ck,
+                        id: slot.level_id,
+                        name: slot.level_name || '—',
+                        category: slot.level_category || ''
+                    });
+                }
+            });
+        });
+        const classes = Array.from(classesByKey.values()).sort(function (a, b) {
+            const an = (a.name || '').toLowerCase();
+            const bn = (b.name || '').toLowerCase();
+            if (an < bn) return -1;
+            if (an > bn) return 1;
+            return 0;
+        });
+
+        function slotCard(slot) {
             const isLocked = !!slot.exam_is_locked;
             const canEdit = MANAGEMENT_MODE && !isLocked;
-            const trAttrs = canEdit
-                ? ' class="exam-tt-editable-row cursor-pointer hover:bg-amber-50/50 dark:hover:bg-amber-900/10"' +
-                  ' data-exam-id="' + escAttr(String(slot.id || '')) + '"' +
+            const attrs = canEdit
+                ? ' data-exam-id="' + escAttr(String(slot.id || '')) + '"' +
                   ' data-level-id="' + escAttr(String(slot.level_id || '')) + '"' +
                   ' data-exam-date="' + escAttr(String(slot.exam_date || '')) + '"' +
                   ' data-session-type="' + escAttr(String(slot.session_type || '')) + '"' +
@@ -842,33 +872,101 @@
                   ' data-venue="' + escAttr(String(slot.venue || '')) + '"' +
                   ' onclick="window.__openExamTTEdit && window.__openExamTTEdit(this)"'
                 : '';
-            const periodIcon = MANAGEMENT_MODE
+            const icon = MANAGEMENT_MODE
                 ? (canEdit
-                    ? '<i class="fas fa-pen text-[10px] text-amber-700 dark:text-amber-300" title="Click row to edit"></i>'
-                    : '<i class="fas fa-lock text-[10px] text-gray-500 dark:text-gray-300" title="Locked"></i>')
+                    ? '<i class="fas fa-pen text-[11px] text-amber-700 dark:text-amber-300" title="Click to edit"></i>'
+                    : '<i class="fas fa-lock text-[11px] text-gray-500 dark:text-gray-300" title="Locked"></i>')
                 : '';
 
-            rows += '<tr' + trAttrs + '>' +
-              '<td class="exam-tt-period"><div class="flex items-center justify-center gap-1"><span>' + (i + 1) + '</span>' + periodIcon + '</div></td>' +
-              '<td class="exam-tt-time text-gray-900 dark:text-gray-100">' + slotTimeCell(slot) + '</td>' +
-              '<td class="text-gray-900 dark:text-gray-100"><span class="font-semibold">' + escHtml(slot.level_name || '—') + '</span>' +
-                (slot.level_category ? '<br><span class="exam-tt-muted">' + escHtml(slot.level_category) + '</span>' : '') + '</td>' +
-              '<td class="text-gray-900 dark:text-gray-100">' + slotSubjectCell(slot) + '</td>' +
-              '<td class="exam-tt-code text-gray-900 dark:text-gray-100">' + escHtml(slot.teacher_employee_id || slot.teacher_code || '—') + '</td>' +
-              '<td class="exam-tt-code text-gray-800 dark:text-gray-200">' + escHtml(slot.venue || '—') + '</td>' +
-              '<td class="text-gray-900 dark:text-gray-100"><span class="font-semibold">' + escHtml(slot.exam_name || '—') + '</span>' +
-                (slot.exam_type ? '<br><span class="exam-tt-muted">' + escHtml(slot.exam_type) + '</span>' : '') + '</td>' +
-              '<td><span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ' + stCls + '">' + escHtml(slot.status || 'scheduled') + '</span>' +
-              '<div class="exam-tt-muted mt-1">' + escHtml(yt) + '</div></td>' +
-            '</tr>';
+            const subjTop = '<div class="flex items-start justify-between gap-2">' +
+                '<div class="text-xs font-extrabold text-gray-900 dark:text-gray-100">' +
+                escHtml(slot.subject_code || slot.subject_name || '—') +
+                '</div>' + icon + '</div>';
+
+            const teacherLine = '<span class="font-semibold">' + escHtml(slot.teacher_name || '—') + '</span>' +
+                ((slot.teacher_employee_id || slot.teacher_code) ? '<span class="exam-tt-code"> (' + escHtml(slot.teacher_employee_id || slot.teacher_code) + ')</span>' : '') +
+                (slot.venue ? '<span class="exam-tt-muted"> · ' + escHtml(slot.venue) + '</span>' : '');
+
+            return '<div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 p-2.5' +
+                (canEdit ? ' cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-900/10' : '') +
+                '"' + attrs + '>' +
+                subjTop +
+                '<div class="mt-1 text-[12px] text-gray-700 dark:text-gray-200">' + teacherLine + '</div>' +
+                '</div>';
+        }
+
+        function sessionsForClass(cls) {
+            const sessByKey = new Map();
+            days.forEach(function (day) {
+                (day.slots || []).forEach(function (slot) {
+                    if (classKey(slot) !== String(cls.key)) return;
+                    const k = sessionKey(slot);
+                    if (!sessByKey.has(k)) {
+                        sessByKey.set(k, {
+                            key: k,
+                            start_time: slot.start_time || '',
+                            end_time: slot.end_time || '',
+                            session_type: slot.session_type || ''
+                        });
+                    }
+                });
+            });
+            return Array.from(sessByKey.values()).sort(cmpTime);
+        }
+
+        function headerForClass(cls, sessionsCount) {
+            const cat = cls.category ? ' <span class="exam-tt-muted font-semibold">(' + escHtml(cls.category) + ')</span>' : '';
+            return '<section class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">' +
+                '<div class="px-4 sm:px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-baseline justify-between gap-3">' +
+                '<div class="text-base sm:text-lg font-black text-gray-900 dark:text-gray-100">' + escHtml(cls.name || '—') + cat + '</div>' +
+                '<div class="exam-tt-muted font-semibold text-xs">' + sessionsCount + ' session' + (sessionsCount === 1 ? '' : 's') + '</div>' +
+                '</div>';
+        }
+
+        let html = '<div class="space-y-8 exam-tt-sheet">';
+
+        classes.forEach(function (cls) {
+            const sessions = sessionsForClass(cls);
+            html += headerForClass(cls, sessions.length);
+            html += '<div class="exam-tt-table-wrap shadow-inner">' +
+                '<table class="exam-tt-table" style="min-width: 60rem;">' +
+                '<thead><tr>' +
+                '<th class="exam-tt-period" style="width: 14rem; text-align:left;">Day</th>';
+            sessions.forEach(function (sess) {
+                html += '<th><span class="exam-tt-time font-extrabold">' +
+                    (sess.start_time || sess.end_time ? (escHtml(sess.start_time || '—') + '–' + escHtml(sess.end_time || '—')) : '—') +
+                    '</span>' +
+                    (sess.session_type ? '<div class="exam-tt-muted font-semibold mt-0.5">' + escHtml(sess.session_type) + '</div>' : '') +
+                    '</th>';
+            });
+            html += '</tr></thead><tbody>';
+
+            days.forEach(function (day) {
+                html += '<tr>';
+                html += '<td class="text-gray-900 dark:text-gray-100">' + dayCell(day) + '</td>';
+
+                sessions.forEach(function (sess) {
+                    const matching = (day.slots || []).filter(function (slot) {
+                        return classKey(slot) === String(cls.key) && sessionKey(slot) === sess.key;
+                    });
+                    if (!matching.length) {
+                        html += '<td><span class="exam-tt-muted">—</span></td>';
+                    } else {
+                        html += '<td><div class="space-y-2">';
+                        matching.forEach(function (slot) {
+                            html += slotCard(slot);
+                        });
+                        html += '</div></td>';
+                    }
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div></section>';
         });
 
-        return '<section aria-labelledby="' + bannerId + '">' +
-          '<div id="' + bannerId + '" class="exam-tt-banner flex flex-wrap items-baseline gap-x-3 gap-y-1">' + ban + '</div>' +
-          '<div class="exam-tt-table-wrap shadow-inner">' +
-          '<table class="exam-tt-table"><thead><tr>' +
-          '<th class="exam-tt-period">#</th><th>Time</th><th>Class</th><th>Subject</th><th>Supervisor</th><th>Venue</th><th>Paper</th><th>Status</th>' +
-          '</tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+        html += '</div>';
+        return html;
     }
 
     function renderTimetableRoot(timetableByDate, totalSlots) {
@@ -884,13 +982,7 @@
             root.innerHTML = '<div class="exam-tt-empty rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-10 text-center text-gray-600 dark:text-gray-400">No exam timetables match this filter.</div>';
             return;
         }
-
-        let html = '<div class="space-y-8 exam-tt-sheet">';
-        timetableByDate.forEach(function (day, idx) {
-            html += renderDaySection(day, idx + 1);
-        });
-        html += '</div>';
-        root.innerHTML = html;
+        root.innerHTML = renderGrid(timetableByDate);
     }
 
     function updateExamDropdown(exams) {
