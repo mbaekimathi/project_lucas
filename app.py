@@ -49288,7 +49288,9 @@ def _build_academic_report_payload(cursor, report_type, f):
             rank_total_raw = sum(raw_subject_avgs)
             rank_mean_raw = mean_raw
             class_key = _student_class_key(student.get('current_grade'), student.get('level_name'))
-            student_level_id = level_name_to_id.get(class_key)
+            student_level_id = student.get('academic_level_id')
+            if student_level_id is None:
+                student_level_id = level_name_to_id.get(class_key)
             if student_level_id is None and level_ids and len(level_ids) == 1:
                 student_level_id = int(level_ids[0])
             grade = _grade_from_settings(
