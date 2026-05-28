@@ -2455,6 +2455,103 @@ def load_grade_bands_from_db(cursor):
     return default_grade_bands, subject_grade_bands, class_grade_bands
 
 
+def ensure_grade_code_remarks_table(cursor):
+    """Store per-grade remarks for a given exam context (used on report cards)."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'grade_code_remarks'")
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS grade_code_remarks (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    academic_year_id INT NULL,
+                    term_id INT NULL,
+                    academic_level_id INT NOT NULL,
+                    exam_name VARCHAR(255) NOT NULL,
+                    grade_code VARCHAR(32) NOT NULL,
+                    remark_text TEXT NULL,
+                    updated_by_employee_id INT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_grade_code_remark_ctx (academic_year_id, term_id, academic_level_id, exam_name, grade_code),
+                    INDEX idx_grade_code_remark_level (academic_level_id),
+                    INDEX idx_grade_code_remark_exam (exam_name)
+                )
+                """
+            )
+            print("OK: Created grade_code_remarks table")
+    except Exception as e:
+        print(f"Note: ensure_grade_code_remarks_table skipped: {e}")
+
+
+def _coerce_int_or_none(v):
+    try:
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s:
+            return None
+        return int(s)
+    except Exception:
+        return None
+
+
+def fetch_grade_code_remarks_map(cursor, academic_year_id, term_id, academic_level_ids, exam_name):
+    """
+    Return {(academic_level_id, grade_code): remark_text} for a given exam context.
+    """
+    ay = _coerce_int_or_none(academic_year_id)
+    tid = _coerce_int_or_none(term_id)
+    exn = (exam_name or '').strip()
+    if not exn or not academic_level_ids:
+        return {}
+    lvl_ids = []
+    for x in academic_level_ids or []:
+        try:
+            lvl_ids.append(int(x))
+        except Exception:
+            continue
+    if not lvl_ids:
+        return {}
+    where = " WHERE academic_level_id IN ({}) AND exam_name = %s".format(",".join(["%s"] * len(lvl_ids)))
+    params = list(lvl_ids) + [exn]
+    if ay is not None:
+        where += " AND academic_year_id = %s"
+        params.append(ay)
+    else:
+        where += " AND academic_year_id IS NULL"
+    if tid is not None:
+        where += " AND term_id = %s"
+        params.append(tid)
+    else:
+        where += " AND term_id IS NULL"
+    out = {}
+    try:
+        cursor.execute(
+            "SELECT academic_level_id, grade_code, remark_text FROM grade_code_remarks" + where,
+            params,
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                lid = r.get('academic_level_id')
+                gc = (r.get('grade_code') or '').strip().upper()
+                txt = (r.get('remark_text') or '').strip()
+            else:
+                lid = r[0] if len(r) > 0 else None
+                gc = ((r[1] if len(r) > 1 else '') or '').strip().upper()
+                txt = ((r[2] if len(r) > 2 else '') or '').strip()
+            try:
+                lid = int(lid)
+            except Exception:
+                continue
+            if not gc:
+                continue
+            out[(lid, gc)] = txt
+    except Exception as e:
+        print(f"fetch_grade_code_remarks_map: {e}")
+    return out
+
+
 def sql_scaled_exam_mark_pct(sm_alias='sm', sub_alias='sub'):
     """SQL expression: student_marks.marks as 0–100 % using subjects.exam_total_marks."""
     return (
@@ -44403,6 +44500,33 @@ def students_by_academic_level(level_id):
         uses_class_grading_setting,
         grading_setting_name,
     ) = fetch_grade_bands_for_marks_sheet(level_id)
+
+    # Grade-code remarks (per exam context) for report cards.
+    initial_grade_code_remarks = {}
+    try:
+        selected_exam_name = ''
+        if selected_exam_id and exams:
+            for ex in exams:
+                if str(ex.get('id')) == str(selected_exam_id):
+                    selected_exam_name = (ex.get('exam_name') or '').strip()
+                    break
+        if selected_exam_name:
+            connection2 = get_db_connection()
+            if connection2:
+                try:
+                    with connection2.cursor() as cur2:
+                        ensure_grade_code_remarks_table(cur2)
+                        initial_grade_code_remarks = fetch_grade_code_remarks_map(
+                            cur2,
+                            academic_year_id=current_year_id,
+                            term_id=current_term_id,
+                            academic_level_ids=[level_id],
+                            exam_name=selected_exam_name,
+                        )
+                finally:
+                    connection2.close()
+    except Exception as e:
+        print(f"Note: initial grade remarks skipped: {e}")
     
     return render_template('dashboards/students_by_level.html', 
                          role=user_role,
@@ -44426,10 +44550,116 @@ def students_by_academic_level(level_id):
                          academic_level_id=level_id,
                          subject_exam_max_map=subject_exam_max_map,
                          combination_column_members=combination_column_members,
+                         initial_grade_code_remarks={(f"{k[0]}::{k[1]}"): v for k, v in (initial_grade_code_remarks or {}).items()},
                          can_edit=can_edit,
                          marks_summary_column=marks_summary_column,
                          marks_display_scaled=marks_display_scaled,
                          is_teacher=is_teacher)
+
+
+@app.route('/dashboard/employee/exams-assessments/grade-remarks/get', methods=['POST'])
+@login_required
+def exams_assessments_get_grade_remarks():
+    """Fetch saved grade-code remarks for a given exam context."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+    if not (is_academic_coordinator or is_technician or is_principal or is_teacher or is_secretary):
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    data = request.get_json(silent=True) or {}
+    academic_level_id = _coerce_int_or_none(data.get('academic_level_id'))
+    academic_year_id = _coerce_int_or_none(data.get('academic_year_id'))
+    term_id = _coerce_int_or_none(data.get('term_id'))
+    exam_name = (data.get('exam_name') or '').strip()
+    if not academic_level_id or not exam_name:
+        return jsonify({'success': False, 'message': 'academic_level_id and exam_name are required'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_grade_code_remarks_table(cursor)
+            mp = fetch_grade_code_remarks_map(
+                cursor,
+                academic_year_id=academic_year_id,
+                term_id=term_id,
+                academic_level_ids=[academic_level_id],
+                exam_name=exam_name,
+            )
+            out = {f"{k[0]}::{k[1]}": v for k, v in (mp or {}).items()}
+            return jsonify({'success': True, 'remarks': out})
+    except Exception as e:
+        print(f"exams_assessments_get_grade_remarks: {e}")
+        return jsonify({'success': False, 'message': 'Could not load remarks'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/exams-assessments/grade-remarks/save', methods=['POST'])
+@login_required
+def exams_assessments_save_grade_remarks():
+    """Upsert grade-code remarks for a given exam context."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
+    if not (is_technician or is_principal or is_teacher):
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    data = request.get_json(silent=True) or {}
+    academic_level_id = _coerce_int_or_none(data.get('academic_level_id'))
+    academic_year_id = _coerce_int_or_none(data.get('academic_year_id'))
+    term_id = _coerce_int_or_none(data.get('term_id'))
+    exam_name = (data.get('exam_name') or '').strip()
+    remarks = data.get('remarks') or {}
+    if not academic_level_id or not exam_name:
+        return jsonify({'success': False, 'message': 'academic_level_id and exam_name are required'}), 400
+    if not isinstance(remarks, dict):
+        return jsonify({'success': False, 'message': 'remarks must be an object'}), 400
+
+    updated_by = session.get('user_id')
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_grade_code_remarks_table(cursor)
+            for grade_code_raw, remark_raw in remarks.items():
+                gc = (str(grade_code_raw or '').strip().upper())[:32]
+                if not gc:
+                    continue
+                txt = str(remark_raw or '').strip()
+                cursor.execute(
+                    """
+                    INSERT INTO grade_code_remarks
+                        (academic_year_id, term_id, academic_level_id, exam_name, grade_code, remark_text, updated_by_employee_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        remark_text = VALUES(remark_text),
+                        updated_by_employee_id = VALUES(updated_by_employee_id),
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (academic_year_id, term_id, academic_level_id, exam_name, gc, txt, updated_by),
+                )
+            connection.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"exams_assessments_save_grade_remarks: {e}")
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Could not save remarks'}), 500
+    finally:
+        connection.close()
+
 
 # API Endpoint to fetch marks filtered by exam
 @app.route('/dashboard/employee/exams-assessments/get-marks', methods=['POST'])
@@ -48774,6 +49004,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         meta['marks_scale'] = 'scaled_pct'
         q = """
             SELECT st.student_id, st.full_name, al.level_name,
+                   al.id AS academic_level_id,
                    TRIM(COALESCE(st.current_grade, '')) AS current_grade,
                    COALESCE(sub.subject_name, 'N/A') AS subject_name,
                    COALESCE(sub.subject_code, '') AS subject_code,
@@ -48790,6 +49021,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         """
         q_no_image = """
             SELECT st.student_id, st.full_name, al.level_name,
+                   al.id AS academic_level_id,
                    TRIM(COALESCE(st.current_grade, '')) AS current_grade,
                    COALESCE(sub.subject_name, 'N/A') AS subject_name,
                    COALESCE(sub.subject_code, '') AS subject_code,
@@ -48874,6 +49106,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 admission_number = r.get('student_id')
                 full_name = r.get('full_name')
                 level_nm = r.get('level_name')
+                level_id_from_exam = r.get('academic_level_id')
                 cur_grade = str(r.get('current_grade') or '').strip()
                 subject_name = r.get('subject_name')
                 subject_code = r.get('subject_code')
@@ -48886,22 +49119,27 @@ def _build_academic_report_payload(cursor, report_type, f):
                 admission_number = r[0] if len(r) > 0 else None
                 full_name = r[1] if len(r) > 1 else None
                 level_nm = r[2] if len(r) > 2 else None
-                cur_grade = str(r[3]).strip() if len(r) > 3 and r[3] is not None else ''
-                subject_name = r[4] if len(r) > 4 else None
-                subject_code = r[5] if len(r) > 5 else None
-                raw_mark_val = r[6] if len(r) > 6 else None
+                level_id_from_exam = r[3] if len(r) > 3 else None
+                cur_grade = str(r[4]).strip() if len(r) > 4 and r[4] is not None else ''
+                subject_name = r[5] if len(r) > 5 else None
+                subject_code = r[6] if len(r) > 6 else None
+                raw_mark_val = r[7] if len(r) > 7 else None
                 if include_profile_image:
-                    raw_pf = str(r[7]).strip() if len(r) > 7 else ''
+                    raw_pf = str(r[8]).strip() if len(r) > 8 else ''
+                    sub_id_raw = r[9] if len(r) > 9 else None
+                    eo_raw = r[10] if len(r) > 10 else None
+                    exam_total_marks = r[11] if len(r) > 11 else None
+                else:
+                    raw_pf = ''
                     sub_id_raw = r[8] if len(r) > 8 else None
                     eo_raw = r[9] if len(r) > 9 else None
                     exam_total_marks = r[10] if len(r) > 10 else None
-                else:
-                    raw_pf = ''
-                    sub_id_raw = r[7] if len(r) > 7 else None
-                    eo_raw = r[8] if len(r) > 8 else None
-                    exam_total_marks = r[9] if len(r) > 9 else None
             mark_val = raw_mark_to_percentage(raw_mark_val, exam_total_marks)
             subject_label = subject_display_label(subject_code, subject_name)
+            try:
+                level_id_from_exam_i = int(level_id_from_exam) if level_id_from_exam is not None else None
+            except (TypeError, ValueError):
+                level_id_from_exam_i = None
             try:
                 sid_i = int(sub_id_raw) if sub_id_raw is not None else None
             except (TypeError, ValueError):
@@ -48916,6 +49154,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                     'full_name': full_name,
                     'level_name': level_nm or '',
                     'current_grade': cur_grade or '',
+                    'academic_level_id': level_id_from_exam_i,
                     'profile_raw': raw_pf if include_profile_image else '',
                     'subject_marks': {}
                 }
@@ -48927,8 +49166,12 @@ def _build_academic_report_payload(cursor, report_type, f):
                     g0['level_name'] = level_nm or ''
                 if cur_grade and not (g0.get('current_grade') or '').strip():
                     g0['current_grade'] = cur_grade
+                if level_id_from_exam_i is not None and g0.get('academic_level_id') is None:
+                    g0['academic_level_id'] = level_id_from_exam_i
             class_key = _student_class_key(cur_grade, level_nm)
-            student_level_id = level_name_to_id.get(class_key)
+            student_level_id = level_id_from_exam_i
+            if student_level_id is None:
+                student_level_id = level_name_to_id.get(class_key)
             if is_combined_level and merged_reg_labels:
                 reg_labels = merged_reg_labels
             else:
@@ -49425,7 +49668,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                     'meta': {**meta, 'hint': 'Enter a student ID to load marks for that learner in the selected class.'},
                 }
         cols = _academic_report_cols_with_home_class(
-            ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks', 'grade', 'grade_points'],
+            ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks', 'grade', 'grade_points', 'grade_remark'],
             is_combined_level,
         )
         default_grade_bands, subject_grade_bands, class_grade_bands = _load_grade_bands_for_reports()
@@ -49505,6 +49748,15 @@ def _build_academic_report_payload(cursor, report_type, f):
             cursor.execute(q_no_image, params)
             include_profile_image = False
         rows = []
+        default_grade_meaning_by_code = {}
+        try:
+            for b in default_grade_bands or []:
+                code = (b.get('code') or '').strip().upper() if isinstance(b, dict) else ''
+                label = (b.get('label') or '').strip() if isinstance(b, dict) else ''
+                if code:
+                    default_grade_meaning_by_code[code] = label
+        except Exception:
+            default_grade_meaning_by_code = {}
         for r in cursor.fetchall() or []:
             if isinstance(r, dict):
                 ed = r.get('exam_date')
@@ -49590,12 +49842,46 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'marks': scaled_marks if scaled_marks is not None else '',
                 'grade': (grade_code or '').strip(),
                 'grade_points': grade_points if grade_points is not None else '',
+                'grade_remark': '',
                 'student_photo': photo_url,
                 'subject_id': subject_id_val,
                 'grade_code': grade_code,
                 'exam_display_order': int(exam_ord_val) if exam_ord_val is not None and str(exam_ord_val).strip().isdigit() else (int(exam_ord_val) if isinstance(exam_ord_val, int) else 1000000000),
             }
             rows.append(row_out)
+        # Fill grade remarks (saved per grade code), else use the default grade meaning from Grades Registration.
+        try:
+            level_ids_in_rows = sorted({int(rw.get('academic_level_id')) for rw in rows if rw.get('academic_level_id') is not None})
+        except Exception:
+            level_ids_in_rows = []
+        remarks_map = {}
+        try:
+            if exam_name and level_ids_in_rows:
+                ensure_grade_code_remarks_table(cursor)
+                remarks_map = fetch_grade_code_remarks_map(
+                    cursor,
+                    academic_year_id=ay,
+                    term_id=tid,
+                    academic_level_ids=level_ids_in_rows,
+                    exam_name=exam_name,
+                )
+        except Exception as e:
+            print(f"Note: grade remark lookup skipped: {e}")
+            remarks_map = {}
+        for rw in rows:
+            try:
+                lid = int(rw.get('academic_level_id')) if rw.get('academic_level_id') is not None else None
+            except Exception:
+                lid = None
+            gc = (rw.get('grade_code') or '').strip().upper()
+            if not gc or lid is None:
+                rw['grade_remark'] = ''
+                continue
+            saved = (remarks_map or {}).get((lid, gc), '')
+            if saved and str(saved).strip():
+                rw['grade_remark'] = str(saved).strip()
+            else:
+                rw['grade_remark'] = default_grade_meaning_by_code.get(gc, '')
         row_sids = []
         for rw in rows:
             v = rw.get('subject_id')

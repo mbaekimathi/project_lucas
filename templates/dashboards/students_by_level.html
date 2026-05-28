@@ -621,6 +621,66 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             </select>
         </div>
 
+        <!-- Grade remarks: saved per grade code for this exam context -->
+        <div x-show="selectedExam"
+             class="mb-4 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/50 shadow-sm overflow-hidden">
+            <div class="px-4 py-3 sm:px-5 sm:py-4 border-b border-slate-100 dark:border-slate-700/70 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div class="min-w-0">
+                    <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                        Grade remarks (report cards)
+                    </h3>
+                    <p class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                        If a remark is left empty, the report card will use the default meaning from
+                        <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <span class="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400" x-show="gradeRemarksStatus" x-text="gradeRemarksStatus"></span>
+                    <button type="button"
+                            @click="saveGradeRemarks()"
+                            :disabled="gradeRemarksSaving"
+                            class="inline-flex items-center justify-center gap-2 min-h-[40px] px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm disabled:opacity-60 disabled:cursor-not-allowed touch-manipulation">
+                        <i class="fas fa-save text-xs opacity-90" aria-hidden="true"></i>
+                        Save remarks
+                    </button>
+                </div>
+            </div>
+            <div class="px-3 py-3 sm:px-5 sm:py-4">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-[11px] sm:text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                <th class="text-left py-2 pr-2 whitespace-nowrap">Code</th>
+                                <th class="text-left py-2 pr-2 min-w-[14rem]">Default meaning</th>
+                                <th class="text-left py-2 min-w-[20rem]">Teacher remark (optional)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/70">
+                            <template x-for="band in (defaultGradeBands || [])" :key="band.code">
+                                <tr>
+                                    <td class="py-2 pr-2 align-top">
+                                        <span class="inline-flex items-center px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold text-xs">
+                                            <span x-text="(band.code || '').toUpperCase()"></span>
+                                        </span>
+                                    </td>
+                                    <td class="py-2 pr-2 align-top text-slate-700 dark:text-slate-200 text-xs sm:text-sm">
+                                        <span x-text="band.label || ''"></span>
+                                    </td>
+                                    <td class="py-2 align-top">
+                                        <input type="text"
+                                               class="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 touch-manipulation"
+                                               :placeholder="band.label || ''"
+                                               x-model="gradeRemarksByCode[(band.code || '').toUpperCase()]"
+                                               @input="gradeRemarksStatus = 'Unsaved changes'">
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Marks grid: same table on phones and desktop (horizontal scroll on narrow screens) -->
         <div class="marks-sheet-wrap mb-4 w-full min-w-0 bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
             <div class="marks-sheet-horizontal-scroll overscroll-x-contain">
@@ -840,6 +900,10 @@ function marksSheet() {
         gradingSettingName: {{ (grading_setting_name or '')|tojson|safe }},
         subjectGradeBands: {{ (subject_grade_bands or {})|tojson|safe }},
         classGradeBands: {{ (class_grade_bands or {})|tojson|safe }},
+        gradeRemarksInitial: {{ (initial_grade_code_remarks or {})|tojson|safe }},
+        gradeRemarksByCode: {},
+        gradeRemarksSaving: false,
+        gradeRemarksStatus: '',
         academicLevelId: {{ academic_level_id|default('null') }},
         subjectExamMax: {{ (subject_exam_max_map or {})|tojson|safe }},
         columnMembers: {{ (combination_column_members or {})|tojson|safe }},
@@ -862,6 +926,100 @@ function marksSheet() {
         summaryMode: {{ (marks_summary_column or 'avg_pct')|tojson }},
         /** View-only: show each cell as scaled /100; teachers still enter raw marks. */
         displayScaled: {{ 'true' if marks_display_scaled else 'false' }},
+
+        currentExamName() {
+            if (!this.selectedExam) return '';
+            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            return ex ? String(ex.exam_name || '').trim() : '';
+        },
+
+        _applyInitialGradeRemarksIfEmpty() {
+            if (this.gradeRemarksByCode && Object.keys(this.gradeRemarksByCode).length) return;
+            const out = {};
+            const raw = this.gradeRemarksInitial || {};
+            for (const k in raw) {
+                if (!Object.prototype.hasOwnProperty.call(raw, k)) continue;
+                const parts = String(k).split('::');
+                const code = String(parts[1] || '').trim().toUpperCase();
+                if (!code) continue;
+                out[code] = String(raw[k] || '').trim();
+            }
+            this.gradeRemarksByCode = out;
+        },
+
+        async loadGradeRemarks() {
+            if (!this.selectedExam) return;
+            const examName = this.currentExamName();
+            if (!examName || !this.academicLevelId) return;
+            try {
+                const res = await fetch('{{ employee_dash_url('exams-assessments/grade-remarks/get') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        academic_level_id: this.academicLevelId,
+                        academic_year_id: this.selectedAcademicYearId || null,
+                        term_id: this.selectedTermId || null,
+                        exam_name: examName
+                    })
+                });
+                const json = await res.json();
+                if (!json || !json.success) return;
+                const mp = json.remarks || {};
+                const out = {};
+                for (const k in mp) {
+                    if (!Object.prototype.hasOwnProperty.call(mp, k)) continue;
+                    const parts = String(k).split('::');
+                    const code = String(parts[1] || '').trim().toUpperCase();
+                    if (!code) continue;
+                    out[code] = String(mp[k] || '').trim();
+                }
+                this.gradeRemarksByCode = out;
+                this.gradeRemarksStatus = '';
+            } catch (e) {
+                console.error('loadGradeRemarks error:', e);
+            }
+        },
+
+        async saveGradeRemarks() {
+            if (!this.selectedExam) return;
+            const examName = this.currentExamName();
+            if (!examName || !this.academicLevelId) return;
+            this.gradeRemarksSaving = true;
+            this.gradeRemarksStatus = 'Saving…';
+            try {
+                const payload = {};
+                for (const band of (this.defaultGradeBands || [])) {
+                    const code = String((band && band.code) || '').trim().toUpperCase();
+                    if (!code) continue;
+                    payload[code] = String((this.gradeRemarksByCode || {})[code] || '').trim();
+                }
+                const res = await fetch('{{ employee_dash_url('exams-assessments/grade-remarks/save') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        academic_level_id: this.academicLevelId,
+                        academic_year_id: this.selectedAcademicYearId || null,
+                        term_id: this.selectedTermId || null,
+                        exam_name: examName,
+                        remarks: payload
+                    })
+                });
+                const json = await res.json();
+                if (!json || !json.success) {
+                    this.gradeRemarksStatus = 'Save failed';
+                    return;
+                }
+                this.gradeRemarksStatus = 'Saved';
+                setTimeout(() => {
+                    if (this.gradeRemarksStatus === 'Saved') this.gradeRemarksStatus = '';
+                }, 2000);
+            } catch (e) {
+                console.error('saveGradeRemarks error:', e);
+                this.gradeRemarksStatus = 'Save failed';
+            } finally {
+                this.gradeRemarksSaving = false;
+            }
+        },
 
         get examIsLocked() {
             if (!this.selectedExam) return false;
@@ -1101,6 +1259,7 @@ function marksSheet() {
         },
 
         async init() {
+            this._applyInitialGradeRemarksIfEmpty();
             this.enforceDefaults();
             await this.loadExamsForFilters();
             this.enforceDefaults();
@@ -1210,6 +1369,8 @@ function marksSheet() {
             this.marksCountdownInfoModalOpen = false;
             if (!this.selectedExam) {
                 await this.loadMarks();
+                this.gradeRemarksByCode = {};
+                this.gradeRemarksStatus = '';
                 return;
             }
             const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
@@ -1217,9 +1378,12 @@ function marksSheet() {
                 this.lockedModal = true;
                 this.selectedExam = '';
                 this.marks = {};
+                this.gradeRemarksByCode = {};
+                this.gradeRemarksStatus = '';
                 return;
             }
             await this.loadMarks();
+            await this.loadGradeRemarks();
         },
 
         getMarkNumeric(studentId, subjectId) {
