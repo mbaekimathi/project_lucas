@@ -101,8 +101,15 @@
 <a href="{{ employee_dash_url('exam-timetable') }}"
    class="sidebar-item {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}sidebar-item-active{% endif %}">
     <i class="fas fa-calendar-alt w-5"></i>
-    <span>Exams timetable</span>
+    <span>Exam timetable</span>
     {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+
+<a href="{{ employee_dash_url('exam-timetable-management') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_timetable_management' or request.path.rstrip('/').endswith('/exam-timetable-management') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-screwdriver-wrench w-5"></i>
+    <span>Exam timetable management</span>
+    {% if request.endpoint == 'exam_timetable_management' or request.path.rstrip('/').endswith('/exam-timetable-management') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}
 

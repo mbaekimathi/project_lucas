@@ -2517,8 +2517,10 @@ def _exam_total_marks_snapshot_value(db_val):
 
 def normalize_subject_totals_for_exam_combination(cursor, subject_ids_ordered):
     """
-    Rescale subjects.exam_total_marks proportionally so effective maxima sum to 100.
-    Returns a list suitable for json.dumps into totals_snapshot_json (restore on combination delete).
+    Capture current subjects.exam_total_marks for a combination snapshot.
+    This snapshot is stored in totals_snapshot_json and can be used on combination delete.
+
+    IMPORTANT: We do NOT rescale or modify exam totals during combination creation.
     """
     if not subject_ids_ordered or len(subject_ids_ordered) < 2:
         return []
@@ -2535,7 +2537,6 @@ def normalize_subject_totals_for_exam_combination(cursor, subject_ids_ordered):
         by_id[int(sid)] = etm
 
     snapshot = []
-    weights = []
     for sid in subject_ids_ordered:
         sid = int(sid)
         etm_before = by_id.get(sid)
@@ -2543,26 +2544,6 @@ def normalize_subject_totals_for_exam_combination(cursor, subject_ids_ordered):
             'subject_id': sid,
             'exam_total_marks': _exam_total_marks_snapshot_value(etm_before),
         })
-        weights.append(subject_exam_max_raw_marks(etm_before))
-
-    total_w = sum(weights)
-    n = len(subject_ids_ordered)
-    if total_w <= 0:
-        equal = round(100.0 / n, 2)
-        floored = [equal] * n
-        diff = round(100.0 - sum(floored), 2)
-        floored[-1] = round(floored[-1] + diff, 2)
-    else:
-        precise = [100.0 * w / total_w for w in weights]
-        floored = [round(x, 2) for x in precise]
-        diff = round(100.0 - sum(floored), 2)
-        floored[-1] = round(floored[-1] + diff, 2)
-
-    for sid, new_max in zip(subject_ids_ordered, floored):
-        cursor.execute(
-            "UPDATE subjects SET exam_total_marks = %s WHERE id = %s",
-            (new_max, int(sid)),
-        )
     return snapshot
 
 
@@ -29917,8 +29898,7 @@ def exam_subject_settings():
                         )
                     connection.commit()
                     flash(
-                        'Subjects combined for marks entry. Exam totals for those papers were scaled '
-                        'proportionally so they sum to 100 (restore by removing this combination).',
+                        'Subjects combined for marks entry. Exam totals were preserved.',
                         'success',
                     )
             except Exception as e:
@@ -31728,6 +31708,34 @@ def save_exam():
 
             # For each allocation: ensure no DB conflicts + insert row
             inserted_ids = []
+
+            # Default venue to Academic Level label when missing
+            level_label_by_id = {}
+            try:
+                level_ids_for_venue = sorted({int(na.get('academic_level_id') or 0) for na in normalized_allocations if int(na.get('academic_level_id') or 0) > 0})
+                if level_ids_for_venue:
+                    ph = ",".join(["%s"] * len(level_ids_for_venue))
+                    cursor.execute(f"""
+                        SELECT id, level_category, level_name, level_code
+                        FROM academic_levels
+                        WHERE id IN ({ph})
+                    """, tuple(level_ids_for_venue))
+                    for r in cursor.fetchall() or []:
+                        lid = r.get('id') if isinstance(r, dict) else r[0]
+                        lcat = (r.get('level_category') if isinstance(r, dict) else (r[1] if len(r) > 1 else '')) or ''
+                        lname = (r.get('level_name') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')) or ''
+                        lcode = (r.get('level_code') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')) or ''
+                        code_u = str(lcode).strip().upper()
+                        if code_u:
+                            label = code_u
+                        else:
+                            parts = [p.strip() for p in (lcat, lname) if p and str(p).strip()]
+                            label = ' '.join(parts).strip().upper()
+                        if lid:
+                            level_label_by_id[int(lid)] = label if label else f"LEVEL {int(lid)}"
+            except Exception:
+                level_label_by_id = {}
+
             for na in normalized_allocations:
                 allocation_exam_date = na['exam_date']
 
@@ -31793,7 +31801,7 @@ def save_exam():
                     na['end_time'],
                     na['duration_minutes'],
                     na['teacher_id'],
-                    na['venue'],
+                    (str(na.get('venue') or '').strip().upper() or level_label_by_id.get(int(na.get('academic_level_id') or 0), f"LEVEL {int(na.get('academic_level_id') or 0)}")),
                     created_by
                 ))
                 inserted_ids.append(cursor.lastrowid)
@@ -42640,6 +42648,8 @@ def _compute_exams_assessments_timetable_bundle(
                 for row in rows:
                     timetable_rows.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'subject_id': row.get('subject_id') if isinstance(row, dict) else None,
+                        'supervisor_id': row.get('supervisor_id') if isinstance(row, dict) else None,
                         'exam_name': _coerce_str(row.get('exam_name', '') if isinstance(row, dict) else row[1]),
                         'exam_type': _coerce_str(row.get('exam_type', '') if isinstance(row, dict) else row[2]),
                         'exam_date': _format_date_value(row.get('exam_date') if isinstance(row, dict) else row[3]),
@@ -42965,6 +42975,120 @@ def exam_timetable():
         restrict_to_supervisor=restrict_sup,
     )
     ctx['role'] = user_role
+    return render_template('dashboards/exams_timetable_all.html', **ctx)
+
+
+@app.route('/dashboard/employee/exam-timetable-management')
+@login_required
+def exam_timetable_management():
+    """Exam timetable management: wall timetable + click-to-edit subject/supervisor."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    restrict_sup, sup_id = _session_exam_timetable_supervisor_scope()
+    ctx = _compute_exams_assessments_timetable_bundle(
+        supervisor_employee_id=sup_id,
+        restrict_to_supervisor=restrict_sup,
+    )
+    ctx['role'] = user_role
+    ctx['management_mode'] = True
+
+    # Default the Exam filter to "current" on first load (no explicit exam_name chosen).
+    # We treat the first exam_name returned by the current year/term scope as the default.
+    if not (request.args.get('exam_name') or '').strip():
+        exam_names = ctx.get('exams_for_filter') or []
+        if exam_names:
+            default_exam_name = str(exam_names[0] or '').strip()
+            if default_exam_name:
+                ctx['selected_exam_name'] = default_exam_name
+                # Filter the already-built timetable payload to this exam name so the page loads filtered.
+                filtered_days = []
+                total = 0
+                for day in (ctx.get('timetable_by_date') or []):
+                    slots = [s for s in (day.get('slots') or []) if str(s.get('exam_name') or '') == default_exam_name]
+                    if slots:
+                        d2 = dict(day)
+                        d2['slots'] = slots
+                        filtered_days.append(d2)
+                        total += len(slots)
+                ctx['timetable_by_date'] = filtered_days
+                ctx['total_slots'] = total
+
+    # If the selected exam is locked, disable management UI (view-only).
+    ctx['locked_exam_selected'] = False
+    selected_exam_name = str(ctx.get('selected_exam_name') or '').strip()
+    selected_year_id = int(ctx.get('selected_year_id') or 0)
+    selected_term_id = int(ctx.get('selected_term_id') or 0)
+    if selected_exam_name:
+        _lock_conn = get_db_connection()
+        try:
+            if _lock_conn:
+                with _lock_conn.cursor() as _c:
+                    params = [selected_exam_name]
+                    sql = """
+                        SELECT 1
+                        FROM exams e
+                        WHERE e.exam_name = %s
+                          AND COALESCE(e.is_locked, 0) = 1
+                    """
+                    if selected_year_id > 0:
+                        sql += " AND e.academic_year_id = %s"
+                        params.append(selected_year_id)
+                    if selected_term_id > 0:
+                        sql += " AND e.term_id = %s"
+                        params.append(selected_term_id)
+                    sql += " LIMIT 1"
+                    _c.execute(sql, tuple(params))
+                    if _c.fetchone():
+                        ctx['locked_exam_selected'] = True
+                        ctx['management_mode'] = False
+        finally:
+            try:
+                if _lock_conn:
+                    _lock_conn.close()
+            except Exception:
+                pass
+
+    subjects_for_edit = []
+    teachers_for_edit = []
+    connection = get_db_connection()
+    try:
+        if connection:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, COALESCE(subject_name, '') AS subject_name, COALESCE(subject_code, '') AS subject_code
+                    FROM subjects
+                    WHERE COALESCE(subject_name, '') <> ''
+                    ORDER BY subject_name ASC
+                """)
+                subjects_for_edit = cursor.fetchall() or []
+
+                cursor.execute("""
+                    SELECT id, COALESCE(full_name, '') AS full_name, COALESCE(employee_id, '') AS employee_id
+                    FROM employees
+                    WHERE status = 'active' AND (role = 'teachers' OR role = 'teacher')
+                      AND COALESCE(full_name, '') <> ''
+                    ORDER BY full_name ASC
+                """)
+                teachers_for_edit = cursor.fetchall() or []
+    finally:
+        try:
+            if connection:
+                connection.close()
+        except Exception:
+            pass
+
+    ctx['subjects_for_edit'] = subjects_for_edit
+    ctx['teachers_for_edit'] = teachers_for_edit
+
     return render_template('dashboards/exams_timetable_all.html', **ctx)
 
 
@@ -43580,13 +43704,47 @@ def exam_analytics_detail(exam_id):
                     subject_analytics.append({'subject_id': subj_id, 'subject_name': subj.get('subject_name') or '—', 'top_students': top_students})
                 # Teacher Analytics: mean grade per subject (marks from any exam_id in this exam), rank by mean
                 teacher_analytics_list = []
+                teacher_name_by_subject = {}
+                try:
+                    subj_ids = [int(s.get('subject_id')) for s in distinct_subjects if s.get('subject_id') is not None]
+                    subj_ids = [x for x in subj_ids if x > 0]
+                    scope_level_ids = (level_scope.get('level_ids') or []) if level_scope else []
+                    scope_level_ids = [int(x) for x in scope_level_ids if x is not None]
+                    if subj_ids and scope_level_ids:
+                        ph_subj = ','.join(['%s'] * len(subj_ids))
+                        ph_lvl = ','.join(['%s'] * len(scope_level_ids))
+                        cur2.execute(
+                            f"""
+                            SELECT tsa.subject_id,
+                                   GROUP_CONCAT(DISTINCT UPPER(TRIM(emp.full_name))
+                                                ORDER BY emp.full_name SEPARATOR ', ') AS teacher_names
+                            FROM teacher_subject_assignments tsa
+                            INNER JOIN employees emp ON emp.id = tsa.teacher_id
+                            WHERE tsa.academic_level_id IN ({ph_lvl})
+                              AND tsa.subject_id IN ({ph_subj})
+                            GROUP BY tsa.subject_id
+                            """,
+                            tuple(scope_level_ids) + tuple(subj_ids),
+                        )
+                        for trow in (cur2.fetchall() or []):
+                            sid = trow.get('subject_id') if isinstance(trow, dict) else trow[0]
+                            nm = trow.get('teacher_names') if isinstance(trow, dict) else (trow[1] if len(trow) > 1 else '')
+                            if sid is not None:
+                                teacher_name_by_subject[int(sid)] = (nm or '').strip()
+                except Exception as te:
+                    # teacher_subject_assignments may be missing or empty; fall back to exam supervisor names
+                    print(f"Note: teacher_name_by_subject mapping skipped: {te}")
                 for subj in distinct_subjects:
                     subj_id = subj.get('subject_id')
-                    supervisor_name = '—'
-                    for s in slots:
-                        if s.get('subject_id') == subj_id or s.get('id') == subj_id:
-                            supervisor_name = s.get('supervisor_name') or '—'
-                            break
+                    supervisor_name = teacher_name_by_subject.get(int(subj_id)) if subj_id is not None else ''
+                    supervisor_name = (supervisor_name or '').strip()
+                    if not supervisor_name:
+                        # fallback: exam supervisor if no assigned subject teacher
+                        supervisor_name = '—'
+                        for s in slots:
+                            if s.get('subject_id') == subj_id or s.get('id') == subj_id:
+                                supervisor_name = s.get('supervisor_name') or '—'
+                                break
                     if subj_id is None or not all_slot_ids:
                         teacher_analytics_list.append({
                             'subject_name': subj.get('subject_name') or '—',

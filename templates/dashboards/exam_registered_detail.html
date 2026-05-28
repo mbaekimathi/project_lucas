@@ -3,11 +3,14 @@
 {% block title %}{{ exam_meta.exam_name }} — Exam Timetables | {{ school_settings.school_name or 'School' }}{% endblock %}
 
 {% block sidebar_content %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or role or session.get('role', ''))|lower %}
 <div class="space-y-2">
-    <div class="w-full sidebar-item sidebar-item-active cursor-default" aria-current="page">
+    <a href="{{ url_for('exam_timetable') }}"
+       class="w-full sidebar-item sidebar-item-active"
+       aria-current="page">
         <i class="fas fa-calendar-alt w-5"></i>
-        <span>Exam timetable &amp; analytics</span>
-    </div>
+        <span>Exam timetable management</span>
+    </a>
 </div>
 {% endblock %}
 
@@ -214,7 +217,8 @@
                             </thead>
                             <tbody>
                                 {% for slot in block.slots %}
-                                <tr class="border-t border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                <tr class="border-t border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50 {% if not exam_meta.is_locked and not erd_teacher_view %}cursor-pointer{% endif %}"
+                                    {% if not exam_meta.is_locked and not erd_teacher_view %}data-edit-exam-id="{{ slot.id }}"{% endif %}>
                                     <td class="p-3 text-gray-900 dark:text-white whitespace-nowrap font-medium">
                                         {% if slot.start_time or slot.end_time %}
                                             {{ (slot.start_time or '—')[:5] }} – {{ (slot.end_time or '—')[:5] }}
@@ -253,12 +257,14 @@
                                         {% else %}
                                         <button type="button"
                                            class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white mr-1 min-h-[34px]"
+                                           onclick="event.stopPropagation()"
                                            data-edit-exam-id="{{ slot.id }}">
                                             <i class="fas fa-edit"></i>
                                             <span>Edit</span>
                                         </button>
                                         <button type="button"
                                                 class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white min-h-[34px]"
+                                                onclick="event.stopPropagation()"
                                                 data-delete-exam-id="{{ slot.id }}">
                                             <i class="fas fa-trash"></i>
                                             Delete

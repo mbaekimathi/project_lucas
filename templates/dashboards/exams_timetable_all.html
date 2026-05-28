@@ -95,6 +95,100 @@
         pointer-events: none;
         transition: opacity 0.15s ease;
     }
+    .exam-tt-edit-hint {
+        border-left: 6px solid rgb(245 158 11);
+    }
+    .exam-tt-editable-row:hover td {
+        box-shadow: inset 0 0 0 2px rgba(245, 158, 11, 0.55);
+    }
+    .exam-tt-editable-row:active td {
+        box-shadow: inset 0 0 0 2px rgba(245, 158, 11, 0.85);
+    }
+    .exam-tt-edit-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.1rem 0.45rem;
+        border-radius: 9999px;
+        font-size: 0.65rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        background: rgba(245, 158, 11, 0.12);
+        color: rgb(146 64 14);
+        border: 1px solid rgba(245, 158, 11, 0.28);
+        white-space: nowrap;
+    }
+    .dark .exam-tt-edit-pill {
+        background: rgba(245, 158, 11, 0.18);
+        color: rgb(253 230 138);
+        border-color: rgba(245, 158, 11, 0.35);
+    }
+    .exam-tt-modal-card {
+        width: 100%;
+        max-width: 42rem;
+        max-height: calc(100svh - 2rem);
+    }
+    .exam-tt-modal-scroll {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        max-height: calc(100svh - 15rem);
+    }
+    .exam-tt-modal-enter {
+        animation: examTTModalIn 160ms ease-out;
+    }
+    @keyframes examTTModalIn {
+        from { transform: translateY(10px) scale(0.99); opacity: 0; }
+        to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    .exam-tt-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.55rem;
+        border-radius: 9999px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        border: 1px solid rgba(148, 163, 184, 0.55);
+        background: rgba(148, 163, 184, 0.12);
+        color: rgb(30 41 59);
+        white-space: nowrap;
+    }
+    .dark .exam-tt-chip {
+        border-color: rgba(148, 163, 184, 0.28);
+        background: rgba(148, 163, 184, 0.12);
+        color: rgb(226 232 240);
+    }
+    .exam-tt-chip--accent {
+        border-color: rgba(245, 158, 11, 0.55);
+        background: rgba(245, 158, 11, 0.12);
+        color: rgb(146 64 14);
+    }
+    .dark .exam-tt-chip--accent {
+        border-color: rgba(245, 158, 11, 0.35);
+        background: rgba(245, 158, 11, 0.18);
+        color: rgb(253 230 138);
+    }
+    .exam-tt-section-title {
+        font-size: 0.72rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgb(107 114 128);
+    }
+    .dark .exam-tt-section-title {
+        color: rgb(156 163 175);
+    }
+    .exam-tt-field {
+        outline: none;
+        transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .exam-tt-field:focus {
+        border-color: rgba(245, 158, 11, 0.85) !important;
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18);
+    }
+    .dark .exam-tt-field:focus {
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.22);
+    }
     @media print {
         .exam-tt-sheet { break-inside: avoid; page-break-inside: avoid; }
         .exam-tt-banner { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -188,6 +282,44 @@
         </div>
     </div>
 
+    {% if locked_exam_selected %}
+    <div class="mb-6 rounded-2xl border border-red-200 dark:border-red-900/40 bg-red-50/70 dark:bg-red-900/15 p-4 sm:p-5">
+        <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-sm">
+                <i class="fas fa-lock"></i>
+            </div>
+            <div class="flex-1">
+                <div class="text-sm font-extrabold text-red-900 dark:text-red-100">This exam is locked</div>
+                <div class="text-xs sm:text-sm text-red-900/80 dark:text-red-100/80 mt-1">
+                    You can view the timetable, but you can’t manage (edit) allocations until the exam is unlocked.
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if management_mode %}
+    <div class="mb-6 rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-900/15 p-4 sm:p-5 exam-tt-edit-hint">
+        <div class="flex flex-col sm:flex-row sm:items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
+                <i class="fas fa-hand-pointer"></i>
+            </div>
+            <div class="flex-1">
+                <div class="text-sm font-extrabold text-amber-900 dark:text-amber-100">Click any timetable row to edit</div>
+                <div class="text-xs sm:text-sm text-amber-900/80 dark:text-amber-100/80 mt-1">
+                    You can change the <span class="font-bold">subject</span> and <span class="font-bold">supervisor</span> (unlocked exams only). Locked slots will not open.
+                </div>
+            </div>
+            <div class="flex items-center gap-2 sm:justify-end">
+                <span class="exam-tt-edit-pill"><i class="fas fa-pen text-[11px]"></i> Editable</span>
+                <span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-100">
+                    <i class="fas fa-lock"></i> Locked
+                </span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div id="exam-tt-root" data-loading="0">
         {% if not timetable_by_date %}
         <div class="exam-tt-empty rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-10 text-center text-gray-600 dark:text-gray-400">
@@ -222,8 +354,29 @@
                         </thead>
                         <tbody>
                             {% for slot in day.slots %}
-                            <tr>
-                                <td class="exam-tt-period">{{ loop.index }}</td>
+                            <tr
+                                {% if management_mode and not slot.exam_is_locked %}
+                                class="exam-tt-editable-row cursor-pointer hover:bg-amber-50/50 dark:hover:bg-amber-900/10"
+                                data-exam-id="{{ slot.id }}"
+                                data-level-id="{{ slot.level_id }}"
+                                data-exam-date="{{ slot.exam_date }}"
+                                data-session-type="{{ slot.session_type }}"
+                                data-subject-id="{{ slot.subject_id or '' }}"
+                                data-supervisor-id="{{ slot.supervisor_id or '' }}"
+                                data-venue="{{ slot.venue or '' }}"
+                                onclick="window.__openExamTTEdit && window.__openExamTTEdit(this)"
+                                {% endif %}
+                            >
+                                <td class="exam-tt-period">
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span>{{ loop.index }}</span>
+                                        {% if management_mode and not slot.exam_is_locked %}
+                                        <i class="fas fa-pen text-[10px] text-amber-700 dark:text-amber-300" title="Click row to edit"></i>
+                                        {% elif management_mode and slot.exam_is_locked %}
+                                        <i class="fas fa-lock text-[10px] text-gray-500 dark:text-gray-300" title="Locked"></i>
+                                        {% endif %}
+                                    </div>
+                                </td>
                                 <td class="exam-tt-time text-gray-900 dark:text-gray-100">
                                     {% if slot.start_time or slot.end_time %}
                                     {{ slot.start_time or '—' }}–{{ slot.end_time or '—' }}
@@ -283,12 +436,335 @@
         </div>
         {% endif %}
     </div>
+
+    {% if management_mode %}
+    <div id="exam-tt-edit-modal" class="fixed inset-0 z-50 hidden" aria-hidden="true">
+        <div class="absolute inset-0 bg-black/40" onclick="window.__closeExamTTEdit && window.__closeExamTTEdit()"></div>
+        <div class="relative w-full px-4 py-6 sm:py-10 flex items-center justify-center min-h-[100svh]">
+            <div id="exam-tt-edit-card" class="exam-tt-modal-card rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5">
+                <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3 bg-gradient-to-r from-amber-50 via-white to-white dark:from-amber-900/10 dark:via-gray-900 dark:to-gray-900">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-sm">
+                                <i class="fas fa-pen"></i>
+                            </span>
+                            <div>
+                                <div class="text-base font-black tracking-tight text-gray-900 dark:text-gray-100">Edit exam timetable slot</div>
+                                <div id="exam-tt-edit-subtitle" class="text-xs text-gray-600 dark:text-gray-300 mt-0.5 font-semibold"></div>
+                            </div>
+                        </div>
+                        <div class="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
+                            Tip: press <span class="font-extrabold">Esc</span> to close.
+                        </div>
+                    </div>
+                    <button type="button" class="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-sm font-extrabold bg-white/90 dark:bg-gray-900/60 hover:bg-white dark:hover:bg-gray-900"
+                            onclick="window.__closeExamTTEdit && window.__closeExamTTEdit()">
+                        <span class="inline-flex items-center gap-2">
+                            <i class="fas fa-xmark"></i>
+                            <span class="hidden sm:inline">Close</span>
+                        </span>
+                    </button>
+                </div>
+
+                <div class="exam-tt-modal-scroll p-4 sm:p-5 space-y-4">
+                    <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/40 p-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="exam-tt-section-title mr-1">Slot details</span>
+                            <span id="exam-tt-chip-date" class="exam-tt-chip exam-tt-chip--accent"><i class="fas fa-calendar-day"></i> —</span>
+                            <span id="exam-tt-chip-session" class="exam-tt-chip"><i class="fas fa-clock"></i> —</span>
+                            <span id="exam-tt-chip-class" class="exam-tt-chip"><i class="fas fa-users"></i> —</span>
+                        </div>
+                    </div>
+
+                    <div class="exam-tt-section-title">Edit fields</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Subject</label>
+                            <div id="exam-tt-current-subject" class="mb-2 text-[12px] font-semibold text-gray-700 dark:text-gray-200"></div>
+                            <select id="exam-tt-edit-subject" class="exam-tt-field w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
+                                <option value="">Select subject</option>
+                                {% for s in subjects_for_edit %}
+                                <option value="{{ s.id }}">{{ s.subject_name }}{% if s.subject_code %} ({{ s.subject_code }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Pick the replacement subject from the list.</div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Supervisor</label>
+                            <select id="exam-tt-edit-supervisor" class="exam-tt-field w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
+                                <option value="">Select supervisor</option>
+                                {% for t in teachers_for_edit %}
+                                <option value="{{ t.id }}">{{ t.full_name }}{% if t.employee_id %} ({{ t.employee_id }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <div id="exam-tt-supervisor-loading" class="hidden mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                                Loading supervisor availability...
+                            </div>
+                            <div class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                                Supervisors are highlighted: <span class="font-extrabold text-emerald-700 dark:text-emerald-300">green = available</span>,
+                                <span class="font-extrabold text-rose-700 dark:text-rose-300">red = busy</span> (shows where they are supervising).
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Venue</label>
+                            <input id="exam-tt-edit-venue" type="text"
+                                   class="exam-tt-field w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm"
+                                   placeholder="E.g. HALL A or FORM 1A">
+                            <div class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Leave as default class name unless using a special room.</div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Session</label>
+                            <input id="exam-tt-edit-session" type="text" disabled
+                                   class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-3 py-2.5 text-sm font-extrabold tracking-wide">
+                        </div>
+                    </div>
+
+                    <div id="exam-tt-edit-error" class="hidden rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-3 text-sm"></div>
+                </div>
+
+                <div class="sticky bottom-0 px-4 sm:px-5 py-3 sm:py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 bg-gray-50/95 dark:bg-gray-900/70 backdrop-blur">
+                    <button type="button" class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 text-sm font-extrabold bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
+                            onclick="window.__closeExamTTEdit && window.__closeExamTTEdit()">
+                        Cancel
+                    </button>
+                    <button type="button" id="exam-tt-edit-save"
+                            class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-extrabold shadow-sm focus:outline-none focus:ring-4 focus:ring-amber-300/50 dark:focus:ring-amber-400/25">
+                        <i class="fas fa-check mr-2"></i> Save changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const modal = document.getElementById('exam-tt-edit-modal');
+            const card = document.getElementById('exam-tt-edit-card');
+            const subtitleEl = document.getElementById('exam-tt-edit-subtitle');
+            const currentSubjectEl = document.getElementById('exam-tt-current-subject');
+            const subjectEl = document.getElementById('exam-tt-edit-subject');
+            const supervisorEl = document.getElementById('exam-tt-edit-supervisor');
+            const venueEl = document.getElementById('exam-tt-edit-venue');
+            const sessionEl = document.getElementById('exam-tt-edit-session');
+            const saveBtn = document.getElementById('exam-tt-edit-save');
+            const errEl = document.getElementById('exam-tt-edit-error');
+            const chipDateEl = document.getElementById('exam-tt-chip-date');
+            const chipSessionEl = document.getElementById('exam-tt-chip-session');
+            const chipClassEl = document.getElementById('exam-tt-chip-class');
+            const supLoadingEl = document.getElementById('exam-tt-supervisor-loading');
+
+            const allSupervisorOptions = Array.from(supervisorEl.querySelectorAll('option'))
+                .filter((o) => o.value && o.value !== '')
+                .map((o) => ({ id: String(o.value), label: String(o.textContent || '').trim() }));
+
+            let current = null;
+
+            function showError(msg) {
+                errEl.textContent = msg || '';
+                if (msg) errEl.classList.remove('hidden');
+                else errEl.classList.add('hidden');
+            }
+
+            window.__openExamTTEdit = function (row) {
+                current = {
+                    exam_id: Number(row.getAttribute('data-exam-id') || 0),
+                    academic_level_id: Number(row.getAttribute('data-level-id') || 0),
+                    exam_date: String(row.getAttribute('data-exam-date') || ''),
+                    session_type: String(row.getAttribute('data-session-type') || ''),
+                    subject_id: String(row.getAttribute('data-subject-id') || ''),
+                    supervisor_id: String(row.getAttribute('data-supervisor-id') || ''),
+                    venue: String(row.getAttribute('data-venue') || ''),
+                };
+
+                subtitleEl.textContent = `${current.exam_date || '—'} · ${current.session_type || '—'}`;
+                if (chipDateEl) chipDateEl.innerHTML = `<i class="fas fa-calendar-day"></i> ${current.exam_date || '—'}`;
+                if (chipSessionEl) chipSessionEl.innerHTML = `<i class="fas fa-clock"></i> ${current.session_type || '—'}`;
+                if (chipClassEl) {
+                    const classCell = row.querySelector('td:nth-child(3)');
+                    const classText = classCell ? String(classCell.textContent || '').trim().replace(/\s+/g, ' ') : '';
+                    chipClassEl.innerHTML = `<i class="fas fa-users"></i> ${classText || '—'}`;
+                }
+
+                if (currentSubjectEl) {
+                    const subjCell = row.querySelector('td:nth-child(4)');
+                    const subjText = subjCell ? String(subjCell.textContent || '').trim().replace(/\s+/g, ' ') : '';
+                    currentSubjectEl.innerHTML = subjText
+                        ? `Currently: <span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 font-extrabold">${subjText}</span>`
+                        : '';
+                }
+
+                subjectEl.value = current.subject_id || '';
+                supervisorEl.value = current.supervisor_id || '';
+                venueEl.value = current.venue || '';
+                sessionEl.value = current.session_type || '';
+                showError('');
+
+                modal.classList.remove('hidden');
+                modal.setAttribute('aria-hidden', 'false');
+                if (card) {
+                    card.classList.remove('exam-tt-modal-enter');
+                    void card.offsetWidth; // restart animation
+                    card.classList.add('exam-tt-modal-enter');
+                }
+
+                // Load supervisor availability for this slot
+                (async function loadEligibleSupervisors() {
+                    if (!supLoadingEl) return;
+                    supLoadingEl.classList.remove('hidden');
+
+                    try {
+                        const resp = await fetch('/dashboard/employee/exam-evaluation/eligible-supervisors', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                exam_id: current.exam_id,
+                                exam_date: current.exam_date,
+                                session_type: current.session_type,
+                                academic_level_id: current.academic_level_id,
+                                subject_id: Number(subjectEl.value || current.subject_id || 0),
+                            }),
+                        });
+                        const data = await resp.json().catch(() => ({}));
+                        if (!resp.ok || !data.success) {
+                            throw new Error(data.message || 'Failed to load supervisors');
+                        }
+
+                        const eligibleIds = new Set((data.eligible_ids || []).map((x) => String(x)));
+                        const busyIds = new Set((data.busy_supervisor_ids || []).map((x) => String(x)));
+                        const conflictsById = data.conflicts_by_supervisor_id || {};
+
+                        // Rebuild select list with availability colors + conflict details.
+                        const currentVal = supervisorEl.value || '';
+                        supervisorEl.innerHTML = '<option value="">Select supervisor</option>';
+
+                        const available = allSupervisorOptions.filter((t) => eligibleIds.has(t.id));
+                        const busy = allSupervisorOptions.filter((t) => busyIds.has(t.id));
+                        const unknown = allSupervisorOptions.filter((t) => !eligibleIds.has(t.id) && !busyIds.has(t.id));
+
+                        function addOption(t, kind) {
+                            const opt = document.createElement('option');
+                            opt.value = t.id;
+
+                            if (kind === 'available') {
+                                opt.textContent = t.label + '  ✓ AVAILABLE';
+                                opt.style.backgroundColor = 'rgba(16, 185, 129, 0.18)';
+                            } else if (kind === 'busy') {
+                                const conflicts = conflictsById[String(t.id)] || [];
+                                let detail = 'BUSY';
+                                if (conflicts.length) {
+                                    const c = conflicts[0];
+                                    const when = `${c.start_time || ''}-${c.end_time || ''}`.trim();
+                                    detail = `BUSY: ${c.exam_name || 'Exam'}${when ? ` (${when})` : ''}`;
+                                }
+                                opt.textContent = t.label + '  ✕ ' + detail;
+                                opt.style.backgroundColor = 'rgba(244, 63, 94, 0.14)';
+                            } else {
+                                opt.textContent = t.label;
+                            }
+
+                            supervisorEl.appendChild(opt);
+                        }
+
+                        available.forEach((t) => addOption(t, 'available'));
+                        busy.forEach((t) => addOption(t, 'busy'));
+                        unknown.forEach((t) => addOption(t, 'unknown'));
+
+                        // Restore selection if still present
+                        if (currentVal) supervisorEl.value = currentVal;
+                        if (!supervisorEl.value && current && current.supervisor_id) supervisorEl.value = String(current.supervisor_id);
+
+                        supLoadingEl.classList.add('hidden');
+                    } catch (e) {
+                        supLoadingEl.classList.add('hidden');
+                        // non-blocking: keep the original uncolored list
+                        supervisorEl.innerHTML = '<option value="">Select supervisor</option>';
+                        allSupervisorOptions.forEach((t) => {
+                            const opt = document.createElement('option');
+                            opt.value = t.id;
+                            opt.textContent = t.label;
+                            supervisorEl.appendChild(opt);
+                        });
+                    }
+                })();
+            };
+
+            window.__closeExamTTEdit = function () {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+                current = null;
+                showError('');
+            };
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    if (!modal.classList.contains('hidden')) {
+                        window.__closeExamTTEdit();
+                    }
+                }
+            });
+
+            saveBtn.addEventListener('click', async function () {
+                if (!current) return;
+
+                const subject_id = Number(subjectEl.value || 0);
+                const supervisor_id = Number(supervisorEl.value || 0);
+                const venue = String(venueEl.value || '').trim();
+
+                if (!current.exam_id || !current.academic_level_id || !current.exam_date || !current.session_type) {
+                    showError('Missing slot metadata. Please refresh the page.');
+                    return;
+                }
+                if (!subject_id) {
+                    showError('Please select a subject.');
+                    return;
+                }
+                if (!supervisor_id) {
+                    showError('Please select a supervisor.');
+                    return;
+                }
+
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+                showError('');
+                try {
+                    const resp = await fetch('/dashboard/employee/exam-evaluation/update', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            exam_id: current.exam_id,
+                            academic_level_id: current.academic_level_id,
+                            subject_id: subject_id,
+                            supervisor_id: supervisor_id,
+                            exam_date: current.exam_date,
+                            session_type: current.session_type,
+                            venue: venue,
+                        })
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok || !data.success) {
+                        throw new Error(data.message || 'Failed to save changes');
+                    }
+                    window.location.reload();
+                } catch (e) {
+                    showError(String(e && e.message ? e.message : e));
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save changes';
+                }
+            });
+        })();
+    </script>
+    {% endif %}
 </div>
 <script type="application/json" id="exam-tt-bootstrap">{{ {'api_url': employee_dash_url('exam-timetable/api'), 'timetable_by_date': timetable_by_date, 'total_slots': total_slots, 'days_count': timetable_by_date|length, 'exams_for_filter': exams_for_filter}|tojson|safe }}</script>
 <script>
 (function () {
     const boot = JSON.parse(document.getElementById('exam-tt-bootstrap').textContent || '{}');
     const API_URL = boot.api_url || '';
+    const MANAGEMENT_MODE = {{ 'true' if management_mode else 'false' }};
 
     function escHtml(s) {
         if (s == null || s === undefined) return '';
@@ -353,8 +829,27 @@
         (day.slots || []).forEach(function (slot, i) {
             const stCls = statusBadgeClasses(slot.status);
             const yt = ((slot.year_name || '—') + ' · ' + (slot.term_name || '—'));
-            rows += '<tr>' +
-              '<td class="exam-tt-period">' + (i + 1) + '</td>' +
+            const isLocked = !!slot.exam_is_locked;
+            const canEdit = MANAGEMENT_MODE && !isLocked;
+            const trAttrs = canEdit
+                ? ' class="exam-tt-editable-row cursor-pointer hover:bg-amber-50/50 dark:hover:bg-amber-900/10"' +
+                  ' data-exam-id="' + escAttr(String(slot.id || '')) + '"' +
+                  ' data-level-id="' + escAttr(String(slot.level_id || '')) + '"' +
+                  ' data-exam-date="' + escAttr(String(slot.exam_date || '')) + '"' +
+                  ' data-session-type="' + escAttr(String(slot.session_type || '')) + '"' +
+                  ' data-subject-id="' + escAttr(String(slot.subject_id || '')) + '"' +
+                  ' data-supervisor-id="' + escAttr(String(slot.supervisor_id || '')) + '"' +
+                  ' data-venue="' + escAttr(String(slot.venue || '')) + '"' +
+                  ' onclick="window.__openExamTTEdit && window.__openExamTTEdit(this)"'
+                : '';
+            const periodIcon = MANAGEMENT_MODE
+                ? (canEdit
+                    ? '<i class="fas fa-pen text-[10px] text-amber-700 dark:text-amber-300" title="Click row to edit"></i>'
+                    : '<i class="fas fa-lock text-[10px] text-gray-500 dark:text-gray-300" title="Locked"></i>')
+                : '';
+
+            rows += '<tr' + trAttrs + '>' +
+              '<td class="exam-tt-period"><div class="flex items-center justify-center gap-1"><span>' + (i + 1) + '</span>' + periodIcon + '</div></td>' +
               '<td class="exam-tt-time text-gray-900 dark:text-gray-100">' + slotTimeCell(slot) + '</td>' +
               '<td class="text-gray-900 dark:text-gray-100"><span class="font-semibold">' + escHtml(slot.level_name || '—') + '</span>' +
                 (slot.level_category ? '<br><span class="exam-tt-muted">' + escHtml(slot.level_category) + '</span>' : '') + '</td>' +
