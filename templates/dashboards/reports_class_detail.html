@@ -223,14 +223,14 @@
                                 {% if s.balance is none %}—{% else %}KES {{ "{:,.2f}".format(s.balance|float) }}{% endif %}
                             </td>
                             <td class="text-center py-3 px-3">
-                                <a href="{{ url_for('generate_invoice', student_id=s.student_id) }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-600 text-brand-primary hover:bg-gray-50 dark:hover:bg-gray-700/50" title="Open invoice">
-                                    <i class="fas fa-file-invoice"></i>
+                                <a href="{{ employee_dash_url('student-fees/generate-invoice/' ~ s.student_id) }}?format=pdf&amp;download=true" download class="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-600 text-brand-primary hover:bg-gray-50 dark:hover:bg-gray-700/50" title="Download PDF invoice">
+                                    <i class="fas fa-file-pdf"></i>
                                     <span class="sr-only">Invoice</span>
                                 </a>
                             </td>
                             <td class="text-center py-3 px-3">
                                 {% if s.latest_payment_id %}
-                                <a href="{{ url_for('download_payment_receipt', student_id=s.student_id, payment_id=s.latest_payment_id) }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-600 text-green-700 dark:text-green-400 hover:bg-gray-50 dark:hover:bg-gray-700/50" title="Latest receipt{% if s.payment_count > 1 %} ({{ s.payment_count }} payments total){% endif %}">
+                                <a href="{{ employee_dash_url('student-fees/download-receipt/' ~ s.student_id ~ '/' ~ s.latest_payment_id) }}?format=pdf&amp;download=true" download class="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-600 text-green-700 dark:text-green-400 hover:bg-gray-50 dark:hover:bg-gray-700/50" title="Download PDF receipt{% if s.payment_count > 1 %} ({{ s.payment_count }} payments total){% endif %}">
                                     <i class="fas fa-receipt"></i>
                                     <span class="sr-only">Receipt</span>
                                 </a>

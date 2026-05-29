@@ -146,14 +146,16 @@
           : '';
     var inv =
       cfg.invoiceBase +
-      encodeURIComponent(s.student_id);
+      encodeURIComponent(s.student_id) +
+      '?format=pdf&download=true';
     var rec = '';
     if (s.latest_payment_id) {
       rec =
         cfg.receiptBase +
         encodeURIComponent(s.student_id) +
         '/' +
-        encodeURIComponent(s.latest_payment_id);
+        encodeURIComponent(s.latest_payment_id) +
+        '?format=pdf&download=true';
     }
     return (
       '<tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 fo-student-row" data-fo-row data-idx="' +
@@ -190,12 +192,12 @@
       '</td>' +
       '<td class="text-center py-3 px-3"><a href="' +
       esc(inv) +
-      '" target="_blank" rel="noopener" class="inline-flex w-10 h-10 items-center justify-center rounded-lg border text-brand-primary" title="Invoice"><i class="fas fa-file-invoice"></i></a></td>' +
+      '" download class="inline-flex w-10 h-10 items-center justify-center rounded-lg border text-brand-primary" title="Download PDF invoice"><i class="fas fa-file-pdf"></i></a></td>' +
       '<td class="text-center py-3 px-3">' +
       (rec
         ? '<a href="' +
           esc(rec) +
-          '" target="_blank" rel="noopener" class="inline-flex w-10 h-10 items-center justify-center rounded-lg border text-green-700" title="Receipt"><i class="fas fa-receipt"></i></a>'
+          '" download class="inline-flex w-10 h-10 items-center justify-center rounded-lg border text-green-700" title="Download PDF receipt"><i class="fas fa-receipt"></i></a>'
         : '<span class="inline-flex w-10 h-10 items-center justify-center rounded-lg border border-dashed text-gray-300" title="No payments"><i class="fas fa-receipt"></i></span>') +
       '</td></tr>'
     );

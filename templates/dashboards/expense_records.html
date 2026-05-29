@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}Expenses Records - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set accountant_nav_scope = 'finance' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+<style>
+.accounts-filter { background: #f1f5f9; color: #64748b; }
+.accounts-filter:hover { background: #e2e8f0; color: #334155; }
+.accounts-filter.is-active { background: var(--acc-teal-dark, #0f766e); color: #fff; box-shadow: 0 2px 8px rgba(15,118,110,0.35); }
+.dark .accounts-filter { background: #1e293b; color: #94a3b8; }
+.dark .accounts-filter.is-active { background: #14b8a6; color: #0f172a; }
+.accounts-badge-pending { background: #fef3c7; color: #92400e; }
+.accounts-badge-partial { background: #ffedd5; color: #9a3412; }
+.accounts-badge-paid { background: #d1fae5; color: #065f46; }
+.dark .accounts-badge-pending { background: rgba(251,191,36,0.15); color: #fcd34d; }
+.dark .accounts-badge-partial { background: rgba(251,146,60,0.15); color: #fdba74; }
+.dark .accounts-badge-paid { background: rgba(52,211,153,0.15); color: #6ee7b7; }
+.accounts-panel { background: #fff; border: 1px solid #e2e8f0; }
+.dark .accounts-panel { background: #0f172a; border-color: #334155; }
+.accounts-panel-head { border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+.dark .accounts-panel-head { border-color: #334155; background: #1e293b; }
+</style>
+<div class="accounts-page min-h-screen bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14">
+    <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+        <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                    <i class="fas fa-landmark opacity-80"></i>
+                    <span>Accounts · Finance</span>
+                </div>
+                <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">
+                    {% if phone_filter %}Supplier supplies{% else %}Expenses records{% endif %}
+                </h1>
+                <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
+                    {% if phone_filter %}
+                    All stock-in supplies for
+                    <strong class="text-white">{{ supplier_label or 'this supplier' }}</strong>
+                    · {{ phone_filter_display or phone_filter }}
+                    · sorted pending → partial → paid.
+                    {% else %}
+                    All school expenses — stock-in payables and off-ledger disbursements — with payment status.
+                    {% endif %}
+                </p>
+            </div>
+            <div class="flex flex-wrap gap-2 shrink-0">
+                {% if phone_filter %}
+                <a href="{{ employee_dash_url('payments-invoices') }}"
+                   class="accounts-btn-ghost inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
+                    <i class="fas fa-arrow-left"></i> Back to suppliers
+                </a>
+                {% endif %}
+                <a href="{{ employee_dash_url('payments-invoices') }}"
+                   class="accounts-btn-ghost inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
+                    <i class="fas fa-plus-circle"></i> Register payment
+                </a>
+            </div>
+        </div>
+        <div class="px-4 sm:px-6 pb-4 border-t border-white/10 bg-black/15">
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-blue-200/90">Records</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">{{ expense_summary.record_count|default(record_count) }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-sky-200/90">Total invoiced</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">KES {{ expense_summary.total_invoiced_display|default('0.00') }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-emerald-200/90">Total paid</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">KES {{ expense_summary.total_paid_display|default(total_display) }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-amber-200/90">Outstanding</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">KES {{ expense_summary.total_outstanding_display|default('0.00') }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-orange-200/90">Pending</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">{{ expense_summary.pending_count|default(0) }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-teal-200/90">Paid</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">{{ expense_summary.paid_count|default(0) }}</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="accounts-panel rounded-2xl overflow-hidden shadow-lg ring-1 ring-black/5">
+        <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex items-center gap-3 min-w-0">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+                    <i class="fas fa-receipt text-sm"></i>
+                </span>
+                <div>
+                    <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">
+                        {% if phone_filter %}Supplier supply history{% else %}All expense records{% endif %}
+                    </h2>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                        {% if phone_filter %}Stock-in deliveries for this phone number{% else %}Stock-in invoices and off-ledger payments{% endif %}
+                    </p>
+                </div>
+            </div>
+            <nav class="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800/80" aria-label="Filter expense status">
+                {% set filters = [
+                    ('all', 'All'),
+                    ('outstanding', 'Outstanding'),
+                    ('pending', 'Pending'),
+                    ('partial', 'Partial'),
+                    ('paid', 'Paid'),
+                ] %}
+                {% for key, label in filters %}
+                <a href="{{ employee_dash_url('expenses/expense-records') }}?status={{ key }}{% if phone_filter %}&amp;phone={{ phone_filter|urlencode }}{% endif %}"
+                   class="accounts-filter rounded-md px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition
+                          {% if status_filter|default('all') == key %}is-active{% endif %}">
+                    {{ label }}
+                </a>
+                {% endfor %}
+            </nav>
+        </div>
+        <div class="overflow-x-auto">
+            {% if expense_records %}
+            <table class="finance-table min-w-[1100px] w-full border-collapse text-left text-sm">
+                <thead>
+                    <tr class="border-b border-slate-200 dark:border-slate-700">
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Reference</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Date</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Type</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Description</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Total</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Paid</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Balance</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Status</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Paid to</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Recorded by</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                    {% for row in expense_records %}
+                    <tr>
+                        <td class="px-4 py-2.5 font-mono text-xs font-semibold whitespace-nowrap
+                                   {% if row.source == 'misc' %}text-violet-700 dark:text-violet-400{% else %}text-teal-700 dark:text-teal-400{% endif %}">
+                            {{ row.reference_number }}
+                        </td>
+                        <td class="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">{{ row.created_at_display }}</td>
+                        <td class="px-4 py-2.5 whitespace-nowrap">
+                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full
+                                         {% if row.source == 'misc' %}bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300{% else %}bg-teal-100 text-teal-800 dark:bg-teal-950/50 dark:text-teal-300{% endif %}">
+                                {{ row.source_label }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-2.5 text-xs text-slate-700 dark:text-slate-300 max-w-[14rem]">
+                            <span class="block uppercase truncate">{{ row.description }}</span>
+                            {% if row.detail %}
+                            <span class="block text-[10px] text-slate-400 font-mono truncate">{{ row.detail }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-slate-900 dark:text-slate-100">KES {{ row.total_amount_display }}</td>
+                        <td class="px-4 py-2.5 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">KES {{ row.amount_paid_display }}</td>
+                        <td class="px-4 py-2.5 text-right tabular-nums text-sm font-semibold
+                                   {% if row.balance_due > 0 %}text-amber-700 dark:text-amber-400{% else %}text-slate-500 dark:text-slate-400{% endif %}">
+                            KES {{ row.balance_due_display }}
+                        </td>
+                        <td class="px-4 py-2.5 whitespace-nowrap">
+                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full
+                                         {% if row.payment_status == 'pending' %}accounts-badge-pending
+                                         {% elif row.payment_status == 'partial' %}accounts-badge-partial
+                                         {% else %}accounts-badge-paid{% endif %}">
+                                {{ row.payment_status_label }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-2.5 text-xs max-w-[10rem]">
+                            <span class="block truncate font-medium text-slate-700 dark:text-slate-300 uppercase">{{ row.paid_to_company_name }}</span>
+                            {% if row.paid_to_company_phone %}
+                            <span class="block text-[10px] tabular-nums text-slate-400">{{ row.paid_to_company_phone }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2.5 text-xs text-slate-500">{{ row.recorded_by_name }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="accounts-empty px-4 py-14 text-center">
+                <span class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300 mb-3">
+                    <i class="fas fa-receipt text-lg"></i>
+                </span>
+                <p class="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {% if phone_filter %}No supplies found for this supplier{% else %}No expense records in this view{% endif %}
+                </p>
+                <p class="mt-1 text-xs text-slate-500">
+                    {% if phone_filter and status_filter|default('all') != 'all' %}
+                    Try another status filter or
+                    <a href="{{ employee_dash_url('expenses/expense-records') }}?phone={{ phone_filter|urlencode }}" class="text-teal-700 dark:text-teal-400 font-semibold hover:underline">show all statuses</a>.
+                    {% elif phone_filter %}
+                    This supplier has no recorded stock-in deliveries yet.
+                    {% elif status_filter|default('all') != 'all' %}
+                    Try another status filter or register expenses from
+                    <a href="{{ employee_dash_url('payments-invoices') }}" class="text-teal-700 dark:text-teal-400 font-semibold hover:underline">Payments / invoices</a>.
+                    {% else %}
+                    Register expenses from
+                    <a href="{{ employee_dash_url('payments-invoices') }}" class="text-teal-700 dark:text-teal-400 font-semibold hover:underline">Payments / invoices</a>.
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+</div>
+</div>
+{% endblock %}

@@ -15,6 +15,20 @@ window.feeStructureCreateModal = function() {
             return false;
         },
         academicLevelId: '', // kept for backward compatibility in existing UI logic
+        financeAccountId: '',
+        financeAccounts: [
+            {% if finance_accounts_picker %}
+            {% for account in finance_accounts_picker %}
+            {
+                id: {{ account.id }},
+                account_name: {{ account.account_name|tojson }},
+                account_category: {{ account.account_category|tojson }},
+                level_count: {{ account.level_count|default(0) }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+            {% endif %}
+        ],
+        accountLevelsLoading: false,
         selectedAcademicLevels: [],
         levelSelectionMode: 'multiple',
         academicYearId: '',
@@ -32,20 +46,10 @@ window.feeStructureCreateModal = function() {
         existingFeeItems: [],
         showExistingItems: false,
         academicLevelsWithStructure: [], // Array of academic level IDs that have fee structures for selected term
-        academicLevels: [
-            {% if academic_levels %}
-            {% for level in academic_levels %}
-            {
-                id: {{ level.id }},
-                level_name: '{{ level.level_name|replace("'", "\\'")|replace('"', '\\"') }}',
-                level_category: '{{ level.level_category|replace("'", "\\'")|replace('"', '\\"') }}'
-            }{% if not loop.last %},{% endif %}
-            {% endfor %}
-            {% endif %}
-        ],
-        levelsByCategoryStandalone: {{ levels_by_category|default([])|tojson }},
-        levelCombinations: {{ level_combinations_display|default([])|tojson }},
-        memberLevelIds: {{ member_level_ids|default([])|tojson }},
+        academicLevels: [],
+        levelsByCategoryStandalone: [],
+        levelCombinations: [],
+        memberLevelIds: [],
         combinedLevelsLoading: false,
         combinedLevelsError: '',
         academicYears: [
@@ -85,29 +89,11 @@ window.feeStructureCreateModal = function() {
                 parseInt(t.academic_year_id) === yearId && 
                 (!t.is_locked || t.is_locked === false)
             );
-            console.log('Filtering terms for year ID:', yearId, 'Found:', filtered.length, 'unlocked terms');
             return filtered;
         },
         formatTermDisplay(term) {
             if (!term) return '';
-            let display = term.term_name;
-            if (term.is_current) {
-                display += ' (Current)';
-            }
-            if (term.start_date && term.end_date) {
-                // Format dates: convert YYYY-MM-DD to a readable format
-                try {
-                    const startDate = new Date(term.start_date);
-                    const endDate = new Date(term.end_date);
-                    const startFormatted = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                    const endFormatted = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                    display += ` - ${startFormatted} to ${endFormatted}`;
-                } catch (e) {
-                    // Fallback to original format if date parsing fails
-                    display += ` - ${term.start_date} to ${term.end_date}`;
-                }
-            }
-            return display;
+            return term.term_name + (term.is_current ? ' · Current' : '');
         },
         get selectedAcademicLevelIds() {
             if (this.levelSelectionMode === 'all') {
@@ -158,7 +144,11 @@ window.feeStructureCreateModal = function() {
             return parts.length ? parts.join(', ') : '';
         },
         get levelsPickerReady() {
-            return !!(this.academicYearId && this.termId);
+            return !!(this.financeAccountId && this.academicYearId && this.termId);
+        },
+        get financeAccountLevelsUrl() {
+            if (!this.financeAccountId) return '';
+            return {{ (employee_dash_url('student-fees/finance-account') ~ '/__ID__/academic-levels')|tojson }}.replace('__ID__', String(this.financeAccountId));
         },
         get selectionBadgeText() {
             if (this.levelSelectionMode === 'all') {
@@ -181,18 +171,78 @@ window.feeStructureCreateModal = function() {
             if (this.levelSelectionMode === 'all') return true;
             return this.selectedAcademicLevels.includes(String(levelId));
         },
+        async loadLevelsForFinanceAccount() {
+            if (!this.financeAccountId) {
+                this.academicLevels = [];
+                this.levelCombinations = [];
+                this.levelsByCategoryStandalone = [];
+                this.memberLevelIds = [];
+                this.selectedAcademicLevels = [];
+                this.academicLevelId = '';
+                return;
+            }
+            this.accountLevelsLoading = true;
+            this.combinedLevelsError = '';
+            try {
+                const response = await fetch(this.financeAccountLevelsUrl);
+                const data = await response.json();
+                if (data.success) {
+                    this.academicLevels = (data.academic_levels || []).map(l => ({
+                        id: l.id,
+                        level_name: l.level_name || '',
+                        level_category: l.level_category || '',
+                    }));
+                    this.levelCombinations = data.level_combinations || [];
+                    this.levelsByCategoryStandalone = data.levels_by_category || [];
+                    this.memberLevelIds = data.member_level_ids || [];
+                } else {
+                    this.combinedLevelsError = data.message || 'Could not load levels for this account';
+                    this.academicLevels = [];
+                    this.levelCombinations = [];
+                    this.levelsByCategoryStandalone = [];
+                    this.memberLevelIds = [];
+                }
+            } catch (error) {
+                console.error('Error loading finance account levels:', error);
+                this.combinedLevelsError = 'Could not load levels for this finance account';
+                this.academicLevels = [];
+                this.levelCombinations = [];
+                this.levelsByCategoryStandalone = [];
+                this.memberLevelIds = [];
+            } finally {
+                this.accountLevelsLoading = false;
+            }
+        },
+        async onFinanceAccountChange() {
+            this.selectedAcademicLevels = [];
+            this.academicLevelId = '';
+            this.levelSelectionMode = 'multiple';
+            this.academicLevelsWithStructure = [];
+            this.feeNameAutoGenerated = true;
+            await this.loadLevelsForFinanceAccount();
+            this.updateFeeName();
+            this.checkFeeStructuresForTerm();
+            this.checkFeeStructureExists();
+        },
         async fetchCombinedAcademicLevels() {
+            if (!this.financeAccountId) {
+                this.combinedLevelsError = 'Select a finance account first.';
+                return;
+            }
             this.combinedLevelsLoading = true;
             this.combinedLevelsError = '';
             try {
-                const response = await fetch(
-                    {{ employee_dash_url('student-fees/combined-academic-levels')|tojson }}
-                );
+                const response = await fetch(this.financeAccountLevelsUrl);
                 const data = await response.json();
                 if (data.success) {
                     this.levelCombinations = data.level_combinations || [];
                     this.levelsByCategoryStandalone = data.levels_by_category || [];
                     this.memberLevelIds = data.member_level_ids || [];
+                    this.academicLevels = (data.academic_levels || []).map(l => ({
+                        id: l.id,
+                        level_name: l.level_name || '',
+                        level_category: l.level_category || '',
+                    }));
                 } else {
                     this.combinedLevelsError = data.message || 'Could not load combined academic levels';
                     this.levelCombinations = [];
@@ -454,9 +504,15 @@ window.feeStructureCreateModal = function() {
                 return;
             }
             
+            if (!this.financeAccountId) {
+                this.error = 'Please select the finance account fees will be paid into.';
+                this.loading = false;
+                return;
+            }
+
             const selectedIds = this.selectedAcademicLevelIds;
             if (selectedIds.length === 0) {
-                this.error = 'Please select at least one academic level.';
+                this.error = 'Please select at least one academic level linked to this finance account.';
                 this.loading = false;
                 return;
             }
@@ -480,6 +536,7 @@ window.feeStructureCreateModal = function() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    finance_account_id: parseInt(this.financeAccountId, 10),
                     academic_level_ids: selectedIds,
                     academic_year_id: this.academicYearId,
                     term_id: this.termId,
@@ -515,15 +572,24 @@ window.feeStructureCreateModal = function() {
 };
 </script>
 <div x-data="window.feeStructureCreateModal()"
+     class="fsm-root fixed inset-0 z-50"
+     x-show="$store.feeStructure.isOpen"
+     x-cloak
+     style="display: none;"
+     @keydown.escape.window="$store.feeStructure.close()"
      x-init="
-        console.log('Modal initialized. Terms count:', terms.length);
-        console.log('Terms data:', terms);
         $watch('$store.feeStructure.isOpen', (value) => {
             if (value) {
                 calculateTotal();
-                console.log('Modal opened. Terms:', terms);
             } else {
                 // Reset form when modal closes
+                financeAccountId = '';
+                academicLevels = [];
+                levelsByCategoryStandalone = [];
+                levelCombinations = [];
+                memberLevelIds = [];
+                accountLevelsLoading = false;
+                combinedLevelsError = '';
                 academicLevelId = '';
                 selectedAcademicLevels = [];
                 levelSelectionMode = 'multiple';
@@ -531,7 +597,7 @@ window.feeStructureCreateModal = function() {
                 termId = '';
                 feeName = '';
                 feeNameAutoGenerated = false;
-                category = 'both';
+                category = '';
                 feeItems = [];
                 existingFeeItems = [];
                 showExistingItems = false;
@@ -542,483 +608,10 @@ window.feeStructureCreateModal = function() {
                 conflictingAcademicLevels = [];
             }
         });
-        $watch('academicYearId', (value) => {
-            console.log('Academic Year changed to:', value);
-            console.log('Filtered terms:', filteredTerms);
-            termId = ''; // Reset term selection when year changes
-        });
+        $watch('academicYearId', () => { termId = ''; });
         $watch('levelSelectionMode', () => syncSelectionForMode());
-     "
-     x-show="$store.feeStructure.isOpen"
-     x-cloak
-     @keydown.escape.window="$store.feeStructure.close()"
-     class="fixed inset-0 z-50"
-     style="display: none;"
-     x-transition:enter="ease-out duration-300"
-     x-transition:enter-start="opacity-0"
-     x-transition:enter-end="opacity-100"
-     x-transition:leave="ease-in duration-200"
-     x-transition:leave-start="opacity-100"
-     x-transition:leave-end="opacity-0">
-    <!-- Backdrop -->
-    <div class="sf-modal-backdrop sf-modal-backdrop--solid fixed inset-0 transition-opacity" 
-         @click="$store.feeStructure.close()"
-         x-transition:enter="ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"></div>
-    
-    <!-- Modal -->
-    <div class="fixed inset-0 flex items-center justify-center p-3 sm:p-4 pointer-events-none"
-         x-transition:enter="ease-out duration-300"
-         x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-         x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-         x-transition:leave="ease-in duration-200"
-         x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-         x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95">
-        <div class="sf-modal-panel sf-modal-panel--create relative w-full max-w-4xl max-h-[95vh] flex flex-col pointer-events-auto"
-             @click.stop>
-            <!-- Header -->
-            <div class="sf-modal-head sf-modal-head--create sticky top-0 z-10 shrink-0">
-                <div class="flex items-start gap-3 flex-1 min-w-0">
-                    <span class="sf-modal-head-icon" aria-hidden="true">
-                        <i class="fas fa-money-bill-wave"></i>
-                    </span>
-                    <div class="min-w-0">
-                        <h2 class="truncate">Create fee structure</h2>
-                        <p class="sf-modal-head-sub">Set period, levels, and line items for a new fee structure.</p>
-                    </div>
-                </div>
-                <button @click="$store.feeStructure.close()" 
-                        class="sf-modal-close flex-shrink-0"
-                        aria-label="Close">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            
-            <!-- Content -->
-            <form @submit.prevent="submitCreateForm()" class="sf-modal-form-create flex flex-col flex-1 min-h-0">
-            <div class="sf-modal-body sf-modal-body--create flex-1 overflow-y-auto">
-                
-                <!-- Error/Success Messages -->
-                <div x-show="error" x-cloak class="sf-alert-error sf-alert-error--modal">
-                    <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
-                    <span x-text="error"></span>
-                </div>
-                <div x-show="success" x-cloak class="sf-alert-success sf-alert-success--modal">
-                    <i class="fas fa-check-circle" aria-hidden="true"></i>
-                    <span x-text="success"></span>
-                </div>
-
-                <!-- Step 1: Period & scope -->
-                <section class="sf-form-section sf-form-section--setup" aria-labelledby="sf-section-setup-title">
-                    <div class="sf-form-section__header">
-                        <div class="sf-form-section__title-wrap">
-                            <span class="sf-form-section__icon sf-form-section__icon--setup" aria-hidden="true">
-                                <i class="fas fa-calendar-alt"></i>
-                            </span>
-                            <div class="min-w-0">
-                                <h3 id="sf-section-setup-title" class="sf-form-section__title">
-                                    Period &amp; scope <span class="sf-required">*</span>
-                                </h3>
-                                <p class="sf-form-section__hint">Choose the academic year, term, category, and how levels are selected.</p>
-                            </div>
-                        </div>
-                        <span class="sf-step-badge">1</span>
-                    </div>
-                    <div class="sf-form-section__body">
-                        <div class="sf-setup-grid">
-                    <!-- Academic Year -->
-                    <div class="sf-field">
-                        <label class="sf-field-label-inline">
-                            <i class="fas fa-calendar text-teal-600/80 dark:text-teal-400/80" aria-hidden="true"></i>
-                            Academic year <span class="sf-required">*</span>
-                        </label>
-                        <select x-model="academicYearId" required
-                                @change="termId = ''; category = ''; selectedAcademicLevels = []; levelSelectionMode = 'multiple'; feeNameAutoGenerated = true; updateFeeName(); academicLevelsWithStructure = []; checkFeeStructureExists()">
-                            <option value="">Select Year</option>
-                            {% for year in academic_years %}
-                            <option value="{{ year.id }}">{{ year.year_name }}{% if year.is_current %} (Current){% endif %}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    
-                    <!-- Term -->
-                    <div class="sf-field">
-                        <label class="sf-field-label-inline">
-                            <i class="fas fa-clock text-teal-600/80 dark:text-teal-400/80" aria-hidden="true"></i>
-                            Term <span class="sf-required">*</span>
-                        </label>
-                        <select x-model="termId" required
-                                :disabled="!academicYearId"
-                                @change="category = ''; selectedAcademicLevels = []; levelSelectionMode = 'multiple'; feeNameAutoGenerated = true; updateFeeName(); checkFeeStructuresForTerm(); checkFeeStructureExists()">
-                            <option value="">Select Term</option>
-                            <template x-for="term in filteredTerms" :key="term.id">
-                                <option :value="term.id" x-text="formatTermDisplay(term)"></option>
-                            </template>
-                        </select>
-                    </div>
-                    
-                    <!-- Category -->
-                    <div class="sf-field">
-                        <label class="sf-field-label-inline">
-                            <i class="fas fa-tags text-teal-600/80 dark:text-teal-400/80" aria-hidden="true"></i>
-                            Category <span class="sf-required">*</span>
-                        </label>
-                        <select x-model="category" required
-                                :disabled="!academicYearId || !termId"
-                                @change="selectedAcademicLevels = []; levelSelectionMode = 'multiple'; feeNameAutoGenerated = true; updateFeeName(); checkFeeStructuresForTerm(); checkFeeStructureExists()">
-                            <option value="">Select Category</option>
-                            <option value="both">Both</option>
-                            <option value="self sponsored">Self Sponsored</option>
-                            <option value="sponsored">Sponsored</option>
-                        </select>
-                    </div>
-                    
-                    <!-- Academic Level Selection Mode -->
-                    <div class="sf-field">
-                        <label class="sf-field-label-inline">
-                            <i class="fas fa-sliders-h text-teal-600/80 dark:text-teal-400/80" aria-hidden="true"></i>
-                            Level selection <span class="sf-required">*</span>
-                        </label>
-                        <select x-model="levelSelectionMode"
-                                :disabled="!academicYearId || !termId"
-                                @change="onLevelSelectionModeChange()">
-                            <option value="single">One Academic Level</option>
-                            <option value="multiple">Multiple Academic Levels</option>
-                            <option value="combined">Combined Academic Levels</option>
-                            <option value="all">All Academic Levels</option>
-                        </select>
-                    </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Academic Levels -->
-                <section class="sf-form-section sf-form-section--levels" aria-labelledby="sf-section-levels-title">
-                    <div class="sf-form-section__header">
-                        <div class="sf-form-section__title-wrap">
-                            <span class="sf-form-section__icon sf-form-section__icon--levels" aria-hidden="true">
-                                <i class="fas fa-layer-group"></i>
-                            </span>
-                            <div class="min-w-0">
-                                <h3 id="sf-section-levels-title" class="sf-form-section__title">
-                                    Academic levels <span class="sf-required">*</span>
-                                </h3>
-                                <p class="sf-form-section__hint" x-show="levelSelectionMode === 'single'">
-                                    Choose one level from the list below.
-                                </p>
-                                <p class="sf-form-section__hint" x-show="levelSelectionMode === 'multiple'">
-                                    Select every level this fee structure should apply to.
-                                </p>
-                                <p class="sf-form-section__hint" x-show="levelSelectionMode === 'combined'">
-                                    Pick combined groups or standalone levels.
-                                    <a href="{{ employee_dash_url('combined-academic-levels') }}" class="sf-link" target="_blank" rel="noopener">Manage combinations</a>
-                                </p>
-                                <p class="sf-form-section__hint" x-show="levelSelectionMode === 'all'">
-                                    Every active level will receive this fee structure.
-                                </p>
-                            </div>
-                        </div>
-                        <div class="sf-form-section__header-badges">
-                            <span class="sf-step-badge">2</span>
-                            <span class="sf-selection-badge"
-                                  :class="selectedAcademicLevels.length || levelSelectionMode === 'all' ? 'is-active' : ''"
-                                  x-text="selectionBadgeText"></span>
-                        </div>
-                    </div>
-                    <div class="sf-form-section__body">
-                        <div x-show="!levelsPickerReady" class="sf-section-placeholder">
-                            <i class="fas fa-hand-pointer" aria-hidden="true"></i>
-                            <p>Select <strong>academic year</strong> and <strong>term</strong> above to choose levels.</p>
-                        </div>
-                        <div x-show="levelsPickerReady" x-cloak class="space-y-3">
-                            <p x-show="!category" class="sf-level-category-note">
-                                <i class="fas fa-info-circle" aria-hidden="true"></i>
-                                Select a <strong>category</strong> in step 1 to check for existing fee structures on each level.
-                            </p>
-                            <div class="sf-level-toolbar" x-show="levelSelectionMode === 'combined'">
-                                <button type="button"
-                                        @click="toggleAllCombinedLevels()"
-                                        :disabled="combinedLevelsLoading"
-                                        class="sf-btn-outline sf-btn-sm">
-                                    <i class="fas fa-check-double text-[10px]" aria-hidden="true"></i>
-                                    <span x-text="selectedAcademicLevels.length > 0 ? 'Clear all' : 'Select all'"></span>
-                                </button>
-                            </div>
-                            <div class="sf-level-toolbar" x-show="levelSelectionMode === 'multiple'">
-                                <button type="button"
-                                        @click="toggleAllAcademicLevels()"
-                                        class="sf-btn-outline sf-btn-sm">
-                                    <i class="fas fa-check-double text-[10px]" aria-hidden="true"></i>
-                                    <span x-text="selectedAcademicLevels.length === academicLevels.length ? 'Clear all' : 'Select all levels'"></span>
-                                </button>
-                            </div>
-                            <div class="sf-level-picker-grouped"
-                                 :class="levelSelectionMode === 'all' ? 'sf-level-picker--all-selected' : ''">
-                        <!-- Combined: fetch and display groups -->
-                        <template x-if="showCombinedGroupsSection">
-                            <div>
-                                <div x-show="combinedLevelsLoading" class="text-xs text-gray-500 dark:text-gray-400 px-2 py-3 text-center">
-                                    <i class="fas fa-spinner fa-spin mr-1"></i> Loading combined academic levels…
-                                </div>
-                                <div x-show="combinedLevelsError" x-cloak class="sf-alert-error text-xs mb-2">
-                                    <i class="fas fa-exclamation-circle mr-1"></i>
-                                    <span x-text="combinedLevelsError"></span>
-                                </div>
-                                <template x-if="!combinedLevelsLoading && levelCombinations.length > 0">
-                                    <div class="sf-level-category-block sf-level-combined-block">
-                                        <div class="sf-level-category-head">
-                                            <span class="flex items-center gap-1.5">
-                                                <i class="fas fa-object-group text-teal-600 dark:text-teal-400 text-xs" aria-hidden="true"></i>
-                                                Combined academic levels
-                                            </span>
-                                        </div>
-                                        <div class="sf-level-category-body space-y-1">
-                                            <template x-for="combo in levelCombinations" :key="'combo-' + combo.id">
-                                                <label class="sf-level-option sf-level-combo-option"
-                                                       :class="combinationHasConflict(combo) ? 'is-conflict' : ''">
-                                                    <input type="checkbox"
-                                                           :checked="isCombinationFullySelected(combo)"
-                                                           @change="toggleCombination(combo)">
-                                                    <span class="min-w-0 flex-1">
-                                                        <span class="font-medium" x-text="combinationHasConflict(combo) ? combo.label_name + ' (exists)' : combo.label_name"></span>
-                                                        <span class="block text-[10px] text-gray-500 dark:text-gray-400 mt-0.5"
-                                                              x-text="(combo.member_count || 0) + ' level(s)' + (combo.categories ? ' · ' + combo.categories : '')"></span>
-                                                    </span>
-                                                </label>
-                                            </template>
-                                        </div>
-                                    </div>
-                                </template>
-                                <p x-show="!combinedLevelsLoading && !combinedLevelsError && levelCombinations.length === 0"
-                                   class="text-xs text-gray-500 dark:text-gray-400 px-2 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                                    No combined groups configured.
-                                    <a href="{{ employee_dash_url('combined-academic-levels') }}" class="text-teal-700 dark:text-teal-400 hover:underline font-medium" target="_blank" rel="noopener">Set up combined academic levels</a>
-                                    first, or use standalone levels below.
-                                </p>
-                            </div>
-                        </template>
-                        <!-- Single / All / Combined (standalone only): by category -->
-                        <template x-for="section in displayCategories" :key="section.category + '-' + levelSelectionMode">
-                            <div class="sf-level-category-block" x-show="levelSelectionMode !== 'combined' || !combinedLevelsLoading">
-                                <div class="sf-level-category-head">
-                                    <span class="flex items-center gap-1.5 min-w-0">
-                                        <i class="fas fa-layer-group text-teal-600 dark:text-teal-400 text-xs shrink-0" aria-hidden="true"></i>
-                                        <span class="truncate" x-text="levelSelectionMode === 'combined' ? section.category + ' (standalone)' : section.category"></span>
-                                        <span class="font-normal normal-case tracking-normal text-gray-500 dark:text-gray-400 shrink-0"
-                                              x-text="'(' + (section.levels ? section.levels.length : 0) + ')'"></span>
-                                    </span>
-                                    <button type="button"
-                                            x-show="levelSelectionMode === 'combined' && (section.levels || []).length > 0"
-                                            @click="toggleCategoryLevels(section)"
-                                            class="sf-btn-outline sf-btn-xs shrink-0"
-                                            x-text="isCategoryFullySelected(section) ? 'Clear' : 'All'"></button>
-                                </div>
-                                <div class="sf-level-category-body">
-                                    <template x-for="level in section.levels" :key="level.id">
-                                        <label class="sf-level-option"
-                                               :class="[
-                                                   hasFeeStructureForTerm(level.id) ? 'is-conflict' : '',
-                                                   levelSelectionMode === 'all' ? 'is-locked-selected' : ''
-                                               ]">
-                                            <input type="checkbox"
-                                                   :checked="isLevelChecked(level.id)"
-                                                   :disabled="levelSelectionMode === 'all'"
-                                                   @change="toggleLevelSelection(level.id, $event.target.checked)">
-                                            <span x-text="hasFeeStructureForTerm(level.id) ? level.level_name + ' (exists)' : level.level_name"></span>
-                                        </label>
-                                    </template>
-                                </div>
-                            </div>
-                        </template>
-                        <p x-show="levelSelectionMode !== 'combined' && !displayCategories.length"
-                           class="sf-empty-inline">No active academic levels found.</p>
-                            </div>
-                            <div class="sf-level-footer" x-show="levelSelectionMode === 'single' && selectedAcademicLevels.length">
-                                <i class="fas fa-check-circle" aria-hidden="true"></i>
-                                <span>One level selected — ready to continue.</span>
-                            </div>
-                            <div class="sf-level-footer" x-show="levelSelectionMode === 'multiple' && selectedAcademicLevels.length">
-                                <i class="fas fa-check-circle" aria-hidden="true"></i>
-                                <span x-text="selectedAcademicLevels.length + ' level(s) selected'"></span>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-                
-                <!-- Fee Structure Conflict Warning -->
-                <div x-show="academicLevelHasStructure && error" x-cloak class="sf-alert-error">
-                    <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
-                    <span x-text="error"></span>
-                </div>
-                
-                <!-- Fee Name -->
-                <div class="sf-fee-name-card">
-                    <label for="sf-create-fee-name" class="sf-field-label-inline">
-                        <i class="fas fa-signature text-teal-600/80 dark:text-teal-400/80" aria-hidden="true"></i>
-                        Fee Name <span class="sf-required">*</span>
-                    </label>
-                    <input id="sf-create-fee-name" type="text" x-model="feeName" required
-                           placeholder="Auto-generated"
-                           @input="feeNameAutoGenerated = false"
-                           class="sf-fee-name-input"
-                           style="text-transform: uppercase; font-size: 16px;">
-                    <p class="sf-fee-name-hint" x-show="feeNameAutoGenerated">
-                        <i class="fas fa-magic" aria-hidden="true"></i> Name updates automatically when you change year, term, or levels.
-                    </p>
-                </div>
-                
-                <!-- Fee Items -->
-                <section class="sf-form-section sf-form-section--items" aria-labelledby="sf-section-items-title">
-                    <div class="sf-form-section__header">
-                        <div class="sf-form-section__title-wrap">
-                            <span class="sf-form-section__icon sf-form-section__icon--items" aria-hidden="true">
-                                <i class="fas fa-receipt"></i>
-                            </span>
-                            <div class="min-w-0">
-                                <h3 id="sf-section-items-title" class="sf-form-section__title">
-                                    Fee items <span class="sf-required">*</span>
-                                </h3>
-                                <p class="sf-form-section__hint">Add line items that make up this fee structure (e.g. tuition, activity fee).</p>
-                            </div>
-                        </div>
-                        <div class="sf-form-section__header-badges">
-                            <span class="sf-step-badge">3</span>
-                            <span class="sf-selection-badge"
-                                  :class="validFeeItemsCount ? 'is-active' : ''"
-                                  x-text="validFeeItemsCount + ' item' + (validFeeItemsCount !== 1 ? 's' : '')"></span>
-                        </div>
-                    </div>
-                    <div class="sf-form-section__body space-y-3">
-                        <div class="sf-fee-items-toolbar">
-                            <button type="button"
-                                    @click="addNewItem()"
-                                    class="sf-btn-teal sf-btn-sm">
-                                <i class="fas fa-plus" aria-hidden="true"></i>
-                                <span>Add line item</span>
-                            </button>
-                            <button type="button"
-                                    @click="showExistingItems = !showExistingItems; if (!existingFeeItems.length) fetchExistingFeeItems()"
-                                    class="sf-btn-outline sf-btn-sm"
-                                    :class="showExistingItems ? 'is-active' : ''">
-                                <i class="fas fa-book" aria-hidden="true"></i>
-                                <span>From library</span>
-                            </button>
-                        </div>
-                        <div x-show="showExistingItems" x-cloak class="sf-fee-library">
-                            <div class="sf-fee-library__head">
-                                <span><i class="fas fa-book-open mr-1.5" aria-hidden="true"></i>Previously used items</span>
-                                <button type="button" @click="showExistingItems = false" class="sf-fee-library__close" aria-label="Close library">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                            <div class="sf-fee-library__list">
-                                <template x-for="(item, index) in existingFeeItems" :key="'lib-' + index">
-                                    <button type="button" class="sf-fee-library__item" @click="addExistingItem(item)">
-                                        <span class="sf-fee-library__name" x-text="item.item_name"></span>
-                                        <span class="sf-fee-library__amount" x-text="'KES ' + parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})"></span>
-                                    </button>
-                                </template>
-                                <p x-show="existingFeeItems.length === 0" class="sf-empty-inline">No saved items yet — add a new line item instead.</p>
-                            </div>
-                        </div>
-                        <div class="sf-fee-items-panel">
-                            <div class="sf-fee-items-thead" x-show="feeItems.length > 0">
-                                <span class="sf-fee-col-num">#</span>
-                                <span class="sf-fee-col-name">Item name</span>
-                                <span class="sf-fee-col-desc">Description <span class="sf-optional">(optional)</span></span>
-                                <span class="sf-fee-col-amount">Amount (KES)</span>
-                                <span class="sf-fee-col-action" aria-hidden="true"></span>
-                            </div>
-                            <div x-show="feeItems.length === 0" class="sf-fee-items-empty">
-                                <div class="sf-fee-items-empty__icon" aria-hidden="true">
-                                    <i class="fas fa-file-invoice-dollar"></i>
-                                </div>
-                                <p class="sf-fee-items-empty__title">No fee items yet</p>
-                                <p class="sf-fee-items-empty__text">Add at least one line item with a name and amount.</p>
-                                <button type="button" @click="addFirstFeeItem()" class="sf-btn-teal sf-btn-sm">
-                                    <i class="fas fa-plus" aria-hidden="true"></i>
-                                    Add first item
-                                </button>
-                            </div>
-                            <div x-show="feeItems.length > 0" class="sf-fee-items-list">
-                                <template x-for="(item, index) in feeItems" :key="index">
-                                    <div class="sf-fee-item-card">
-                                        <span class="sf-fee-col-num sf-fee-item-num" x-text="index + 1"></span>
-                                        <div class="sf-fee-col-name">
-                                            <label class="sf-field-label sr-only">Item name</label>
-                                            <input type="text"
-                                                   x-model="item.itemName"
-                                                   @input="item.itemName = item.itemName.toUpperCase()"
-                                                   placeholder="e.g. TUITION"
-                                                   required
-                                                   class="sf-fee-input sf-fee-input--name"
-                                                   style="text-transform: uppercase;">
-                                        </div>
-                                        <div class="sf-fee-col-desc">
-                                            <label class="sf-field-label sr-only">Description</label>
-                                            <input type="text"
-                                                   x-model="item.itemDescription"
-                                                   placeholder="Short note"
-                                                   class="sf-fee-input">
-                                        </div>
-                                        <div class="sf-fee-col-amount">
-                                            <label class="sf-field-label sr-only">Amount</label>
-                                            <div class="sf-amount-wrap">
-                                                <span class="sf-amount-prefix">KES</span>
-                                                <input type="number"
-                                                       x-model="item.amount"
-                                                       @input="calculateTotal()"
-                                                       placeholder="0.00"
-                                                       step="0.01"
-                                                       min="0"
-                                                       required
-                                                       class="sf-fee-input sf-fee-input--amount">
-                                            </div>
-                                        </div>
-                                        <div class="sf-fee-col-action">
-                                            <button type="button"
-                                                    @click="removeItem(index)"
-                                                    class="sf-fee-remove"
-                                                    :aria-label="'Remove item ' + (index + 1)">
-                                                <i class="fas fa-trash-alt" aria-hidden="true"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </div>
-
-            <!-- Sticky footer: total + actions (visual only; same submit/cancel behavior) -->
-            <div class="sf-modal-create-footer shrink-0">
-                <div class="sf-total-box sf-total-box--footer">
-                    <div class="sf-total-box__label">
-                        <i class="fas fa-calculator" aria-hidden="true"></i>
-                        <span>Total:</span>
-                    </div>
-                    <span class="sf-total-value" x-text="'KES ' + (totalAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
-                </div>
-                <div class="sf-modal-footer sf-modal-footer--create">
-                    <button type="button" @click="$store.feeStructure.close()"
-                            class="w-full sm:w-auto sf-btn-ghost sf-btn-footer rounded-lg transition-colors">
-                        Cancel
-                    </button>
-                    <button type="submit" :disabled="loading"
-                            class="w-full sm:w-auto sf-btn-teal sf-btn-footer rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i class="fas fa-spinner fa-spin" x-show="loading" aria-hidden="true"></i>
-                        <span x-text="loading ? 'Creating...' : 'Create'"></span>
-                    </button>
-                </div>
-            </div>
-            </form>
-        </div>
-    </div>
+     ">
+{% include 'dashboards/includes/fee_structure_create_modal_markup.html' %}
 </div>
 
 <script>

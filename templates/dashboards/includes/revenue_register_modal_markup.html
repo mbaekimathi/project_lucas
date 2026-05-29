@@ -1,0 +1,178 @@
+    <div class="fsm-backdrop" @click="$store.revenueRegister.close()" aria-hidden="true"></div>
+    <div class="fsm-wrap">
+        <div class="fsm-dialog rvm-dialog" @click.stop role="dialog" aria-labelledby="rvm-create-title">
+            <header class="fsm-header fsm-header--create rvm-header">
+                <div class="fsm-header__glow" aria-hidden="true"></div>
+                <div class="fsm-header__main">
+                    <span class="fsm-header__icon" aria-hidden="true"><i class="fas fa-hand-holding-usd"></i></span>
+                    <div>
+                        <p class="fsm-header__eyebrow">School revenue</p>
+                        <h2 id="rvm-create-title">Register income</h2>
+                    </div>
+                </div>
+                <button type="button" @click="$store.revenueRegister.close()" class="fsm-close" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </header>
+
+            <form @submit.prevent="submitForm()" class="fsm-form">
+                <div class="fsm-body">
+                    <div x-show="error" x-cloak class="fsm-alert fsm-alert--error">
+                        <i class="fas fa-exclamation-circle shrink-0"></i>
+                        <span x-text="error"></span>
+                    </div>
+
+                    <section class="fsm-panel">
+                        <div class="fsm-panel__head">
+                            <h3 class="fsm-panel__title"><i class="fas fa-wallet"></i> Income account</h3>
+                        </div>
+                        <div class="fsm-field fsm-field--full">
+                            <label class="fsm-label" for="rvm-finance-account">Finance account <span class="req">*</span></label>
+                            <select id="rvm-finance-account" class="fsm-select" x-model="financeAccountId" required
+                                    @change="onFinanceAccountChange()">
+                                <option value="">Choose Income account</option>
+                                <template x-for="acct in incomeAccounts" :key="acct.id">
+                                    <option :value="acct.id" x-text="acct.account_name"></option>
+                                </template>
+                            </select>
+                            <p x-show="incomeAccounts.length === 0" class="fsm-hint">
+                                <a href="{{ employee_dash_url('accounts') }}" class="font-semibold text-teal-600 dark:text-teal-400 hover:underline">Create an account</a>
+                                with category <strong>Income</strong> first.
+                            </p>
+                            <p x-show="financeAccountId && selectedAccountDescription" class="fsm-hint" x-text="selectedAccountDescription"></p>
+                        </div>
+                    </section>
+
+                    <section class="fsm-panel fsm-panel--name">
+                        <label class="fsm-label" for="rvm-revenue-title">Revenue title</label>
+                        <input id="rvm-revenue-title" type="text" class="fsm-input bg-slate-50 dark:bg-slate-900/60" readonly
+                               :value="revenueTitle" placeholder="Filled from account">
+                    </section>
+
+                    <section class="fsm-panel">
+                        <div class="fsm-panel__head">
+                            <h3 class="fsm-panel__title"><i class="fas fa-tags"></i> Details</h3>
+                        </div>
+                        <div class="fsm-grid fsm-grid--2">
+                            <div class="fsm-field fsm-field--full">
+                                <label class="fsm-label">Classification <span class="fsm-hint font-normal">(optional)</span></label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <label class="rvm-source-chip flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 cursor-pointer border text-xs font-semibold min-h-[2.75rem]">
+                                        <input type="radio" value="government" class="sr-only" x-model="formSource">
+                                        <i class="fas fa-landmark text-emerald-600"></i>
+                                        <span>Government</span>
+                                    </label>
+                                    <label class="rvm-source-chip flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 cursor-pointer border text-xs font-semibold min-h-[2.75rem]">
+                                        <input type="radio" value="private" class="sr-only" x-model="formSource">
+                                        <i class="fas fa-building text-violet-600"></i>
+                                        <span>Private</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="fsm-field fsm-field--full">
+                                <label class="fsm-label" for="rvm-description">Description</label>
+                                <input id="rvm-description" type="text" class="fsm-input" maxlength="500"
+                                       x-model="description" placeholder="Optional notes (grant reference, donor, etc.)">
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="fsm-panel">
+                        <div class="fsm-panel__head">
+                            <h3 class="fsm-panel__title"><i class="fas fa-receipt"></i> Distribution breakdown <span class="req">*</span></h3>
+                            <span class="fsm-badge" x-text="validLineItemsCount + ' line' + (validLineItemsCount === 1 ? '' : 's')"></span>
+                        </div>
+                        <p class="fsm-hint mb-3">Enter the total income, then split it across line items. Amounts must add up to the total.</p>
+
+                        <div class="fsm-field fsm-field--full mb-3">
+                            <label class="fsm-label" for="rvm-amount">Total amount (KES) <span class="req">*</span></label>
+                            <div class="flex rounded-lg border overflow-hidden" style="border-color: var(--fsm-line); background: var(--fsm-panel);">
+                                <span class="inline-flex items-center px-3 text-xs font-bold text-[var(--fsm-muted)] border-r shrink-0"
+                                      style="border-color: var(--fsm-line); background: var(--fsm-body-bg);">KES</span>
+                                <input id="rvm-amount" type="text" inputmode="decimal" class="fsm-input border-0 flex-1 min-w-0"
+                                       x-model="amount" @input="onTotalAmountChange()" placeholder="0.00" required>
+                            </div>
+                        </div>
+
+                        <div x-show="parsedTotalAmount > 0" x-cloak class="rvm-balance-bar mb-3">
+                            <div class="rvm-balance-bar__row">
+                                <span class="rvm-balance-bar__label">Total</span>
+                                <strong class="rvm-balance-bar__value" x-text="amountPreview"></strong>
+                            </div>
+                            <div class="rvm-balance-bar__row">
+                                <span class="rvm-balance-bar__label">Allocated</span>
+                                <strong class="rvm-balance-bar__value" x-text="allocatedDisplay"></strong>
+                            </div>
+                            <div class="rvm-balance-bar__row rvm-balance-bar__row--highlight" :class="balanceStatusClass">
+                                <span class="rvm-balance-bar__label" x-text="balanceLabel"></span>
+                                <strong class="rvm-balance-bar__value" x-text="balanceAmountDisplay"></strong>
+                            </div>
+                        </div>
+
+                        <div class="fsm-items-actions">
+                            <button type="button" class="fsm-btn-add" @click="addLineItem()">
+                                <i class="fas fa-plus"></i> Add line
+                            </button>
+                            <button type="button" class="fsm-btn-ghost-sm" x-show="remainingAmount > 0.009"
+                                    @click="addLineItemWithRemaining()">
+                                <i class="fas fa-equals"></i> Add remaining
+                            </button>
+                        </div>
+
+                        <div x-show="!lineItems.length" class="fsm-empty">
+                            <p class="fsm-hint text-center">Enter a total amount, then add lines to distribute it.</p>
+                            <button type="button" class="fsm-btn-add mt-2" @click="addFirstLineItem()">Add first line</button>
+                        </div>
+
+                        <div class="fsm-items mt-2">
+                            <template x-for="(item, index) in lineItems" :key="'rvm-line-' + index">
+                                <div class="fsm-item-row">
+                                    <input type="text" class="fsm-input" x-model="item.itemName"
+                                           placeholder="Item / purpose" required>
+                                    <div class="fsm-item-amount">
+                                        <span>KES</span>
+                                        <input type="text" inputmode="decimal" class="fsm-input" x-model="item.amount"
+                                               placeholder="0" @input="recalculateAllocation()">
+                                    </div>
+                                    <div class="fsm-item-actions flex gap-0.5">
+                                        <button type="button" class="rvm-fill-btn" x-show="remainingAmount > 0.009"
+                                                @click="fillRemaining(index)" title="Apply unallocated balance to this line">
+                                            <i class="fas fa-magic"></i>
+                                        </button>
+                                        <button type="button" class="fsm-item-remove" @click="removeLineItem(index)" aria-label="Remove">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <p x-show="parsedTotalAmount > 0 && isBalanced" x-cloak class="rvm-balanced-msg mt-2">
+                            <i class="fas fa-check-circle"></i> Breakdown matches the total — ready to save.
+                        </p>
+                    </section>
+                </div>
+
+                <footer class="fsm-footer">
+                    <div class="rvm-footer-totals">
+                        <div class="fsm-total-card">
+                            <span>Total</span>
+                            <strong x-text="amountPreview || 'KES 0.00'"></strong>
+                        </div>
+                        <div class="fsm-total-card rvm-remaining-card" :class="balanceStatusClass" x-show="parsedTotalAmount > 0">
+                            <span x-text="balanceLabel"></span>
+                            <strong x-text="balanceAmountDisplay"></strong>
+                        </div>
+                    </div>
+                    <div class="fsm-footer-btns">
+                        <button type="button" class="fsm-btn-cancel" @click="$store.revenueRegister.close()">Cancel</button>
+                        <button type="submit" class="fsm-btn-primary flex-1 sm:flex-none"
+                                :disabled="loading || (parsedTotalAmount > 0 && !isBalanced)">
+                            <i class="fas fa-spinner fa-spin" x-show="loading"></i>
+                            <span x-text="loading ? 'Saving…' : 'Save income'"></span>
+                        </button>
+                    </div>
+                </footer>
+            </form>
+        </div>
+    </div>

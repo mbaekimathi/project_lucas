@@ -1,0 +1,45 @@
+{# Account category select + optional custom name (scope: reg | edit) #}
+{% set cat_scope = category_scope|default('reg') %}
+{% set cat_add = account_category_add_value|default('__add_new__') %}
+<div>
+    <label for="{{ cat_scope }}_account_category" class="fa-field-label">
+        Account category <span class="text-red-500">*</span>
+    </label>
+    {% if cat_scope == 'reg' %}
+    <select id="{{ cat_scope }}_account_category" name="account_category" class="fa-input"
+            x-model="regCategorySelect"
+            @change="regCategoryCustom = ''">
+        <option value="">Select category…</option>
+        {% for cat in account_categories %}
+        <option value="{{ cat }}">{{ cat }}</option>
+        {% endfor %}
+        <option value="{{ cat_add }}">+ Add new category…</option>
+    </select>
+    <div x-show="regCategorySelect === categoryAddMarker" x-cloak class="mt-2">
+        <label for="reg_account_category_custom" class="fa-field-label">New category name <span class="text-red-500">*</span></label>
+        <input type="text" id="reg_account_category_custom" name="account_category_custom" maxlength="100"
+               class="fa-input" placeholder="e.g. Scholarship fund"
+               x-model="regCategoryCustom"
+               @input="uppercaseField($event)">
+        <p class="text-[11px] text-[var(--acc-muted)] mt-1">Saved in uppercase like other account fields.</p>
+    </div>
+    {% else %}
+    <select id="{{ cat_scope }}_account_category" name="account_category" class="fa-input"
+            x-model="editCategorySelect"
+            @change="onEditCategorySelectChange()">
+        <option value="">Select category…</option>
+        {% for cat in account_categories %}
+        <option value="{{ cat }}">{{ cat }}</option>
+        {% endfor %}
+        <option value="{{ cat_add }}">+ Add new category…</option>
+    </select>
+    <div x-show="editCategorySelect === categoryAddMarker" x-cloak class="mt-2">
+        <label for="edit_account_category_custom" class="fa-field-label">New category name <span class="text-red-500">*</span></label>
+        <input type="text" id="edit_account_category_custom" name="account_category_custom" maxlength="100"
+               class="fa-input" placeholder="e.g. Scholarship fund"
+               x-model="editCategoryCustom"
+               @input="uppercaseField($event)">
+        <p class="text-[11px] text-[var(--acc-muted)] mt-1">Saved in uppercase like other account fields.</p>
+    </div>
+    {% endif %}
+</div>

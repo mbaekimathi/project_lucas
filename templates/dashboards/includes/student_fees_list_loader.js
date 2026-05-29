@@ -31,6 +31,21 @@
     return 'KES ' + x.toLocaleString('en-KE', { maximumFractionDigits: 0 });
   }
 
+  function feeStructureDueMeta(fs) {
+    if (!fs) return '';
+    var html = '';
+    if (fs.fee_name) {
+      html += '<div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">' + esc(fs.fee_name) + '</div>';
+    }
+    var bits = [];
+    if (fs.finance_account_name) bits.push(esc(fs.finance_account_name));
+    if (fs.term_name) bits.push(esc(fs.term_name));
+    if (bits.length) {
+      html += '<div class="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">' + bits.join(' · ') + '</div>';
+    }
+    return html;
+  }
+
   function statusBadge(st) {
     if (st === 'overdue') {
       return '<span class="inline-flex px-2.5 py-1 text-xs font-bold rounded-full bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 ring-1 ring-red-200/90 dark:ring-red-800/60">Overdue</span>';
@@ -80,8 +95,16 @@
       'data-student-id="' + esc(s.student_id) + '" data-name="' + esc(s.full_name) + '">' +
       '<i class="fas fa-eye text-sm"></i></button>';
     if (cfg.canGenerateInvoices) {
+      var invPdf =
+        cfg.invoiceBase +
+        encodeURIComponent(s.student_id) +
+        '?format=pdf&download=true';
+      var invView = cfg.invoiceBase + encodeURIComponent(s.student_id);
       html +=
-        '<a href="' + esc(cfg.invoiceBase + encodeURIComponent(s.student_id)) + '" target="_blank" class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/50 dark:text-violet-300 shadow-sm" title="Generate Invoice">' +
+        '<a href="' + esc(invPdf) + '" download class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/50 dark:text-violet-300 shadow-sm" title="Download PDF invoice">' +
+        '<i class="fas fa-file-pdf text-sm"></i></a>';
+      html +=
+        '<a href="' + esc(invView) + '" target="_blank" rel="noopener" class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-600 hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 shadow-sm ring-1 ring-violet-200/80 dark:ring-violet-800/60" title="View / print invoice">' +
         '<i class="fas fa-file-invoice text-sm"></i></a>';
     }
     html += '</div>';
@@ -95,9 +118,7 @@
     if (fs) {
       dueBlock =
         '<div class="text-sm font-semibold text-gray-900 dark:text-white">' + money(s.total_amount_due || fs.total_amount) + '</div>';
-      if (fs.fee_name) {
-        dueBlock += '<div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">' + esc(fs.fee_name) + '</div>';
-      }
+      dueBlock += feeStructureDueMeta(fs);
       if ((s.previous_term_balance || 0) > 0) {
         dueBlock += '<div class="text-xs text-orange-600 dark:text-orange-400 mt-0.5">Balance from last term: ' + money(s.previous_term_balance) + '</div>';
       }
@@ -134,6 +155,9 @@
     var fs = s.fee_structure;
     var level = (s.academic_level && s.academic_level.level_name) || s.current_grade || '';
     var due = fs ? moneyShort(s.total_amount_due || fs.total_amount) : '—';
+    var feeMeta = fs && (fs.fee_name || fs.finance_account_name)
+      ? '<div class="text-[10px] text-gray-500 mt-0.5 truncate">' + esc(fs.fee_name || fs.finance_account_name) + '</div>'
+      : '';
     var bal = '—';
     if (fs) {
       var b = Number(s.balance) || 0;
@@ -148,7 +172,7 @@
       '<div class="font-semibold text-sm">' + esc(s.full_name) + '</div>' +
       '<div class="text-[11px] text-gray-500 mt-1">ID ' + esc(s.student_id) + (level ? ' · ' + esc(level) : '') + '</div>' +
       '<div class="mt-2 text-[11px]">Parent: ' + esc(s.parent_name || 'N/A') + '</div>' +
-      '<div class="mt-2 grid grid-cols-3 gap-2 text-[11px]"><div><span class="text-slate-500">Due</span><div class="font-bold">' + due + '</div></div>' +
+      '<div class="mt-2 grid grid-cols-3 gap-2 text-[11px]"><div><span class="text-slate-500">Due</span><div class="font-bold">' + due + '</div>' + feeMeta + '</div>' +
       '<div><span class="text-emerald-700">Paid</span><div class="font-bold text-emerald-800">' + moneyShort(s.total_paid || 0) + '</div></div>' +
       '<div><span>Bal.</span><div class="font-bold">' + bal + '</div></div></div>' +
       mobActions + '</div>'

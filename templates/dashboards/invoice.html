@@ -2,209 +2,393 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-    <title>Invoice - {{ student.student_id }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice {{ invoice_number }} — {{ student.student_id }}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        @media print {
-            * {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
-            body {
-                margin: 0;
-                padding: 0;
-                background: white;
-            }
-            .no-print {
-                display: none !important;
-            }
-            .invoice-container {
-                box-shadow: none !important;
-                border: none !important;
-                max-width: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                min-height: auto !important;
-            }
-            @page {
-                margin: 1cm;
-                size: A4;
-            }
-        }
-        html, body {
-            min-height: 100vh;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; }
         body {
-            background: white;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 24px 16px 48px;
+            background: linear-gradient(160deg, #f5f3ff 0%, #f1f5f9 45%, #f8fafc 100%);
+            color: #0f172a;
         }
-        .invoice-container {
-            max-width: 210mm;
-            min-height: 100vh;
-            margin: 0 auto;
-            background: white;
-            padding: 32px 40px;
-            box-sizing: border-box;
-            font-size: 15px;
+        .wrap { max-width: 720px; margin: 0 auto; }
+        .invoice {
+            background: #fff;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.04);
         }
-        .invoice-border {
-            border: 1px solid #e5e7eb;
+        .invoice__head {
+            padding: 28px 28px 22px;
+            background: linear-gradient(135deg, #5b21b6 0%, #7c3aed 50%, #8b5cf6 100%);
+            color: #fff;
         }
-        table {
+        .invoice__head-inner {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: flex-start;
+            justify-content: space-between;
+        }
+        .invoice__brand { display: flex; gap: 16px; align-items: center; min-width: 0; }
+        .invoice__logo {
+            width: 64px;
+            height: 64px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .invoice__logo img { width: 100%; height: 100%; object-fit: contain; }
+        .invoice__logo span { font-size: 11px; font-weight: 700; color: #94a3b8; }
+        .invoice__school { font-size: 1.15rem; font-weight: 700; }
+        .invoice__meta { font-size: 0.75rem; opacity: 0.9; margin-top: 4px; line-height: 1.45; }
+        .invoice__title-block { text-align: right; }
+        .invoice__title {
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+        }
+        .invoice__ref { font-size: 0.75rem; opacity: 0.9; margin-top: 6px; }
+        .invoice__due {
+            padding: 22px 28px;
+            text-align: center;
+            border-bottom: 1px dashed #e2e8f0;
+            background: #faf5ff;
+        }
+        .invoice__due-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+        }
+        .invoice__due-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #5b21b6;
+            margin-top: 4px;
+        }
+        .invoice__due-sub { font-size: 0.8rem; color: #64748b; margin-top: 6px; }
+        .invoice__body { padding: 24px 28px; }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px 24px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 520px) { .grid-2 { grid-template-columns: 1fr; } }
+        .field__label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; }
+        .field__value { font-size: 0.9rem; font-weight: 600; margin-top: 2px; word-break: break-word; }
+        .section-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #94a3b8;
+            margin: 20px 0 10px;
+        }
+        table.data {
             width: 100%;
             border-collapse: collapse;
+            font-size: 0.85rem;
         }
-        table th, table td {
-            border: 1px solid #000;
-            padding: 10px 12px;
+        table.data th {
             text-align: left;
+            padding: 10px 12px;
+            background: #f5f3ff;
+            color: #5b21b6;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 2px solid #ddd6fe;
         }
-        table th {
-            background-color: #f3f4f6;
-            font-weight: bold;
+        table.data td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: top;
         }
-        table td:last-child {
-            text-align: right;
+        table.data .num { text-align: right; font-weight: 600; white-space: nowrap; }
+        table.data tr.total td {
+            font-weight: 700;
+            background: #faf5ff;
+            border-bottom: none;
         }
-        .payment-summary {
-            text-align: right;
+        .summary {
             margin-top: 20px;
+            padding: 16px 18px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
         }
-        .payment-summary p {
-            margin: 4px 0;
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 6px 0;
+            font-size: 0.875rem;
+        }
+        .summary-row.total {
+            border-top: 2px solid #5b21b6;
+            margin-top: 8px;
+            padding-top: 12px;
+            font-size: 1rem;
+            font-weight: 800;
+            color: #5b21b6;
+        }
+        .alert {
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            color: #9a3412;
+            font-size: 0.875rem;
+            margin-bottom: 16px;
+        }
+        .invoice__footer {
+            padding: 18px 28px 24px;
+            text-align: center;
+            border-top: 1px dashed #e2e8f0;
+            background: #f8fafc;
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+        .actions {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+        .actions a, .actions button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 18px;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-print { background: #0f172a; color: #fff; }
+        .btn-pdf { background: #7c3aed; color: #fff; }
+        .btn-back { background: #fff; color: #475569; border: 1px solid #e2e8f0; }
+        @media print {
+            body { background: #fff; padding: 0; }
+            .invoice { box-shadow: none; border-radius: 0; }
+            .actions { display: none !important; }
         }
     </style>
+    {% if auto_print %}
+    <script>window.addEventListener('load', function () { window.print(); });</script>
+    {% endif %}
 </head>
 <body>
-    <div class="invoice-container shadow-xl invoice-border">
-        <!-- Header Section -->
-        <div class="mb-6">
-            <div class="flex justify-between items-start">
-                <!-- Logo Section -->
-                <div class="flex items-center">
-                    {% if school_settings.school_logo %}
-                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                         alt="Logo" 
-                         class="h-20 w-20 object-contain border border-gray-300 p-2">
-                    {% else %}
-                    <div class="h-20 w-20 border-2 border-gray-400 flex items-center justify-center bg-gray-100">
-                        <span class="text-xs font-bold text-gray-600">LOGO</span>
+    <div class="wrap">
+        <div class="invoice">
+            <div class="invoice__head">
+                <div class="invoice__head-inner">
+                    <div class="invoice__brand">
+                        <div class="invoice__logo">
+                            {% if school_settings.school_logo %}
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="">
+                            {% else %}
+                            <span>LOGO</span>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <div class="invoice__school">{{ school_settings.school_name or 'School' }}</div>
+                            <div class="invoice__meta">
+                                {% if school_settings.school_address %}{{ school_settings.school_address }}{% endif %}
+                                {% if school_settings.school_phone %}<br>{{ school_settings.school_phone }}{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="invoice__title-block">
+                        <div class="invoice__title">FEE INVOICE</div>
+                        <div class="invoice__ref">{{ invoice_number }}<br>{{ invoice_date }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="invoice__due">
+                <div class="invoice__due-label">Balance due</div>
+                <div class="invoice__due-value">KES {{ "{:,.2f}".format(balance_due) }}</div>
+                <div class="invoice__due-sub">Total due KES {{ "{:,.2f}".format(total_amount_due) }} · Paid this term KES {{ "{:,.2f}".format(current_term_paid) }}</div>
+            </div>
+
+            <div class="invoice__body">
+                {% if not has_fee_structure %}
+                <div class="alert">
+                    <i class="fas fa-exclamation-circle"></i>
+                    No active fee structure was found for this student’s grade and category for the current term.
+                    Amounts below may be incomplete until a structure is assigned.
+                </div>
+                {% endif %}
+
+                <div class="grid-2">
+                    <div>
+                        <div class="field__label">Student</div>
+                        <div class="field__value">{{ student.full_name }}</div>
+                    </div>
+                    <div>
+                        <div class="field__label">Student ID</div>
+                        <div class="field__value">{{ student.student_id }}</div>
+                    </div>
+                    <div>
+                        <div class="field__label">Grade</div>
+                        <div class="field__value">{{ student.current_grade or '—' }}</div>
+                    </div>
+                    {% if student.parent_name %}
+                    <div>
+                        <div class="field__label">Parent / guardian</div>
+                        <div class="field__value">{{ student.parent_name }}{% if student.parent_phone %} · {{ student.parent_phone }}{% endif %}</div>
+                    </div>
+                    {% endif %}
+                    {% if fee_structure and fee_structure.fee_name %}
+                    <div>
+                        <div class="field__label">Fee structure</div>
+                        <div class="field__value">{{ fee_structure.fee_name }}</div>
+                    </div>
+                    {% endif %}
+                    {% if fee_structure and fee_structure.finance_account_name %}
+                    <div>
+                        <div class="field__label">Finance account</div>
+                        <div class="field__value">{{ fee_structure.finance_account_name }}</div>
+                    </div>
+                    {% endif %}
+                    {% if fee_structure and fee_structure.billing_period %}
+                    <div>
+                        <div class="field__label">Billing period</div>
+                        <div class="field__value">{{ fee_structure.billing_period }}</div>
+                    </div>
+                    {% endif %}
+                    {% if fee_structure and fee_structure.payment_deadline %}
+                    <div>
+                        <div class="field__label">Payment deadline</div>
+                        <div class="field__value">{{ fee_structure.payment_deadline }}</div>
                     </div>
                     {% endif %}
                 </div>
-                
-                <!-- Contact Info and Title -->
-                <div class="flex-1 text-right">
-                    <div class="mb-4">
-                        {% if school_settings.school_address %}
-                        <p class="text-sm">{{ school_settings.school_address }}</p>
-                        {% endif %}
-                        {% if school_settings.school_phone %}
-                        <p class="text-sm">{{ school_settings.school_phone }}</p>
-                        {% endif %}
-                    </div>
-                    <h1 class="text-3xl font-bold">FEE INVOICE</h1>
-                </div>
-            </div>
-        </div>
 
-        <!-- Student Information -->
-        <div class="mb-6">
-            <table style="border: none;">
-                <tr style="border: none;">
-                    <td style="border: none; padding: 4px 8px;"><strong>NAME:</strong></td>
-                    <td style="border: none; padding: 4px 8px;">{{ student.full_name }}</td>
-                </tr>
-                <tr style="border: none;">
-                    <td style="border: none; padding: 4px 8px;"><strong>GRADE:</strong></td>
-                    <td style="border: none; padding: 4px 8px;">{{ student.current_grade or 'N/A' }}</td>
-                </tr>
-                <tr style="border: none;">
-                    <td style="border: none; padding: 4px 8px;"><strong>DATE:</strong></td>
-                    <td style="border: none; padding: 4px 8px;">{{ invoice_date }}</td>
-                </tr>
-            </table>
-        </div>
-
-        <!-- Payment Details Table -->
-        <div class="mb-4">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th style="text-align: right;">Amount</th>
-                        <th style="text-align: center;">Payment Method</th>
-                        <th style="text-align: right;">Reference No.</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% if payment_details %}
-                        {% for payment in payment_details %}
+                {% if fee_items %}
+                <div class="section-title">Fee breakdown</div>
+                <table class="data">
+                    <thead>
                         <tr>
-                            <td>{{ payment.date }}</td>
-                            <td style="text-align: right;">{{ "%.2f"|format(payment.amount) }}</td>
-                            <td style="text-align: center;">{{ payment.method }}</td>
-                            <td style="text-align: right;">{{ payment.reference or '' }}</td>
+                            <th>Description</th>
+                            <th class="num">Amount (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in fee_items %}
+                        <tr>
+                            <td>
+                                {{ item.item_name }}
+                                {% if item.item_description %}
+                                <div style="font-size:0.75rem;color:#64748b;font-weight:400;margin-top:2px;">{{ item.item_description }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="num">{{ "{:,.2f}".format(item.amount) }}</td>
                         </tr>
                         {% endfor %}
-                    {% else %}
-                        <tr>
-                            <td colspan="4" style="text-align: center;">No payments found</td>
+                        <tr class="total">
+                            <td>Current term total</td>
+                            <td class="num">{{ "{:,.2f}".format(current_term_fee) }}</td>
                         </tr>
+                    </tbody>
+                </table>
+                {% elif fee_structure %}
+                <div class="section-title">Fee breakdown</div>
+                <table class="data">
+                    <tbody>
+                        <tr class="total">
+                            <td>{{ fee_structure.fee_name or 'Term fees' }}</td>
+                            <td class="num">{{ "{:,.2f}".format(current_term_fee) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                {% endif %}
+
+                <div class="summary">
+                    <div class="summary-row">
+                        <span>Current term fee</span>
+                        <span>KES {{ "{:,.2f}".format(current_term_fee) }}</span>
+                    </div>
+                    {% if previous_term_balance > 0 %}
+                    <div class="summary-row">
+                        <span>Balance from last term</span>
+                        <span>KES {{ "{:,.2f}".format(previous_term_balance) }}</span>
+                    </div>
                     {% endif %}
-                </tbody>
-            </table>
-            <div class="text-right mt-2">
-                <strong>Total Paid: {{ "%.2f"|format(total_paid_all) }}</strong>
+                    <div class="summary-row">
+                        <span>Total amount due</span>
+                        <span>KES {{ "{:,.2f}".format(total_amount_due) }}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Paid this term</span>
+                        <span>KES {{ "{:,.2f}".format(current_term_paid) }}</span>
+                    </div>
+                    {% if carry_forward > 0 %}
+                    <div class="summary-row">
+                        <span>Carry-forward credit</span>
+                        <span>− KES {{ "{:,.2f}".format(carry_forward) }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="summary-row total">
+                        <span>Balance due</span>
+                        <span>KES {{ "{:,.2f}".format(balance_due) }}</span>
+                    </div>
+                </div>
+
+                {% if payment_details %}
+                <div class="section-title">Payments this term</div>
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th class="num">Amount</th>
+                            <th>Method</th>
+                            <th>Reference</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in payment_details %}
+                        <tr>
+                            <td>{{ p.date }}</td>
+                            <td class="num">{{ "{:,.2f}".format(p.amount) }}</td>
+                            <td>{{ p.method }}</td>
+                            <td>{{ p.reference }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+
+            <div class="invoice__footer">
+                <p>Please settle any outstanding balance by the payment deadline.</p>
+                <p>Computer-generated invoice · No signature required</p>
             </div>
         </div>
 
-        <!-- Payment Summary -->
-        <div class="payment-summary">
-            <p><strong><u>Payment Summary</u></strong></p>
-            {% if current_term_fee %}
-                <p><strong>Current Term Fee:</strong> {{ "%.2f"|format(current_term_fee) }}</p>
-                {% if previous_term_balance and previous_term_balance > 0 %}
-                <p><strong>Balance from Last Term:</strong> {{ "%.2f"|format(previous_term_balance) }}</p>
-                {% endif %}
-                <p><strong>Total Amount Due:</strong> {{ "%.2f"|format(total_amount_due) }}</p>
-                <p><strong>Payments (Current Term):</strong> {{ "%.2f"|format(current_term_paid) }}</p>
-                {% if carry_forward and carry_forward > 0 %}
-                <p><strong>Carry Forward (Overpayments):</strong> {{ "%.2f"|format(carry_forward) }}</p>
-                {% endif %}
-            {% else %}
-                <p><strong>Total fees:</strong> {{ "%.2f"|format(total_fees) }}</p>
-                <p><strong>Total Paid:</strong> {{ "%.2f"|format(total_paid_all) }}</p>
-            {% endif %}
-            <hr style="margin: 8px 0; border-top: 1px solid #000;">
-            <p><strong>Balance Due:</strong> {{ "%.2f"|format(balance_due) }}</p>
-        </div>
-
-        <!-- Footer -->
-        <div class="mt-8 text-center text-sm text-gray-600">
-            <p class="mb-1">Thank you for your payment!</p>
-            <p>This is a computer-generated invoice. No signature required.</p>
-        </div>
-    </div>
-
-    <!-- Action Buttons -->
-    <div class="max-w-4xl mx-auto mt-6 no-print">
-        <div class="flex flex-wrap justify-center gap-3">
-            <button onclick="window.print()" 
-                    class="bg-[#800020] hover:bg-[#5C0016] text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-print"></i> Print Invoice
+        <div class="actions no-print">
+            <button type="button" onclick="window.print()" class="btn-print">
+                <i class="fas fa-print"></i> Print
             </button>
-            <a href="{{ url_for('generate_invoice', student_id=student.student_id) }}?format=pdf&download=true" 
-               download
-               class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-download"></i> Download PDF
+            <a href="{{ download_pdf_url }}" class="btn-pdf" download>
+                <i class="fas fa-file-pdf"></i> Download PDF
             </a>
-            <a href="{{ url_for('student_fees') }}" 
-               class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-arrow-left"></i> Back to Fees
+            <a href="{{ back_url }}" class="btn-back">
+                <i class="fas fa-arrow-left"></i> Back to student fees
             </a>
         </div>
     </div>

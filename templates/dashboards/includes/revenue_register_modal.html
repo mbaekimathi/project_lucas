@@ -1,0 +1,262 @@
+{# Register revenue modal — accountant_revenue page #}
+<script>
+window.revenueRegisterModal = function () {
+    return {
+        get modalOpen() {
+            return typeof Alpine !== 'undefined'
+                && Alpine.store
+                && Alpine.store('revenueRegister')
+                && Alpine.store('revenueRegister').isOpen;
+        },
+        incomeAccounts: [
+            {% if income_accounts_picker %}
+            {% for account in income_accounts_picker %}
+            {
+                id: {{ account.id }},
+                account_name: {{ account.account_name|tojson }},
+                account_category: {{ account.account_category|tojson }},
+                account_description: {{ (account.account_description or '')|tojson }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+            {% endif %}
+        ],
+        financeAccountId: '',
+        revenueTitle: '',
+        formSource: 'private',
+        amount: '',
+        description: '',
+        lineItems: [],
+        loading: false,
+        error: '',
+        registerUrl: {{ (employee_dash_url('revenue/register') ~ ('?source=' ~ source_filter if source_filter != 'all' else ''))|tojson }},
+        get selectedAccountDescription() {
+            var id = String(this.financeAccountId || '');
+            var acct = this.incomeAccounts.find(function (a) {
+                return String(a.id) === id;
+            });
+            return acct && acct.account_description ? acct.account_description : '';
+        },
+        get parsedTotalAmount() {
+            var raw = String(this.amount || '').replace(/,/g, '').trim();
+            var n = parseFloat(raw);
+            if (!raw || isNaN(n) || n <= 0) return 0;
+            return n;
+        },
+        get amountPreview() {
+            if (this.parsedTotalAmount <= 0) return '';
+            return 'KES ' + this.parsedTotalAmount.toLocaleString('en-KE', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+        },
+        get itemsSum() {
+            var sum = 0;
+            (this.lineItems || []).forEach(function (item) {
+                var raw = String(item.amount || '').replace(/,/g, '').trim();
+                var n = parseFloat(raw);
+                if (!isNaN(n) && n > 0) sum += n;
+            });
+            return Math.round(sum * 100) / 100;
+        },
+        get remainingAmount() {
+            if (this.parsedTotalAmount <= 0) return 0;
+            return Math.round((this.parsedTotalAmount - this.itemsSum) * 100) / 100;
+        },
+        get isBalanced() {
+            if (this.parsedTotalAmount <= 0) return false;
+            if (this.validLineItemsCount === 0) return false;
+            return Math.abs(this.remainingAmount) < 0.01;
+        },
+        get validLineItemsCount() {
+            return this.getValidLineItems().length;
+        },
+        get allocatedDisplay() {
+            return 'KES ' + this.itemsSum.toLocaleString('en-KE', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+        },
+        get balanceLabel() {
+            var r = this.remainingAmount;
+            if (Math.abs(r) < 0.01) return 'Balanced';
+            if (r > 0) return 'Remaining';
+            return 'Over by';
+        },
+        get balanceAmountDisplay() {
+            var r = Math.abs(this.remainingAmount);
+            if (Math.abs(this.remainingAmount) < 0.01) {
+                return 'KES 0.00';
+            }
+            return 'KES ' + r.toLocaleString('en-KE', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+        },
+        get balanceStatusClass() {
+            var r = this.remainingAmount;
+            if (Math.abs(r) < 0.01 && this.parsedTotalAmount > 0) return 'rvm-balance--ok';
+            if (r > 0) return 'rvm-balance--short';
+            if (r < 0) return 'rvm-balance--over';
+            return '';
+        },
+        onFinanceAccountChange() {
+            var id = String(this.financeAccountId || '');
+            var acct = this.incomeAccounts.find(function (a) {
+                return String(a.id) === id;
+            });
+            this.revenueTitle = acct ? acct.account_name : '';
+        },
+        onTotalAmountChange() {
+            if (this.parsedTotalAmount > 0 && !this.lineItems.length) {
+                this.addFirstLineItem();
+            }
+        },
+        getValidLineItems() {
+            var out = [];
+            (this.lineItems || []).forEach(function (item) {
+                var name = String(item.itemName || '').trim();
+                var raw = String(item.amount || '').replace(/,/g, '').trim();
+                var n = parseFloat(raw);
+                if (name && !isNaN(n) && n > 0) {
+                    out.push({ item_name: name, amount: n });
+                }
+            });
+            return out;
+        },
+        addLineItem() {
+            this.lineItems.push({ itemName: '', amount: '' });
+        },
+        addFirstLineItem() {
+            if (!this.lineItems.length) {
+                this.addLineItem();
+            }
+        },
+        addLineItemWithRemaining() {
+            var rem = this.remainingAmount;
+            if (rem <= 0) return;
+            this.lineItems.push({
+                itemName: '',
+                amount: rem.toFixed(2),
+            });
+        },
+        removeLineItem(index) {
+            this.lineItems.splice(index, 1);
+        },
+        fillRemaining(index) {
+            var rem = this.remainingAmount;
+            if (rem <= 0 || !this.lineItems[index]) return;
+            var current = String(this.lineItems[index].amount || '').replace(/,/g, '').trim();
+            var cur = parseFloat(current);
+            if (!isNaN(cur) && cur > 0) {
+                this.lineItems[index].amount = (cur + rem).toFixed(2);
+            } else {
+                this.lineItems[index].amount = rem.toFixed(2);
+            }
+        },
+        recalculateAllocation() {
+            /* getters recompute automatically */
+        },
+        resetForm() {
+            this.financeAccountId = '';
+            this.revenueTitle = '';
+            this.formSource = 'private';
+            this.amount = '';
+            this.description = '';
+            this.lineItems = [];
+            this.error = '';
+            this.loading = false;
+        },
+        submitForm() {
+            this.error = '';
+            if (!this.financeAccountId) {
+                this.error = 'Select an Income category finance account.';
+                return;
+            }
+            if (!this.revenueTitle) {
+                this.error = 'Revenue title is missing — choose an account.';
+                return;
+            }
+            var total = this.parsedTotalAmount;
+            if (total <= 0) {
+                this.error = 'Enter a valid total amount greater than zero.';
+                return;
+            }
+            var validItems = this.getValidLineItems();
+            if (!validItems.length) {
+                this.error = 'Add at least one distribution line (item and amount).';
+                return;
+            }
+            if (!this.isBalanced) {
+                var r = this.remainingAmount;
+                if (r > 0) {
+                    this.error = 'Line items are KES ' + r.toLocaleString('en-KE', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                    }) + ' short of the total. Allocate the remaining amount.';
+                } else {
+                    this.error = 'Line items exceed the total by KES ' + Math.abs(r).toLocaleString('en-KE', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                    }) + '.';
+                }
+                return;
+            }
+            this.loading = true;
+            var fd = new FormData();
+            fd.append('finance_account_id', this.financeAccountId);
+            fd.append('name', this.revenueTitle);
+            fd.append('source_type', this.formSource || 'private');
+            fd.append('amount', String(total));
+            fd.append('description', this.description || '');
+            fd.append('line_items', JSON.stringify(validItems));
+            fd.append('ajax', '1');
+            fetch(this.registerUrl, {
+                method: 'POST',
+                body: fd,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+                .then(function (res) {
+                    if (res.ok && res.data && res.data.success) {
+                        if (Alpine.store('revenueRegister')) {
+                            Alpine.store('revenueRegister').close();
+                        }
+                        window.location.reload();
+                    } else {
+                        this.error = (res.data && res.data.message) || 'Could not save revenue.';
+                        this.loading = false;
+                    }
+                }.bind(this))
+                .catch(function () {
+                    this.error = 'Could not save revenue. Please try again.';
+                    this.loading = false;
+                }.bind(this));
+        },
+    };
+};
+</script>
+
+<div x-data="window.revenueRegisterModal()"
+     class="fsm-root fixed inset-0 z-50"
+     x-show="$store.revenueRegister.isOpen"
+     x-cloak
+     style="display: none;"
+     @keydown.escape.window="$store.revenueRegister.close()"
+     x-init="$watch('$store.revenueRegister.isOpen', function (open) {
+         if (!open) resetForm();
+         else addFirstLineItem();
+     })">
+    {% include 'dashboards/includes/revenue_register_modal_markup.html' %}
+</div>
+
+<script>
+document.addEventListener('alpine:init', function () {
+    if (!Alpine.store('revenueRegister')) {
+        Alpine.store('revenueRegister', {
+            isOpen: false,
+            open: function () { this.isOpen = true; },
+            close: function () { this.isOpen = false; },
+        });
+    }
+});
+</script>

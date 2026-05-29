@@ -1,0 +1,95 @@
+{# payment_scope: 'reg' (register form) or 'edit' (edit modal) #}
+{% set pm_modes = 'regPaymentModes' if payment_scope == 'reg' else 'editPaymentModes' %}
+{% set pm_mpesa_type = 'regMpesaType' if payment_scope == 'reg' else 'editMpesaType' %}
+{% set pm_mpesa_biz = 'regMpesaBusinessName' if payment_scope == 'reg' else 'editMpesaBusinessName' %}
+{% set pm_mpesa_acct = 'regMpesaAccountNumber' if payment_scope == 'reg' else 'editMpesaAccountNumber' %}
+{% set pm_bank_name = 'regBankName' if payment_scope == 'reg' else 'editBankName' %}
+{% set pm_bank_acct = 'regBankAccountNumber' if payment_scope == 'reg' else 'editBankAccountNumber' %}
+
+<div class="fa-span-2">
+    <label class="fa-field-label">Modes of payment <span class="text-red-500">*</span></label>
+    <p class="text-[11px] text-[var(--acc-muted)] mb-2 normal-case">Select all that apply (M-Pesa, cash, cheque, bank).</p>
+    <div class="flex flex-wrap gap-2">
+        <label class="fa-level-chip">
+            <input type="checkbox" name="payment_modes" value="mpesa"
+                   :checked="{{ pm_modes }}.mpesa"
+                   @change="{{ pm_modes }}.mpesa = $event.target.checked">
+            <span class="text-xs font-semibold text-[var(--acc-ink)]">M-Pesa</span>
+        </label>
+        <label class="fa-level-chip">
+            <input type="checkbox" name="payment_modes" value="cash"
+                   :checked="{{ pm_modes }}.cash"
+                   @change="{{ pm_modes }}.cash = $event.target.checked">
+            <span class="text-xs font-semibold text-[var(--acc-ink)]">Cash</span>
+        </label>
+        <label class="fa-level-chip">
+            <input type="checkbox" name="payment_modes" value="cheque"
+                   :checked="{{ pm_modes }}.cheque"
+                   @change="{{ pm_modes }}.cheque = $event.target.checked">
+            <span class="text-xs font-semibold text-[var(--acc-ink)]">Cheque</span>
+        </label>
+        <label class="fa-level-chip">
+            <input type="checkbox" name="payment_modes" value="bank"
+                   :checked="{{ pm_modes }}.bank"
+                   @change="{{ pm_modes }}.bank = $event.target.checked">
+            <span class="text-xs font-semibold text-[var(--acc-ink)]">Bank</span>
+        </label>
+    </div>
+</div>
+
+<div x-show="{{ pm_modes }}.mpesa" x-cloak class="fa-span-2 rounded-lg border border-[var(--acc-line)] p-3 sm:p-4 bg-teal-50/50 dark:bg-teal-950/20 space-y-3">
+    <p class="text-[10px] font-bold uppercase tracking-wide text-teal-800 dark:text-teal-300">M-Pesa details</p>
+    <div>
+        <span class="fa-field-label">M-Pesa type <span class="text-red-500">*</span></span>
+        <div class="flex flex-wrap gap-3 mt-1">
+            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-medium text-[var(--acc-ink)]">
+                <input type="radio" name="mpesa_type" value="paybill" x-model="{{ pm_mpesa_type }}" class="text-teal-600 focus:ring-teal-500">
+                Paybill
+            </label>
+            <label class="inline-flex items-center gap-2 cursor-pointer text-sm font-medium text-[var(--acc-ink)]">
+                <input type="radio" name="mpesa_type" value="till" x-model="{{ pm_mpesa_type }}" class="text-teal-600 focus:ring-teal-500">
+                Till
+            </label>
+        </div>
+    </div>
+    <div>
+        <label class="fa-field-label">Business name <span class="text-red-500">*</span></label>
+        <input type="text" name="mpesa_business_name" maxlength="255" class="fa-input"
+               placeholder="Registered business name" x-model="{{ pm_mpesa_biz }}" @input="uppercaseField($event)">
+    </div>
+    <div x-show="{{ pm_mpesa_type }} === 'paybill'" x-cloak
+         class="rounded-lg border border-teal-200 dark:border-teal-800/60 bg-white/80 dark:bg-teal-950/30 px-3 py-2.5">
+        <p class="text-xs font-semibold text-teal-900 dark:text-teal-200 normal-case">
+            <i class="fas fa-id-card mr-1.5 opacity-80" aria-hidden="true"></i>
+            Account reference: each student’s <strong>admission number</strong>
+        </p>
+        <p class="text-[11px] text-[var(--acc-muted)] mt-1 normal-case leading-relaxed">
+            Parents pay via paybill using their child’s admission number as the account number. No separate paybill account number is required.
+        </p>
+        <input type="hidden" name="mpesa_account_number" value="{{ finance_mpesa_paybill_ref|default('STUDENT_ADMISSION_NUMBER') }}"
+               :disabled="{{ pm_mpesa_type }} !== 'paybill'">
+    </div>
+    <div x-show="{{ pm_mpesa_type }} === 'till'" x-cloak>
+        <label class="fa-field-label">Till number <span class="text-red-500">*</span></label>
+        <input type="text" name="mpesa_account_number" maxlength="100" class="fa-input font-mono normal-case"
+               placeholder="Till number" x-model="{{ pm_mpesa_acct }}" @input="uppercaseField($event)"
+               :disabled="{{ pm_mpesa_type }} !== 'till'">
+    </div>
+</div>
+
+<div x-show="{{ pm_modes }}.bank" x-cloak class="fa-span-2 rounded-lg border border-[var(--acc-line)] p-3 sm:p-4 bg-slate-50/80 dark:bg-slate-900/40 space-y-3">
+    <p class="text-[10px] font-bold uppercase tracking-wide text-[var(--acc-muted)]">Bank payment — account company details</p>
+    <p class="text-[11px] text-[var(--acc-muted)] normal-case -mt-1">These are saved as the account company name and company number.</p>
+    <div class="fa-form-grid !grid-cols-1 sm:!grid-cols-2">
+        <div>
+            <label class="fa-field-label">Account company name <span class="text-red-500">*</span></label>
+            <input type="text" name="bank_name" maxlength="255" class="fa-input"
+                   placeholder="e.g. Kenya Commercial Bank" x-model="{{ pm_bank_name }}" @input="uppercaseField($event)">
+        </div>
+        <div>
+            <label class="fa-field-label">Account company number <span class="text-red-500">*</span></label>
+            <input type="text" name="bank_account_number" maxlength="100" class="fa-input font-mono normal-case"
+                   placeholder="Bank account number" x-model="{{ pm_bank_acct }}" @input="uppercaseField($event)">
+        </div>
+    </div>
+</div>

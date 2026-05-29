@@ -27,6 +27,12 @@
     <span>Fees / payments</span>
     {% if request.endpoint == 'parent_student_fees' or request.path.endswith('/student-fees') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{% if pocket_money_student_id %}{{ parent_dash_url('pocket-money/' ~ pocket_money_student_id) }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}{% else %}{{ parent_dash_url('pocket-money') }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}{% endif %}"
+   class="sidebar-item {% if request.endpoint in ('parent_pocket_money', 'parent_pocket_money_detail') or '/pocket-money' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-wallet w-5"></i>
+    <span>Pocket money</span>
+    {% if request.endpoint in ('parent_pocket_money', 'parent_pocket_money_detail') or '/pocket-money' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 {% endif %}
 
 {% if _par_nav in ('all', 'exams') %}

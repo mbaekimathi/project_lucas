@@ -1,0 +1,78 @@
+{# Student fee payments table — expects parent x-data with filteredFeeRows, feeSearch, etc. #}
+<div class="revenue-desktop-table revenue-table-wrap border-t border-[var(--acc-line)] hidden md:block">
+    <table class="finance-table w-full text-sm min-w-[1080px]">
+        <thead>
+            <tr>
+                <th class="text-left px-4 py-3 text-xs uppercase w-12">#</th>
+                <th class="text-left px-4 py-3 text-xs uppercase">Reference</th>
+                <th class="text-left px-4 py-3 text-xs uppercase">Student</th>
+                <th class="text-left px-4 py-3 text-xs uppercase">Fee</th>
+                <th class="text-left px-4 py-3 text-xs uppercase">Finance account</th>
+                <th class="text-left px-4 py-3 text-xs uppercase">Academic levels</th>
+                <th class="text-left px-4 py-3 text-xs uppercase">Method</th>
+                <th class="text-right px-4 py-3 text-xs uppercase">Paid</th>
+                <th class="text-left px-4 py-3 text-xs uppercase">Date</th>
+                <th class="text-left px-4 py-3 text-xs uppercase">Received by</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-[var(--acc-line)]">
+            <template x-for="(row, idx) in filteredFeeRows" :key="'fee-' + (row.payment_id || row.reference_number) + '-' + idx">
+                <tr class="hover:bg-sky-50/60 dark:hover:bg-sky-950/20 transition-colors">
+                    <td class="px-4 py-3 text-[var(--acc-muted)] text-xs tabular-nums" x-text="idx + 1"></td>
+                    <td class="px-4 py-3 font-mono text-xs font-semibold text-sky-700 dark:text-sky-400" x-text="row.reference_number"></td>
+                    <td class="px-4 py-3">
+                        <p class="font-medium text-[var(--acc-ink)]" x-text="row.name"></p>
+                        <p class="text-[10px] text-[var(--acc-muted)] font-mono" x-text="row.student_id"></p>
+                    </td>
+                    <td class="px-4 py-3 text-[var(--acc-ink)] text-xs font-semibold" x-text="row.fee_name"></td>
+                    <td class="px-4 py-3 text-xs font-semibold text-teal-800 dark:text-teal-300" x-text="row.finance_account_name || '—'"></td>
+                    <td class="px-4 py-3 text-xs text-[var(--acc-ink)] max-w-[12rem]">
+                        <span class="line-clamp-2" :title="row.levels_affected_label" x-text="row.levels_affected_label || '—'"></span>
+                    </td>
+                    <td class="px-4 py-3 text-xs text-[var(--acc-muted)]" x-text="row.payment_method"></td>
+                    <td class="px-4 py-3 text-right font-bold text-sky-700 dark:text-sky-400 tabular-nums whitespace-nowrap">
+                        <span class="text-[10px] font-normal text-[var(--acc-muted)] mr-0.5">KES</span>
+                        <span x-text="row.amount_display"></span>
+                    </td>
+                    <td class="px-4 py-3 text-[var(--acc-muted)] text-xs whitespace-nowrap" x-text="row.created_at_display"></td>
+                    <td class="px-4 py-3 text-[var(--acc-muted)] text-xs" x-text="row.recorded_by_name"></td>
+                </tr>
+            </template>
+        </tbody>
+        <tfoot class="border-t-2 border-[var(--acc-line)]">
+            <tr class="bg-gradient-to-r from-slate-50 to-sky-50/50 dark:from-slate-800/80 dark:to-sky-950/30">
+                <td colspan="7" class="px-4 py-4 text-right text-sm font-semibold text-[var(--acc-ink)]">
+                    Student fees paid
+                    (<span x-text="filteredFeeRows.length"></span> payments)
+                </td>
+                <td class="px-4 py-4 text-right text-base font-bold text-sky-700 dark:text-sky-400 tabular-nums">
+                    KES <span x-text="feeVisibleTotalDisplay"></span>
+                </td>
+                <td colspan="2"></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+<div class="revenue-mobile-list divide-y divide-[var(--acc-line)] border-t border-[var(--acc-line)] md:hidden">
+    <template x-for="(row, idx) in filteredFeeRows" :key="'fm-' + idx">
+        <div class="p-4 hover:bg-sky-50/40 dark:hover:bg-sky-950/20">
+            <div class="flex justify-between gap-3">
+                <div class="min-w-0">
+                    <span class="font-mono text-xs font-semibold text-sky-700 dark:text-sky-400" x-text="row.reference_number"></span>
+                    <p class="font-semibold text-[var(--acc-ink)] mt-1" x-text="row.name"></p>
+                    <p class="text-xs text-teal-700 dark:text-teal-400 font-semibold mt-0.5" x-text="row.finance_account_name || '—'"></p>
+                    <p class="text-xs text-[var(--acc-muted)] mt-0.5" x-text="row.fee_name"></p>
+                    <p class="text-[10px] text-[var(--acc-ink)] mt-1 leading-snug" x-text="'Levels: ' + (row.levels_affected_label || '—')"></p>
+                    <p class="text-[10px] text-[var(--acc-muted)] mt-1" x-text="row.created_at_display + ' · ' + row.payment_method"></p>
+                </div>
+                <p class="font-bold text-sky-700 dark:text-sky-400 tabular-nums shrink-0">
+                    KES <span x-text="row.amount_display"></span>
+                </p>
+            </div>
+        </div>
+    </template>
+</div>
+<div x-show="filteredFeeRows.length === 0 && feeSearch" class="m-5 accounts-empty rounded-xl p-8 text-center" x-cloak>
+    <p class="font-semibold text-[var(--acc-ink)]">No fee payments match your search</p>
+    <button type="button" @click="feeSearch = ''" class="mt-2 text-sm text-sky-600 font-semibold hover:underline">Clear search</button>
+</div>

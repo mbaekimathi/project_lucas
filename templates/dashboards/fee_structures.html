@@ -10,10 +10,13 @@
 
 {% block content %}
 {% include 'dashboards/includes/student_fees_accounts_styles.html' %}
+{% include 'dashboards/includes/fee_structure_modal_styles.html' %}
+{% include 'dashboards/includes/fee_structures_page_styles.html' %}
 <script>
 // Store structures globally for modal access
 window.feeStructuresData = {{ fee_structures|tojson|safe }};
 window.academicYearsData = {{ academic_years|tojson|safe }};
+window.termsData = {{ terms|tojson|safe }};
 </script>
 
 <script>
@@ -26,8 +29,8 @@ document.addEventListener('alpine:init', () => {
 });
 </script>
 
-<div class="accounts-page sf-page bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8" x-data="{
+<div class="accounts-page sf-page fs-page bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+<div class="fs-page-shell max-w-7xl mx-auto w-full min-w-0 px-3 sm:px-5 lg:px-8 py-4 sm:py-6 lg:py-8" x-data="{
     searchQuery: '',
     filterStatus: 'all',
     filterCategory: 'all',
@@ -35,36 +38,139 @@ document.addEventListener('alpine:init', () => {
     get academicYears() {
         return window.academicYearsData || [];
     },
-    get filteredStructures() {
+    get allStructures() {
+        return window.feeStructuresData || [];
+    },
+    batchKey(s) {
+        const fa = s.finance_account_id;
+        return [
+            String(s.fee_name || '').trim().toLowerCase(),
+            String(s.academic_year_id ?? ''),
+            String(s.term_id ?? ''),
+            String(s.category || 'both').toLowerCase(),
+            fa == null || fa === '' ? '' : String(fa),
+        ].join('\x1e');
+    },
+    groupFeeStructures(structures) {
+        const buckets = {};
+        (structures || []).forEach(s => {
+            const k = this.batchKey(s);
+            if (!buckets[k]) buckets[k] = [];
+            buckets[k].push(s);
+        });
+        const groups = Object.values(buckets).map(rows => {
+            if (!rows.length) return null;
+            const first = rows[0];
+            const levelNames = [];
+            const structureIds = [];
+            rows.forEach(r => {
+                structureIds.push(r.id);
+                const ln = String(r.level_name || '').trim();
+                if (ln && !levelNames.some(n => n.toLowerCase() === ln.toLowerCase())) {
+                    levelNames.push(ln);
+                }
+            });
+            levelNames.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+            return {
+                groupKey: this.batchKey(first),
+                id: first.id,
+                structureIds,
+                level_names: levelNames,
+                levels_label: levelNames.join(', '),
+                level_count: levelNames.length,
+                fee_name: first.fee_name,
+                finance_account_id: first.finance_account_id,
+                finance_account_name: first.finance_account_name,
+                academic_year_id: first.academic_year_id,
+                academic_year_name: first.academic_year_name,
+                term_id: first.term_id,
+                term_name: first.term_name,
+                category: first.category,
+                start_date: first.start_date,
+                end_date: first.end_date,
+                payment_deadline: first.payment_deadline,
+                total_amount: first.total_amount,
+                status: first.status,
+                year_is_current: first.year_is_current,
+                items: first.items || first['items'] || [],
+                created_at: first.created_at,
+            };
+        }).filter(Boolean);
+        groups.sort((a, b) => {
+            const ca = a.created_at ? String(a.created_at) : '';
+            const cb = b.created_at ? String(b.created_at) : '';
+            if (ca !== cb) return cb.localeCompare(ca);
+            return String(a.fee_name || '').localeCompare(String(b.fee_name || ''));
+        });
+        return groups;
+    },
+    get groupedAllStructures() {
+        return this.groupFeeStructures(this.allStructures);
+    },
+    get stats() {
+        const all = this.groupedAllStructures;
+        const showing = this.filteredStructures;
+        return {
+            total: all.length,
+            showing: showing.length,
+            active: all.filter(g => g.status === 'active').length,
+            levelRows: this.allStructures.length,
+        };
+    },
+    get hasFilters() {
+        return !!(this.searchQuery || this.filterStatus !== 'all' || this.filterCategory !== 'all' || this.selectedYearId);
+    },
+    categoryBadgeClass(cat) {
+        if (cat === 'both') return 'fs-badge--both';
+        if (cat === 'self sponsored') return 'fs-badge--self';
+        if (cat === 'sponsored') return 'fs-badge--sponsored';
+        return 'fs-badge--neutral';
+    },
+    formatCategory(cat) {
+        if (!cat) return 'Both';
+        return cat.charAt(0).toUpperCase() + cat.slice(1);
+    },
+    formatCategoryShort(cat) {
+        if (!cat || cat === 'both') return 'Both';
+        if (cat === 'self sponsored') return 'Self';
+        if (cat === 'sponsored') return 'Spon.';
+        return cat.charAt(0).toUpperCase() + cat.slice(1);
+    },
+    formatAmount(n) {
+        const v = parseFloat(n || 0);
+        if (v >= 1000000) return 'KES ' + (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (v >= 100000) return 'KES ' + Math.round(v / 1000) + 'K';
+        return 'KES ' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    },
+    formatAmountFull(n) {
+        return 'KES ' + parseFloat(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+    get filteredRawStructures() {
         let structures = window.feeStructuresData || [];
-        
-        // Filter by selected academic year
         if (this.selectedYearId) {
             structures = structures.filter(s => s.academic_year_id == this.selectedYearId);
         }
-        
-        // Filter by search query
         if (this.searchQuery) {
             const query = this.searchQuery.toLowerCase();
-            structures = structures.filter(s => 
+            structures = structures.filter(s =>
                 s.fee_name?.toLowerCase().includes(query) ||
                 s.level_name?.toLowerCase().includes(query) ||
                 s.category?.toLowerCase().includes(query) ||
-                s.academic_year_name?.toLowerCase().includes(query)
+                s.academic_year_name?.toLowerCase().includes(query) ||
+                s.term_name?.toLowerCase().includes(query) ||
+                s.finance_account_name?.toLowerCase().includes(query)
             );
         }
-        
-        // Filter by status
         if (this.filterStatus !== 'all') {
             structures = structures.filter(s => s.status === this.filterStatus);
         }
-        
-        // Filter by category
         if (this.filterCategory !== 'all') {
             structures = structures.filter(s => s.category === this.filterCategory);
         }
-        
         return structures;
+    },
+    get filteredStructures() {
+        return this.groupFeeStructures(this.filteredRawStructures);
     },
     get structuresByYear() {
         const structures = window.feeStructuresData || [];
@@ -125,75 +231,79 @@ document.addEventListener('alpine:init', () => {
         }
     }
 }">
-    <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+    <header class="fs-hero accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
         <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div class="min-w-0">
-                <a href="{{ employee_dash_url('student-fees') }}"
-                   class="inline-flex items-center gap-2 text-[10px] font-semibold text-teal-200/90 hover:text-white mb-2 transition">
-                    <i class="fas fa-arrow-left"></i> Student fees
-                </a>
-                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
-                    <i class="fas fa-list-alt opacity-80"></i>
-                    <span>Fee structures</span>
+            <div class="min-w-0 flex gap-3 sm:gap-4">
+                <span class="fs-hero-icon hidden sm:flex" aria-hidden="true"><i class="fas fa-layer-group"></i></span>
+                <div class="min-w-0">
+                    <a href="{{ employee_dash_url('student-fees') }}"
+                       class="inline-flex items-center gap-2 text-[10px] font-semibold text-teal-200/90 hover:text-white mb-2 transition">
+                        <i class="fas fa-arrow-left"></i> Student fees
+                    </a>
+                    <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                        <i class="fas fa-list-alt opacity-80 sm:hidden"></i>
+                        <span>Accounts · Fee structures</span>
+                    </div>
+                    <h1 class="mt-1.5 text-xl sm:text-2xl font-bold text-white tracking-tight">Fee structures</h1>
+                    <p class="mt-1 text-sm text-slate-200/85 max-w-md leading-relaxed">Set up fees by year, level, and category.</p>
                 </div>
-                <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Fee structures</h1>
-                <p class="mt-1.5 text-sm sf-hero-sub max-w-xl">View and manage fee structures by academic year.</p>
             </div>
             {% if can_add_fee_structure %}
             <button type="button" @click="$store.feeStructure.open()"
-                    class="accounts-btn-primary inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shrink-0">
-                <i class="fas fa-plus-circle"></i> Create fee structure
+                    class="fs-btn-create w-full sm:w-auto shrink-0">
+                <i class="fas fa-plus"></i> New structure
             </button>
             {% endif %}
         </div>
-    </header>
-
-        <div class="sf-panel rounded-xl overflow-hidden p-4 sm:p-6 mb-5">
-            <div class="sf-panel-head">
-                <h3 class="sf-panel-title">
-                    <span class="sf-panel-icon"><i class="fas fa-calendar-check"></i></span>
-                    Filter by academic year
-                </h3>
-                <button type="button" x-show="selectedYearId" @click="clearYearFilter()" class="sf-clear-btn">
-                    <i class="fas fa-times mr-1"></i> Clear
-                </button>
-            </div>
-            <div class="flex flex-wrap gap-2 sm:gap-3">
-                <button type="button" @click="selectYear(null)"
-                        :class="selectedYearId === null ? 'sf-year-chip is-active' : 'sf-year-chip'">
-                    <i class="fas fa-list"></i>
-                    <span>All years</span>
-                </button>
-                <template x-for="year in academicYears" :key="year.id">
-                    <button type="button" @click="selectYear(year.id)"
-                            :class="selectedYearId == year.id ? 'sf-year-chip is-active' : 'sf-year-chip'">
-                        <i class="fas fa-calendar-alt"></i>
-                        <span x-text="year.year_name"></span>
-                        <span x-show="year.is_current" class="sf-current-badge">Current</span>
-                    </button>
-                </template>
+        <div class="fs-hero-band">
+            {% set sf_tab = 'structures' %}
+            {% include 'dashboards/includes/student_fees_nav_tabs.html' %}
+            <div class="fs-hero-stats mt-4" x-show="stats.total > 0" x-cloak>
+                <div class="fs-hero-stat">
+                    <i class="fas fa-database"></i>
+                    <div>
+                        <p class="fs-hero-stat-label">Fee structures</p>
+                        <p class="fs-hero-stat-value" x-text="stats.total"></p>
+                    </div>
+                </div>
+                <div class="fs-hero-stat">
+                    <i class="fas fa-filter"></i>
+                    <div>
+                        <p class="fs-hero-stat-label">Showing</p>
+                        <p class="fs-hero-stat-value" x-text="stats.showing"></p>
+                    </div>
+                </div>
+                <div class="fs-hero-stat">
+                    <i class="fas fa-circle-check"></i>
+                    <div>
+                        <p class="fs-hero-stat-label">Active</p>
+                        <p class="fs-hero-stat-value" x-text="stats.active"></p>
+                    </div>
+                </div>
             </div>
         </div>
+    </header>
 
-        <div class="sf-panel rounded-xl overflow-hidden p-4 mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="relative">
-                    <i class="sf-input-icon fas fa-search"></i>
-                    <input type="text" x-model="searchQuery" placeholder="Search fee structures..."
-                           class="sf-input sf-input-with-icon">
-                </div>
-                <div>
-                    <label class="sf-field-label">Status</label>
-                    <select x-model="filterStatus" class="sf-select">
-                        <option value="all">All status</option>
+    <div class="fs-toolbar">
+        <div class="fs-toolbar-row">
+            <div class="fs-search-wrap">
+                <i class="fas fa-search fs-search-icon" aria-hidden="true"></i>
+                <input type="search" x-model="searchQuery" placeholder="Search name, level, year…"
+                       class="fs-search-input" autocomplete="off">
+            </div>
+            <div class="fs-filters">
+                <div class="fs-filter-field">
+                    <label for="fs-filter-status">Status</label>
+                    <select id="fs-filter-status" x-model="filterStatus">
+                        <option value="all">All</option>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
                 </div>
-                <div>
-                    <label class="sf-field-label">Category</label>
-                    <select x-model="filterCategory" class="sf-select">
-                        <option value="all">All categories</option>
+                <div class="fs-filter-field">
+                    <label for="fs-filter-category">Category</label>
+                    <select id="fs-filter-category" x-model="filterCategory">
+                        <option value="all">All</option>
                         <option value="both">Both</option>
                         <option value="self sponsored">Self sponsored</option>
                         <option value="sponsored">Sponsored</option>
@@ -201,179 +311,196 @@ document.addEventListener('alpine:init', () => {
                 </div>
             </div>
         </div>
+        <div class="fs-years" x-show="academicYears.length > 0">
+            <div class="fs-years-head">
+                <span class="fs-years-label"><i class="fas fa-calendar-alt"></i> Academic year</span>
+                <button type="button" x-show="selectedYearId" @click="clearYearFilter()" class="fs-clear-link">
+                    Clear year
+                </button>
+            </div>
+            <div class="fs-years-scroll">
+                <div class="fs-years-track">
+                    <button type="button" @click="selectYear(null)"
+                            :class="selectedYearId === null ? 'fs-year-pill is-active' : 'fs-year-pill'">
+                        All
+                    </button>
+                    <template x-for="year in academicYears" :key="year.id">
+                        <button type="button" @click="selectYear(year.id)"
+                                :class="selectedYearId == year.id ? 'fs-year-pill is-active' : 'fs-year-pill'">
+                            <span x-show="year.is_current" class="fs-pill-dot" title="Current year"></span>
+                            <span x-text="year.year_name"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <!-- Fee Structures Table -->
-    <div class="sf-panel rounded-xl overflow-hidden">
-        <!-- Desktop Table View -->
-        <div class="hidden md:block overflow-x-auto">
-            <table class="sf-table finance-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+    <div class="fs-list-card">
+        <div class="fs-list-head">
+            <h2 class="fs-list-title"><i class="fas fa-table-list"></i> All structures</h2>
+            <span class="fs-list-count" x-text="stats.showing + ' of ' + stats.total"></span>
+        </div>
+
+        <div x-show="filteredStructures.length > 0" x-cloak class="hidden lg:block fs-table-wrap">
+            <table class="fs-table">
+                <colgroup>
+                    <col class="fs-col-fee">
+                    <col class="fs-col-account">
+                    <col class="fs-col-year-cat">
+                    <col class="fs-col-level">
+                    <col class="fs-col-amt">
+                    <col class="fs-col-status">
+                    <col class="fs-col-act">
+                </colgroup>
                 <thead>
                     <tr>
-                            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Fee Name</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Academic Year</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Academic Level</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Category</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Period</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Payment Deadline</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Total Amount</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Status</th>
-                        <th class="px-6 py-4 text-center text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                        <th>Fee name</th>
+                        <th>Account</th>
+                        <th>Year / Category</th>
+                        <th>Classes / levels</th>
+                        <th>Total</th>
+                        <th>Status</th>
+                        <th class="fs-th-actions">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    <template x-for="structure in filteredStructures" :key="structure.id">
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-semibold text-gray-900 dark:text-white" x-text="structure.fee_name"></div>
-                                <div class="text-xs text-gray-500 dark:text-gray-400" x-text="(structure.items || structure['items'] || []).length + ' item(s)'"></div>
+                <tbody>
+                    <template x-for="group in filteredStructures" :key="group.groupKey">
+                        <tr>
+                            <td class="fs-td-fee">
+                                <div class="fs-fee-name fs-truncate" :title="group.fee_name" x-text="group.fee_name"></div>
+                                <div class="fs-fee-meta">
+                                    <span x-text="(group.items || []).length + ' line items'"></span>
+                                    <span x-show="group.term_name"> · <span x-text="group.term_name"></span></span>
+                                </div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-3 py-1 text-xs font-semibold rounded-full"
-                                      :class="structure.academic_year_name ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'"
-                                      x-text="structure.academic_year_name || 'Unassigned'"></span>
+                            <td class="fs-td-account">
+                                <span class="fs-account-cell fs-truncate"
+                                      :class="!group.finance_account_name && 'is-empty'"
+                                      :title="group.finance_account_name || 'No finance account'"
+                                      x-text="group.finance_account_name || '—'"></span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300" x-text="structure.level_name || 'N/A'"></span>
+                            <td class="fs-td-year-cat">
+                                <div class="fs-cell-stack">
+                                    <span x-show="!selectedYearId"
+                                          class="fs-badge fs-truncate-badge"
+                                          :class="group.academic_year_name ? 'fs-badge--year' : 'fs-badge--neutral'"
+                                          :title="group.academic_year_name || ''"
+                                          x-text="group.academic_year_name || '—'"></span>
+                                    <span class="fs-badge fs-truncate-badge" :class="categoryBadgeClass(group.category)"
+                                          :title="formatCategory(group.category)"
+                                          x-text="formatCategory(group.category)"></span>
+                                </div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-3 py-1 text-xs font-semibold rounded-full capitalize"
-                                      :class="{
-                                          'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300': structure.category === 'both',
-                                          'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300': structure.category === 'self sponsored',
-                                          'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300': structure.category === 'sponsored',
-                                          'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300': !structure.category || !['both', 'self sponsored', 'sponsored'].includes(structure.category)
-                                      }"
-                                      x-text="structure.category ? structure.category.charAt(0).toUpperCase() + structure.category.slice(1) : 'Both'"></span>
+                            <td class="fs-td-levels">
+                                <div class="fs-levels-wrap" :title="group.levels_label">
+                                    <template x-for="ln in group.level_names" :key="group.groupKey + '-' + ln">
+                                        <span class="fs-badge fs-badge--level" x-text="ln"></span>
+                                    </template>
+                                </div>
+                                <div class="fs-fee-meta" x-text="group.level_count + (group.level_count === 1 ? ' class' : ' classes')"></div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm text-gray-900 dark:text-white" x-text="structure.start_date ? new Date(structure.start_date).toLocaleDateString('en-GB') : 'N/A'"></div>
-                                <div class="text-xs text-gray-500 dark:text-gray-400" x-text="'to ' + (structure.end_date ? new Date(structure.end_date).toLocaleDateString('en-GB') : 'N/A')"></div>
+                            <td class="fs-td-amt">
+                                <span class="fs-amount" :title="formatAmountFull(group.total_amount)" x-text="formatAmount(group.total_amount)"></span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-medium text-gray-900 dark:text-white" x-text="structure.payment_deadline ? new Date(structure.payment_deadline).toLocaleDateString('en-GB') : 'N/A'"></div>
+                            <td class="fs-td-badge">
+                                <span class="fs-badge fs-badge--status"
+                                      :class="group.status === 'active' ? 'fs-badge--active' : 'fs-badge--inactive'"
+                                      x-text="group.status === 'active' ? 'On' : 'Off'"></span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-bold text-green-600 dark:text-green-400" x-text="'KES ' + (parseFloat(structure.total_amount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}))"></div>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-3 py-1 text-xs font-semibold rounded-full"
-                                      :class="structure.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'"
-                                      x-text="(structure.status || 'N/A').charAt(0).toUpperCase() + (structure.status || 'N/A').slice(1)"></span>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                <div class="flex items-center justify-center space-x-2">
-                                    <button @click="openViewModal(structure.id)" 
-                                            class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 transition-colors p-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20"
-                                            title="View Details">
+                            <td class="fs-td-actions">
+                                <div class="fs-actions">
+                                    <button type="button" @click="openViewModal(group.id)"
+                                            class="fs-action fs-action--view" title="View">
                                         <i class="fas fa-eye"></i>
                                     </button>
-                                    <button @click="openEditModal(structure.id)" 
-                                            class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                            title="Edit">
-                                        <i class="fas fa-edit"></i>
+                                    <button type="button" @click="openEditModal(group.id)"
+                                            class="fs-action fs-action--edit" title="Edit batch">
+                                        <i class="fas fa-pen"></i>
                                     </button>
-                                    <button @click="confirmDelete(structure.id, structure.fee_name)" 
-                                            class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-                                            title="Delete">
-                                        <i class="fas fa-trash"></i>
+                                    <button type="button" @click="confirmDelete(group.id, group.fee_name)"
+                                            class="fs-action fs-action--delete" title="Delete">
+                                        <i class="fas fa-trash-alt"></i>
                                     </button>
                                 </div>
                             </td>
                         </tr>
                     </template>
-                    <tr x-show="filteredStructures.length === 0">
-                        <td colspan="9" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                            <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
-                            <p class="text-lg font-medium">No fee structures found</p>
-                            <p class="text-sm mt-1" x-text="searchQuery || filterStatus !== 'all' || filterCategory !== 'all' ? 'Try adjusting your filters' : 'Create your first fee structure to get started'"></p>
-                        </td>
-                    </tr>
                 </tbody>
             </table>
         </div>
-        
-        <!-- Mobile Card View -->
-        <div class="md:hidden p-4 space-y-4">
-            <template x-for="structure in filteredStructures" :key="structure.id">
-                <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-xl p-4 shadow-md hover:shadow-lg transition-all">
-                    <!-- Header -->
-                    <div class="mb-3 pb-3 border-b-2 border-gray-200 dark:border-gray-600">
-                        <div class="flex items-start justify-between mb-2">
-                            <div class="flex-1 min-w-0 pr-2">
-                                <h3 class="text-base font-bold text-gray-900 dark:text-white break-words leading-tight" x-text="structure.fee_name"></h3>
-                            </div>
-                            <span class="px-2 py-1 text-xs font-semibold rounded-full flex-shrink-0"
-                                  :class="structure.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'"
-                                  x-text="(structure.status || 'N/A').charAt(0).toUpperCase() + (structure.status || 'N/A').slice(1)"></span>
+
+        <div x-show="filteredStructures.length > 0" x-cloak class="fs-mobile-list fs-mobile-list--cards">
+            <template x-for="group in filteredStructures" :key="group.groupKey">
+                <article class="fs-mobile-card">
+                    <div class="fs-mobile-top">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="fs-fee-name fs-line-clamp-2" :title="group.fee_name" x-text="group.fee_name"></h3>
+                            <p class="fs-fee-meta">
+                                <span x-text="(group.items || []).length + ' line items'"></span>
+                                <span x-show="group.term_name"> · <span x-text="group.term_name"></span></span>
+                            </p>
                         </div>
-                        <p class="text-xs text-gray-500 dark:text-gray-400" x-text="(structure.items || structure['items'] || []).length + ' item(s)'"></p>
+                        <span class="fs-badge shrink-0"
+                              :class="group.status === 'active' ? 'fs-badge--active' : 'fs-badge--inactive'"
+                              x-text="group.status === 'active' ? 'On' : 'Off'"></span>
                     </div>
-                    
-                    <!-- Details Grid -->
-                    <div class="grid grid-cols-2 gap-3 mb-3">
-                        <div>
-                            <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Academic Year</p>
-                            <span class="px-2 py-1 text-xs font-semibold rounded-full"
-                                  :class="structure.academic_year_name ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'"
-                                  x-text="structure.academic_year_name || 'Unassigned'"></span>
-                        </div>
-                        <div>
-                            <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Academic Level</p>
-                            <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="structure.level_name || 'N/A'"></span>
-                        </div>
-                        <div>
-                            <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Category</p>
-                            <span class="px-2 py-1 text-xs font-semibold rounded-full capitalize"
-                                  :class="{
-                                      'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300': structure.category === 'both',
-                                      'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300': structure.category === 'self sponsored',
-                                      'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300': structure.category === 'sponsored',
-                                      'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300': !structure.category || !['both', 'self sponsored', 'sponsored'].includes(structure.category)
-                                  }"
-                                  x-text="structure.category ? structure.category.charAt(0).toUpperCase() + structure.category.slice(1) : 'Both'"></span>
-                        </div>
-                        <div>
-                            <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Start Date</p>
-                            <p class="text-sm font-semibold text-gray-900 dark:text-white" x-text="structure.start_date ? new Date(structure.start_date).toLocaleDateString('en-GB') : 'N/A'"></p>
-                        </div>
-                        <div>
-                            <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">End Date</p>
-                            <p class="text-sm font-semibold text-gray-900 dark:text-white" x-text="structure.end_date ? new Date(structure.end_date).toLocaleDateString('en-GB') : 'N/A'"></p>
-                        </div>
-                        <div>
-                            <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Payment Deadline</p>
-                            <p class="text-sm font-semibold text-red-600 dark:text-red-400" x-text="structure.payment_deadline ? new Date(structure.payment_deadline).toLocaleDateString('en-GB') : 'N/A'"></p>
-                        </div>
-                        <div>
-                            <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Total Amount</p>
-                            <p class="text-base font-bold text-green-600 dark:text-green-400" x-text="'KES ' + (parseFloat(structure.total_amount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}))"></p>
+                    <div class="fs-mobile-account-row">
+                        <span class="fs-mobile-account-label">Account</span>
+                        <span class="fs-account-cell fs-truncate"
+                              :class="!group.finance_account_name && 'is-empty'"
+                              :title="group.finance_account_name || ''"
+                              x-text="group.finance_account_name || '—'"></span>
+                    </div>
+                    <div class="fs-mobile-levels">
+                        <span class="fs-mobile-account-label">Classes / levels</span>
+                        <div class="fs-levels-wrap">
+                            <template x-for="ln in group.level_names" :key="group.groupKey + '-m-' + ln">
+                                <span class="fs-badge fs-badge--level" x-text="ln"></span>
+                            </template>
                         </div>
                     </div>
-                    
-                    <!-- Actions -->
-                    <div class="flex items-center justify-end space-x-2 pt-3 border-t border-gray-200 dark:border-gray-600">
-                        <button @click="openViewModal(structure.id)" 
-                                class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium">
-                            <i class="fas fa-eye mr-1"></i>View
-                        </button>
-                        <button @click="openEditModal(structure.id)" 
-                                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium">
-                            <i class="fas fa-edit mr-1"></i>Edit
-                        </button>
-                        <button @click="confirmDelete(structure.id, structure.fee_name)" 
-                                class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium">
-                            <i class="fas fa-trash mr-1"></i>Delete
-                        </button>
+                    <div class="fs-mobile-chips">
+                        <span class="fs-badge fs-truncate-badge max-w-[48%]"
+                              x-show="!selectedYearId"
+                              :class="group.academic_year_name ? 'fs-badge--year' : 'fs-badge--neutral'"
+                              :title="group.academic_year_name"
+                              x-text="group.academic_year_name || '—'"></span>
+                        <span class="fs-badge max-w-full" :class="categoryBadgeClass(group.category)"
+                              :title="formatCategory(group.category)"
+                              x-text="formatCategory(group.category)"></span>
                     </div>
-                </div>
+                    <div class="fs-mobile-footer">
+                        <span class="fs-amount min-w-0 truncate" :title="formatAmountFull(group.total_amount)" x-text="formatAmount(group.total_amount)"></span>
+                        <div class="fs-mobile-actions">
+                            <button type="button" @click="openViewModal(group.id)"
+                                    class="fs-mobile-btn fs-action fs-action--view" title="View">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button type="button" @click="openEditModal(group.id)"
+                                    class="fs-mobile-btn fs-action fs-action--edit" title="Edit">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                            <button type="button" @click="confirmDelete(group.id, group.fee_name)"
+                                    class="fs-mobile-btn fs-action fs-action--delete" title="Delete">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                </article>
             </template>
-            
-            <!-- Empty State Mobile -->
-            <div x-show="filteredStructures.length === 0" class="text-center py-12 text-gray-500 dark:text-gray-400">
-                <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
-                <p class="text-lg font-medium">No fee structures found</p>
-                <p class="text-sm mt-1" x-text="searchQuery || filterStatus !== 'all' || filterCategory !== 'all' ? 'Try adjusting your filters' : 'Create your first fee structure to get started'"></p>
-            </div>
+        </div>
+
+        <div x-show="filteredStructures.length === 0" x-cloak class="fs-empty fs-empty--solo">
+            <div class="fs-empty-icon"><i class="fas fa-folder-open"></i></div>
+            <h3>No fee structures</h3>
+            <p x-text="hasFilters ? 'Try different filters or search terms.' : 'Create a structure to get started.'"></p>
+            {% if can_add_fee_structure %}
+            <button type="button" @click="$store.feeStructure.open()" x-show="!hasFilters"
+                    class="fs-btn-create mt-4">
+                <i class="fas fa-plus"></i> New structure
+            </button>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -568,6 +695,11 @@ document.addEventListener('alpine:init', () => {
                             <p class="text-base font-semibold text-gray-900 dark:text-white" x-text="structure?.level_name || 'N/A'"></p>
                         </div>
                         <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Finance account</label>
+                            <p class="text-base font-semibold text-gray-900 dark:text-white"
+                               x-text="structure?.finance_account_name || (structure?.finance_account_id ? ('Account #' + structure.finance_account_id) : 'Not assigned')"></p>
+                        </div>
+                        <div>
                             <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Status</label>
                             <span class="inline-block px-3 py-1 text-sm font-semibold rounded-full"
                                   :class="structure?.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'"
@@ -658,6 +790,34 @@ function editModalData() {
     return {
         editModalOpen: false,
         structureId: null,
+        batchStructureIds: [],
+        batchLevelIds: [],
+        academicLevelsWithStructure: [],
+        conflictsByLevel: {},
+        conflictingAcademicLevels: [],
+        hasConflict: false,
+        financeAccountId: '',
+        academicYearId: '',
+        termId: '',
+        financeAccounts: [
+            {% if finance_accounts_picker %}
+            {% for account in finance_accounts_picker %}
+            {
+                id: {{ account.id }},
+                account_name: {{ account.account_name|tojson }},
+                account_category: {{ account.account_category|tojson }},
+                level_count: {{ account.level_count|default(0) }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+            {% endif %}
+        ],
+        academicLevels: [],
+        levelCombinations: [],
+        memberLevelIds: [],
+        levelsByCategoryStandalone: [],
+        selectedAcademicLevels: [],
+        accountLevelsLoading: false,
+        accountLevelsError: '',
         academicLevelId: '',
         feeName: '',
         category: 'both',
@@ -669,10 +829,210 @@ function editModalData() {
         loading: false,
         error: '',
         success: '',
+        get financeAccountLevelsUrl() {
+            if (!this.financeAccountId) return '';
+            return {{ (employee_dash_url('student-fees/finance-account') ~ '/__ID__/academic-levels')|tojson }}.replace('__ID__', String(this.financeAccountId));
+        },
+        get academicYears() {
+            return window.academicYearsData || [];
+        },
+        get terms() {
+            return window.termsData || [];
+        },
+        get filteredTerms() {
+            if (!this.academicYearId) return [];
+            const yearId = parseInt(this.academicYearId, 10);
+            return this.terms.filter(t =>
+                parseInt(t.academic_year_id, 10) === yearId &&
+                (!t.is_locked || t.is_locked === false)
+            );
+        },
+        get editingYearName() {
+            const y = this.academicYears.find(y => String(y.id) === String(this.academicYearId));
+            return y ? y.year_name : '';
+        },
+        get editingTermName() {
+            const t = this.terms.find(t => String(t.id) === String(this.termId));
+            return t ? t.term_name : '';
+        },
+        get selectedAcademicLevelIds() {
+            return (this.selectedAcademicLevels || []).map(id => parseInt(id, 10));
+        },
+        get levelsByCategoryAll() {
+            const byCat = {};
+            for (const level of this.academicLevels) {
+                const cat = (level.level_category || '').trim() || 'Other';
+                if (!byCat[cat]) byCat[cat] = [];
+                byCat[cat].push({
+                    id: level.id,
+                    level_name: level.level_name,
+                    level_category: cat,
+                });
+            }
+            return Object.keys(byCat)
+                .sort((a, b) => a.localeCompare(b))
+                .map(cat => ({
+                    category: cat,
+                    levels: byCat[cat].sort((a, b) =>
+                        (a.level_name || '').localeCompare(b.level_name || '')
+                    ),
+                }));
+        },
+        get displayCategories() {
+            return this.levelsByCategoryAll;
+        },
+        get selectionBadgeText() {
+            const n = this.selectedAcademicLevels.length;
+            if (!n) return 'None';
+            return n + ' selected';
+        },
+        isLevelChecked(levelId) {
+            return this.selectedAcademicLevels.includes(String(levelId));
+        },
+        hasFeeStructureForTerm(levelId) {
+            return this.academicLevelsWithStructure.includes(parseInt(levelId, 10));
+        },
+        levelConflictLabel(levelId) {
+            const info = this.conflictsByLevel[String(levelId)] || this.conflictsByLevel[parseInt(levelId, 10)];
+            if (!info) return '';
+            const cat = info.category ? ` (${info.category})` : '';
+            return info.fee_name ? ` — ${info.fee_name}${cat}` : '';
+        },
+        isCombinationFullySelected(combo) {
+            const ids = (combo.member_level_ids || []).map(id => String(id));
+            return ids.length > 0 && ids.every(id => this.selectedAcademicLevels.includes(id));
+        },
+        generateFeeName() {
+            if (!this.academicYearId || !this.termId || !this.selectedAcademicLevelIds.length) {
+                return '';
+            }
+            const year = this.academicYears.find(y => String(y.id) === String(this.academicYearId));
+            const term = this.filteredTerms.find(t => String(t.id) === String(this.termId));
+            if (!year || !term) {
+                return '';
+            }
+            const allLevelIds = this.academicLevels.map(l => parseInt(l.id, 10));
+            const selected = this.selectedAcademicLevelIds;
+            if (allLevelIds.length > 0 && selected.length === allLevelIds.length &&
+                allLevelIds.every(id => selected.includes(id))) {
+                return `ALL LEVELS - ${term.term_name} - ${year.year_name}`.toUpperCase();
+            }
+            const selectedCombos = (this.levelCombinations || []).filter(c =>
+                this.isCombinationFullySelected(c)
+            );
+            if (selectedCombos.length === 1 &&
+                selected.length === (selectedCombos[0].member_level_ids || []).length) {
+                return `${selectedCombos[0].label_name} - ${term.term_name} - ${year.year_name}`.toUpperCase();
+            }
+            if (selectedCombos.length > 0) {
+                const labels = selectedCombos.map(c => c.label_name).join(', ');
+                return `${labels} - ${term.term_name} - ${year.year_name}`.toUpperCase();
+            }
+            if (selected.length === 1) {
+                const level = this.academicLevels.find(l => parseInt(l.id, 10) === selected[0]);
+                if (level) {
+                    return `${level.level_name} - ${term.term_name} - ${year.year_name}`.toUpperCase();
+                }
+            }
+            return `${selected.length} LEVELS - ${term.term_name} - ${year.year_name}`.toUpperCase();
+        },
+        updateFeeName() {
+            const generated = this.generateFeeName();
+            if (generated) {
+                this.feeName = generated;
+            }
+        },
+        toggleLevelSelection(levelId, checked) {
+            const sid = String(levelId);
+            if (checked && !this.selectedAcademicLevels.includes(sid)) {
+                this.selectedAcademicLevels.push(sid);
+            } else if (!checked) {
+                this.selectedAcademicLevels = this.selectedAcademicLevels.filter(x => x !== sid);
+            }
+            this.academicLevelId = this.selectedAcademicLevels[0] || '';
+            this.updateFeeName();
+            this.checkFeeStructureExists();
+        },
+        toggleAllAcademicLevels() {
+            if (this.selectedAcademicLevels.length === this.academicLevels.length) {
+                this.selectedAcademicLevels = [];
+            } else {
+                this.selectedAcademicLevels = this.academicLevels.map(l => String(l.id));
+            }
+            this.academicLevelId = this.selectedAcademicLevels[0] || '';
+            this.updateFeeName();
+            this.checkFeeStructureExists();
+        },
+        async checkFeeStructuresForTerm() {
+            if (!this.academicYearId || !this.termId || !this.category) {
+                this.academicLevelsWithStructure = [];
+                this.conflictsByLevel = {};
+                return;
+            }
+            try {
+                const exclude = (this.batchStructureIds || []).join(',');
+                const url = {{ employee_dash_url('student-fees/check-fee-structures-for-term')|tojson }}
+                    + `?academic_year_id=${this.academicYearId}&term_id=${this.termId}`
+                    + `&category=${encodeURIComponent(this.category)}`
+                    + (exclude ? `&exclude_structure_ids=${exclude}` : '');
+                const response = await fetch(url);
+                const data = await response.json();
+                this.academicLevelsWithStructure = (data.academic_levels_with_structure || [])
+                    .map(id => parseInt(id, 10));
+                this.conflictsByLevel = data.conflicts_by_level || {};
+            } catch (e) {
+                console.error(e);
+                this.academicLevelsWithStructure = [];
+                this.conflictsByLevel = {};
+            }
+        },
+        async checkFeeStructureExists() {
+            await this.checkFeeStructuresForTerm();
+            const selectedIds = this.selectedAcademicLevelIds;
+            if (!selectedIds.length) {
+                this.conflictingAcademicLevels = [];
+                this.hasConflict = false;
+                if (this.error && this.error.includes('Fee structure already exists')) {
+                    this.error = '';
+                }
+                return;
+            }
+            this.conflictingAcademicLevels = this.academicLevels
+                .filter(level => selectedIds.includes(parseInt(level.id, 10)) && this.hasFeeStructureForTerm(level.id))
+                .map(level => level.level_name + (this.levelConflictLabel(level.id) || ''));
+            this.hasConflict = this.conflictingAcademicLevels.length > 0;
+            if (this.hasConflict) {
+                this.error = `Conflict on: ${this.conflictingAcademicLevels.join('; ')}. Change category/term or unselect those levels.`;
+            } else if (this.error && this.error.includes('Conflict on:')) {
+                this.error = '';
+            }
+        },
+        findBatchSiblings(structure) {
+            const all = window.feeStructuresData || [];
+            const fa = structure.finance_account_id;
+            return all.filter(s =>
+                s.status === 'active' &&
+                s.fee_name === structure.fee_name &&
+                String(s.academic_year_id) === String(structure.academic_year_id) &&
+                String(s.term_id) === String(structure.term_id) &&
+                (s.category || 'both') === (structure.category || 'both') &&
+                (fa == null || fa === '' ? !s.finance_account_id : String(s.finance_account_id) === String(fa))
+            );
+        },
         calculateTotal() {
             this.totalAmount = this.feeItems.reduce((sum, item) => {
                 return sum + (parseFloat(item.amount) || 0);
             }, 0);
+        },
+        addNewItem() {
+            this.feeItems.push({ itemName: '', itemDescription: '', amount: '' });
+            this.calculateTotal();
+        },
+        removeItem(index) {
+            if (this.feeItems.length > 1) {
+                this.feeItems.splice(index, 1);
+                this.calculateTotal();
+            }
         },
         init() {
             if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')) {
@@ -685,15 +1045,112 @@ function editModalData() {
                 }, 100);
             }
         },
-        submitEditForm() {
+        ensureAccountInPicker(accountId, accountName, accountCategory) {
+            if (!accountId) return;
+            const id = parseInt(accountId, 10);
+            if (!this.financeAccounts.some(a => parseInt(a.id, 10) === id)) {
+                this.financeAccounts.push({
+                    id: id,
+                    account_name: accountName || ('Account #' + id),
+                    account_category: accountCategory || '',
+                    level_count: 0,
+                });
+            }
+        },
+        async loadLevelsForFinanceAccount() {
+            if (!this.financeAccountId) {
+                this.academicLevels = [];
+                this.levelCombinations = [];
+                this.memberLevelIds = [];
+                this.levelsByCategoryStandalone = [];
+                return;
+            }
+            this.accountLevelsLoading = true;
+            this.accountLevelsError = '';
+            try {
+                const response = await fetch(this.financeAccountLevelsUrl);
+                const data = await response.json();
+                if (data.success) {
+                    this.academicLevels = (data.academic_levels || []).map(l => ({
+                        id: l.id,
+                        level_name: l.level_name || '',
+                        level_category: l.level_category || '',
+                    }));
+                    this.levelCombinations = data.level_combinations || [];
+                    this.memberLevelIds = data.member_level_ids || [];
+                    this.levelsByCategoryStandalone = data.levels_by_category || [];
+                    this.selectedAcademicLevels = (this.selectedAcademicLevels || []).filter(id =>
+                        this.academicLevels.some(l => String(l.id) === String(id))
+                    );
+                    this.academicLevelId = this.selectedAcademicLevels[0] || '';
+                } else {
+                    this.accountLevelsError = data.message || 'Could not load levels for this account';
+                    this.academicLevels = [];
+                    this.levelCombinations = [];
+                    this.memberLevelIds = [];
+                    this.levelsByCategoryStandalone = [];
+                }
+            } catch (e) {
+                console.error(e);
+                this.accountLevelsError = 'Could not load levels for this finance account';
+                this.academicLevels = [];
+                this.levelCombinations = [];
+                this.memberLevelIds = [];
+                this.levelsByCategoryStandalone = [];
+            } finally {
+                this.accountLevelsLoading = false;
+            }
+        },
+        async onFinanceAccountChange() {
+            const keep = [...this.selectedAcademicLevels];
+            await this.loadLevelsForFinanceAccount();
+            this.selectedAcademicLevels = keep.filter(id =>
+                this.academicLevels.some(l => String(l.id) === String(id))
+            );
+            this.academicLevelId = this.selectedAcademicLevels[0] || '';
+            this.updateFeeName();
+            await this.checkFeeStructureExists();
+        },
+        onPeriodOrCategoryChange() {
+            this.updateFeeName();
+            this.checkFeeStructureExists();
+        },
+        async submitEditForm() {
             this.loading = true;
             this.error = '';
             this.success = '';
+            if (!this.financeAccountId) {
+                this.error = 'Please select the finance account fees are paid into.';
+                this.loading = false;
+                return;
+            }
+            const selectedIds = this.selectedAcademicLevelIds;
+            if (!selectedIds.length) {
+                this.error = 'Select at least one academic level for this finance account.';
+                this.loading = false;
+                return;
+            }
+            await this.checkFeeStructureExists();
+            if (this.hasConflict) {
+                this.loading = false;
+                return;
+            }
+            this.updateFeeName();
+            if (!this.feeName) {
+                this.error = 'Choose academic year, term, and at least one level to set the fee name.';
+                this.loading = false;
+                return;
+            }
+            this._submitEditRequest(selectedIds);
+        },
+        _submitEditRequest(selectedIds) {
             fetch({{ employee_dash_url('student-fees/fee-structure')|tojson }} + '/' + this.structureId + '/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    academic_level_id: this.academicLevelId,
+                    finance_account_id: parseInt(this.financeAccountId, 10),
+                    academic_level_ids: selectedIds,
+                    academic_level_id: selectedIds[0],
                     academic_year_id: this.academicYearId,
                     term_id: this.termId,
                     fee_name: this.feeName,
@@ -714,11 +1171,8 @@ function editModalData() {
             .then(data => {
                 this.loading = false;
                 if (data.success) {
-                    this.success = data.message;
-                    setTimeout(() => {
-                        this.editModalOpen = false;
-                        location.reload();
-                    }, 1500);
+                    this.editModalOpen = false;
+                    location.reload();
                 } else {
                     this.error = data.message || 'Failed to update fee structure';
                 }
@@ -728,56 +1182,88 @@ function editModalData() {
                 this.error = 'An error occurred. Please try again.';
             });
         },
-        openEditModal(structureData) {
+        async openEditModal(structureData) {
             const structure = structureData;
+            this.error = '';
+            this.success = '';
+            this.hasConflict = false;
+            this.conflictingAcademicLevels = [];
+            this.academicLevelsWithStructure = [];
+            this.conflictsByLevel = {};
+
             this.structureId = structure.id;
-            this.academicLevelId = structure.academic_level_id;
-            this.academicYearId = structure.academic_year_id || null;
-            this.termId = structure.term_id || null;
-            this.feeName = structure.fee_name;
+            this.financeAccountId = structure.finance_account_id
+                ? String(structure.finance_account_id) : '';
+            this.ensureAccountInPicker(
+                structure.finance_account_id,
+                structure.finance_account_name,
+                structure.finance_account_category
+            );
+
+            const siblings = this.findBatchSiblings(structure);
+            this.batchStructureIds = siblings.length ? siblings.map(s => s.id) : [structure.id];
+            this.batchLevelIds = siblings.length
+                ? siblings.map(s => parseInt(s.academic_level_id, 10))
+                : (structure.academic_level_id ? [parseInt(structure.academic_level_id, 10)] : []);
+
+            this.selectedAcademicLevels = this.batchLevelIds.map(id => String(id));
+            this.academicLevelId = this.selectedAcademicLevels[0] || '';
+            this.academicYearId = structure.academic_year_id != null
+                ? String(structure.academic_year_id) : '';
+            this.termId = structure.term_id != null ? String(structure.term_id) : '';
             this.category = structure.category || 'both';
-            
-            let startDate = structure.start_date;
+
+            const startDate = structure.start_date;
             if (startDate && typeof startDate === 'string') {
                 this.startDate = startDate.split(' ')[0];
             } else if (startDate) {
-                this.startDate = startDate.toISOString().split('T')[0];
+                this.startDate = new Date(startDate).toISOString().split('T')[0];
             } else {
                 this.startDate = '';
             }
-            
-            let endDate = structure.end_date;
+
+            const endDate = structure.end_date;
             if (endDate && typeof endDate === 'string') {
                 this.endDate = endDate.split(' ')[0];
             } else if (endDate) {
-                this.endDate = endDate.toISOString().split('T')[0];
+                this.endDate = new Date(endDate).toISOString().split('T')[0];
             } else {
                 this.endDate = '';
             }
-            
-            let paymentDeadline = structure.payment_deadline;
+
+            const paymentDeadline = structure.payment_deadline;
             if (paymentDeadline && typeof paymentDeadline === 'string') {
                 this.paymentDeadline = paymentDeadline.split(' ')[0];
             } else if (paymentDeadline) {
-                this.paymentDeadline = paymentDeadline.toISOString().split('T')[0];
+                this.paymentDeadline = new Date(paymentDeadline).toISOString().split('T')[0];
             } else {
                 this.paymentDeadline = '';
             }
-            
+
             const items = structure.items || structure['items'] || [];
-            this.feeItems = items.length > 0 
+            this.feeItems = items.length > 0
                 ? items.map(item => ({
                     itemName: item.item_name || '',
                     itemDescription: item.item_description || '',
-                    amount: item.amount || ''
+                    amount: item.amount != null ? item.amount : ''
                 }))
                 : [{ itemName: '', itemDescription: '', amount: '' }];
-            this.error = '';
-            this.success = '';
+
+            this.accountLevelsError = '';
+            if (this.financeAccountId) {
+                await this.loadLevelsForFinanceAccount();
+            } else {
+                this.academicLevels = [];
+                this.levelsByCategoryStandalone = [];
+            }
+
+            await this.checkFeeStructureExists();
+            this.updateFeeName();
+            if (!this.feeName) {
+                this.feeName = structure.fee_name || '';
+            }
+            this.calculateTotal();
             this.editModalOpen = true;
-            this.$nextTick(() => {
-                this.calculateTotal();
-            });
         }
     };
 }
@@ -785,183 +1271,193 @@ function editModalData() {
 <div x-data="editModalData()"
      x-show="editModalOpen"
      x-cloak
-     @keydown.escape.window="editModalOpen = false"
-     class="fixed inset-0 z-50 overflow-y-auto"
-     style="display: none;">
-    <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" 
-         @click="editModalOpen = false"></div>
-    
-    <!-- Modal -->
-    <div class="flex min-h-full items-center justify-center p-4">
-        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
-             @click.stop>
-            <!-- Header -->
-            <div class="sticky top-0 bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
-                <div class="flex items-center space-x-3">
-                    <i class="fas fa-edit text-white text-2xl"></i>
-                    <h2 class="text-xl font-bold text-white">Edit Fee Structure</h2>
+     class="fsm-root fixed inset-0 z-50"
+     style="display: none;"
+     @keydown.escape.window="editModalOpen = false">
+    <div class="fsm-backdrop" @click="editModalOpen = false" aria-hidden="true"></div>
+    <div class="fsm-wrap">
+        <div class="fsm-dialog" @click.stop role="dialog" aria-labelledby="fsm-edit-title">
+            <header class="fsm-header fsm-header--edit">
+                <div class="fsm-header__glow" aria-hidden="true"></div>
+                <div class="fsm-header__main">
+                    <span class="fsm-header__icon" aria-hidden="true"><i class="fas fa-pen-to-square"></i></span>
+                    <div>
+                        <p class="fsm-header__eyebrow">Student fees</p>
+                        <h2 id="fsm-edit-title">Edit fee structure</h2>
+                    </div>
                 </div>
-                <button @click="editModalOpen = false" 
-                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
-                    <i class="fas fa-times text-xl"></i>
+                <button type="button" @click="editModalOpen = false" class="fsm-close" aria-label="Close">
+                    <i class="fas fa-times"></i>
                 </button>
-            </div>
-            
-            <!-- Content -->
-            <form @submit.prevent="submitEditForm()" class="p-6 space-y-6">
-                
-                <!-- Error/Success Messages -->
-                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
-                    <i class="fas fa-exclamation-circle mr-2"></i>
-                    <span x-text="error"></span>
-                </div>
-                <div x-show="success" x-cloak class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg">
-                    <i class="fas fa-check-circle mr-2"></i>
-                    <span x-text="success"></span>
-                </div>
-                
-                <!-- Academic Level -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Academic Level <span class="text-red-500">*</span>
-                    </label>
-                    <select x-model="academicLevelId" required
-                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                        <option value="">Select Academic Level</option>
-                        {% for level in academic_levels %}
-                        <option value="{{ level.id }}">{{ level.level_name }} ({{ level.level_category }})</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                
-                <!-- Fee Name -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Fee Name <span class="text-red-500">*</span>
-                    </label>
-                    <input type="text" x-model="feeName" required
-                           placeholder="e.g., TERM 1 FEES 2024"
-                           class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all uppercase"
-                           style="text-transform: uppercase;">
-                </div>
-                
-                <!-- Category -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Category <span class="text-red-500">*</span>
-                    </label>
-                    <select x-model="category" required
-                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                        <option value="both">Both (Self Sponsored & Sponsored)</option>
-                        <option value="self sponsored">Self Sponsored Only</option>
-                        <option value="sponsored">Sponsored Only</option>
-                    </select>
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                        <i class="fas fa-info-circle mr-1"></i>Select which student category this fee structure applies to
-                    </p>
-                </div>
-                
-                <!-- Date Range -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Start Date <span class="text-red-500">*</span>
-                        </label>
-                        <input type="date" x-model="startDate" required
-                               class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+            </header>
+
+            <form @submit.prevent="submitEditForm()" class="fsm-form">
+                <div class="fsm-body">
+                    <div x-show="error" x-cloak class="fsm-alert fsm-alert--error">
+                        <i class="fas fa-exclamation-circle shrink-0"></i>
+                        <span x-text="error"></span>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            End Date <span class="text-red-500">*</span>
-                        </label>
-                        <input type="date" x-model="endDate" required
-                               :min="startDate"
-                               class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+
+                    <div x-show="feeName" class="fsm-context" x-cloak>
+                        <i class="fas fa-circle-info shrink-0"></i>
+                        <span>
+                            <strong x-text="feeName"></strong>
+                            <template x-if="editingYearName && editingTermName">
+                                · <span x-text="editingYearName"></span> / <span x-text="editingTermName"></span>
+                            </template>
+                            · <span x-text="selectedAcademicLevels.length"></span> levels
+                        </span>
                     </div>
-                </div>
-                
-                <!-- Payment Deadline -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Payment Deadline <span class="text-red-500">*</span>
-                    </label>
-                    <input type="date" x-model="paymentDeadline" required
-                           class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                </div>
-                
-                <!-- Fee Items -->
-                <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Fee Items <span class="text-red-500">*</span>
-                        </label>
-                        <button type="button" @click="feeItems.push({ itemName: '', itemDescription: '', amount: '' }); calculateTotal()"
-                                class="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm flex items-center space-x-1">
-                            <i class="fas fa-plus"></i>
-                            <span>Add Item</span>
-                        </button>
-                    </div>
-                    
-                    <div class="space-y-3">
-                        <template x-for="(item, index) in feeItems" :key="index">
-                            <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
-                                <div class="flex items-start justify-between mb-3">
-                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Item <span x-text="index + 1"></span></span>
-                                    <button type="button" @click="feeItems.splice(index, 1); calculateTotal()"
-                                            x-show="feeItems.length > 1"
-                                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
+
+                    <section class="fsm-panel">
+                        <div class="fsm-panel__head">
+                            <h3 class="fsm-panel__title"><i class="fas fa-file-invoice-dollar"></i> Details</h3>
+                        </div>
+                        <div class="fsm-grid fsm-grid--2">
+                            <div class="fsm-field fsm-field--full">
+                                <label class="fsm-label">Finance account <span class="req">*</span></label>
+                                <select class="fsm-select" x-model="financeAccountId" required @change="onFinanceAccountChange()">
+                                    <option value="">Choose account</option>
+                                    <template x-for="account in financeAccounts" :key="'edit-fa-' + account.id">
+                                        <option :value="String(account.id)" x-text="account.account_name"></option>
+                                    </template>
+                                </select>
+                                <p x-show="accountLevelsError" class="fsm-hint text-red-600" x-text="accountLevelsError"></p>
+                                <p x-show="financeAccountId && accountLevelsLoading" class="fsm-hint"><i class="fas fa-spinner fa-spin"></i> Loading…</p>
+                            </div>
+                            <div class="fsm-field">
+                                <label class="fsm-label">Academic year <span class="req">*</span></label>
+                                <select class="fsm-select" x-model="academicYearId" required
+                                        @change="termId = ''; onPeriodOrCategoryChange()">
+                                    <option value="">Choose year</option>
+                                    <template x-for="year in academicYears" :key="'edit-y-' + year.id">
+                                        <option :value="String(year.id)" x-text="year.year_name + (year.is_current ? ' · Current' : '')"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="fsm-field">
+                                <label class="fsm-label">Term <span class="req">*</span></label>
+                                <select class="fsm-select" x-model="termId" required
+                                        :disabled="!academicYearId"
+                                        @change="onPeriodOrCategoryChange()">
+                                    <option value="">Choose term</option>
+                                    <template x-for="term in filteredTerms" :key="'edit-t-' + term.id">
+                                        <option :value="String(term.id)" x-text="term.term_name + (term.is_current ? ' · Current' : '')"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="fsm-field">
+                                <label class="fsm-label">Category <span class="req">*</span></label>
+                                <select class="fsm-select" x-model="category" required @change="onPeriodOrCategoryChange()">
+                                    <option value="both">Both</option>
+                                    <option value="self sponsored">Self sponsored</option>
+                                    <option value="sponsored">Sponsored</option>
+                                </select>
+                            </div>
+                            <div class="fsm-field fsm-field--full">
+                                <label class="fsm-label">Fee name</label>
+                                <div class="fsm-readonly" :class="!feeName && 'is-empty'" :title="feeName">
+                                    <span x-text="feeName || 'Select year, term, and levels…'"></span>
                                 </div>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div class="md:col-span-2">
-                                        <input type="text" x-model="item.itemName" 
-                                               @input="item.itemName = item.itemName.toUpperCase()"
-                                               placeholder="Item Name (e.g., TUITION FEE)"
-                                               required
-                                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all uppercase"
-                                               style="text-transform: uppercase;">
-                                    </div>
-                                    <div>
-                                        <input type="number" x-model="item.amount" 
-                                               @input="calculateTotal()"
-                                               placeholder="Amount (KES)"
-                                               step="0.01" min="0"
-                                               required
-                                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                                    </div>
+                                <p class="fsm-hint"><i class="fas fa-magic"></i> Set automatically from selected levels, year, and term.</p>
+                            </div>
+                            <div class="fsm-field">
+                                <label class="fsm-label">Start <span class="req">*</span></label>
+                                <input type="date" class="fsm-input" x-model="startDate" required>
+                            </div>
+                            <div class="fsm-field">
+                                <label class="fsm-label">End <span class="req">*</span></label>
+                                <input type="date" class="fsm-input" x-model="endDate" required :min="startDate">
+                            </div>
+                            <div class="fsm-field fsm-field--full">
+                                <label class="fsm-label">Payment deadline <span class="req">*</span></label>
+                                <input type="date" class="fsm-input" x-model="paymentDeadline" required>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="fsm-panel" x-show="financeAccountId">
+                        <div class="fsm-panel__head">
+                            <h3 class="fsm-panel__title"><i class="fas fa-layer-group"></i> Levels <span class="req">*</span></h3>
+                            <span class="fsm-badge" x-text="selectionBadgeText"></span>
+                        </div>
+                        <p x-show="!financeAccountId" class="fsm-hint">Choose a finance account first.</p>
+                        <div x-show="financeAccountId && accountLevelsLoading" class="fsm-hint"><i class="fas fa-spinner fa-spin"></i> Loading levels…</div>
+                        <template x-if="financeAccountId && !accountLevelsLoading">
+                            <div>
+                                <div class="fsm-levels-toolbar" x-show="academicLevels.length">
+                                    <button type="button" class="fsm-btn-text"
+                                            @click="toggleAllAcademicLevels()"
+                                            x-text="selectedAcademicLevels.length === academicLevels.length ? 'Clear all' : 'Select all'"></button>
                                 </div>
-                                <div class="mt-2">
-                                    <input type="text" x-model="item.itemDescription"
-                                           placeholder="Description (optional)"
-                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm">
+                                <div class="fsm-levels-scroll" x-show="academicLevels.length">
+                                    <template x-for="section in displayCategories" :key="'edit-' + section.category">
+                                        <div class="fsm-level-group" x-show="section.levels && section.levels.length">
+                                            <div class="fsm-level-group-name" x-text="section.category"></div>
+                                            <div class="fsm-chips">
+                                                <template x-for="level in section.levels" :key="'edit-lv-' + level.id">
+                                                    <label class="fsm-chip"
+                                                           :class="{
+                                                               'is-on': isLevelChecked(level.id),
+                                                               'is-warn': isLevelChecked(level.id) && hasFeeStructureForTerm(level.id)
+                                                           }">
+                                                        <input type="checkbox"
+                                                               :checked="isLevelChecked(level.id)"
+                                                               @change="toggleLevelSelection(level.id, $event.target.checked)">
+                                                        <span x-text="level.level_name + (isLevelChecked(level.id) && hasFeeStructureForTerm(level.id) ? ' (conflict)' : '')"></span>
+                                                    </label>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
                                 </div>
+                                <p x-show="!academicLevels.length" class="fsm-empty">No levels linked to this account.</p>
                             </div>
                         </template>
+                    </section>
+
+                    <section class="fsm-panel">
+                        <div class="fsm-panel__head">
+                            <h3 class="fsm-panel__title"><i class="fas fa-receipt"></i> Line items <span class="req">*</span></h3>
+                        </div>
+                        <div class="fsm-items-actions">
+                            <button type="button" class="fsm-btn-add" @click="addNewItem()"><i class="fas fa-plus"></i> Add</button>
+                        </div>
+                        <div class="fsm-items">
+                            <template x-for="(item, index) in feeItems" :key="index">
+                                <div class="fsm-item-row">
+                                    <input type="text" class="fsm-input uppercase" x-model="item.itemName"
+                                           @input="item.itemName = item.itemName.toUpperCase()" placeholder="Item name" required>
+                                    <div class="fsm-item-amount">
+                                        <span>KES</span>
+                                        <input type="number" class="fsm-input" x-model="item.amount" @input="calculateTotal()"
+                                               placeholder="0" step="0.01" min="0" required>
+                                    </div>
+                                    <div class="fsm-item-actions">
+                                        <button type="button" class="fsm-item-remove" @click="removeItem(index)"
+                                                x-show="feeItems.length > 1" aria-label="Remove">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </section>
+                </div>
+
+                <footer class="fsm-footer">
+                    <div class="fsm-total-card">
+                        <span>Total</span>
+                        <strong x-text="'KES ' + (totalAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></strong>
                     </div>
-                </div>
-                
-                <!-- Total Amount -->
-                <div class="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700">
-                    <div class="flex items-center justify-between">
-                        <span class="text-lg font-bold text-gray-900 dark:text-white">Total Amount:</span>
-                        <span class="text-2xl font-bold text-blue-600 dark:text-blue-400" x-text="'KES ' + totalAmount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+                    <div class="fsm-footer-btns">
+                        <button type="button" class="fsm-btn-cancel" @click="editModalOpen = false">Cancel</button>
+                        <button type="submit" class="fsm-btn-primary flex-1 sm:flex-none" :disabled="loading || hasConflict">
+                            <i class="fas fa-spinner fa-spin" x-show="loading"></i>
+                            <span x-text="loading ? 'Saving…' : 'Save changes'"></span>
+                        </button>
                     </div>
-                </div>
-                
-                <!-- Actions -->
-                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button type="button" @click="editModalOpen = false"
-                            class="px-6 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
-                        Cancel
-                    </button>
-                    <button type="submit" :disabled="loading"
-                            class="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-300 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
-                        <i class="fas fa-spinner fa-spin" x-show="loading"></i>
-                        <span x-text="loading ? 'Updating...' : 'Update Fee Structure'"></span>
-                    </button>
-                </div>
+                </footer>
             </form>
         </div>
     </div>

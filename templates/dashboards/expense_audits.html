@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}Expense Audits - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set accountant_nav_scope = 'finance' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+<style>
+.accounts-filter { background: #f1f5f9; color: #64748b; }
+.accounts-filter:hover { background: #e2e8f0; color: #334155; }
+.accounts-filter.is-active { background: var(--acc-teal-dark, #0f766e); color: #fff; box-shadow: 0 2px 8px rgba(15,118,110,0.35); }
+.dark .accounts-filter { background: #1e293b; color: #94a3b8; }
+.dark .accounts-filter.is-active { background: #14b8a6; color: #0f172a; }
+.audit-badge-store { background: #dbeafe; color: #1e40af; }
+.audit-badge-payment { background: #d1fae5; color: #065f46; }
+.audit-badge-misc { background: #ede9fe; color: #5b21b6; }
+.audit-badge-action-blue { background: #eff6ff; color: #1d4ed8; }
+.audit-badge-action-emerald { background: #ecfdf5; color: #047857; }
+.audit-badge-action-violet { background: #f5f3ff; color: #6d28d9; }
+.dark .audit-badge-store { background: rgba(59,130,246,0.15); color: #93c5fd; }
+.dark .audit-badge-payment { background: rgba(52,211,153,0.15); color: #6ee7b7; }
+.dark .audit-badge-misc { background: rgba(167,139,250,0.15); color: #c4b5fd; }
+.dark .audit-badge-action-blue { background: rgba(59,130,246,0.12); color: #93c5fd; }
+.dark .audit-badge-action-emerald { background: rgba(52,211,153,0.12); color: #6ee7b7; }
+.dark .audit-badge-action-violet { background: rgba(167,139,250,0.12); color: #c4b5fd; }
+</style>
+<div class="accounts-page min-h-screen bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14">
+    <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+        <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                    <i class="fas fa-landmark opacity-80"></i>
+                    <span>Accounts · Finance</span>
+                </div>
+                <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Expense audits</h1>
+                <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
+                    Full audit trail — store stock-in through supplier settlement and off-ledger disbursements.
+                </p>
+            </div>
+            <a href="{{ employee_dash_url('expenses/expense-records') }}"
+               class="accounts-btn-ghost inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shrink-0">
+                <i class="fas fa-arrow-left"></i> Expenses records
+            </a>
+        </div>
+        <div class="px-4 sm:px-6 pb-4 border-t border-white/10 bg-black/15">
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-purple-200/90">Audit entries</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">{{ audit_summary.entry_count|default(entry_count) }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-blue-200/90">Stock-in</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">{{ audit_summary.stock_in_count|default(0) }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-emerald-200/90">Payments</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">{{ audit_summary.payment_count|default(0) }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-violet-200/90">Off-ledger</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">{{ audit_summary.misc_count|default(0) }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-sky-200/90">Invoiced</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">KES {{ audit_summary.total_invoiced_display|default('0.00') }}</p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-teal-200/90">Paid out</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white">KES {{ audit_summary.total_paid_display|default(total_display) }}</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="accounts-panel rounded-2xl overflow-hidden shadow-lg ring-1 ring-black/5">
+        <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Filter by source</p>
+            <div class="flex flex-wrap gap-1.5">
+                {% set filters = [
+                    ('all', 'All'),
+                    ('store', 'Store management'),
+                    ('payment', 'Payments'),
+                    ('misc', 'Off-ledger'),
+                ] %}
+                {% for key, label in filters %}
+                <a href="{{ employee_dash_url('expenses/expense-audits') }}?source={{ key }}"
+                   class="accounts-filter rounded-lg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition {% if source_filter == key %}is-active{% endif %}">
+                    {{ label }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            {% if audit_entries %}
+            <table class="finance-table min-w-[1100px] w-full border-collapse text-left text-sm">
+                <thead>
+                    <tr class="border-b border-slate-200 dark:border-slate-700">
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Timestamp</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Source</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Action</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Reference</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Amount</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Payee</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Details</th>
+                        <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Recorded by</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                    {% for row in audit_entries %}
+                    <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td class="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">{{ row.created_at_display }}</td>
+                        <td class="px-4 py-2.5 text-xs whitespace-nowrap">
+                            {% if row.source == 'store' %}
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase audit-badge-store">{{ row.source_label }}</span>
+                            {% elif row.source == 'payment' %}
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase audit-badge-payment">{{ row.source_label }}</span>
+                            {% else %}
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase audit-badge-misc">{{ row.source_label }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2.5 text-xs">
+                            {% if row.action_tone == 'blue' %}
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase audit-badge-action-blue">{{ row.action_label }}</span>
+                            {% elif row.action_tone == 'emerald' %}
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase audit-badge-action-emerald">{{ row.action_label }}</span>
+                            {% else %}
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase audit-badge-action-violet">{{ row.action_label }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2.5 text-xs whitespace-nowrap">
+                            <span class="font-mono font-semibold text-violet-700 dark:text-violet-400">{{ row.reference_number }}</span>
+                            {% if row.parent_reference %}
+                            <span class="block mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                                Invoice <span class="font-mono">{{ row.parent_reference }}</span>
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                            <span class="block text-[10px] uppercase text-slate-500 dark:text-slate-400">{{ row.amount_label }}</span>
+                            <span class="tabular-nums text-sm font-semibold text-slate-900 dark:text-slate-100">KES {{ row.amount_display }}</span>
+                        </td>
+                        <td class="px-4 py-2.5 text-xs max-w-[10rem]">
+                            <span class="block truncate font-medium text-slate-700 dark:text-slate-300 uppercase">{{ row.payee_name }}</span>
+                            {% if row.payee_phone %}
+                            <span class="block truncate text-[10px] tabular-nums text-slate-500">{{ row.payee_phone }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2.5 text-xs max-w-[14rem]">
+                            <span class="block text-slate-600 dark:text-slate-400 normal-case truncate" title="{{ row.description }}">{{ row.description }}</span>
+                            {% if row.event_type == 'stock_in_payment' %}
+                            <span class="block mt-1 text-[10px] text-slate-500 dark:text-slate-400 normal-case">
+                                {% if row.payment_method and row.payment_method != '—' %}{{ row.payment_method }}{% endif %}
+                                {% if row.finance_account_name and row.finance_account_name != '—' %}
+                                {% if row.payment_method and row.payment_method != '—' %} · {% endif %}From {{ row.finance_account_name }}
+                                {% endif %}
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">{{ row.recorded_by_name }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="accounts-empty px-4 py-14 text-center">
+                <span class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 mb-3">
+                    <i class="fas fa-clipboard-list text-lg"></i>
+                </span>
+                <p class="text-sm font-medium text-slate-700 dark:text-slate-300">No expense audit entries yet</p>
+                <p class="mt-1 text-xs text-slate-500">Entries appear when stock-in is recorded in store management or payments are settled.</p>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+</div>
+</div>
+{% endblock %}

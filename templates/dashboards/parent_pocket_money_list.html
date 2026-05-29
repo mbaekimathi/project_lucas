@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Pocket money — choose a child - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
+
+{% block sidebar_content %}
+{% set parent_nav_scope = 'fees' %}
+{% include 'dashboards/includes/parent_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="role-page role-page--parent space-y-6 p-4 sm:p-6 max-w-5xl mx-auto">
+    {% if is_technician and current_view_role == 'parent' %}
+    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician Test Mode</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their pocket money</p>
+                </div>
+            </div>
+            <form method="GET" action="{{ parent_dash_url('pocket-money') }}" class="flex items-center gap-3">
+                <select name="student_id" onchange="this.form.submit()"
+                        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-w-[250px]">
+                    <option value="">-- Select a Student --</option>
+                    {% for student in all_students %}
+                    <option value="{{ student.get('student_id', '') or student[1] if student else '' }}"
+                            {% if selected_student_id and (student.get('student_id', '') or student[1] if student else '') == selected_student_id %}selected{% endif %}>
+                        {{ student.get('full_name', '') or student[2] if student else '' }} — {{ student.get('student_id', '') or student[1] if student else '' }}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% if selected_student_id %}
+                <a href="{{ parent_dash_url('pocket-money') }}" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Clear</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% set role_theme = 'parent' %}
+    {% set role_hero_eyebrow = 'Parent portal' %}
+    {% set role_hero_title = 'Pocket money' %}
+    {% set role_hero_subtitle = 'Choose a child to see their pocket money balance and top-up history.' %}
+    {% set role_hero_icon_class = 'fa-wallet' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    {% if children %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for child in children %}
+        <a href="{{ parent_dash_url('pocket-money/' ~ child.student_id) }}"
+           class="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow hover:shadow-lg transition-all hover:border-orange-400">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ child.full_name }}</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 font-mono mt-1">{{ child.student_id }}</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-300 mt-2">Grade: {{ child.current_grade or 'N/A' }}</p>
+                    <p class="mt-3 text-sm font-semibold text-orange-700 dark:text-orange-300 tabular-nums">
+                        Balance: KES {{ child.pocket_balance_display|default('0.00') }}
+                    </p>
+                </div>
+                <i class="fas fa-wallet text-orange-500 mt-1"></i>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-16 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+        <i class="fas fa-wallet text-gray-400 text-4xl mb-3"></i>
+        <p class="text-gray-600 dark:text-gray-400">No children linked to this account.</p>
+        <a href="{{ parent_dash_url() }}" class="inline-block mt-4 text-orange-600 dark:text-orange-400 font-medium hover:underline">Back to dashboard</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

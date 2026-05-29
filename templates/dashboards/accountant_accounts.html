@@ -1,0 +1,1283 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}Accounts — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block sidebar_content %}
+{% set accountant_nav_scope = 'accounts' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+<style>
+.fa-form-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+@media (min-width: 640px) {
+    .fa-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fa-form-grid .fa-span-2 { grid-column: span 2; }
+}
+.fa-field-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--acc-muted);
+    margin-bottom: 0.375rem;
+}
+.fa-input {
+    width: 100%;
+    min-height: 2.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--acc-line);
+    background: var(--acc-surface);
+    color: var(--acc-ink);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+}
+.fa-input::placeholder {
+    text-transform: none;
+    opacity: 0.55;
+}
+.fa-level-chip span {
+    text-transform: uppercase;
+}
+.fa-input:focus {
+    outline: none;
+    border-color: #14b8a6;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2);
+}
+.fa-table-wrap { max-height: min(55vh, 520px); overflow: auto; }
+.fa-levels-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+}
+.fa-level-chip {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--acc-line);
+    background: var(--acc-surface);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.fa-level-chip:has(input:checked) {
+    border-color: #14b8a6;
+    background: color-mix(in srgb, #14b8a6 10%, var(--acc-surface));
+}
+.fa-level-chip input { margin-top: 0.15rem; flex-shrink: 0; }
+.fa-level-cat-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--acc-muted);
+    margin-bottom: 0.35rem;
+}
+[x-cloak] { display: none !important; }
+.fa-row-suspended { opacity: 0.72; }
+.fa-actions { display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: 0.25rem; }
+.fa-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--acc-line);
+    transition: background 0.15s, color 0.15s;
+}
+.fa-action-btn--view { color: #0369a1; background: #f0f9ff; border-color: #bae6fd; }
+.dark .fa-action-btn--view { color: #7dd3fc; background: rgba(14, 165, 233, 0.12); }
+.fa-action-btn--edit { color: #0d9488; background: #f0fdfa; }
+.dark .fa-action-btn--edit { color: #5eead4; background: rgba(20, 184, 166, 0.12); }
+.fa-view-dl { display: grid; gap: 0.65rem 1rem; grid-template-columns: minmax(7rem, 34%) 1fr; font-size: 0.8125rem; }
+.fa-view-dl dt { font-weight: 600; color: var(--acc-muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em; }
+.fa-view-dl dd { color: var(--acc-ink); margin: 0; word-break: break-word; }
+.fa-view-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--acc-muted); margin: 1rem 0 0.5rem; }
+.fa-view-pay-row { padding: 0.65rem 0.75rem; border-radius: 0.5rem; border: 1px solid var(--acc-line); background: var(--acc-surface); margin-bottom: 0.5rem; }
+.fa-view-pay-row:last-child { margin-bottom: 0; }
+.fa-action-btn--suspend { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+.dark .fa-action-btn--suspend { color: #fbbf24; background: rgba(245, 158, 11, 0.12); }
+.fa-action-btn--unsuspend { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
+.dark .fa-action-btn--unsuspend { color: #4ade80; background: rgba(34, 197, 94, 0.12); }
+.fa-action-btn--delete { color: #be123c; background: #fff1f2; border-color: #fecdd3; }
+.dark .fa-action-btn--delete { color: #fb7185; background: rgba(244, 63, 94, 0.12); }
+.fa-edit-modal-backdrop {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 0;
+}
+@media (min-width: 640px) {
+    .fa-edit-modal-backdrop { align-items: center; padding: 1.5rem; }
+}
+.fa-edit-modal-panel {
+    position: relative;
+    width: 100%;
+    max-width: 42rem;
+    max-height: 94vh;
+    overflow-y: auto;
+    border-radius: 1rem 1rem 0 0;
+    border: 1px solid var(--acc-line);
+    background: var(--acc-surface, #fff);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+@media (min-width: 640px) {
+    .fa-edit-modal-panel { border-radius: 1rem; }
+}
+.fa-category-row td {
+    padding: 0;
+    border-bottom: none;
+    background: linear-gradient(180deg, #f1f5f9 0%, #f8fafc 100%);
+}
+.dark .fa-category-row td {
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.5) 100%);
+}
+.fa-category-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #0f766e;
+    border-top: 1px solid var(--acc-line);
+    border-bottom: 1px solid var(--acc-line);
+}
+.dark .fa-category-head { color: #5eead4; }
+.fa-category-head i { opacity: 0.85; font-size: 0.625rem; }
+.fa-category-count {
+    margin-left: auto;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--acc-muted);
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    background: rgba(20, 184, 166, 0.1);
+}
+.dark .fa-category-count { background: rgba(20, 184, 166, 0.15); }
+.fa-account-row td:first-child { padding-left: 1.25rem; }
+.fa-suggest-wrap {
+    position: relative;
+}
+.fa-suggest-list {
+    position: absolute;
+    z-index: 40;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    margin: 0;
+    padding: 0.35rem 0;
+    list-style: none;
+    max-height: 11rem;
+    overflow-y: auto;
+    border-radius: 0.5rem;
+    border: 1px solid var(--acc-line);
+    background: var(--acc-surface, #fff);
+    box-shadow: 0 12px 28px -8px rgba(15, 23, 42, 0.22);
+}
+.fa-suggest-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--acc-ink);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    line-height: 1.35;
+    word-break: break-word;
+}
+.fa-suggest-item:hover,
+.fa-suggest-item.is-active {
+    background: rgba(20, 184, 166, 0.1);
+    color: #0f766e;
+}
+.dark .fa-suggest-item:hover,
+.dark .fa-suggest-item.is-active {
+    background: rgba(20, 184, 166, 0.15);
+    color: #5eead4;
+}
+.fa-suggest-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.625rem;
+    color: var(--acc-muted);
+}
+</style>
+
+<div class="accounts-page min-h-screen bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('accountant') }}"
+     x-data="accountsPage()" x-init="init()">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14">
+
+        {% include 'dashboards/includes/portal_page_flash.html' %}
+
+        <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+            <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div class="min-w-0">
+                    <a href="{{ employee_dash_url() }}"
+                       class="inline-flex items-center gap-2 text-[10px] font-semibold text-teal-200/90 hover:text-white mb-2 transition">
+                        <i class="fas fa-arrow-left"></i> Accountant dashboard
+                    </a>
+                    <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                        <i class="fas fa-book opacity-80"></i>
+                        <span>Accounts · Ledger</span>
+                    </div>
+                    <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Finance accounts</h1>
+                    <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
+                        Register school accounts by category for fees, banking, payables, and other finance tracking.
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-2 shrink-0">
+                    <a href="{{ employee_dash_url('revenue') }}"
+                       class="accounts-btn-ghost inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
+                        <i class="fas fa-chart-line"></i> Revenue
+                    </a>
+                    <button type="button" @click="scrollToForm()"
+                            class="accounts-btn-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white">
+                        <i class="fas fa-plus-circle"></i> Register account
+                    </button>
+                </div>
+            </div>
+            <div class="px-4 sm:px-6 pb-4 border-t border-white/10 bg-black/15">
+                <div class="accounts-stat rounded-lg px-3 py-2.5 inline-flex items-center gap-3">
+                    <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
+                        <i class="fas fa-layer-group text-teal-300 text-sm"></i>
+                    </span>
+                    <div>
+                        <p class="text-[9px] font-medium uppercase tracking-wide text-slate-300/90">Registered accounts</p>
+                        <p class="text-sm font-bold tabular-nums text-white">{{ record_count|default(0) }}</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div id="accounts-register-form" class="accounts-panel rounded-2xl overflow-hidden w-full mb-5">
+            <div class="accounts-panel-head flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
+                        <i class="fas fa-pen-to-square text-sm"></i>
+                    </span>
+                    <div class="min-w-0">
+                        <h2 class="text-sm font-bold text-[var(--acc-ink)]">Register account</h2>
+                        <p class="text-[11px] text-[var(--acc-muted)]">Category, name, payment mode(s), and academic levels are required. Company name/number are captured under Bank.</p>
+                    </div>
+                </div>
+                <button type="button" @click="toggleForm()"
+                        class="accounts-btn-primary inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold min-w-[8.5rem]"
+                        :aria-expanded="formOpen">
+                    <span class="inline-flex items-center gap-2" :class="formOpen && '!hidden'">
+                        <i class="fas fa-plus-circle"></i> New account
+                    </span>
+                    <span class="hidden items-center gap-2" :class="formOpen && '!inline-flex'">
+                        <i class="fas fa-chevron-up"></i> Hide
+                    </span>
+                </button>
+            </div>
+
+            <div x-show="formOpen" x-cloak
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 class="px-4 sm:px-5 py-4 sm:py-5 border-t border-[var(--acc-line)]">
+                <form method="post" action="{{ employee_dash_url('accounts/register') }}" class="fa-form-grid"
+                      @submit="uppercaseFormFields(); return validateRegisterForm($event)">
+                    {% with category_scope='reg' %}
+                    {% include 'dashboards/includes/accountant_accounts_category_field.html' %}
+                    {% endwith %}
+                    <div>
+                        <label for="account_name" class="fa-field-label">Account name <span class="text-red-500">*</span></label>
+                        <div class="fa-suggest-wrap">
+                            <input type="text" id="account_name" name="account_name" required maxlength="255"
+                                   placeholder="e.g. Main school bank account" class="fa-input" autocomplete="off"
+                                   x-model="regName"
+                                   @input="onFieldSuggestInput('reg', 'name', $event)"
+                                   @focus="openFieldSuggest('reg', 'name')"
+                                   @blur="closeFieldSuggest('reg', 'name')"
+                                   @keydown="onFieldSuggestKeydown('reg', 'name', $event)">
+                            <ul x-show="isFieldSuggestOpen('reg', 'name') && fieldSuggestions('reg', 'name').length"
+                                x-cloak class="fa-suggest-list" role="listbox">
+                                <template x-for="(item, idx) in fieldSuggestions('reg', 'name')" :key="'reg-name-' + idx">
+                                    <li role="option">
+                                        <button type="button" class="fa-suggest-item"
+                                                :class="fieldSuggestIndex('reg', 'name') === idx && 'is-active'"
+                                                @mousedown.prevent="applyFieldSuggestion('reg', 'name', item)"
+                                                x-text="item"></button>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                        <p class="fa-suggest-hint" x-show="knownAccountNames.length">
+                            <i class="fas fa-lightbulb"></i> Suggestions from <span x-text="knownAccountNames.length"></span> existing account name<span x-show="knownAccountNames.length !== 1">s</span>
+                        </p>
+                    </div>
+                    <div class="fa-span-2">
+                        <label for="account_description" class="fa-field-label">Account description</label>
+                        <div class="fa-suggest-wrap">
+                            <textarea id="account_description" name="account_description" rows="2" maxlength="500"
+                                      placeholder="Purpose or notes for this account…" class="fa-input min-h-[4.5rem] resize-y"
+                                      autocomplete="off"
+                                      x-model="regDescription"
+                                      @input="onFieldSuggestInput('reg', 'desc', $event)"
+                                      @focus="openFieldSuggest('reg', 'desc')"
+                                      @blur="closeFieldSuggest('reg', 'desc')"
+                                      @keydown="onFieldSuggestKeydown('reg', 'desc', $event)"></textarea>
+                            <ul x-show="isFieldSuggestOpen('reg', 'desc') && fieldSuggestions('reg', 'desc').length"
+                                x-cloak class="fa-suggest-list" role="listbox">
+                                <template x-for="(item, idx) in fieldSuggestions('reg', 'desc')" :key="'reg-desc-' + idx">
+                                    <li role="option">
+                                        <button type="button" class="fa-suggest-item"
+                                                :class="fieldSuggestIndex('reg', 'desc') === idx && 'is-active'"
+                                                @mousedown.prevent="applyFieldSuggestion('reg', 'desc', item)"
+                                                x-text="item"></button>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                        <p class="fa-suggest-hint" x-show="knownAccountDescriptions.length">
+                            <i class="fas fa-lightbulb"></i> Suggestions from previous descriptions
+                        </p>
+                    </div>
+                    {% with payment_scope='reg' %}
+                    {% include 'dashboards/includes/accountant_accounts_payment_modes.html' %}
+                    {% endwith %}
+                    <div class="fa-span-2">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                            <label class="fa-field-label mb-0">Academic levels linked <span class="text-red-500">*</span></label>
+                            <div class="flex gap-2 text-xs">
+                                <button type="button" @click="selectAllLevels(true)"
+                                        class="text-teal-700 dark:text-teal-400 font-semibold hover:underline">Select all</button>
+                                <span class="text-[var(--acc-muted)]">·</span>
+                                <button type="button" @click="selectAllLevels(false)"
+                                        class="text-[var(--acc-muted)] font-semibold hover:underline">Clear</button>
+                            </div>
+                        </div>
+                        <p class="text-[11px] text-[var(--acc-muted)] mb-3">Choose every class/grade this account applies to.</p>
+                        {% if levels_by_category %}
+                        <div class="space-y-4 max-h-64 overflow-y-auto rounded-lg border border-[var(--acc-line)] p-3 bg-slate-50/80 dark:bg-slate-900/40">
+                            {% for cat, levels in levels_by_category.items() %}
+                            <div>
+                                <p class="fa-level-cat-title">{{ cat }}</p>
+                                <div class="fa-levels-grid">
+                                    {% for lv in levels %}
+                                    <label class="fa-level-chip">
+                                        <input type="checkbox" name="academic_level_ids" value="{{ lv.id }}"
+                                               class="fa-level-cb rounded border-gray-300 text-teal-600 focus:ring-teal-500">
+                                        <span class="text-xs font-medium text-[var(--acc-ink)] leading-snug">{{ lv.level_name }}</span>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="text-sm text-amber-700 dark:text-amber-300 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2">
+                            No active academic levels found. Add levels under Academic settings first.
+                        </p>
+                        {% endif %}
+                    </div>
+                    <div class="fa-span-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+                        <button type="button" @click="toggleForm()"
+                                class="accounts-btn-ghost inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="accounts-btn-primary inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold text-white">
+                            <i class="fas fa-save"></i> Save account
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <section class="accounts-panel rounded-2xl overflow-hidden">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3">
+                <h2 class="text-sm font-bold text-[var(--acc-ink)]">Registered accounts</h2>
+                <p class="text-[11px] text-[var(--acc-muted)] mt-0.5">Grouped by category, then sorted A–Z by account name</p>
+            </div>
+            {% if accounts_by_category %}
+            <div class="fa-table-wrap">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase tracking-wide text-[var(--acc-muted)] border-b border-[var(--acc-line)]">
+                        <tr>
+                            <th class="px-4 py-3 font-semibold">Account name</th>
+                            <th class="px-4 py-3 font-semibold hidden lg:table-cell">Academic levels</th>
+                            <th class="px-4 py-3 font-semibold hidden md:table-cell">Description</th>
+                            <th class="px-4 py-3 font-semibold hidden lg:table-cell">Payment modes</th>
+                            <th class="px-4 py-3 font-semibold hidden sm:table-cell">Registered</th>
+                            <th class="px-4 py-3 font-semibold">Status</th>
+                            <th class="px-4 py-3 font-semibold text-right sticky right-0 bg-slate-50 dark:bg-slate-800/80 z-[1]">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[var(--acc-line)]">
+                        {% for group in accounts_by_category %}
+                        <tr class="fa-category-row">
+                            <td colspan="7">
+                                <div class="fa-category-head">
+                                    <i class="fas fa-folder-open" aria-hidden="true"></i>
+                                    <span>{{ group.category }}</span>
+                                    <span class="fa-category-count">{{ group.accounts|length }} account{% if group.accounts|length != 1 %}s{% endif %}</span>
+                                </div>
+                            </td>
+                        </tr>
+                        {% for row in group.accounts %}
+                        <tr class="fa-account-row hover:bg-slate-50/80 dark:hover:bg-slate-800/40 {% if row.account_status == 'suspended' %}fa-row-suspended{% endif %}">
+                            <td class="px-4 py-3 font-semibold text-[var(--acc-ink)]">{{ row.account_name }}</td>
+                            <td class="px-4 py-3 hidden lg:table-cell">
+                                {% if row.academic_levels %}
+                                <div class="flex flex-wrap gap-1 max-w-xs">
+                                    {% for lv in row.academic_levels %}
+                                    <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                          title="{{ lv.level_category }}">{{ lv.level_name }}</span>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <span class="text-[var(--acc-muted)]">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-[var(--acc-muted)] hidden md:table-cell max-w-xs truncate" title="{{ row.account_description or '' }}">
+                                {{ row.account_description or '—' }}
+                            </td>
+                            <td class="px-4 py-3 hidden lg:table-cell">
+                                {% if row.payment_mode_labels %}
+                                <div class="flex flex-wrap gap-1">
+                                    {% for label in row.payment_mode_labels %}
+                                    <span class="inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">{{ label }}</span>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <span class="text-[var(--acc-muted)]">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-xs text-[var(--acc-muted)] hidden sm:table-cell whitespace-nowrap">
+                                {% if row.created_at %}
+                                {{ row.created_at.strftime('%d %b %Y') if row.created_at.strftime is defined else row.created_at }}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                {% if row.account_status == 'suspended' %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+                                    <i class="fas fa-pause-circle text-[9px]" aria-hidden="true"></i> Suspended
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                                    <i class="fas fa-check-circle text-[9px]" aria-hidden="true"></i> Active
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 sticky right-0 bg-white dark:bg-gray-900 z-[1] border-l border-[var(--acc-line)]">
+                                <div class="fa-actions">
+                                    <button type="button" @click="openViewModal({{ row.id }})"
+                                            title="View account details"
+                                            class="fa-action-btn fa-action-btn--view">
+                                        <i class="fas fa-eye text-sm"></i>
+                                    </button>
+                                    <button type="button" @click="openEditModal({{ row.id }})"
+                                            title="Edit account"
+                                            class="fa-action-btn fa-action-btn--edit">
+                                        <i class="fas fa-pen-to-square text-sm"></i>
+                                    </button>
+                                    <form method="post" action="{{ employee_dash_url('accounts/' ~ row.id ~ '/toggle-suspend') }}" class="inline">
+                                        <button type="submit"
+                                                title="{% if row.account_status == 'suspended' %}Unsuspend account{% else %}Suspend account{% endif %}"
+                                                class="fa-action-btn {% if row.account_status == 'suspended' %}fa-action-btn--unsuspend{% else %}fa-action-btn--suspend{% endif %}">
+                                            {% if row.account_status == 'suspended' %}
+                                            <i class="fas fa-circle-play text-sm"></i>
+                                            {% else %}
+                                            <i class="fas fa-circle-pause text-sm"></i>
+                                            {% endif %}
+                                        </button>
+                                    </form>
+                                    <form method="post" action="{{ employee_dash_url('accounts/' ~ row.id ~ '/delete') }}" class="inline"
+                                          onsubmit="return confirm('Delete this account permanently? This cannot be undone.');">
+                                        <button type="submit" title="Delete account"
+                                                class="fa-action-btn fa-action-btn--delete">
+                                            <i class="fas fa-trash-can text-sm"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% elif accounts %}
+            <div class="fa-table-wrap">
+                <p class="px-4 py-3 text-sm text-[var(--acc-muted)]">Accounts are registered but could not be grouped for display. Refresh the page.</p>
+            </div>
+            {% else %}
+            <div class="px-6 py-12 text-center">
+                <i class="fas fa-book-open text-3xl text-[var(--acc-muted)] opacity-40 mb-3" aria-hidden="true"></i>
+                <p class="text-sm font-medium text-[var(--acc-ink)]">No accounts registered yet</p>
+                <p class="text-xs text-[var(--acc-muted)] mt-1">Use the form above to add your first account.</p>
+            </div>
+            {% endif %}
+        </section>
+
+        {# View account details modal #}
+        <div x-show="viewModalOpen" x-cloak
+             class="fa-edit-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="fa-view-modal-title"
+             @keydown.escape.window="viewModalOpen && closeViewModal()">
+            <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="closeViewModal()" aria-hidden="true"></div>
+            <div x-ref="viewModalPanel" tabindex="-1" class="fa-edit-modal-panel max-w-lg" x-show="viewModalOpen">
+                <div class="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--acc-line)] px-4 sm:px-5 py-3 bg-[var(--acc-surface)]">
+                    <div>
+                        <h2 id="fa-view-modal-title" class="text-sm font-bold text-[var(--acc-ink)]">Account details</h2>
+                        <p class="text-[11px] text-[var(--acc-muted)]" x-text="viewAccount ? viewAccount.account_name : ''"></p>
+                    </div>
+                    <button type="button" @click="closeViewModal()"
+                            class="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--acc-muted)] hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="px-4 sm:px-5 py-4 sm:py-5" x-show="viewAccount">
+                    <dl class="fa-view-dl">
+                        <dt>Category</dt>
+                        <dd x-text="viewAccount.account_category || '—'"></dd>
+                        <dt>Account name</dt>
+                        <dd class="font-semibold" x-text="viewAccount.account_name || '—'"></dd>
+                        <dt>Description</dt>
+                        <dd x-text="viewAccount.account_description || '—'"></dd>
+                        <dt>Status</dt>
+                        <dd>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase"
+                                  :class="(viewAccount.account_status || '') === 'suspended' ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'"
+                                  x-text="(viewAccount.account_status || 'active') === 'suspended' ? 'Suspended' : 'Active'"></span>
+                        </dd>
+                        <template x-if="viewAccount.company_name || viewAccount.company_number">
+                            <dt>Company (bank)</dt>
+                            <dd>
+                                <span class="block" x-text="viewAccount.company_name || '—'"></span>
+                                <span class="font-mono text-xs text-[var(--acc-muted)]" x-show="viewAccount.company_number"
+                                      x-text="viewAccount.company_number"></span>
+                            </dd>
+                        </template>
+                        <dt>Registered</dt>
+                        <dd x-text="formatViewDate(viewAccount.created_at)"></dd>
+                        <template x-if="viewAccount.recorded_by_name">
+                            <dt>Recorded by</dt>
+                            <dd x-text="viewAccount.recorded_by_name"></dd>
+                        </template>
+                    </dl>
+                    <p class="fa-view-section-title">Payment modes</p>
+                    <template x-if="viewAccount.payment_methods_detail && viewAccount.payment_methods_detail.length">
+                        <template x-for="(pm, idx) in viewAccount.payment_methods_detail" :key="idx">
+                            <div class="fa-view-pay-row">
+                                <p class="text-[10px] font-bold uppercase tracking-wide text-teal-800 dark:text-teal-300 mb-1" x-text="pm.mode_label"></p>
+                                <p class="text-xs text-[var(--acc-ink)] normal-case leading-relaxed" x-text="pm.detail"></p>
+                            </div>
+                        </template>
+                    </template>
+                    <p x-show="!viewAccount.payment_methods_detail || !viewAccount.payment_methods_detail.length"
+                       class="text-xs text-[var(--acc-muted)]">—</p>
+                    <p class="fa-view-section-title">Academic levels</p>
+                    <div class="flex flex-wrap gap-1" x-show="viewAccount.academic_levels && viewAccount.academic_levels.length">
+                        <template x-for="lv in viewAccount.academic_levels" :key="lv.id">
+                            <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                  x-text="lv.level_name"></span>
+                        </template>
+                    </div>
+                    <p x-show="!viewAccount.academic_levels || !viewAccount.academic_levels.length"
+                       class="text-xs text-[var(--acc-muted)]">—</p>
+                    <div class="flex justify-end gap-2 pt-4 mt-2 border-t border-[var(--acc-line)]">
+                        <button type="button" @click="closeViewModal()"
+                                class="accounts-btn-ghost inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
+                            Close
+                        </button>
+                        <button type="button" @click="closeViewModal(); openEditModal(viewAccount.id)"
+                                class="accounts-btn-primary inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold text-white">
+                            <i class="fas fa-pen-to-square"></i> Edit
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Edit account modal #}
+        <div x-show="editModalOpen" x-cloak
+             class="fa-edit-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="fa-edit-modal-title"
+             @keydown.escape.window="editModalOpen && closeEditModal()">
+            <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="closeEditModal()" aria-hidden="true"></div>
+            <div x-ref="editModalPanel" tabindex="-1" class="fa-edit-modal-panel" x-show="editModalOpen">
+                <div class="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--acc-line)] px-4 sm:px-5 py-3 bg-[var(--acc-surface)]">
+                    <div>
+                        <h2 id="fa-edit-modal-title" class="text-sm font-bold text-[var(--acc-ink)]">Edit account</h2>
+                        <p class="text-[11px] text-[var(--acc-muted)]" x-text="editAccount.account_name || ''"></p>
+                    </div>
+                    <button type="button" @click="closeEditModal()"
+                            class="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--acc-muted)] hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form method="post" action="{{ employee_dash_url('accounts/edit') }}"
+                      class="fa-form-grid px-4 sm:px-5 py-4 sm:py-5"
+                      @submit="uppercaseEditFormFields(); return validateEditForm($event)">
+                    <fieldset class="contents min-w-0 border-0 p-0 m-0" :disabled="!editModalOpen">
+                    <input type="hidden" name="finance_account_id" :value="editAccount ? editAccount.id : ''">
+                    {% with category_scope='edit' %}
+                    {% include 'dashboards/includes/accountant_accounts_category_field.html' %}
+                    {% endwith %}
+                    <div>
+                        <label for="edit_account_name" class="fa-field-label">Account name <span class="text-red-500">*</span></label>
+                        <div class="fa-suggest-wrap">
+                            <input type="text" id="edit_account_name" name="account_name" required maxlength="255"
+                                   class="fa-input" autocomplete="off" x-model="editName"
+                                   @input="onFieldSuggestInput('edit', 'name', $event)"
+                                   @focus="openFieldSuggest('edit', 'name')"
+                                   @blur="closeFieldSuggest('edit', 'name')"
+                                   @keydown="onFieldSuggestKeydown('edit', 'name', $event)">
+                            <ul x-show="isFieldSuggestOpen('edit', 'name') && fieldSuggestions('edit', 'name').length"
+                                x-cloak class="fa-suggest-list" role="listbox">
+                                <template x-for="(item, idx) in fieldSuggestions('edit', 'name')" :key="'edit-name-' + idx">
+                                    <li role="option">
+                                        <button type="button" class="fa-suggest-item"
+                                                :class="fieldSuggestIndex('edit', 'name') === idx && 'is-active'"
+                                                @mousedown.prevent="applyFieldSuggestion('edit', 'name', item)"
+                                                x-text="item"></button>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="fa-span-2">
+                        <label for="edit_account_description" class="fa-field-label">Account description</label>
+                        <div class="fa-suggest-wrap">
+                            <textarea id="edit_account_description" name="account_description" rows="2" maxlength="500"
+                                      class="fa-input min-h-[4.5rem] resize-y" x-model="editDescription"
+                                      autocomplete="off"
+                                      @input="onFieldSuggestInput('edit', 'desc', $event)"
+                                      @focus="openFieldSuggest('edit', 'desc')"
+                                      @blur="closeFieldSuggest('edit', 'desc')"
+                                      @keydown="onFieldSuggestKeydown('edit', 'desc', $event)"></textarea>
+                            <ul x-show="isFieldSuggestOpen('edit', 'desc') && fieldSuggestions('edit', 'desc').length"
+                                x-cloak class="fa-suggest-list" role="listbox">
+                                <template x-for="(item, idx) in fieldSuggestions('edit', 'desc')" :key="'edit-desc-' + idx">
+                                    <li role="option">
+                                        <button type="button" class="fa-suggest-item"
+                                                :class="fieldSuggestIndex('edit', 'desc') === idx && 'is-active'"
+                                                @mousedown.prevent="applyFieldSuggestion('edit', 'desc', item)"
+                                                x-text="item"></button>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+                    {% with payment_scope='edit' %}
+                    {% include 'dashboards/includes/accountant_accounts_payment_modes.html' %}
+                    {% endwith %}
+                    <div class="fa-span-2">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                            <label class="fa-field-label mb-0">Academic levels linked <span class="text-red-500">*</span></label>
+                            <div class="flex gap-2 text-xs">
+                                <button type="button" @click="selectEditLevels(true)"
+                                        class="text-teal-700 dark:text-teal-400 font-semibold hover:underline">Select all</button>
+                                <span class="text-[var(--acc-muted)]">·</span>
+                                <button type="button" @click="selectEditLevels(false)"
+                                        class="text-[var(--acc-muted)] font-semibold hover:underline">Clear</button>
+                            </div>
+                        </div>
+                        {% if levels_by_category %}
+                        <div class="space-y-4 max-h-52 overflow-y-auto rounded-lg border border-[var(--acc-line)] p-3 bg-slate-50/80 dark:bg-slate-900/40">
+                            {% for cat, levels in levels_by_category.items() %}
+                            <div>
+                                <p class="fa-level-cat-title">{{ cat }}</p>
+                                <div class="fa-levels-grid">
+                                    {% for lv in levels %}
+                                    <label class="fa-level-chip">
+                                        <input type="checkbox" name="academic_level_ids" value="{{ lv.id }}"
+                                               class="fa-edit-level-cb rounded border-gray-300 text-teal-600 focus:ring-teal-500">
+                                        <span class="text-xs font-medium text-[var(--acc-ink)] leading-snug">{{ lv.level_name }}</span>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    </fieldset>
+                    <div class="fa-span-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+                        <button type="button" @click="closeEditModal()"
+                                class="accounts-btn-ghost inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="accounts-btn-primary inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold text-white">
+                            <i class="fas fa-save"></i> Save changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function accountsPage() {
+    return {
+        formOpen: {{ form_open_default|default(false)|tojson }},
+        accountsRegistry: {{ accounts_client|default([])|tojson }},
+        accountCategoryOptions: {{ account_categories|tojson }},
+        categoryAddMarker: {{ account_category_add_value|default('__add_new__')|tojson }},
+        accountsBaseUrl: {{ employee_dash_url('accounts')|tojson }},
+        editModalOpen: false,
+        editAccount: null,
+        editLevelIds: [],
+        regCategorySelect: '',
+        regCategoryCustom: '',
+        editCategorySelect: '',
+        editCategoryCustom: '',
+        editName: '',
+        editDescription: '',
+        regName: '',
+        regDescription: '',
+        suggestOpen: { regName: false, regDesc: false, editName: false, editDesc: false },
+        suggestIdx: { regName: -1, regDesc: -1, editName: -1, editDesc: -1 },
+        regPaymentModes: { mpesa: false, cash: false, cheque: false, bank: false },
+        regMpesaType: 'paybill',
+        regMpesaBusinessName: '',
+        regMpesaAccountNumber: '',
+        regBankName: '',
+        regBankAccountNumber: '',
+        editPaymentModes: { mpesa: false, cash: false, cheque: false, bank: false },
+        editMpesaType: 'paybill',
+        editMpesaBusinessName: '',
+        editMpesaAccountNumber: '',
+        editBankName: '',
+        editBankAccountNumber: '',
+        init: function () {
+            if (window.location.hash === '#accounts-register-form') {
+                this.formOpen = true;
+            }
+            var openId = {{ open_edit_account_id|default(none)|tojson }};
+            if (openId) {
+                var self = this;
+                this.$nextTick(function () {
+                    self.openEditModal(openId);
+                    if (window.history && window.history.replaceState) {
+                        window.history.replaceState({}, '', self.accountsBaseUrl);
+                    }
+                });
+            }
+            var self = this;
+            this.$watch('editModalOpen', function (open) {
+                document.body.classList.toggle('overflow-hidden', !!(open || self.viewModalOpen));
+            });
+            this.$watch('viewModalOpen', function (open) {
+                document.body.classList.toggle('overflow-hidden', !!(open || self.editModalOpen));
+            });
+        },
+        formatViewDate: function (val) {
+            if (!val) return '—';
+            if (typeof val === 'string') {
+                var d = new Date(val);
+                if (!isNaN(d.getTime())) {
+                    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+                }
+                return val;
+            }
+            return String(val);
+        },
+        openViewModal: function (accountId) {
+            var id = parseInt(accountId, 10);
+            if (!id) return;
+            var row = this.accountsRegistry.find(function (x) { return Number(x.id) === id; });
+            if (!row) {
+                alert('Could not load account details. Refresh the page and try again.');
+                return;
+            }
+            this.viewAccount = JSON.parse(JSON.stringify(row));
+            this.viewModalOpen = true;
+            var self = this;
+            this.$nextTick(function () {
+                var panel = self.$refs.viewModalPanel;
+                if (panel) panel.focus();
+            });
+        },
+        closeViewModal: function () {
+            this.viewModalOpen = false;
+            var self = this;
+            setTimeout(function () { self.viewAccount = null; }, 200);
+        },
+        _suggestKey: function (scope, field) {
+            return scope + (field === 'name' ? 'Name' : 'Desc');
+        },
+        _uniqueAccountValues: function (fieldKey) {
+            var seen = {};
+            var out = [];
+            (this.accountsRegistry || []).forEach(function (r) {
+                var v = String(r[fieldKey] || '').trim();
+                if (!v) return;
+                var k = v.toLowerCase();
+                if (seen[k]) return;
+                seen[k] = true;
+                out.push(v);
+            });
+            out.sort(function (a, b) {
+                return a.localeCompare(b, undefined, { sensitivity: 'base' });
+            });
+            return out;
+        },
+        get knownAccountNames() {
+            return this._uniqueAccountValues('account_name');
+        },
+        get knownAccountDescriptions() {
+            return this._uniqueAccountValues('account_description');
+        },
+        _filterFieldSuggestions: function (pool, query, limit) {
+            var max = limit || 10;
+            var q = String(query || '').trim().toLowerCase();
+            if (!q) return pool.slice(0, max);
+            return pool.filter(function (s) {
+                return String(s).toLowerCase().indexOf(q) !== -1;
+            }).slice(0, max);
+        },
+        _fieldQuery: function (scope, field) {
+            if (scope === 'reg') {
+                return field === 'name' ? this.regName : this.regDescription;
+            }
+            return field === 'name' ? this.editName : this.editDescription;
+        },
+        _fieldPool: function (field) {
+            return field === 'name' ? this.knownAccountNames : this.knownAccountDescriptions;
+        },
+        fieldSuggestions: function (scope, field) {
+            return this._filterFieldSuggestions(
+                this._fieldPool(field),
+                this._fieldQuery(scope, field),
+                10
+            );
+        },
+        isFieldSuggestOpen: function (scope, field) {
+            return !!this.suggestOpen[this._suggestKey(scope, field)];
+        },
+        fieldSuggestIndex: function (scope, field) {
+            return this.suggestIdx[this._suggestKey(scope, field)];
+        },
+        openFieldSuggest: function (scope, field) {
+            this.suggestOpen[this._suggestKey(scope, field)] = true;
+            this.suggestIdx[this._suggestKey(scope, field)] = -1;
+        },
+        closeFieldSuggest: function (scope, field) {
+            var key = this._suggestKey(scope, field);
+            var self = this;
+            setTimeout(function () {
+                self.suggestOpen[key] = false;
+                self.suggestIdx[key] = -1;
+            }, 160);
+        },
+        applyFieldSuggestion: function (scope, field, value) {
+            var text = String(value || '').toUpperCase();
+            if (scope === 'reg') {
+                if (field === 'name') {
+                    this.regName = text;
+                } else {
+                    this.regDescription = text;
+                }
+            } else if (field === 'name') {
+                this.editName = text;
+            } else {
+                this.editDescription = text;
+            }
+            this.suggestOpen[this._suggestKey(scope, field)] = false;
+            this.suggestIdx[this._suggestKey(scope, field)] = -1;
+        },
+        onFieldSuggestInput: function (scope, field, e) {
+            this.uppercaseField(e);
+            if (scope === 'reg') {
+                if (field === 'name') {
+                    this.regName = e.target.value;
+                } else {
+                    this.regDescription = e.target.value;
+                }
+            } else if (field === 'name') {
+                this.editName = e.target.value;
+            } else {
+                this.editDescription = e.target.value;
+            }
+            this.openFieldSuggest(scope, field);
+        },
+        onFieldSuggestKeydown: function (scope, field, e) {
+            var items = this.fieldSuggestions(scope, field);
+            if (!items.length) return;
+            var key = this._suggestKey(scope, field);
+            var idx = this.suggestIdx[key];
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!this.suggestOpen[key]) this.suggestOpen[key] = true;
+                idx = idx < items.length - 1 ? idx + 1 : 0;
+                this.suggestIdx[key] = idx;
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!this.suggestOpen[key]) this.suggestOpen[key] = true;
+                idx = idx > 0 ? idx - 1 : items.length - 1;
+                this.suggestIdx[key] = idx;
+            } else if (e.key === 'Enter' && this.suggestOpen[key] && idx >= 0) {
+                e.preventDefault();
+                this.applyFieldSuggestion(scope, field, items[idx]);
+            } else if (e.key === 'Escape') {
+                this.suggestOpen[key] = false;
+                this.suggestIdx[key] = -1;
+            }
+        },
+        toggleForm: function () {
+            this.formOpen = !this.formOpen;
+        },
+        scrollToForm: function () {
+            this.formOpen = true;
+            var el = document.getElementById('accounts-register-form');
+            if (el) {
+                setTimeout(function () {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 80);
+            }
+        },
+        resolveCategoryOption: function (stored) {
+            var s = String(stored || '').trim().toLowerCase();
+            if (!s) return '';
+            var opts = this.accountCategoryOptions || [];
+            for (var i = 0; i < opts.length; i++) {
+                if (String(opts[i]).trim().toLowerCase() === s) {
+                    return opts[i];
+                }
+            }
+            return String(stored || '').trim();
+        },
+        categoryInOptions: function (stored) {
+            var s = String(stored || '').trim().toLowerCase();
+            if (!s) return false;
+            var opts = this.accountCategoryOptions || [];
+            return opts.some(function (o) {
+                return String(o).trim().toLowerCase() === s;
+            });
+        },
+        onEditCategorySelectChange: function () {
+            if (this.editCategorySelect !== this.categoryAddMarker) {
+                this.editCategoryCustom = '';
+            }
+        },
+        setEditCategoryFields: function (stored) {
+            var resolved = this.resolveCategoryOption(stored);
+            var raw = String(stored || '').trim();
+            if (raw && this.categoryInOptions(raw)) {
+                this.editCategorySelect = resolved;
+                this.editCategoryCustom = '';
+            } else if (raw) {
+                this.editCategorySelect = this.categoryAddMarker;
+                this.editCategoryCustom = raw;
+            } else {
+                this.editCategorySelect = '';
+                this.editCategoryCustom = '';
+            }
+        },
+        validateCategoryFields: function (scope, e) {
+            var selectVal = scope === 'reg' ? this.regCategorySelect : this.editCategorySelect;
+            var customVal = scope === 'reg' ? this.regCategoryCustom : this.editCategoryCustom;
+            if (!String(selectVal || '').trim()) {
+                if (e) e.preventDefault();
+                alert('Select an account category.');
+                return false;
+            }
+            if (selectVal === this.categoryAddMarker && !String(customVal || '').trim()) {
+                if (e) e.preventDefault();
+                alert('Enter a name for the new account category.');
+                return false;
+            }
+            return true;
+        },
+        getEditFormEl: function () {
+            var panel = this.$refs.editModalPanel;
+            return panel ? panel.querySelector('form') : null;
+        },
+        isPaybillAdmissionRef: function (num) {
+            var s = String(num || '').trim().toUpperCase();
+            return s === 'STUDENT_ADMISSION_NUMBER' || s === 'ADMISSION_NUMBER'
+                || s === 'STUDENT ADMISSION NUMBER';
+        },
+        patchPaymentModes: function (target, modes) {
+            var keys = ['mpesa', 'cash', 'cheque', 'bank'];
+            keys.forEach(function (k) {
+                target[k] = !!(modes && modes[k]);
+            });
+        },
+        applyEditLevelCheckboxes: function () {
+            var form = this.getEditFormEl();
+            if (!form) return;
+            var levelIds = (this.editLevelIds || []).map(function (id) { return Number(id); });
+            form.querySelectorAll('.fa-edit-level-cb').forEach(function (cb) {
+                var lid = parseInt(cb.value, 10);
+                cb.checked = levelIds.some(function (id) { return id === lid; });
+            });
+        },
+        loadPaymentFieldsFromRow: function (row, scope) {
+            var modes = { mpesa: false, cash: false, cheque: false, bank: false };
+            (row.payment_methods || []).forEach(function (pm) {
+                var k = (pm.payment_mode || '').toLowerCase();
+                if (Object.prototype.hasOwnProperty.call(modes, k)) {
+                    modes[k] = true;
+                }
+            });
+            var mpesa = (row.payment_methods || []).find(function (p) {
+                return (p.payment_mode || '').toLowerCase() === 'mpesa';
+            });
+            var bank = (row.payment_methods || []).find(function (p) {
+                return (p.payment_mode || '').toLowerCase() === 'bank';
+            });
+            var companyName = row.company_name || '';
+            var companyNumber = row.company_number || '';
+            var bankName = (bank && bank.bank_name) || companyName;
+            var bankAcct = (bank && bank.account_number) || companyNumber;
+            if ((bankName || bankAcct) && !modes.bank) {
+                modes.bank = true;
+            }
+            var mpesaAcct = (mpesa && mpesa.account_number) || '';
+            if (mpesa && (mpesa.mpesa_type || '').toLowerCase() === 'paybill'
+                && this.isPaybillAdmissionRef(mpesaAcct)) {
+                mpesaAcct = '';
+            }
+            if (scope === 'reg') {
+                this.patchPaymentModes(this.regPaymentModes, modes);
+                this.regMpesaType = (mpesa && mpesa.mpesa_type) || 'paybill';
+                this.regMpesaBusinessName = (mpesa && mpesa.business_name) || '';
+                this.regMpesaAccountNumber = mpesaAcct;
+                this.regBankName = bankName;
+                this.regBankAccountNumber = bankAcct;
+            } else {
+                this.patchPaymentModes(this.editPaymentModes, modes);
+                this.editMpesaType = (mpesa && mpesa.mpesa_type) || 'paybill';
+                this.editMpesaBusinessName = (mpesa && mpesa.business_name) || '';
+                this.editMpesaAccountNumber = mpesaAcct;
+                this.editBankName = bankName;
+                this.editBankAccountNumber = bankAcct;
+            }
+        },
+        resetPaymentFields: function (scope) {
+            var emptyModes = { mpesa: false, cash: false, cheque: false, bank: false };
+            if (scope === 'reg') {
+                this.patchPaymentModes(this.regPaymentModes, emptyModes);
+                this.regMpesaType = 'paybill';
+                this.regMpesaBusinessName = '';
+                this.regMpesaAccountNumber = '';
+                this.regBankName = '';
+                this.regBankAccountNumber = '';
+            } else {
+                this.patchPaymentModes(this.editPaymentModes, emptyModes);
+                this.editMpesaType = 'paybill';
+                this.editMpesaBusinessName = '';
+                this.editMpesaAccountNumber = '';
+                this.editBankName = '';
+                this.editBankAccountNumber = '';
+            }
+        },
+        syncPaymentModeCheckboxes: function (scope) {
+            var form = scope === 'reg'
+                ? document.querySelector('#accounts-register-form form')
+                : this.getEditFormEl();
+            if (!form) return;
+            var modes = scope === 'reg' ? this.regPaymentModes : this.editPaymentModes;
+            form.querySelectorAll('input[name="payment_modes"]').forEach(function (cb) {
+                var key = (cb.value || '').toLowerCase();
+                cb.checked = !!(modes && modes[key]);
+            });
+        },
+        validatePaymentFields: function (scope, e) {
+            var modes = scope === 'reg' ? this.regPaymentModes : this.editPaymentModes;
+            var any = modes.mpesa || modes.cash || modes.cheque || modes.bank;
+            if (!any) {
+                if (e) e.preventDefault();
+                alert('Select at least one mode of payment.');
+                return false;
+            }
+            if (modes.mpesa) {
+                var mt = scope === 'reg' ? this.regMpesaType : this.editMpesaType;
+                var biz = scope === 'reg' ? this.regMpesaBusinessName : this.editMpesaBusinessName;
+                var macct = scope === 'reg' ? this.regMpesaAccountNumber : this.editMpesaAccountNumber;
+                if (mt !== 'paybill' && mt !== 'till') {
+                    if (e) e.preventDefault();
+                    alert('For M-Pesa, select Paybill or Till.');
+                    return false;
+                }
+                if (!String(biz || '').trim()) {
+                    if (e) e.preventDefault();
+                    alert('Enter the M-Pesa business name.');
+                    return false;
+                }
+                if (mt === 'till' && !String(macct || '').trim()) {
+                    if (e) e.preventDefault();
+                    alert('Enter the Till number.');
+                    return false;
+                }
+            }
+            if (modes.bank) {
+                var bn = scope === 'reg' ? this.regBankName : this.editBankName;
+                var bacct = scope === 'reg' ? this.regBankAccountNumber : this.editBankAccountNumber;
+                if (!String(bn || '').trim()) {
+                    if (e) e.preventDefault();
+                    alert('Enter the account company name (bank name).');
+                    return false;
+                }
+                if (!String(bacct || '').trim()) {
+                    if (e) e.preventDefault();
+                    alert('Enter the account company number (bank account number).');
+                    return false;
+                }
+            }
+            this.syncPaymentModeCheckboxes(scope);
+            return true;
+        },
+        validateRegisterForm: function (e) {
+            if (!this.validateCategoryFields('reg', e)) return false;
+            if (!this.validateLevels(e)) return false;
+            return this.validatePaymentFields('reg', e);
+        },
+        validateEditForm: function (e) {
+            if (!this.editAccount || !this.editAccount.id) {
+                if (e) e.preventDefault();
+                alert('No account selected to edit.');
+                return false;
+            }
+            if (!this.validateCategoryFields('edit', e)) return false;
+            if (!this.validateEditLevels(e)) return false;
+            return this.validatePaymentFields('edit', e);
+        },
+        openEditModal: function (accountId) {
+            var id = parseInt(accountId, 10);
+            if (!id) return;
+            var row = this.accountsRegistry.find(function (x) {
+                return Number(x.id) === id;
+            });
+            if (!row) {
+                alert('Could not load this account. Refresh the page and try again.');
+                return;
+            }
+            try {
+                this.editAccount = JSON.parse(JSON.stringify(row));
+                this.setEditCategoryFields(
+                    this.editAccount.account_category_option
+                        || this.editAccount.account_category
+                );
+                this.editName = this.editAccount.account_name || '';
+                this.editDescription = this.editAccount.account_description || '';
+                this.editLevelIds = (this.editAccount.academic_level_ids || []).slice();
+                this.loadPaymentFieldsFromRow(this.editAccount, 'edit');
+                this.editModalOpen = true;
+            } catch (err) {
+                console.error('openEditModal', err);
+                alert('Could not open the edit form. Refresh the page and try again.');
+                this.closeEditModal();
+                return;
+            }
+            var self = this;
+            this.$nextTick(function () {
+                self.applyEditLevelCheckboxes();
+                self.syncPaymentModeCheckboxes('edit');
+                self.$nextTick(function () {
+                    var panel = self.$refs.editModalPanel;
+                    if (panel) panel.focus();
+                });
+            });
+        },
+        closeEditModal: function () {
+            this.editModalOpen = false;
+            this.editLevelIds = [];
+            this.editCategorySelect = '';
+            this.editCategoryCustom = '';
+            this.editName = '';
+            this.editDescription = '';
+            this.resetPaymentFields('edit');
+            var self = this;
+            setTimeout(function () {
+                self.editAccount = null;
+            }, 200);
+        },
+        selectAllLevels: function (checked) {
+            document.querySelectorAll('.fa-level-cb').forEach(function (cb) {
+                cb.checked = !!checked;
+            });
+        },
+        selectEditLevels: function (checked) {
+            var form = this.getEditFormEl();
+            if (!form) return;
+            form.querySelectorAll('.fa-edit-level-cb').forEach(function (cb) {
+                cb.checked = !!checked;
+            });
+        },
+        validateLevels: function (e) {
+            var boxes = document.querySelectorAll('.fa-level-cb');
+            if (!boxes.length) return true;
+            for (var i = 0; i < boxes.length; i++) {
+                if (boxes[i].checked) return true;
+            }
+            e.preventDefault();
+            alert('Select at least one academic level to link to this account.');
+            return false;
+        },
+        validateEditLevels: function (e) {
+            var form = this.getEditFormEl();
+            var boxes = form ? form.querySelectorAll('.fa-edit-level-cb') : [];
+            if (!boxes.length) return true;
+            for (var i = 0; i < boxes.length; i++) {
+                if (boxes[i].checked) return true;
+            }
+            e.preventDefault();
+            alert('Select at least one academic level to link to this account.');
+            return false;
+        },
+        uppercaseField: function (e) {
+            var el = e.target;
+            if (!el || el.value == null) return;
+            var start = el.selectionStart;
+            var end = el.selectionEnd;
+            el.value = String(el.value).toUpperCase();
+            if (typeof start === 'number' && typeof end === 'number') {
+                try { el.setSelectionRange(start, end); } catch (err) {}
+            }
+        },
+        uppercaseFormFields: function () {
+            this.regName = String(this.regName || '').toUpperCase();
+            this.regDescription = String(this.regDescription || '').toUpperCase();
+            if (this.regCategorySelect === this.categoryAddMarker) {
+                this.regCategoryCustom = String(this.regCategoryCustom || '').toUpperCase();
+            }
+            var form = document.querySelector('#accounts-register-form form');
+            if (!form) return;
+            form.querySelectorAll('input[type="text"], textarea').forEach(function (el) {
+                if (el.value) el.value = String(el.value).toUpperCase();
+            });
+            this.regMpesaBusinessName = String(this.regMpesaBusinessName || '').toUpperCase();
+            if (this.regMpesaType === 'till') {
+                this.regMpesaAccountNumber = String(this.regMpesaAccountNumber || '').toUpperCase();
+            }
+            this.regBankName = String(this.regBankName || '').toUpperCase();
+            this.regBankAccountNumber = String(this.regBankAccountNumber || '').toUpperCase();
+        },
+        uppercaseEditFormFields: function () {
+            this.editName = String(this.editName || '').toUpperCase();
+            this.editDescription = String(this.editDescription || '').toUpperCase();
+            if (this.editCategorySelect === this.categoryAddMarker) {
+                this.editCategoryCustom = String(this.editCategoryCustom || '').toUpperCase();
+            }
+            this.editMpesaBusinessName = String(this.editMpesaBusinessName || '').toUpperCase();
+            if (this.editMpesaType === 'till') {
+                this.editMpesaAccountNumber = String(this.editMpesaAccountNumber || '').toUpperCase();
+            }
+            this.editBankName = String(this.editBankName || '').toUpperCase();
+            this.editBankAccountNumber = String(this.editBankAccountNumber || '').toUpperCase();
+        }
+    };
+}
+</script>
+{% endblock %}
