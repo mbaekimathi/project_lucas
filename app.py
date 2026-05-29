@@ -2598,8 +2598,38 @@ def ensure_subject_exam_combination_tables(cursor):
                 print("OK: Added subject_exam_combinations.totals_snapshot_json")
         except Exception as e:
             print(f"ensure_subject_exam_combination_tables (totals_snapshot_json): {e}")
+        for col_name, col_def in (
+            ('codes_snapshot_json', 'TEXT NULL'),
+            ('combined_code', 'VARCHAR(64) NULL'),
+            ('display_order', 'INT NULL'),
+        ):
+            try:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) AS c FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = 'subject_exam_combinations'
+                      AND COLUMN_NAME = %s
+                    """,
+                    (col_name,),
+                )
+                chk = cursor.fetchone()
+                n = chk.get('c', 0) if isinstance(chk, dict) else (chk[0] if chk else 0)
+                if not int(n or 0):
+                    cursor.execute(
+                        f"ALTER TABLE subject_exam_combinations ADD COLUMN {col_name} {col_def}"
+                    )
+                    print(f"OK: Added subject_exam_combinations.{col_name}")
+            except Exception as e:
+                print(f"ensure_subject_exam_combination_tables ({col_name}): {e}")
     except Exception as e:
         print(f"ensure_subject_exam_combination_tables: {e}")
+
+
+def ensure_subject_exam_combination_schema(cursor):
+    """Tables + columns required for combined exam subject codes (safe to call on every request)."""
+    ensure_subject_exam_combination_tables(cursor)
+    ensure_subject_exam_display_order_columns(cursor)
 
 
 def _exam_total_marks_snapshot_value(db_val):
@@ -2642,6 +2672,98 @@ def normalize_subject_totals_for_exam_combination(cursor, subject_ids_ordered):
             'exam_total_marks': _exam_total_marks_snapshot_value(etm_before),
         })
     return snapshot
+
+
+def _subject_code_snapshot_value(db_val):
+    """JSON-safe prior subject_code for restore (NULL/empty stays None)."""
+    if db_val is None:
+        return None
+    s = str(db_val).strip()
+    return s if s else None
+
+
+def normalize_subject_codes_for_exam_combination(cursor, subject_ids_ordered):
+    """Capture current subjects.subject_code for restore when a combination is removed."""
+    if not subject_ids_ordered or len(subject_ids_ordered) < 2:
+        return []
+    placeholders = ','.join(['%s'] * len(subject_ids_ordered))
+    cursor.execute(
+        f"SELECT id, subject_code FROM subjects WHERE id IN ({placeholders})",
+        tuple(subject_ids_ordered),
+    )
+    rows = cursor.fetchall() or []
+    by_id = {}
+    for r in rows:
+        sid = r.get('id') if isinstance(r, dict) else r[0]
+        sc = r.get('subject_code') if isinstance(r, dict) else r[1]
+        by_id[int(sid)] = sc
+
+    snapshot = []
+    for sid in subject_ids_ordered:
+        sid = int(sid)
+        snapshot.append({
+            'subject_id': sid,
+            'subject_code': _subject_code_snapshot_value(by_id.get(sid)),
+        })
+    return snapshot
+
+
+def restore_subject_codes_from_combination_snapshot(cursor, snapshot_json_str):
+    """Apply stored subject_code per subject; ignores invalid entries."""
+    if not snapshot_json_str:
+        return
+    try:
+        entries = json.loads(snapshot_json_str)
+    except (TypeError, ValueError, json.JSONDecodeError) as e:
+        print(f"restore_subject_codes_from_combination_snapshot: bad JSON: {e}")
+        return
+    if not isinstance(entries, list):
+        return
+    for ent in entries:
+        if not isinstance(ent, dict):
+            continue
+        sid = ent.get('subject_id')
+        if sid is None:
+            continue
+        try:
+            sid = int(sid)
+        except (TypeError, ValueError):
+            continue
+        sc = ent.get('subject_code')
+        if sc is None:
+            cursor.execute(
+                "UPDATE subjects SET subject_code = NULL WHERE id = %s",
+                (sid,),
+            )
+        else:
+            cursor.execute(
+                "UPDATE subjects SET subject_code = %s WHERE id = %s",
+                (str(sc).strip()[:64], sid),
+            )
+
+
+def auto_combined_subject_code_from_members(member_infos, sep='/'):
+    """Build default combined code from member subject rows (id -> dict with subject_code/name)."""
+    parts = []
+    for info in member_infos or []:
+        if not info:
+            parts.append('—')
+            continue
+        cd = (info.get('subject_code') or '').strip()
+        if not cd:
+            cd = ((info.get('subject_name') or '')[:12] or '—')
+        parts.append(cd if cd else '—')
+    return sep.join(parts) if parts else ''
+
+
+def normalize_combined_subject_code(raw, fallback=''):
+    """Trim combined code; use fallback when empty; cap length."""
+    code = (raw or '').strip()
+    if not code:
+        code = (fallback or '').strip()
+    if not code:
+        return None
+    return code[:64]
 
 
 def restore_subject_totals_from_combination_snapshot(cursor, snapshot_json_str):
@@ -2880,6 +3002,7 @@ def merge_subjects_with_exam_combinations(subjects, combinations, id_to_gc=None,
     id_set = set(original_order)
     subject_to_combo = {}
     combo_members_by_id = {}
+    combo_code_by_id = {}
     for c in combinations:
         mids = [int(x) for x in (c.get('member_subject_ids') or [])]
         if len(mids) < 2:
@@ -2888,6 +3011,9 @@ def merge_subjects_with_exam_combinations(subjects, combinations, id_to_gc=None,
             continue
         cid = int(c['id'])
         combo_members_by_id[cid] = mids
+        ccode = (c.get('combined_code') or '').strip()
+        if ccode:
+            combo_code_by_id[cid] = ccode
         conflict = False
         for mid in mids:
             if mid in subject_to_combo:
@@ -2920,6 +3046,7 @@ def merge_subjects_with_exam_combinations(subjects, combinations, id_to_gc=None,
         for mid in mids:
             cd = (by_id[mid].get('subject_code') or '').strip()
             code_parts.append(cd if cd else ((by_id[mid].get('subject_name') or '')[:12] or '—'))
+        custom_code = combo_code_by_id.get(cid, '')
         combo_ord_vals = []
         for mid in mids:
             eo_m = by_id.get(mid, {}).get('exam_display_order')
@@ -2930,7 +3057,7 @@ def merge_subjects_with_exam_combinations(subjects, combinations, id_to_gc=None,
         combo_row = {
             'id': -cid,
             'subject_name': names,
-            'subject_code': sep.join(code_parts),
+            'subject_code': custom_code if custom_code else sep.join(code_parts),
             'description': '',
             'status': 'active',
             'exam_total_marks': 100.0,
@@ -29929,10 +30056,296 @@ def exam_subject_settings():
         flash('Database connection failed.', 'error')
         return redirect(employee_dashboard_path('exam-evaluation'))
 
+    try:
+        with connection.cursor() as schema_cursor:
+            ensure_subject_exam_combination_schema(schema_cursor)
+    except Exception as e:
+        print(f"exam_subject_settings schema ensure: {e}")
+
     settings_anchor = employee_dashboard_path('exam-subject-settings')
     combine_hash_redirect = f"{settings_anchor}#combine-exam-subjects"
 
     if request.method == 'POST':
+        combine_action = (request.form.get('combine_action') or '').strip().lower()
+
+        if combine_action == 'update_code':
+            try:
+                with connection.cursor() as cursor:
+                    ensure_subject_exam_combination_schema(cursor)
+                    cid = request.form.get('combination_id', type=int)
+                    if not cid:
+                        flash('Missing combination.', 'error')
+                    else:
+                        cursor.execute(
+                            """
+                            SELECT m.subject_id
+                            FROM subject_exam_combination_members m
+                            WHERE m.combination_id = %s
+                            ORDER BY m.sort_order ASC, m.subject_id ASC
+                            """,
+                            (cid,),
+                        )
+                        mids = [
+                            int(r.get('subject_id') if isinstance(r, dict) else r[0])
+                            for r in (cursor.fetchall() or [])
+                            if (r.get('subject_id') if isinstance(r, dict) else r[0]) is not None
+                        ]
+                        if len(mids) < 2:
+                            flash('Combination not found.', 'error')
+                        else:
+                            placeholders = ','.join(['%s'] * len(mids))
+                            cursor.execute(
+                                f"""
+                                SELECT id, subject_name, subject_code FROM subjects
+                                WHERE id IN ({placeholders})
+                                """,
+                                tuple(mids),
+                            )
+                            name_map = {}
+                            for r in cursor.fetchall() or []:
+                                sid = int(r.get('id') if isinstance(r, dict) else r[0])
+                                name_map[sid] = {
+                                    'subject_name': r.get('subject_name') if isinstance(r, dict) else r[1],
+                                    'subject_code': r.get('subject_code') if isinstance(r, dict) else r[2],
+                                }
+                            member_infos = [name_map.get(mid) for mid in mids]
+                            fallback = auto_combined_subject_code_from_members(member_infos)
+                            raw_code = request.form.get('update_combined_code')
+                            if raw_code is None:
+                                raw_code = request.form.get('combined_code')
+                            new_code = normalize_combined_subject_code(raw_code, fallback)
+                            if not new_code:
+                                flash('Enter a combined code.', 'error')
+                            else:
+                                cursor.execute(
+                                    "SELECT id FROM subject_exam_combinations WHERE id = %s",
+                                    (cid,),
+                                )
+                                if not cursor.fetchone():
+                                    flash('Combination not found.', 'error')
+                                else:
+                                    cursor.execute(
+                                        """
+                                        UPDATE subject_exam_combinations
+                                        SET combined_code = %s
+                                        WHERE id = %s
+                                        """,
+                                        (new_code, cid),
+                                    )
+                                    connection.commit()
+                                    flash('Combined code updated.', 'success')
+            except Exception as e:
+                print(f"exam_subject_settings combine update_code: {e}")
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                flash('Could not update combined code.', 'error')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            return redirect(combine_hash_redirect)
+
+        if combine_action == 'delete':
+            try:
+                with connection.cursor() as cursor:
+                    ensure_subject_exam_combination_tables(cursor)
+                    cid = request.form.get('combination_id', type=int)
+                    if not cid:
+                        flash('Missing combination.', 'error')
+                    else:
+                        cursor.execute(
+                            """
+                            SELECT totals_snapshot_json, codes_snapshot_json
+                            FROM subject_exam_combinations WHERE id = %s
+                            """,
+                            (cid,),
+                        )
+                        snap_row = cursor.fetchone()
+                        snap_raw = None
+                        codes_snap_raw = None
+                        if snap_row:
+                            if isinstance(snap_row, dict):
+                                snap_raw = snap_row.get('totals_snapshot_json')
+                                codes_snap_raw = snap_row.get('codes_snapshot_json')
+                            else:
+                                snap_raw = snap_row[0] if len(snap_row) > 0 else None
+                                codes_snap_raw = snap_row[1] if len(snap_row) > 1 else None
+                        cursor.execute(
+                            "DELETE FROM subject_exam_combination_members WHERE combination_id = %s",
+                            (cid,),
+                        )
+                        restore_subject_totals_from_combination_snapshot(cursor, snap_raw)
+                        restore_subject_codes_from_combination_snapshot(cursor, codes_snap_raw)
+                        cursor.execute(
+                            "DELETE FROM subject_exam_combinations WHERE id = %s",
+                            (cid,),
+                        )
+                        connection.commit()
+                        if snap_raw or codes_snap_raw:
+                            flash(
+                                'Combination removed. Exam totals and subject codes for those papers '
+                                'were restored to their values before the combination.',
+                                'success',
+                            )
+                        else:
+                            flash('Combination removed.', 'success')
+            except Exception as e:
+                print(f"exam_subject_settings combine delete: {e}")
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                flash('Could not remove combination.', 'error')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            return redirect(combine_hash_redirect)
+
+        if combine_action == 'create':
+            try:
+                with connection.cursor() as cursor:
+                    ensure_subject_exam_combination_tables(cursor)
+                    raw_ids = request.form.getlist('subject_pick')
+                    sid_order = []
+                    seen = set()
+                    for x in raw_ids:
+                        try:
+                            sid = int(x)
+                            if sid not in seen:
+                                seen.add(sid)
+                                sid_order.append(sid)
+                        except (TypeError, ValueError):
+                            continue
+                    if len(sid_order) < 2:
+                        flash('Select at least two subjects to combine.', 'error')
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        return redirect(combine_hash_redirect)
+                    placeholders = ','.join(['%s'] * len(sid_order))
+                    cursor.execute(
+                        f"""
+                        SELECT id FROM subjects
+                        WHERE id IN ({placeholders}) AND COALESCE(status, 'active') = 'active'
+                        """,
+                        tuple(sid_order),
+                    )
+                    ok_active = {r.get('id') if isinstance(r, dict) else r[0] for r in (cursor.fetchall() or [])}
+                    sid_order = [s for s in sid_order if s in ok_active]
+                    if len(sid_order) < 2:
+                        flash('Need at least two active subjects.', 'error')
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        return redirect(combine_hash_redirect)
+                    cursor.execute(
+                        f"""
+                        SELECT subject_id FROM subject_exam_combination_members
+                        WHERE subject_id IN ({placeholders})
+                        """,
+                        tuple(sid_order),
+                    )
+                    conflicts = cursor.fetchall() or []
+                    if conflicts:
+                        flash(
+                            'One or more selected subjects are already part of another combination. '
+                            'Remove that combination first.',
+                            'error',
+                        )
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        return redirect(combine_hash_redirect)
+                    cursor.execute(
+                        "INSERT INTO subject_exam_combinations (created_at) VALUES (CURRENT_TIMESTAMP)"
+                    )
+                    combo_id = cursor.lastrowid
+                    totals_snapshot = normalize_subject_totals_for_exam_combination(cursor, sid_order)
+                    codes_snapshot = normalize_subject_codes_for_exam_combination(cursor, sid_order)
+                    cursor.execute(
+                        f"""
+                        SELECT id, subject_name, subject_code FROM subjects
+                        WHERE id IN ({placeholders})
+                        """,
+                        tuple(sid_order),
+                    )
+                    pick_map = {}
+                    for r in cursor.fetchall() or []:
+                        sid = int(r.get('id') if isinstance(r, dict) else r[0])
+                        pick_map[sid] = {
+                            'subject_name': r.get('subject_name') if isinstance(r, dict) else r[1],
+                            'subject_code': r.get('subject_code') if isinstance(r, dict) else r[2],
+                        }
+                    auto_code = auto_combined_subject_code_from_members(
+                        [pick_map.get(s) for s in sid_order]
+                    )
+                    combined_code = normalize_combined_subject_code(
+                        request.form.get('combined_code'), auto_code
+                    )
+                    cursor.execute(
+                        "SELECT COALESCE(MAX(COALESCE(display_order, 0)), 0) + 10 AS nx FROM subject_exam_combinations"
+                    )
+                    nxrow = cursor.fetchone()
+                    next_ord = int(
+                        (nxrow.get('nx') if isinstance(nxrow, dict) else (nxrow[0] if nxrow else 0)) or 0
+                    ) or 10
+                    cursor.execute(
+                        """
+                        UPDATE subject_exam_combinations
+                        SET totals_snapshot_json = %s,
+                            codes_snapshot_json = %s,
+                            combined_code = %s,
+                            display_order = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            json.dumps(totals_snapshot),
+                            json.dumps(codes_snapshot),
+                            combined_code,
+                            next_ord,
+                            combo_id,
+                        ),
+                    )
+                    ph_ord = ','.join(['%s'] * len(sid_order))
+                    cursor.execute(
+                        f"UPDATE subjects SET exam_display_order = %s WHERE id IN ({ph_ord})",
+                        (next_ord,) + tuple(sid_order),
+                    )
+                    for order_idx, sid in enumerate(sid_order):
+                        cursor.execute(
+                            """
+                            INSERT INTO subject_exam_combination_members (combination_id, subject_id, sort_order)
+                            VALUES (%s, %s, %s)
+                            """,
+                            (combo_id, sid, order_idx),
+                        )
+                    connection.commit()
+                    flash(
+                        'Subjects combined for marks entry. Exam totals were preserved.',
+                        'success',
+                    )
+            except Exception as e:
+                print(f"exam_subject_settings combine create: {e}")
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                flash('Could not save combination. Try again.', 'error')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            return redirect(combine_hash_redirect)
+
         order_action = (request.form.get('exam_order_action') or '').strip().lower()
         if order_action == 'save_order':
             raw_json = (request.form.get('exam_column_order_json') or '').strip()
@@ -30015,170 +30428,12 @@ def exam_subject_settings():
                     pass
             return redirect(f"{settings_anchor}#exam-column-order")
 
-        combine_action = (request.form.get('combine_action') or '').strip().lower()
-
-        if combine_action == 'delete':
+        if combine_action:
+            flash('Unknown action.', 'error')
             try:
-                with connection.cursor() as cursor:
-                    ensure_subject_exam_combination_tables(cursor)
-                    cid = request.form.get('combination_id', type=int)
-                    if not cid:
-                        flash('Missing combination.', 'error')
-                    else:
-                        cursor.execute(
-                            """
-                            SELECT totals_snapshot_json FROM subject_exam_combinations WHERE id = %s
-                            """,
-                            (cid,),
-                        )
-                        snap_row = cursor.fetchone()
-                        snap_raw = None
-                        if snap_row:
-                            snap_raw = (
-                                snap_row.get('totals_snapshot_json')
-                                if isinstance(snap_row, dict)
-                                else snap_row[0]
-                            )
-                        cursor.execute(
-                            "DELETE FROM subject_exam_combination_members WHERE combination_id = %s",
-                            (cid,),
-                        )
-                        restore_subject_totals_from_combination_snapshot(cursor, snap_raw)
-                        cursor.execute(
-                            "DELETE FROM subject_exam_combinations WHERE id = %s",
-                            (cid,),
-                        )
-                        connection.commit()
-                        if snap_raw:
-                            flash(
-                                'Combination removed. Exam totals for those papers were restored '
-                                'to their values before the combination.',
-                                'success',
-                            )
-                        else:
-                            flash('Combination removed.', 'success')
-            except Exception as e:
-                print(f"exam_subject_settings combine delete: {e}")
-                try:
-                    connection.rollback()
-                except Exception:
-                    pass
-                flash('Could not remove combination.', 'error')
-            finally:
-                try:
-                    connection.close()
-                except Exception:
-                    pass
-            return redirect(combine_hash_redirect)
-
-        if combine_action == 'create':
-            try:
-                with connection.cursor() as cursor:
-                    ensure_subject_exam_combination_tables(cursor)
-                    raw_ids = request.form.getlist('subject_pick')
-                    sid_order = []
-                    seen = set()
-                    for x in raw_ids:
-                        try:
-                            sid = int(x)
-                            if sid not in seen:
-                                seen.add(sid)
-                                sid_order.append(sid)
-                        except (TypeError, ValueError):
-                            continue
-                    if len(sid_order) < 2:
-                        flash('Select at least two subjects to combine.', 'error')
-                        try:
-                            connection.close()
-                        except Exception:
-                            pass
-                        return redirect(combine_hash_redirect)
-                    placeholders = ','.join(['%s'] * len(sid_order))
-                    cursor.execute(
-                        f"""
-                        SELECT id FROM subjects
-                        WHERE id IN ({placeholders}) AND COALESCE(status, 'active') = 'active'
-                        """,
-                        tuple(sid_order),
-                    )
-                    ok_active = {r.get('id') if isinstance(r, dict) else r[0] for r in (cursor.fetchall() or [])}
-                    sid_order = [s for s in sid_order if s in ok_active]
-                    if len(sid_order) < 2:
-                        flash('Need at least two active subjects.', 'error')
-                        try:
-                            connection.close()
-                        except Exception:
-                            pass
-                        return redirect(combine_hash_redirect)
-                    cursor.execute(
-                        f"""
-                        SELECT subject_id FROM subject_exam_combination_members
-                        WHERE subject_id IN ({placeholders})
-                        """,
-                        tuple(sid_order),
-                    )
-                    conflicts = cursor.fetchall() or []
-                    if conflicts:
-                        flash(
-                            'One or more selected subjects are already part of another combination. '
-                            'Remove that combination first.',
-                            'error',
-                        )
-                        try:
-                            connection.close()
-                        except Exception:
-                            pass
-                        return redirect(combine_hash_redirect)
-                    cursor.execute(
-                        "INSERT INTO subject_exam_combinations (created_at) VALUES (CURRENT_TIMESTAMP)"
-                    )
-                    combo_id = cursor.lastrowid
-                    totals_snapshot = normalize_subject_totals_for_exam_combination(cursor, sid_order)
-                    cursor.execute(
-                        "SELECT COALESCE(MAX(COALESCE(display_order, 0)), 0) + 10 AS nx FROM subject_exam_combinations"
-                    )
-                    nxrow = cursor.fetchone()
-                    next_ord = int(
-                        (nxrow.get('nx') if isinstance(nxrow, dict) else (nxrow[0] if nxrow else 0)) or 0
-                    ) or 10
-                    cursor.execute(
-                        """
-                        UPDATE subject_exam_combinations
-                        SET totals_snapshot_json = %s, display_order = %s
-                        WHERE id = %s
-                        """,
-                        (json.dumps(totals_snapshot), next_ord, combo_id),
-                    )
-                    ph_ord = ','.join(['%s'] * len(sid_order))
-                    cursor.execute(
-                        f"UPDATE subjects SET exam_display_order = %s WHERE id IN ({ph_ord})",
-                        (next_ord,) + tuple(sid_order),
-                    )
-                    for order_idx, sid in enumerate(sid_order):
-                        cursor.execute(
-                            """
-                            INSERT INTO subject_exam_combination_members (combination_id, subject_id, sort_order)
-                            VALUES (%s, %s, %s)
-                            """,
-                            (combo_id, sid, order_idx),
-                        )
-                    connection.commit()
-                    flash(
-                        'Subjects combined for marks entry. Exam totals were preserved.',
-                        'success',
-                    )
-            except Exception as e:
-                print(f"exam_subject_settings combine create: {e}")
-                try:
-                    connection.rollback()
-                except Exception:
-                    pass
-                flash('Could not save combination. Try again.', 'error')
-            finally:
-                try:
-                    connection.close()
-                except Exception:
-                    pass
+                connection.close()
+            except Exception:
+                pass
             return redirect(combine_hash_redirect)
 
         try:
@@ -30249,7 +30504,7 @@ def exam_subject_settings():
         with connection.cursor() as cursor:
             ensure_subject_exam_total_marks_column(cursor)
             ensure_subject_exam_display_order_columns(cursor)
-            ensure_subject_exam_combination_tables(cursor)
+            ensure_subject_exam_combination_schema(cursor)
             base_category_order = []
             try:
                 cursor.execute(
@@ -30374,21 +30629,29 @@ def exam_subject_settings():
                 names = []
                 codes = []
                 totals = []
+                member_codes_original = []
                 for mid in mids:
                     info = name_map.get(mid)
                     if info:
                         names.append((info.get('subject_name') or '').strip() or '—')
                         cd = (info.get('subject_code') or '').strip()
                         codes.append(cd if cd else ((info.get('subject_name') or '')[:12] or '—'))
+                        member_codes_original.append(cd if cd else '—')
                         totals.append(str(subject_exam_max_raw_marks(info.get('exam_total_marks'))))
                     else:
                         names.append('—')
                         codes.append('—')
+                        member_codes_original.append('—')
                         totals.append('100')
+                auto_code = sep.join(codes)
+                stored_code = (c.get('combined_code') or '').strip()
                 combinations_display.append({
                     'id': c['id'],
                     'label_name': sep.join(names),
-                    'label_code': sep.join(codes),
+                    'label_code': stored_code or auto_code,
+                    'combined_code': stored_code,
+                    'default_code': auto_code,
+                    'member_codes': member_codes_original,
                     'member_totals': totals,
                     'member_ids': mids,
                 })
@@ -34633,6 +34896,735 @@ def _normalize_revenue_source_type(value):
     if v in ('fees', 'fee', 'student_fees', 'student fees'):
         return 'fees'
     return None
+
+
+FINANCE_ACCOUNT_CATEGORIES = (
+    'Bank',
+    'Cash',
+    'Petty cash',
+    'Accounts receivable',
+    'Accounts payable',
+    'Income',
+    'Expense',
+    'Asset',
+    'Liability',
+    'Equity',
+    'Other',
+)
+
+FINANCE_PAYMENT_MODES = ('mpesa', 'cash', 'cheque', 'bank')
+FINANCE_MPESA_TYPES = ('paybill', 'till')
+# Stored in finance_account_payment_methods.account_number for paybill accounts.
+FINANCE_MPESA_PAYBILL_ACCOUNT_REF = 'STUDENT_ADMISSION_NUMBER'
+
+
+def _is_finance_mpesa_paybill_admission_ref(account_number):
+    """True when paybill uses per-student admission number as the account reference."""
+    ref = (account_number or '').strip().upper()
+    return ref in (
+        FINANCE_MPESA_PAYBILL_ACCOUNT_REF,
+        'ADMISSION_NUMBER',
+        'STUDENT ADMISSION NUMBER',
+    )
+
+
+def _finance_mpesa_paybill_account_display():
+    return 'Student admission number'
+
+_finance_accounts_schema_ensuring = False
+
+
+def ensure_finance_accounts_table(cursor):
+    """Ledger / chart-of-accounts style records for the accountant module."""
+    global _finance_accounts_schema_ensuring
+    if _finance_accounts_schema_ensuring:
+        return
+    _finance_accounts_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS finance_accounts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                account_category VARCHAR(100) NOT NULL,
+                account_name VARCHAR(255) NOT NULL,
+                account_description VARCHAR(500) NULL,
+                company_name VARCHAR(255) NULL,
+                company_number VARCHAR(100) NULL,
+                recorded_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_finance_accounts_category (account_category),
+                INDEX idx_finance_accounts_name (account_name),
+                INDEX idx_finance_accounts_created (created_at)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS finance_account_academic_levels (
+                finance_account_id INT NOT NULL,
+                academic_level_id INT NOT NULL,
+                PRIMARY KEY (finance_account_id, academic_level_id),
+                INDEX idx_faal_level (academic_level_id),
+                CONSTRAINT fk_faal_account
+                    FOREIGN KEY (finance_account_id) REFERENCES finance_accounts(id)
+                    ON DELETE CASCADE,
+                CONSTRAINT fk_faal_level
+                    FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id)
+                    ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("SHOW COLUMNS FROM finance_accounts LIKE 'account_status'")
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                ALTER TABLE finance_accounts
+                ADD COLUMN account_status VARCHAR(20) NOT NULL DEFAULT 'active'
+                AFTER company_number
+                """
+            )
+        cursor.execute(
+            "SHOW INDEX FROM finance_accounts WHERE Key_name = 'idx_finance_accounts_status'"
+        )
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                CREATE INDEX idx_finance_accounts_status
+                ON finance_accounts (account_status)
+                """
+            )
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS finance_account_payment_methods (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                finance_account_id INT NOT NULL,
+                payment_mode VARCHAR(20) NOT NULL,
+                mpesa_type VARCHAR(20) NULL,
+                business_name VARCHAR(255) NULL,
+                account_number VARCHAR(100) NULL,
+                bank_name VARCHAR(255) NULL,
+                UNIQUE KEY uq_fapm_account_mode (finance_account_id, payment_mode),
+                INDEX idx_fapm_account (finance_account_id),
+                CONSTRAINT fk_fapm_account
+                    FOREIGN KEY (finance_account_id) REFERENCES finance_accounts(id)
+                    ON DELETE CASCADE
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_finance_accounts_table: {e}")
+    finally:
+        _finance_accounts_schema_ensuring = False
+
+
+def _normalize_finance_account_category(value):
+    v = (value or '').strip()
+    if not v:
+        return None
+    for cat in FINANCE_ACCOUNT_CATEGORIES:
+        if v.lower() == cat.lower():
+            return cat
+    return v[:100] if len(v) <= 100 else v[:100]
+
+
+def _prepare_finance_account_fields_from_form(form):
+    """
+    Parse and normalize finance account fields from a POST form.
+    Returns (fields_dict, error_message). fields_dict is None on error.
+    """
+    category = _normalize_finance_account_category(
+        form.get('account_category') if form else None
+    )
+    if category:
+        category = category.upper()
+    name = normalize_text(
+        form.get('account_name') if form else None, allow_empty=False
+    ) or ''
+    description = normalize_text(
+        form.get('account_description') if form else None, allow_empty=True
+    )
+    if not category:
+        return None, 'Select an account category.'
+    if not name:
+        return None, 'Enter the account name.'
+    if len(name) > 255:
+        name = name[:255]
+    if description and len(description) > 500:
+        description = description[:500]
+
+    level_ids_raw = _parse_finance_account_level_ids(form)
+    return {
+        'category': category,
+        'name': name,
+        'description': description or None,
+        'company_name': None,
+        'company_number': None,
+        'level_ids_raw': level_ids_raw,
+    }, None
+
+
+def _apply_finance_account_company_from_bank(fields, payment_records, selected_modes):
+    """
+    Account company name/number mirror bank payment details when bank is selected.
+  """
+    fields = fields or {}
+    if 'bank' not in (selected_modes or []):
+        fields['company_name'] = None
+        fields['company_number'] = None
+        return fields
+    bank_rec = None
+    for rec in payment_records or []:
+        if (rec.get('payment_mode') or '').lower() == 'bank':
+            bank_rec = rec
+            break
+    if not bank_rec:
+        fields['company_name'] = None
+        fields['company_number'] = None
+        return fields
+    fields['company_name'] = bank_rec.get('bank_name') or None
+    fields['company_number'] = bank_rec.get('account_number') or None
+    return fields
+
+
+def _parse_finance_account_payment_mode_list(form):
+    """Parse payment_modes[] from POST (unique allowed modes)."""
+    raw = form.getlist('payment_modes') if form else []
+    modes = []
+    seen = set()
+    for v in raw:
+        m = (v or '').strip().lower()
+        if m in FINANCE_PAYMENT_MODES and m not in seen:
+            seen.add(m)
+            modes.append(m)
+    return modes
+
+
+def _prepare_finance_account_payment_records(form, selected_modes):
+    """
+    Build payment method rows from form for selected modes.
+    Returns (records, error_message).
+    """
+    if not selected_modes:
+        return None, 'Select at least one mode of payment.'
+
+    mpesa_type = ((form.get('mpesa_type') if form else None) or '').strip().lower()
+    mpesa_business = normalize_text(
+        form.get('mpesa_business_name') if form else None, allow_empty=True
+    )
+    mpesa_account = normalize_text(
+        form.get('mpesa_account_number') if form else None, allow_empty=True
+    )
+    bank_name = normalize_text(form.get('bank_name') if form else None, allow_empty=True)
+    bank_account = normalize_text(
+        form.get('bank_account_number') if form else None, allow_empty=True
+    )
+
+    records = []
+    for mode in selected_modes:
+        if mode == 'mpesa':
+            if mpesa_type not in FINANCE_MPESA_TYPES:
+                return None, 'For M-Pesa, select Paybill or Till.'
+            if not mpesa_business:
+                return None, 'Enter the M-Pesa business name.'
+            if mpesa_type == 'paybill':
+                mpesa_account = FINANCE_MPESA_PAYBILL_ACCOUNT_REF
+            elif not mpesa_account:
+                return None, 'Enter the Till number.'
+            if len(mpesa_business) > 255:
+                mpesa_business = mpesa_business[:255]
+            if mpesa_account and len(mpesa_account) > 100:
+                mpesa_account = mpesa_account[:100]
+            records.append({
+                'payment_mode': 'mpesa',
+                'mpesa_type': mpesa_type,
+                'business_name': mpesa_business,
+                'account_number': mpesa_account,
+                'bank_name': None,
+            })
+        elif mode == 'bank':
+            if not bank_name:
+                return None, 'Enter the account company name (bank name).'
+            if not bank_account:
+                return None, 'Enter the account company number (bank account number).'
+            if len(bank_name) > 255:
+                bank_name = bank_name[:255]
+            if len(bank_account) > 100:
+                bank_account = bank_account[:100]
+            records.append({
+                'payment_mode': 'bank',
+                'mpesa_type': None,
+                'business_name': None,
+                'account_number': bank_account,
+                'bank_name': bank_name,
+            })
+        elif mode in ('cash', 'cheque'):
+            records.append({
+                'payment_mode': mode,
+                'mpesa_type': None,
+                'business_name': None,
+                'account_number': None,
+                'bank_name': None,
+            })
+    return records, None
+
+
+def _save_finance_account_payment_methods(cursor, account_id, records):
+    ensure_finance_accounts_table(cursor)
+    account_id = int(account_id)
+    cursor.execute(
+        "DELETE FROM finance_account_payment_methods WHERE finance_account_id = %s",
+        (account_id,),
+    )
+    for rec in records or []:
+        cursor.execute(
+            """
+            INSERT INTO finance_account_payment_methods
+                (finance_account_id, payment_mode, mpesa_type,
+                 business_name, account_number, bank_name)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                account_id,
+                rec.get('payment_mode'),
+                rec.get('mpesa_type'),
+                rec.get('business_name'),
+                rec.get('account_number'),
+                rec.get('bank_name'),
+            ),
+        )
+
+
+def _fetch_finance_account_payment_methods_map(cursor, account_ids):
+    """Map finance_account_id -> list of payment method dicts."""
+    if not account_ids:
+        return {}
+    ensure_finance_accounts_table(cursor)
+    ids = [int(i) for i in account_ids if i]
+    if not ids:
+        return {}
+    placeholders = ','.join(['%s'] * len(ids))
+    out = {aid: [] for aid in ids}
+    try:
+        cursor.execute(
+            f"""
+            SELECT finance_account_id, payment_mode, mpesa_type,
+                   business_name, account_number, bank_name
+            FROM finance_account_payment_methods
+            WHERE finance_account_id IN ({placeholders})
+            ORDER BY payment_mode ASC, id ASC
+            """,
+            tuple(ids),
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                aid = r.get('finance_account_id')
+                row = {
+                    'payment_mode': (r.get('payment_mode') or '').strip().lower(),
+                    'mpesa_type': (r.get('mpesa_type') or '').strip().lower() or None,
+                    'business_name': (r.get('business_name') or '').strip(),
+                    'account_number': (r.get('account_number') or '').strip(),
+                    'bank_name': (r.get('bank_name') or '').strip(),
+                }
+            else:
+                aid = r[0]
+                row = {
+                    'payment_mode': (r[1] or '').strip().lower(),
+                    'mpesa_type': (r[2] or '').strip().lower() or None if r[2] else None,
+                    'business_name': (r[3] or '').strip(),
+                    'account_number': (r[4] or '').strip(),
+                    'bank_name': (r[5] or '').strip() if len(r) > 5 else '',
+                }
+            out.setdefault(aid, []).append(row)
+    except Exception as e:
+        print(f"_fetch_finance_account_payment_methods_map: {e}")
+    return out
+
+
+def _format_finance_payment_methods_summary(methods):
+    """Short human-readable summary for tables."""
+    parts = []
+    for m in methods or []:
+        mode = (m.get('payment_mode') or '').lower()
+        if mode == 'mpesa':
+            mt = (m.get('mpesa_type') or '').upper()
+            biz = m.get('business_name') or ''
+            num = m.get('account_number') or ''
+            if (m.get('mpesa_type') or '').lower() == 'paybill' and _is_finance_mpesa_paybill_admission_ref(num):
+                parts.append(f'M-PESA PAYBILL: {biz} ({_finance_mpesa_paybill_account_display()})'.strip())
+            else:
+                parts.append(f'M-PESA {mt}: {biz} ({num})'.strip())
+        elif mode == 'bank':
+            bn = m.get('bank_name') or ''
+            ac = m.get('account_number') or ''
+            parts.append(f'BANK: {bn} ({ac})'.strip())
+        elif mode == 'cash':
+            parts.append('CASH')
+        elif mode == 'cheque':
+            parts.append('CHEQUE')
+    return ' · '.join(parts) if parts else ''
+
+
+def _attach_finance_account_payment_data(row, payment_methods):
+    methods = payment_methods or []
+    row['payment_methods'] = methods
+    row['payment_modes'] = [m.get('payment_mode') for m in methods if m.get('payment_mode')]
+    row['payment_methods_summary'] = _format_finance_payment_methods_summary(methods)
+    return row
+
+
+def _finance_account_exists(cursor, account_id):
+    """Return True if a finance_accounts row exists for this id."""
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return False
+    if account_id <= 0:
+        return False
+    ensure_finance_accounts_table(cursor)
+    try:
+        cursor.execute(
+            "SELECT id FROM finance_accounts WHERE id = %s LIMIT 1",
+            (account_id,),
+        )
+        return cursor.fetchone() is not None
+    except Exception as e:
+        print(f"_finance_account_exists: {e}")
+        return False
+
+
+def _fetch_finance_account_by_id(cursor, account_id):
+    """Single finance account row with linked academic levels, or None."""
+    ensure_finance_accounts_table(cursor)
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return None
+    if account_id <= 0:
+        return None
+    row = None
+    try:
+        cursor.execute(
+            """
+            SELECT id, account_category, account_name, account_description,
+                   company_name, company_number, account_status,
+                   recorded_by_name, created_at
+            FROM finance_accounts
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (account_id,),
+        )
+        r = cursor.fetchone()
+    except Exception as e:
+        err = str(e).lower()
+        if 'account_status' not in err and 'unknown column' not in err:
+            print(f"_fetch_finance_account_by_id: {e}")
+            return None
+        try:
+            cursor.execute(
+                """
+                SELECT id, account_category, account_name, account_description,
+                       company_name, company_number, recorded_by_name, created_at
+                FROM finance_accounts
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (account_id,),
+            )
+            r = cursor.fetchone()
+        except Exception as e2:
+            print(f"_fetch_finance_account_by_id fallback: {e2}")
+            return None
+    if not r:
+        return None
+    try:
+        if isinstance(r, dict):
+            aid = r.get('id')
+            row = {
+                'id': aid,
+                'account_category': r.get('account_category') or '',
+                'account_name': r.get('account_name') or '',
+                'account_description': r.get('account_description') or '',
+                'company_name': r.get('company_name') or '',
+                'company_number': r.get('company_number') or '',
+                'account_status': (r.get('account_status') or 'active').strip().lower(),
+                'recorded_by_name': r.get('recorded_by_name') or '',
+                'created_at': r.get('created_at'),
+            }
+        else:
+            aid = r[0]
+            if len(r) > 8:
+                status = (r[6] if len(r) > 6 else None) or 'active'
+                row = {
+                    'id': aid,
+                    'account_category': r[1] or '',
+                    'account_name': r[2] or '',
+                    'account_description': r[3] or '',
+                    'company_name': r[4] or '',
+                    'company_number': r[5] or '',
+                    'account_status': str(status).strip().lower(),
+                    'recorded_by_name': r[7] or '',
+                    'created_at': r[8],
+                }
+            else:
+                row = {
+                    'id': aid,
+                    'account_category': r[1] or '',
+                    'account_name': r[2] or '',
+                    'account_description': r[3] or '',
+                    'company_name': r[4] or '',
+                    'company_number': r[5] or '',
+                    'account_status': 'active',
+                    'recorded_by_name': r[6] or '' if len(r) > 6 else '',
+                    'created_at': r[7] if len(r) > 7 else None,
+                }
+        levels_map = _fetch_finance_account_levels_map(cursor, [aid])
+        lvls = levels_map.get(aid) or []
+        row['academic_levels'] = lvls
+        row['academic_level_ids'] = [
+            int(x.get('id')) for x in lvls if x.get('id') is not None
+        ]
+        pay_map = _fetch_finance_account_payment_methods_map(cursor, [aid])
+        return _attach_finance_account_payment_data(row, pay_map.get(aid) or [])
+    except Exception as e:
+        print(f"_fetch_finance_account_by_id attach: {e}")
+        if row:
+            row.setdefault('academic_levels', [])
+            row.setdefault('academic_level_ids', [])
+            return _attach_finance_account_payment_data(row, [])
+        return None
+
+
+def _finance_account_category_for_select(value):
+    """Map stored category to a <select> option value from FINANCE_ACCOUNT_CATEGORIES."""
+    v = (value or '').strip()
+    if not v:
+        return ''
+    for cat in FINANCE_ACCOUNT_CATEGORIES:
+        if v.lower() == cat.lower():
+            return cat
+    return v
+
+
+def _finance_accounts_client_payload(accounts):
+    """JSON-safe list for the accounts page edit modal."""
+    out = []
+    for r in accounts or []:
+        lvls = r.get('academic_levels') or []
+        stored_cat = r.get('account_category') or ''
+        out.append({
+            'id': r.get('id'),
+            'account_category': stored_cat,
+            'account_category_option': _finance_account_category_for_select(stored_cat),
+            'account_name': r.get('account_name') or '',
+            'account_description': r.get('account_description') or '',
+            'company_name': r.get('company_name') or '',
+            'company_number': r.get('company_number') or '',
+            'account_status': (r.get('account_status') or 'active').strip().lower(),
+            'payment_methods': r.get('payment_methods') or [],
+            'payment_modes': r.get('payment_modes') or [],
+            'academic_level_ids': [
+                int(x.get('id')) for x in lvls if x.get('id') is not None
+            ],
+        })
+    return out
+
+
+def _fetch_active_academic_levels_for_accounts(cursor):
+    """Active academic levels for finance account linking."""
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT id, level_name, level_category
+            FROM academic_levels
+            WHERE level_status = 'active'
+            ORDER BY level_category ASC, level_name ASC
+            """
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                rows.append({
+                    'id': r.get('id'),
+                    'level_name': (r.get('level_name') or '').strip(),
+                    'level_category': (r.get('level_category') or '').strip() or 'Uncategorized',
+                })
+            else:
+                rows.append({
+                    'id': r[0],
+                    'level_name': (r[1] or '').strip(),
+                    'level_category': (r[2] or '').strip() if len(r) > 2 else 'Uncategorized',
+                })
+    except Exception as e:
+        print(f"_fetch_active_academic_levels_for_accounts: {e}")
+    return rows
+
+
+def _parse_finance_account_level_ids(form):
+    """Parse academic_level_ids[] from POST (unique positive ints)."""
+    raw = form.getlist('academic_level_ids') if form else []
+    ids = []
+    seen = set()
+    for v in raw:
+        try:
+            lid = int(v)
+        except (TypeError, ValueError):
+            continue
+        if lid > 0 and lid not in seen:
+            seen.add(lid)
+            ids.append(lid)
+    return ids
+
+
+def _filter_valid_academic_level_ids(cursor, level_ids):
+    if not level_ids:
+        return []
+    ensure_finance_accounts_table(cursor)
+    placeholders = ','.join(['%s'] * len(level_ids))
+    try:
+        cursor.execute(
+            f"""
+            SELECT id FROM academic_levels
+            WHERE level_status = 'active' AND id IN ({placeholders})
+            """,
+            tuple(level_ids),
+        )
+        valid = set()
+        for r in cursor.fetchall() or []:
+            valid.add(int(r.get('id') if isinstance(r, dict) else r[0]))
+        return [lid for lid in level_ids if lid in valid]
+    except Exception as e:
+        print(f"_filter_valid_academic_level_ids: {e}")
+        return []
+
+
+def _save_finance_account_academic_levels(cursor, account_id, level_ids):
+    ensure_finance_accounts_table(cursor)
+    account_id = int(account_id)
+    cursor.execute(
+        "DELETE FROM finance_account_academic_levels WHERE finance_account_id = %s",
+        (account_id,),
+    )
+    for lid in level_ids or []:
+        cursor.execute(
+            """
+            INSERT IGNORE INTO finance_account_academic_levels
+                (finance_account_id, academic_level_id)
+            VALUES (%s, %s)
+            """,
+            (account_id, int(lid)),
+        )
+
+
+def _fetch_finance_account_levels_map(cursor, account_ids):
+    """Map finance_account_id -> list of {id, level_name, level_category}."""
+    if not account_ids:
+        return {}
+    ensure_finance_accounts_table(cursor)
+    ids = [int(i) for i in account_ids if i]
+    if not ids:
+        return {}
+    placeholders = ','.join(['%s'] * len(ids))
+    out = {aid: [] for aid in ids}
+    try:
+        cursor.execute(
+            f"""
+            SELECT fal.finance_account_id, al.id, al.level_name, al.level_category
+            FROM finance_account_academic_levels fal
+            INNER JOIN academic_levels al ON al.id = fal.academic_level_id
+            WHERE fal.finance_account_id IN ({placeholders})
+            ORDER BY al.level_category ASC, al.level_name ASC
+            """,
+            tuple(ids),
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                aid = r.get('finance_account_id')
+                out.setdefault(aid, []).append({
+                    'id': r.get('id'),
+                    'level_name': (r.get('level_name') or '').strip(),
+                    'level_category': (r.get('level_category') or '').strip(),
+                })
+            else:
+                aid = r[0]
+                out.setdefault(aid, []).append({
+                    'id': r[1],
+                    'level_name': (r[2] or '').strip(),
+                    'level_category': (r[3] or '').strip() if len(r) > 3 else '',
+                })
+    except Exception as e:
+        print(f"_fetch_finance_account_levels_map: {e}")
+    return out
+
+
+def _group_academic_levels_by_category(levels):
+    grouped = {}
+    for lv in levels or []:
+        cat = (lv.get('level_category') or '').strip() or 'Uncategorized'
+        grouped.setdefault(cat, []).append(lv)
+    return dict(sorted(grouped.items(), key=lambda item: item[0].lower()))
+
+
+def _fetch_finance_accounts(cursor, limit=200):
+    ensure_finance_accounts_table(cursor)
+    limit = max(1, min(int(limit or 200), 500))
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT id, account_category, account_name, account_description,
+                   company_name, company_number, account_status,
+                   recorded_by_name, created_at
+            FROM finance_accounts
+            ORDER BY created_at DESC, id DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        raw_rows = cursor.fetchall() or []
+        account_ids = []
+        for r in raw_rows:
+            if isinstance(r, dict):
+                account_ids.append(r.get('id'))
+            else:
+                account_ids.append(r[0])
+        levels_map = _fetch_finance_account_levels_map(cursor, account_ids)
+        payments_map = _fetch_finance_account_payment_methods_map(cursor, account_ids)
+
+        for r in raw_rows:
+            if isinstance(r, dict):
+                aid = r.get('id')
+                row = {
+                    'id': aid,
+                    'account_category': r.get('account_category') or '',
+                    'account_name': r.get('account_name') or '',
+                    'account_description': r.get('account_description') or '',
+                    'company_name': r.get('company_name') or '',
+                    'company_number': r.get('company_number') or '',
+                    'account_status': (r.get('account_status') or 'active').strip().lower(),
+                    'recorded_by_name': r.get('recorded_by_name') or '',
+                    'created_at': r.get('created_at'),
+                }
+            else:
+                aid = r[0]
+                status = (r[6] if len(r) > 6 else None) or 'active'
+                row = {
+                    'id': aid,
+                    'account_category': r[1] or '',
+                    'account_name': r[2] or '',
+                    'account_description': r[3] or '',
+                    'company_name': r[4] or '',
+                    'company_number': r[5] or '',
+                    'account_status': str(status).strip().lower(),
+                    'recorded_by_name': r[7] or '' if len(r) > 7 else '',
+                    'created_at': r[8] if len(r) > 8 else None,
+                }
+            lvls = levels_map.get(aid) or []
+            row['academic_levels'] = lvls
+            row['academic_level_labels'] = ', '.join(
+                x.get('level_name') or '' for x in lvls if x.get('level_name')
+            )
+            _attach_finance_account_payment_data(
+                row, payments_map.get(aid) or []
+            )
+            rows.append(row)
+    except Exception as e:
+        print(f"_fetch_finance_accounts: {e}")
+    return rows
 
 
 def _generate_accountant_revenue_reference(cursor, source_type):
@@ -41752,6 +42744,270 @@ def get_class_timetable():
             connection.close()
 
 
+TIMETABLE_RESET_NOTIFY_ROLES = (
+    'curriculum coordinator',
+    'deputy head of institution',
+    'head of institution',
+    'technician',
+)
+
+
+def _get_timetable_reset_stakeholder_recipients(cursor):
+    """Active employees in leadership/curriculum/technician roles with a valid email."""
+    placeholders = ','.join(['%s'] * len(TIMETABLE_RESET_NOTIFY_ROLES))
+    cursor.execute(f"""
+        SELECT full_name, email
+        FROM employees
+        WHERE status = 'active'
+          AND email IS NOT NULL
+          AND TRIM(email) <> ''
+          AND role IN ({placeholders})
+        ORDER BY full_name ASC
+    """, TIMETABLE_RESET_NOTIFY_ROLES)
+    rows = cursor.fetchall() or []
+    seen = set()
+    recipients = []
+    for row in rows:
+        if isinstance(row, dict):
+            email = str(row.get('email') or '').strip()
+            full_name = str(row.get('full_name') or '').strip()
+        else:
+            full_name = str(row[0] if len(row) > 0 else '').strip()
+            email = str(row[1] if len(row) > 1 else '').strip()
+        if not email:
+            continue
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        recipients.append({'email': email, 'full_name': full_name or 'Colleague'})
+    return recipients
+
+
+def send_timetable_reset_success_email(to_email, recipient_name, class_name, year_name, term_name, reset_by_name, deleted_count):
+    """Notify one stakeholder that a class timetable was reset successfully."""
+    try:
+        if not apply_mail_config_from_env_and_integration():
+            return False
+        settings = get_school_settings()
+        school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'School').strip() or 'School'
+        safe_name = (recipient_name or 'Colleague').strip() or 'Colleague'
+        slots_label = f'{deleted_count} slot{"s" if deleted_count != 1 else ""}'
+        reset_at = datetime.now().strftime('%d %b %Y, %I:%M %p')
+        subject = f"{school_name} — Timetable reset: {class_name}"
+        html_body = f"""
+        <!DOCTYPE html>
+        <html><head><meta charset="UTF-8"></head>
+        <body style="font-family:system-ui,sans-serif;line-height:1.6;color:#333;max-width:560px;margin:0 auto;padding:24px;">
+            <p>Hello {safe_name},</p>
+            <p>A class timetable was reset successfully in the school management system.</p>
+            <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+                <tr><td style="padding:6px 0;color:#64748b;">Class</td><td style="padding:6px 0;font-weight:600;">{class_name}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Academic year</td><td style="padding:6px 0;font-weight:600;">{year_name}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Term</td><td style="padding:6px 0;font-weight:600;">{term_name}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Reset by</td><td style="padding:6px 0;font-weight:600;">{reset_by_name}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">Entries cleared</td><td style="padding:6px 0;font-weight:600;">{slots_label}</td></tr>
+                <tr><td style="padding:6px 0;color:#64748b;">When</td><td style="padding:6px 0;font-weight:600;">{reset_at}</td></tr>
+            </table>
+            <p style="color:#64748b;font-size:14px;">This notification was sent to curriculum coordinators, heads of institution, deputy heads, and technicians.</p>
+            <p style="margin-top:24px;font-size:13px;color:#94a3b8;">{school_name}</p>
+        </body></html>
+        """
+        text_body = (
+            f"Hello {safe_name},\n\n"
+            f"A class timetable was reset successfully.\n\n"
+            f"Class: {class_name}\n"
+            f"Academic year: {year_name}\n"
+            f"Term: {term_name}\n"
+            f"Reset by: {reset_by_name}\n"
+            f"Entries cleared: {slots_label}\n"
+            f"When: {reset_at}\n\n"
+            f"{school_name}\n"
+        )
+        msg = Message(subject=subject, recipients=[to_email], html=html_body, body=text_body)
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"Error sending timetable reset success email to {to_email}: {e}")
+        return False
+
+
+def notify_timetable_reset_success(recipients, class_name, year_name, term_name, reset_by_name, deleted_count):
+    """Email all timetable stakeholders about a successful reset."""
+    if not recipients:
+        return 0
+    sent = 0
+    for recipient in recipients:
+        if send_timetable_reset_success_email(
+            recipient.get('email'),
+            recipient.get('full_name'),
+            class_name,
+            year_name,
+            term_name,
+            reset_by_name,
+            deleted_count,
+        ):
+            sent += 1
+    return sent
+
+
+def send_timetable_reset_code_email(to_email, recipient_name, verification_code, class_name=''):
+    """Send 6-digit confirmation code for timetable reset."""
+    try:
+        if not apply_mail_config_from_env_and_integration():
+            print("Timetable reset code: SMTP not configured.")
+            return False
+        settings = get_school_settings()
+        school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'School').strip() or 'School'
+        safe_name = (recipient_name or 'there').strip() or 'there'
+        class_hint = f' for <strong>{class_name}</strong>' if class_name else ''
+        subject = f"{school_name} — Timetable reset confirmation code"
+        html_body = f"""
+        <!DOCTYPE html>
+        <html><head><meta charset="UTF-8"></head>
+        <body style="font-family:system-ui,sans-serif;line-height:1.6;color:#333;max-width:560px;margin:0 auto;padding:24px;">
+            <p>Hello {safe_name},</p>
+            <p>You requested to reset a class timetable{class_hint}.</p>
+            <p>Use this 6-digit code to confirm the reset:</p>
+            <p style="font-size:28px;font-weight:700;letter-spacing:0.2em;color:#1e293b;">{verification_code}</p>
+            <p style="color:#64748b;font-size:14px;">This code expires in 10 minutes. If this wasn't you, ignore this email.</p>
+            <p style="margin-top:24px;font-size:13px;color:#94a3b8;">{school_name}</p>
+        </body></html>
+        """
+        text_body = (
+            f"Hello {safe_name},\n\n"
+            f"Use this code to confirm timetable reset: {verification_code}\n\n"
+            f"This code expires in 10 minutes. If you didn't request this, ignore it.\n\n{school_name}\n"
+        )
+        msg = Message(subject=subject, recipients=[to_email], html=html_body, body=text_body)
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"Error sending timetable reset code email: {e}")
+        return False
+
+
+def _validate_timetable_reset_confirmation(academic_year_id, term_id, academic_level_id, confirmation_code):
+    """Validate password+email confirmation session for timetable reset."""
+    if not confirmation_code:
+        return False, 'Enter your current password and the 6-digit confirmation code sent to your email.'
+    pending = session.get('timetable_reset_confirmation') or {}
+    expires_at_str = str(pending.get('expires_at') or '').strip()
+    try:
+        expires_at = datetime.fromisoformat(expires_at_str) if expires_at_str else None
+    except Exception:
+        expires_at = None
+    is_expired = (expires_at is None) or (datetime.utcnow() > expires_at)
+    pending_matches_scope = (
+        int(pending.get('academic_year_id', 0)) == academic_year_id and
+        int(pending.get('term_id', 0)) == term_id and
+        int(pending.get('academic_level_id', 0)) == academic_level_id
+    )
+    if not pending_matches_scope or is_expired:
+        return False, 'Your confirmation session is missing or expired. Request a new 6-digit code and try again.'
+    pending_code_hash = str(pending.get('code_hash') or '')
+    code_ok = False
+    try:
+        code_ok = bool(pending_code_hash) and check_password_hash(pending_code_hash, confirmation_code)
+    except Exception:
+        code_ok = False
+    if not code_ok:
+        return False, 'Invalid confirmation code.'
+    return True, ''
+
+
+@app.route('/dashboard/employee/timetable-management/reset/request-code', methods=['POST'])
+@login_required
+def request_timetable_reset_confirmation_code():
+    """Verify password and send 6-digit code to confirm timetable reset."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy_principal = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal or is_deputy_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    try:
+        academic_level_id = int(data.get('academic_level_id', 0))
+        academic_year_id = int(data.get('academic_year_id', 0))
+        term_id = int(data.get('term_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid reset payload'}), 400
+
+    current_password = str(data.get('current_password', '')).strip()
+    if not current_password:
+        return jsonify({'success': False, 'message': 'Current password is required.'}), 400
+    if academic_level_id <= 0:
+        return jsonify({'success': False, 'message': 'Academic level is required'}), 400
+    if term_id <= 0 or academic_year_id <= 0:
+        return jsonify({'success': False, 'message': 'Academic year and term are required'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            identity = _get_current_employee_identity(cursor)
+            if not identity or not identity.get('password_hash'):
+                return jsonify({'success': False, 'message': 'Unable to validate your account password.'}), 400
+            if not check_password_hash(identity.get('password_hash'), current_password):
+                return jsonify({'success': False, 'message': 'Current password is incorrect.'}), 401
+
+            cursor.execute("""
+                SELECT id FROM terms
+                WHERE id = %s AND academic_year_id = %s
+                LIMIT 1
+            """, (term_id, academic_year_id))
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'message': 'Selected term does not belong to selected academic year.'}), 400
+
+            cursor.execute("SELECT level_name FROM academic_levels WHERE id = %s", (academic_level_id,))
+            level_row = cursor.fetchone()
+            if not level_row:
+                return jsonify({'success': False, 'message': 'Academic level not found'}), 404
+            class_name = level_row.get('level_name', '') if isinstance(level_row, dict) else (level_row[0] if level_row else '')
+
+            recipient_email = (identity.get('email') or '').strip()
+            if not recipient_email:
+                return jsonify({'success': False, 'message': 'Your account has no email configured to receive the confirmation code.'}), 400
+
+            code = ''.join(secrets.choice('0123456789') for _ in range(6))
+            session['timetable_reset_confirmation'] = {
+                'code_hash': generate_password_hash(code),
+                'academic_year_id': academic_year_id,
+                'term_id': term_id,
+                'academic_level_id': academic_level_id,
+                'requested_by': identity.get('id'),
+                'expires_at': (datetime.utcnow() + timedelta(minutes=10)).isoformat(),
+            }
+            session.modified = True
+
+            sent = send_timetable_reset_code_email(recipient_email, identity.get('full_name') or 'User', code, class_name)
+            if not sent:
+                return jsonify({
+                    'success': True,
+                    'delivery': 'onscreen',
+                    'dev_code': code,
+                    'message': 'Email delivery is currently unavailable. Use the code shown on screen to continue.',
+                })
+
+            return jsonify({
+                'success': True,
+                'message': f'Confirmation code sent to {recipient_email}.',
+            })
+    except Exception as e:
+        print(f"Error requesting timetable reset confirmation code: {e}")
+        return jsonify({'success': False, 'message': 'Error requesting confirmation code.'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/dashboard/employee/timetable-management/reset', methods=['POST'])
 @login_required
 def reset_timetable_for_level():
@@ -41775,28 +43031,63 @@ def reset_timetable_for_level():
     except (ValueError, TypeError):
         return jsonify({'success': False, 'message': 'Invalid reset payload'}), 400
 
+    confirmation_code = str(data.get('confirmation_code', '')).strip()
+
     if academic_level_id <= 0:
         return jsonify({'success': False, 'message': 'Academic level is required'}), 400
+    if not academic_year_id or not term_id:
+        return jsonify({'success': False, 'message': 'Academic year and term are required for reset.'}), 400
+
+    code_ok, code_message = _validate_timetable_reset_confirmation(
+        academic_year_id, term_id, academic_level_id, confirmation_code
+    )
+    if not code_ok:
+        status = 401 if confirmation_code else 200
+        payload = {'success': False, 'message': code_message}
+        if not confirmation_code:
+            payload['requires_confirmation'] = True
+        return jsonify(payload), status
 
     connection = get_db_connection()
     if not connection:
         return jsonify({'success': False, 'message': 'Database connection failed'}), 500
 
+    deleted = 0
+    notify_payload = None
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id FROM academic_levels WHERE id = %s", (academic_level_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT level_name FROM academic_levels WHERE id = %s", (academic_level_id,))
+            level_row = cursor.fetchone()
+            if not level_row:
                 return jsonify({'success': False, 'message': 'Academic level not found'}), 404
+            class_name = level_row.get('level_name', '') if isinstance(level_row, dict) else (level_row[0] if level_row else '')
+            class_name = str(class_name or 'Class').strip() or 'Class'
 
+            year_name = ''
+            term_name = ''
             if term_id and academic_year_id:
-                # Validate selected term belongs to selected academic year, then clear by level+term.
                 cursor.execute("""
-                    SELECT id FROM terms
-                    WHERE id = %s AND academic_year_id = %s
+                    SELECT ay.year_name, tr.term_name
+                    FROM terms tr
+                    INNER JOIN academic_years ay ON ay.id = tr.academic_year_id
+                    WHERE tr.id = %s AND tr.academic_year_id = %s
                     LIMIT 1
                 """, (term_id, academic_year_id))
-                if not cursor.fetchone():
+                period_row = cursor.fetchone()
+                if not period_row:
                     return jsonify({'success': False, 'message': 'Selected term does not belong to selected academic year.'}), 400
+                if isinstance(period_row, dict):
+                    year_name = str(period_row.get('year_name') or '').strip()
+                    term_name = str(period_row.get('term_name') or '').strip()
+                else:
+                    year_name = str(period_row[0] if len(period_row) > 0 else '').strip()
+                    term_name = str(period_row[1] if len(period_row) > 1 else '').strip()
+
+            identity = _get_current_employee_identity(cursor)
+            reset_by_name = str((identity or {}).get('full_name') or 'A staff member').strip() or 'A staff member'
+            stakeholder_recipients = _get_timetable_reset_stakeholder_recipients(cursor)
+
+            if term_id and academic_year_id:
                 cursor.execute("""
                     DELETE FROM timetables
                     WHERE academic_level_id = %s
@@ -41818,6 +43109,24 @@ def reset_timetable_for_level():
                 cursor.execute("DELETE FROM timetables WHERE academic_level_id = %s", (academic_level_id,))
             deleted = cursor.rowcount or 0
             connection.commit()
+
+            notify_payload = {
+                'recipients': stakeholder_recipients,
+                'class_name': class_name,
+                'year_name': year_name or '—',
+                'term_name': term_name or '—',
+                'reset_by_name': reset_by_name,
+                'deleted_count': deleted,
+            }
+
+        session.pop('timetable_reset_confirmation', None)
+        session.modified = True
+
+        if notify_payload:
+            try:
+                notify_timetable_reset_success(**notify_payload)
+            except Exception as mail_err:
+                print(f"Timetable reset success notification error: {mail_err}")
 
         return jsonify({
             'success': True,
@@ -51304,6 +52613,331 @@ def accountant_visual_analytics():
         chart_data=chart_data,
         analytics_tab='visual',
     )
+
+
+@app.route('/dashboard/employee/accounts')
+@login_required
+def accountant_accounts():
+    """Register and list finance ledger accounts."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    user_role = session.get('role', '').lower()
+    accounts = []
+    academic_levels_picker = []
+    levels_by_category = {}
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_finance_accounts_table(cursor)
+                connection.commit()
+                accounts = _fetch_finance_accounts(cursor)
+                academic_levels_picker = _fetch_active_academic_levels_for_accounts(cursor)
+                levels_by_category = _group_academic_levels_by_category(academic_levels_picker)
+        except Exception as e:
+            print(f"accountant_accounts: {e}")
+        finally:
+            connection.close()
+    else:
+        flash('Could not connect to the database.', 'error')
+
+    form_open = request.args.get('register') in ('1', 'true', 'yes')
+    open_edit_id = request.args.get('edit', type=int)
+    return render_template(
+        'dashboards/accountant_accounts.html',
+        role=user_role,
+        accounts=accounts,
+        accounts_client=_finance_accounts_client_payload(accounts),
+        account_categories=FINANCE_ACCOUNT_CATEGORIES,
+        academic_levels_picker=academic_levels_picker,
+        levels_by_category=levels_by_category,
+        record_count=len(accounts),
+        form_open_default=form_open,
+        open_edit_account_id=open_edit_id if open_edit_id and open_edit_id > 0 else None,
+        payment_mode_options=FINANCE_PAYMENT_MODES,
+        mpesa_type_options=FINANCE_MPESA_TYPES,
+    )
+
+
+@app.route('/dashboard/employee/accounts/register', methods=['POST'])
+@login_required
+def register_finance_account():
+    """Save a finance account record."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    def _accounts_redirect(open_form=False):
+        url = employee_dash_url('accounts')
+        if open_form:
+            url += '?register=1'
+        return url
+
+    redirect_url = _accounts_redirect()
+    redirect_url_open = _accounts_redirect(open_form=True)
+
+    fields, field_err = _prepare_finance_account_fields_from_form(request.form)
+    if field_err:
+        flash(field_err, 'error')
+        return redirect(redirect_url_open)
+    category = fields['category']
+    name = fields['name']
+    description = fields['description']
+    level_ids_raw = fields['level_ids_raw']
+    selected_payment_modes = _parse_finance_account_payment_mode_list(request.form)
+    payment_records, payment_err = _prepare_finance_account_payment_records(
+        request.form, selected_payment_modes
+    )
+    if payment_err:
+        flash(payment_err, 'error')
+        return redirect(redirect_url_open)
+
+    fields = _apply_finance_account_company_from_bank(
+        fields, payment_records, selected_payment_modes
+    )
+    company_name = fields.get('company_name')
+    company_number = fields.get('company_number')
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(redirect_url_open)
+
+    level_ids = []
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            level_ids = _filter_valid_academic_level_ids(cursor, level_ids_raw)
+    finally:
+        connection.close()
+
+    if not level_ids:
+        flash('Select at least one academic level to link to this account.', 'error')
+        return redirect(redirect_url_open)
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(redirect_url_open)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            recorded_by = (
+                session.get('full_name') or session.get('username') or ''
+            ).strip()
+            cursor.execute(
+                """
+                INSERT INTO finance_accounts
+                    (account_category, account_name, account_description,
+                     company_name, company_number, recorded_by_name)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    category,
+                    name,
+                    description or None,
+                    company_name,
+                    company_number,
+                    recorded_by or None,
+                ),
+            )
+            account_id = cursor.lastrowid
+            _save_finance_account_academic_levels(cursor, account_id, level_ids)
+            _save_finance_account_payment_methods(cursor, account_id, payment_records)
+            connection.commit()
+            level_count = len(level_ids)
+            flash(
+                f'Account "{name}" ({category}) registered and linked to '
+                f'{level_count} class{"es" if level_count != 1 else ""}.',
+                'success',
+            )
+    except Exception as e:
+        print(f"register_finance_account: {e}")
+        flash('Could not save the account. Please try again.', 'error')
+        return redirect(redirect_url_open)
+    finally:
+        connection.close()
+
+    return redirect(redirect_url)
+
+
+@app.route('/dashboard/employee/accounts/edit', methods=['POST'])
+@app.route('/dashboard/employee/accounts/<int:account_id>/edit', methods=['POST'])
+@login_required
+def edit_finance_account(account_id=None):
+    """Update a registered finance account."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    account_id = request.form.get('finance_account_id', type=int) or account_id
+    if not account_id:
+        flash('Invalid account.', 'error')
+        return redirect(employee_dash_url('accounts'))
+
+    redirect_url = employee_dash_url('accounts')
+    edit_url = redirect_url + f'?edit={account_id}'
+
+    fields, field_err = _prepare_finance_account_fields_from_form(request.form)
+    if field_err:
+        flash(field_err, 'error')
+        return redirect(edit_url)
+
+    category = fields['category']
+    name = fields['name']
+    description = fields['description']
+    level_ids_raw = fields['level_ids_raw']
+    selected_payment_modes = _parse_finance_account_payment_mode_list(request.form)
+    payment_records, payment_err = _prepare_finance_account_payment_records(
+        request.form, selected_payment_modes
+    )
+    if payment_err:
+        flash(payment_err, 'error')
+        return redirect(edit_url)
+
+    fields = _apply_finance_account_company_from_bank(
+        fields, payment_records, selected_payment_modes
+    )
+    company_name = fields.get('company_name')
+    company_number = fields.get('company_number')
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(edit_url)
+
+    level_ids = []
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            if not _finance_account_exists(cursor, account_id):
+                flash('Account not found.', 'error')
+                return redirect(redirect_url)
+            level_ids = _filter_valid_academic_level_ids(cursor, level_ids_raw)
+            if not level_ids:
+                flash('Select at least one academic level to link to this account.', 'error')
+                return redirect(edit_url)
+            cursor.execute(
+                """
+                UPDATE finance_accounts
+                SET account_category = %s,
+                    account_name = %s,
+                    account_description = %s,
+                    company_name = %s,
+                    company_number = %s
+                WHERE id = %s
+                """,
+                (
+                    category,
+                    name,
+                    description,
+                    company_name,
+                    company_number,
+                    account_id,
+                ),
+            )
+            if not _finance_account_exists(cursor, account_id):
+                flash('Account not found.', 'error')
+                return redirect(redirect_url)
+            _save_finance_account_academic_levels(cursor, account_id, level_ids)
+            _save_finance_account_payment_methods(cursor, account_id, payment_records)
+            connection.commit()
+            flash(f'Account "{name}" updated successfully.', 'success')
+    except Exception as e:
+        print(f"edit_finance_account: {e}")
+        connection.rollback()
+        flash('Could not update the account. Please try again.', 'error')
+        return redirect(edit_url)
+    finally:
+        connection.close()
+
+    return redirect(redirect_url)
+
+
+@app.route('/dashboard/employee/accounts/<int:account_id>/toggle-suspend', methods=['POST'])
+@login_required
+def toggle_finance_account_suspend(account_id):
+    """Suspend or unsuspend a finance account."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    redirect_url = employee_dash_url('accounts')
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(redirect_url)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            connection.commit()
+            existing = _fetch_finance_account_by_id(cursor, account_id)
+            if not existing:
+                flash('Account not found.', 'error')
+                return redirect(redirect_url)
+            was_suspended = (existing.get('account_status') or 'active') == 'suspended'
+            cursor.execute(
+                """
+                UPDATE finance_accounts
+                SET account_status = IF(account_status = 'suspended', 'active', 'suspended')
+                WHERE id = %s
+                """,
+                (account_id,),
+            )
+            connection.commit()
+            label = existing.get('account_name') or 'Account'
+            if was_suspended:
+                flash(f'"{label}" is active again.', 'success')
+            else:
+                flash(f'"{label}" has been suspended.', 'success')
+    except Exception as e:
+        print(f"toggle_finance_account_suspend: {e}")
+        connection.rollback()
+        flash('Could not update account status.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(redirect_url)
+
+
+@app.route('/dashboard/employee/accounts/<int:account_id>/delete', methods=['POST'])
+@login_required
+def delete_finance_account(account_id):
+    """Permanently delete a finance account."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    redirect_url = employee_dash_url('accounts')
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(redirect_url)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            connection.commit()
+            existing = _fetch_finance_account_by_id(cursor, account_id)
+            if not existing:
+                flash('Account not found.', 'error')
+                return redirect(redirect_url)
+            label = existing.get('account_name') or 'Account'
+            cursor.execute("DELETE FROM finance_accounts WHERE id = %s", (account_id,))
+            connection.commit()
+            flash(f'Account "{label}" deleted.', 'success')
+    except Exception as e:
+        print(f"delete_finance_account: {e}")
+        connection.rollback()
+        flash('Could not delete the account. Please try again.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(redirect_url)
 
 
 @app.route('/dashboard/employee/revenue')

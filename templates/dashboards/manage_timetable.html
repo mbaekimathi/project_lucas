@@ -263,10 +263,18 @@
                         </p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap justify-end">
                     <span class="bg-white/20 text-white text-xs px-2 py-1 rounded-full">
                         <span x-text="Object.keys(slots).filter(k => slots[k]).length"></span> slots assigned
                     </span>
+                    <button type="button"
+                            @click="openResetConfirmModal()"
+                            :disabled="resetting"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/15 text-white border border-white/30 hover:bg-red-600 hover:border-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title="Clear all timetable entries for this class, year, and term">
+                        <i class="fas" :class="resetting ? 'fa-spinner fa-spin' : 'fa-undo'"></i>
+                        <span x-text="resetting ? 'Resetting…' : 'Reset Timetable'"></span>
+                    </button>
                 </div>
                     </div>
 
@@ -456,6 +464,79 @@
         </div>
     </div>
 
+    <!-- Reset Timetable Confirmation Modal -->
+    <div x-show="resetConfirmModal" x-cloak
+         class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4"
+         @click.self="closeResetConfirmModal()">
+        <div class="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-md max-h-[min(92dvh,36rem)] overflow-y-auto border border-gray-200 dark:border-gray-700"
+             @click.stop>
+            <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3">
+                <div>
+                    <h3 class="font-semibold text-gray-900 dark:text-white">
+                        <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>Confirm Timetable Reset
+                    </h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Enter your password, then the 6-digit code sent to your email.
+                    </p>
+                </div>
+                <button type="button" @click="closeResetConfirmModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="p-4 space-y-3">
+                <div class="text-sm text-gray-700 dark:text-gray-300 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg p-3">
+                    <p x-text="resetWarningMessage"></p>
+                    <p class="mt-2 font-medium">This permanently clears all saved timetable entries for this class, year, and term.</p>
+                </div>
+
+                <template x-if="resetStep === 'password'">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Enter current account password</label>
+                        <input type="password"
+                               x-model="resetCurrentPassword"
+                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                               placeholder="Current password">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">A 6-digit confirmation code will be sent to your account email.</p>
+                    </div>
+                </template>
+
+                <template x-if="resetStep === 'code'">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Enter 6-digit confirmation code</label>
+                        <input type="text"
+                               x-model="resetCode"
+                               maxlength="6"
+                               inputmode="numeric"
+                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white tracking-[0.2em]"
+                               placeholder="123456">
+                    </div>
+                </template>
+
+                <p x-show="resetErrorMessage" x-text="resetErrorMessage" class="text-sm text-red-600 dark:text-red-400"></p>
+            </div>
+
+            <div class="p-4 bg-gray-50 dark:bg-gray-700/40 rounded-b-2xl sm:rounded-b-xl flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2">
+                <button type="button" @click="closeResetConfirmModal()"
+                        class="min-h-[44px] px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg">
+                    Cancel
+                </button>
+                <button type="button" x-show="resetStep === 'password'"
+                        @click="requestResetCode()"
+                        :disabled="resetSubmitting || !resetCurrentPassword"
+                        class="min-h-[44px] px-4 py-2.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span x-text="resetSubmitting ? 'Sending…' : 'Send 6-digit code'"></span>
+                </button>
+                <button type="button" x-show="resetStep === 'code'"
+                        @click="confirmResetWithCode()"
+                        :disabled="resetSubmitting || !/^\d{6}$/.test((resetCode || '').trim())"
+                        class="min-h-[44px] px-4 py-2.5 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span x-text="resetSubmitting ? 'Resetting…' : 'Confirm reset'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification -->
     <div x-show="toast.show" 
          x-transition:enter="transition ease-out duration-300"
@@ -492,6 +573,14 @@ function manageApp() {
         selectedClassId: null,
         selectedClassName: '',
         loading: false,
+        resetting: false,
+        resetConfirmModal: false,
+        resetStep: 'password',
+        resetWarningMessage: '',
+        resetCurrentPassword: '',
+        resetCode: '',
+        resetErrorMessage: '',
+        resetSubmitting: false,
         modalOpen: false,
         modalDay: '',
         modalTime: '',
@@ -839,6 +928,108 @@ function manageApp() {
             const key = `${day}|${time}`;
             delete this.slots[key];
             await this.saveChanges();
+        },
+
+        openResetConfirmModal() {
+            if (!this.selectedClassId) return;
+            if (!this.yearId || !this.termId) {
+                this.showToast('warning', 'Missing Selection', 'Please select Academic Year and Term first');
+                return;
+            }
+            const assignedCount = Object.keys(this.slots).filter(k => this.slots[k]).length;
+            this.resetWarningMessage = assignedCount > 0
+                ? `Reset timetable for ${this.selectedClassName}? This will clear ${assignedCount} assigned slot(s).`
+                : `Reset timetable for ${this.selectedClassName}?`;
+            this.resetCurrentPassword = '';
+            this.resetCode = '';
+            this.resetErrorMessage = '';
+            this.resetStep = 'password';
+            this.resetConfirmModal = true;
+        },
+
+        closeResetConfirmModal() {
+            this.resetConfirmModal = false;
+            this.resetStep = 'password';
+            this.resetErrorMessage = '';
+            this.resetSubmitting = false;
+            this.resetCurrentPassword = '';
+            this.resetCode = '';
+        },
+
+        async requestResetCode() {
+            if (!this.resetCurrentPassword) return;
+            this.resetSubmitting = true;
+            this.resetErrorMessage = '';
+            try {
+                const res = await fetch('{{ employee_dash_url('timetable-management/reset/request-code') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        academic_level_id: this.selectedClassId,
+                        academic_year_id: parseInt(this.yearId),
+                        term_id: parseInt(this.termId),
+                        current_password: this.resetCurrentPassword
+                    })
+                });
+                const result = await res.json();
+                if (!result.success) {
+                    this.resetErrorMessage = result.message || 'Failed to request confirmation code.';
+                    return;
+                }
+                if (result.dev_code) {
+                    this.resetCode = String(result.dev_code);
+                    this.resetErrorMessage = `Email unavailable — use this code: ${result.dev_code}`;
+                }
+                this.resetStep = 'code';
+                if (result.message && !result.dev_code) {
+                    this.showToast('info', 'Code Sent', result.message);
+                }
+            } catch (e) {
+                console.error('Request reset code error:', e);
+                this.resetErrorMessage = 'Failed to request confirmation code.';
+            } finally {
+                this.resetSubmitting = false;
+            }
+        },
+
+        async confirmResetWithCode() {
+            const code = (this.resetCode || '').trim();
+            if (!/^\d{6}$/.test(code)) {
+                this.resetErrorMessage = 'Please enter a valid 6-digit code.';
+                return;
+            }
+            this.resetSubmitting = true;
+            this.resetting = true;
+            this.resetErrorMessage = '';
+            try {
+                const res = await fetch('{{ employee_dash_url('timetable-management/reset') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        academic_level_id: this.selectedClassId,
+                        academic_year_id: parseInt(this.yearId),
+                        term_id: parseInt(this.termId),
+                        confirmation_code: code
+                    })
+                });
+                const result = await res.json();
+                if (!result.success) {
+                    this.resetErrorMessage = result.message || 'Could not reset timetable';
+                    return;
+                }
+                this.closeResetConfirmModal();
+                this.slots = {};
+                this.originalData = [];
+                this.saveStatus = '';
+                await this.selectClass(this.selectedClassId, this.selectedClassName, true);
+                this.showToast('success', 'Timetable Reset', result.message || 'All entries cleared for this class');
+            } catch (e) {
+                console.error('Reset error:', e);
+                this.resetErrorMessage = 'Network error occurred';
+            } finally {
+                this.resetSubmitting = false;
+                this.resetting = false;
+            }
         },
         
         async saveChanges() {

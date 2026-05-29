@@ -1,5 +1,15 @@
 {% set _acct_nav = accountant_nav_scope|default('all') %}
 
+{% if _acct_nav in ('all', 'accounts') %}
+<p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Accounts</p>
+<a href="{{ employee_dash_url('accounts') }}"
+   class="sidebar-item {% if request.endpoint in ('accountant_accounts', 'register_finance_account') or '/accounts' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-book w-5"></i>
+    <span>Accounts</span>
+    {% if request.endpoint in ('accountant_accounts', 'register_finance_account') or '/accounts' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
 {% if _acct_nav in ('all', 'fees') %}
 <p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Student fees</p>
 {% if can_add_fee_structure|default(false) %}
