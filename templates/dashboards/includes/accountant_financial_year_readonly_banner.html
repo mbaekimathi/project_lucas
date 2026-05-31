@@ -1,0 +1,85 @@
+{% set fy = financial_year_session|default({}) %}
+{% if fy.read_only|default(false) %}
+<div class="acc-fy-readonly-banner no-print" role="status">
+    <div class="acc-fy-readonly-banner__inner">
+        <span class="acc-fy-readonly-banner__icon" aria-hidden="true"><i class="fas fa-lock"></i></span>
+        <div class="min-w-0">
+            <p class="acc-fy-readonly-banner__title">Finance view-only</p>
+            <p class="acc-fy-readonly-banner__text">{{ fy.read_only_message or 'The financial year is closed. You can view records but cannot add or change them.' }}</p>
+        </div>
+        <a href="{{ employee_dash_url('finance-settings') }}"
+           class="acc-fy-readonly-banner__link shrink-0">
+            Finance settings
+        </a>
+    </div>
+</div>
+<style>
+.acc-fy-readonly-banner {
+    position: relative;
+    z-index: 20;
+    margin: 0 auto;
+    max-width: 80rem;
+    padding: 0.625rem 1rem 0;
+}
+.acc-fy-readonly-banner__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgb(251 191 36 / 0.45);
+    background: rgb(255 251 235 / 0.98);
+    padding: 0.75rem 1rem;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+.dark .acc-fy-readonly-banner__inner {
+    border-color: rgb(180 83 9 / 0.45);
+    background: rgb(69 26 3 / 0.55);
+}
+.acc-fy-readonly-banner__icon {
+    display: inline-flex;
+    height: 2rem;
+    width: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    background: rgb(254 243 199);
+    color: rgb(180 83 9);
+}
+.dark .acc-fy-readonly-banner__icon {
+    background: rgb(120 53 15 / 0.45);
+    color: rgb(252 211 77);
+}
+.acc-fy-readonly-banner__title {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: rgb(146 64 14);
+}
+.dark .acc-fy-readonly-banner__title { color: rgb(253 230 138); }
+.acc-fy-readonly-banner__text {
+    font-size: 0.75rem;
+    color: rgb(120 53 15);
+}
+.dark .acc-fy-readonly-banner__text { color: rgb(254 215 170); }
+.acc-fy-readonly-banner__link {
+    margin-left: auto;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(15 118 110);
+    text-decoration: none;
+}
+.acc-fy-readonly-banner__link:hover { text-decoration: underline; }
+.dark .acc-fy-readonly-banner__link { color: rgb(94 234 212); }
+body.acc-fy-readonly [data-finance-mutate] {
+    pointer-events: none;
+    opacity: 0.55;
+    cursor: not-allowed !important;
+}
+body.acc-fy-readonly [data-finance-mutate] input,
+body.acc-fy-readonly [data-finance-mutate] select,
+body.acc-fy-readonly [data-finance-mutate] textarea,
+body.acc-fy-readonly [data-finance-mutate] button {
+    cursor: not-allowed !important;
+}
+</style>
+{% endif %}

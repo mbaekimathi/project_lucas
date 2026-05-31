@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}{{ account_report_meta.title }} — {{ account.account_name }}{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/finance_account_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+{% include 'dashboards/includes/finance_account_reports_ui.html' %}
+{% set p = report_payload %}
+{% set filter_url = employee_dash_url('accounts/' ~ account_id ~ '/reports/' ~ account_report_slug) %}
+{% set filter_data_url = employee_dash_url('accounts/' ~ account_id ~ '/reports/' ~ account_report_slug ~ '/data') %}
+
+<script type="application/json" id="acr-page-config">{{ {
+    'dataApi': filter_data_url,
+    'defaultFinancialYearId': default_financial_year_id,
+    'skipInitialFetch': true
+}|tojson }}</script>
+
+<div class="acr-page page-content">
+    <div class="acr-inner">
+        <div class="acr-toolbar no-print">
+            <nav class="acr-breadcrumb" aria-label="Breadcrumb">
+                <a href="{{ employee_dash_url('finance-overview') }}">Reports</a>
+                <span aria-hidden="true">/</span>
+                <a href="{{ employee_dash_url('accounts/' ~ account_id) }}">{{ account.account_name }}</a>
+                <span aria-hidden="true">/</span>
+                <span class="acr-breadcrumb__current">{{ account_report_meta.title }}</span>
+            </nav>
+            <div class="acr-toolbar__actions">
+                <button type="button" class="acr-btn" onclick="window.print()">
+                    <i class="fas fa-print" aria-hidden="true"></i> Print
+                </button>
+                <a href="{{ employee_dash_url('accounts/' ~ account_id) }}" class="acr-btn">
+                    <i class="fas fa-chart-pie" aria-hidden="true"></i> Summary
+                </a>
+            </div>
+        </div>
+
+        {% with report_title=account_report_meta.title, report_description=account_report_meta.description, show_filters=true, filter_action_url=filter_url, live_filters=true, is_summary=false %}
+        {% include 'dashboards/includes/finance_account_report_masthead.html' %}
+        {% endwith %}
+
+        <div id="acr-report-loading" class="acr-report-state hidden no-print" role="status" aria-live="polite">
+            <i class="fas fa-circle-notch fa-spin" aria-hidden="true"></i>
+            <span>Updating report…</span>
+        </div>
+        <p id="acr-report-error" class="acr-report-alert hidden no-print" role="alert"></p>
+
+        <div id="acr-report-body" aria-live="polite">
+        {% include 'dashboards/includes/finance_account_report_body.html' %}
+        </div>
+    </div>
+</div>
+<script>
+{% include 'dashboards/includes/finance_account_report_loader.js' %}
+</script>
+{% endblock %}

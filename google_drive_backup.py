@@ -176,7 +176,7 @@ def create_oauth_flow():
     if not OAUTH_FLOW_AVAILABLE:
         raise RuntimeError('Install google-auth-oauthlib for Google sign-in.')
     if not oauth_client_configured():
-        raise RuntimeError('Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env.local')
+        raise RuntimeError('Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env.local or .env')
     client_config = {
         'web': {
             'client_id': os.environ['GOOGLE_OAUTH_CLIENT_ID'],
@@ -352,7 +352,7 @@ def upload_structured_backups(service, folder_map, year_id, term_id, file_paths,
 
 def test_connection(backup_settings=None, folder_id_override=None):
     if not is_google_drive_configured() and not is_user_connected(backup_settings or {}):
-        return False, 'Connect Google Drive or configure credentials in .env.local.'
+        return False, 'Connect Google Drive or configure credentials in .env.local or .env.'
     try:
         service, _ = get_drive_service(backup_settings)
         folder_id = (folder_id_override or

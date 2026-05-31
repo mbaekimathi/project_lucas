@@ -1,0 +1,12 @@
+{% macro mpesa_pay_button(purpose, student_id, student_name, amount='', label='Pay with M-Pesa', extra_class='') %}
+<button type="button"
+        class="js-parent-mpesa-open inline-flex items-center justify-center gap-2 {{ extra_class }}"
+        data-mpesa-purpose="{{ purpose }}"
+        data-mpesa-student-id="{{ student_id }}"
+        data-mpesa-student-name="{{ student_name|e }}"
+        data-mpesa-admission="{{ student_id }}"
+        {% if amount is not none and amount != '' %}data-mpesa-amount="{{ amount }}"{% endif %}>
+    <i class="fas fa-mobile-alt" aria-hidden="true"></i>
+    {{ label }}
+</button>
+{% endmacro %}

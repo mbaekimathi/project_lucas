@@ -1,0 +1,31 @@
+{# Finance account shortcuts — revenue collection report sidebar #}
+{% set _fo = filter_options|default({}) %}
+{% set _accounts = _fo.finance_accounts|default([]) %}
+{% set _slug = finance_report_slug|default(report_slug|default('')) %}
+{% set _active_fa = request.args.get('finance_account_id', '') %}
+
+{% if _slug == 'revenue-collection' and _accounts %}
+<p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Finance accounts</p>
+
+<a href="{{ employee_dash_url('finance-overview/reports/revenue-collection') }}"
+   data-fr-sidebar-all-accounts="1"
+   class="sidebar-item {% if not _active_fa %}sidebar-item-active{% endif %}"
+   title="All accounts on this report">
+    <i class="fas fa-layer-group w-5"></i>
+    <span>All accounts</span>
+    {% if not _active_fa %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+
+{% for a in _accounts %}
+<a href="{{ employee_dash_url('accounts/' ~ a.id) }}"
+   data-fr-sidebar-account="{{ a.id }}"
+   class="sidebar-item"
+   title="Open {{ a.name }} summary">
+    <i class="fas fa-wallet w-5"></i>
+    <span class="truncate">{{ a.name }}</span>
+    {% if _active_fa and _active_fa|string == a.id|string %}
+    <i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>
+    {% endif %}
+</a>
+{% endfor %}
+{% endif %}

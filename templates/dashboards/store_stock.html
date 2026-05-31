@@ -1,22 +1,26 @@
 {% extends "base.html" %}
 
-{% block title %}STOCK IN &amp; OUT — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+{% block title %}Stock In &amp; Out — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/store_stock_page_styles.html' %}
+{% endblock %}
 
 {% block sidebar_content %}
 {% include 'dashboards/includes/store_manager_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
+
 <script>
 document.addEventListener('alpine:init', function () {
   Alpine.data('storeStockPage', function () {
     return {
-      stockMode: 'in',
-      listMode: null,
-      formOpen: false,
-      registerFormOpen: {{ register_form_open_default|default(false)|tojson }},
+      stockMode: {{ default_mode|tojson }},
+      movementModalOpen: false,
+      registerFormOpen: false,
       stockItems: [],
-      recentMovements: [],
+      catalogSearch: '',
       storeItemId: '',
       quantity: '1',
       buyingPrice: '',
@@ -32,8 +36,9 @@ document.addEventListener('alpine:init', function () {
       stockOutPurposes: {{ stock_out_purposes|tojson }},
       supplierLookupUrl: {{ employee_dash_url('store-stock/supplier-lookup')|tojson }},
       stockPostUrl: {{ employee_dash_url('store-stock')|tojson }},
-      printUrlBase: {{ employee_dash_url('store-stock/print')|tojson }},
+      itemAnalyticsBase: {{ employee_dash_url('store-inventory')|tojson }},
       preselectItemId: {{ preselect_item_id|tojson }},
+      itemPickerSearch: '',
       init: function () {
         var el = document.getElementById('store-stock-items-json');
         try {
@@ -41,23 +46,13 @@ document.addEventListener('alpine:init', function () {
         } catch (e) {
           this.stockItems = [];
         }
-        var movEl = document.getElementById('store-recent-movements-json');
-        try {
-          this.recentMovements = movEl && movEl.textContent ? JSON.parse(movEl.textContent) : [];
-        } catch (e) {
-          this.recentMovements = [];
-        }
         var urlParams = new URLSearchParams(window.location.search);
         var urlMode = urlParams.get('mode');
         if (urlMode === 'in' || urlMode === 'out') {
-          this.listMode = urlMode;
           this.stockMode = urlMode;
         }
         if (this.preselectItemId) {
-          this.storeItemId = String(this.preselectItemId);
-          this.formOpen = true;
-          this.listMode = 'in';
-          this.stockMode = 'in';
+          this.openMovementModal(this.stockMode || 'in', this.preselectItemId);
           if (window.history && window.history.replaceState) {
             window.history.replaceState({}, '', this.stockPostUrl);
           }
@@ -69,6 +64,14 @@ document.addEventListener('alpine:init', function () {
             if (banner) banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
           });
         }
+        this.$watch('movementModalOpen', function (open) {
+          document.body.classList.toggle('overflow-hidden', !!open);
+        });
+        this.$watch('storeItemId', function () {
+          if (this.movementModalOpen && this.stockMode === 'in') {
+            this.applyDefaultBuyingPrice();
+          }
+        });
       },
       get selectedItem() {
         var id = String(this.storeItemId || '');
@@ -82,41 +85,108 @@ document.addEventListener('alpine:init', function () {
         if (!Number.isFinite(q) || !Number.isFinite(p) || q < 0 || p < 0) return '';
         return (q * p).toFixed(2);
       },
-      get filteredMovements() {
-        var mode = this.listMode;
-        if (!mode) return [];
-        return (this.recentMovements || []).filter(function (m) {
-          return (m.movement_type || '') === mode;
+      get filteredCatalogItems() {
+        var q = (this.catalogSearch || '').trim().toUpperCase();
+        if (!q) return this.stockItems || [];
+        return (this.stockItems || []).filter(function (it) {
+          var hay = [
+            it.reference_code,
+            it.item_name,
+            it.item_category,
+            it.measure,
+            String(it.quantity_on_hand || 0),
+          ].filter(Boolean).join(' ').toUpperCase();
+          return hay.indexOf(q) !== -1;
         });
       },
-      printHref: function (id) {
-        return this.printUrlBase + '/' + id;
+      get filteredStockItems() {
+        var q = (this.itemPickerSearch || '').trim().toUpperCase();
+        if (!q) return this.stockItems || [];
+        return (this.stockItems || []).filter(function (it) {
+          var hay = [
+            it.reference_code,
+            it.item_name,
+            it.item_category,
+            it.measure,
+            String(it.quantity_on_hand || 0),
+          ].filter(Boolean).join(' ').toUpperCase();
+          return hay.indexOf(q) !== -1;
+        });
       },
-      formatMovementTotal: function (m) {
-        if (!m || m.movement_type !== 'in' || m.total_amount == null) return '—';
-        var n = parseFloat(m.total_amount);
-        return Number.isFinite(n) ? n.toFixed(2) : '—';
+      stockQtyClass: function (qty) {
+        qty = parseInt(qty, 10) || 0;
+        if (qty === 0) return 'is-zero';
+        if (qty <= 5) return 'is-low';
+        return 'is-ok';
+      },
+      itemAnalyticsUrl: function (id) {
+        return this.itemAnalyticsBase + '/' + id + '/analytics';
+      },
+      goToItemAnalytics: function (id) {
+        if (!id) return;
+        window.location.href = this.itemAnalyticsUrl(id);
+      },
+      get totalOnHand() {
+        return (this.stockItems || []).reduce(function (sum, it) {
+          return sum + (parseInt(it.quantity_on_hand, 10) || 0);
+        }, 0);
+      },
+      onCatalogSearchInput: function ($event) {
+        var val = ($event.target.value || '').toUpperCase();
+        $event.target.value = val;
+        this.catalogSearch = val;
+      },
+      clearCatalogSearch: function () {
+        this.catalogSearch = '';
+      },
+      formatBuyingPrice: function (v) {
+        if (v === null || v === undefined || v === '') return '';
+        var n = parseFloat(v);
+        return Number.isFinite(n) ? n.toFixed(2) : '';
+      },
+      applyDefaultBuyingPrice: function () {
+        if (this.stockMode !== 'in') return;
+        var item = this.selectedItem;
+        if (!item || item.avg_buying_price === null || item.avg_buying_price === undefined || item.avg_buying_price === '') {
+          this.buyingPrice = '';
+          return;
+        }
+        this.buyingPrice = this.formatBuyingPrice(item.avg_buying_price);
+      },
+      resetMovementFields: function () {
+        this.quantity = '1';
+        this.buyingPrice = '';
+        this.notes = '';
+        this.stockOutPurpose = '';
+        this.itemPickerSearch = '';
+        this.resetSupplierFields();
+      },
+      openMovementModal: function (mode, itemId) {
+        this.stockMode = mode === 'out' ? 'out' : 'in';
+        this.resetMovementFields();
+        this.storeItemId = itemId ? String(itemId) : '';
+        if (this.stockMode === 'in') {
+          this.applyDefaultBuyingPrice();
+        }
+        this.movementModalOpen = true;
+        this.$nextTick(function () {
+          var panel = this.$refs.movementModalPanel;
+          if (panel) panel.focus();
+        }.bind(this));
+      },
+      closeMovementModal: function () {
+        this.movementModalOpen = false;
+        this.storeItemId = '';
+        this.resetMovementFields();
       },
       openForm: function (mode) {
-        this.stockMode = mode === 'out' ? 'out' : 'in';
-        this.listMode = this.stockMode;
-        this.formOpen = true;
-        if (this.stockMode === 'in') this.stockOutPurpose = '';
-        this.resetSupplierFields();
-        this.$nextTick(function () {
-          var panel = this.$refs.stockFormPanel;
-          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }.bind(this));
+        this.openMovementModal(mode, null);
       },
       closeForm: function () {
-        this.formOpen = false;
+        this.closeMovementModal();
       },
       openRegisterForm: function () {
-        this.registerFormOpen = true;
-        this.$nextTick(function () {
-          var panel = this.$refs.registerFormPanel;
-          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }.bind(this));
+        window.location.href = {{ employee_dash_url('store-inventory')|tojson }};
       },
       closeRegisterForm: function () {
         this.registerFormOpen = false;
@@ -131,9 +201,14 @@ document.addEventListener('alpine:init', function () {
       },
       switchMode: function (mode) {
         this.stockMode = mode === 'out' ? 'out' : 'in';
-        this.listMode = this.stockMode;
-        if (this.stockMode === 'in') this.stockOutPurpose = '';
-        this.resetSupplierFields();
+        this.itemPickerSearch = '';
+        if (this.stockMode === 'in') {
+          this.stockOutPurpose = '';
+          this.applyDefaultBuyingPrice();
+        } else {
+          this.resetSupplierFields();
+          this.buyingPrice = '';
+        }
       },
       resetSupplierFields: function () {
         if (this.supplierLookupTimer) {
@@ -251,360 +326,330 @@ document.addEventListener('alpine:init', function () {
 });
 </script>
 
-<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-8 sm:py-12 pb-16"
-         x-data="storeStockPage">
+<script type="application/json" id="store-stock-items-json">{{ stock_items_client|tojson }}</script>
+
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }} si-page ss-page">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14"
+         x-data="storeStockPage"
+         @keydown.escape.window="if (movementModalOpen) closeMovementModal()">
 
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-        <div class="mb-6 space-y-3">
+        <div class="mb-5 space-y-2">
             {% for category, message in messages %}
-            <div class="rounded-2xl border px-4 py-3.5 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800{% endif %}">{{ message }}</div>
+            <div class="flex gap-3 rounded-xl border px-4 py-3 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100{% endif %}">
+                <span class="mt-0.5 shrink-0" aria-hidden="true">
+                    {% if category == 'success' %}<i class="fas fa-check"></i>{% elif category == 'error' %}<i class="fas fa-exclamation"></i>{% else %}<i class="fas fa-info"></i>{% endif %}
+                </span>
+                <span class="min-w-0 flex-1">{{ message }}</span>
+            </div>
             {% endfor %}
         </div>
         {% endif %}
         {% endwith %}
 
         {% if last_print_id %}
-        <div id="print-success-banner" class="mb-6 flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-800 dark:bg-emerald-950/40 sm:flex-row sm:items-center sm:justify-between">
-            <p class="text-sm font-medium text-emerald-900 dark:text-emerald-100">
-                <i class="fas fa-check-circle mr-2"></i>Stock movement saved. You can print the receipt below.
-            </p>
-            <a href="{{ url_for('store_stock_print', movement_id=last_print_id) }}" target="_blank" rel="noopener"
-               class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">
+        <div id="print-success-banner" class="ss-alert ss-alert--success mb-5">
+            <p class="font-medium"><i class="fas fa-check-circle mr-1.5"></i>Stock movement saved. You can print the receipt.</p>
+            <a href="{{ employee_dash_url('store-stock/print') }}/{{ last_print_id }}" target="_blank" rel="noopener"
+               class="si-btn ss-btn--in shrink-0">
                 <i class="fas fa-print"></i> Print receipt
             </a>
         </div>
         {% endif %}
 
-        <header class="mb-8 rounded-2xl border border-gray-200/90 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl">
-            <div class="p-6 sm:p-8">
-                <p class="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">School store</p>
-                <h1 class="mt-2 text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">Stock in &amp; stock out</h1>
-                <p class="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-2xl">
-                    Register new catalog items here, then use stock in or stock out. Stock in creates a reference number and records payment as <strong>pending</strong> (total = quantity × buying price).
-                </p>
-                {% if not stock_items %}
-                <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-                    No active items in the catalog yet. Use <strong>Register item</strong> below to add one, then record stock in.
-                </p>
-                {% endif %}
+        <header class="ss-hero">
+            <div class="ss-hero__inner">
+                <div class="ss-hero__top">
+                    <div class="min-w-0 flex gap-3.5">
+                        <div class="ss-hero__icon" aria-hidden="true"><i class="fas fa-arrow-right-arrow-left"></i></div>
+                        <div class="min-w-0">
+                            <h1 class="ss-hero__title">Stock in &amp; stock out</h1>
+                            <p class="ss-hero__sub si-normal">
+                                View live quantities on hand and record stock in or stock out from the item list.
+                            </p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </header>
 
-        <script type="application/json" id="store-stock-items-json">{{ stock_items_client|tojson }}</script>
-        <script type="application/json" id="store-recent-movements-json">{{ recent_movements|tojson }}</script>
+        {% if not stock_items %}
+        <div class="ss-alert ss-alert--warn mb-5">
+            <p class="si-normal"><i class="fas fa-circle-info mr-1.5"></i>No active catalog items yet. <a href="{{ employee_dash_url('store-inventory') }}" class="font-semibold underline">Register items</a> in the catalog first.</p>
+        </div>
+        {% endif %}
 
-        <div class="space-y-8 uppercase">
-            <section class="rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl overflow-hidden">
-                <div class="border-b border-gray-100 px-5 py-5 dark:border-gray-800 sm:px-7 sm:py-6" x-show="!registerFormOpen">
-                    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div class="min-w-0 normal-case">
-                            <h2 class="text-lg font-bold text-gray-900 dark:text-white">Register store item</h2>
-                            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Add a new item to the catalog before stocking in or out. Library Department items are sent to the librarian catalog.</p>
-                        </div>
-                        <button type="button" @click="openRegisterForm()"
-                                class="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-brand-primary px-6 py-3.5 text-sm font-semibold text-white shadow-md hover:brightness-110">
-                            <i class="fas fa-plus-circle"></i> Register item
-                        </button>
+        <div class="ss-page-stack si-upper">
+
+            {# Store items — live quantities #}
+            <section class="si-panel ss-catalog-panel">
+                <div class="si-panel-head ss-list-panel__head">
+                    <div class="min-w-0">
+                        <h2 class="si-title">Store items &amp; quantities</h2>
+                        <p class="si-subtitle si-normal">Live on-hand quantities. Click a row for usage analytics, or use Stock in / Stock out.</p>
+                        <span class="ss-results-badge mt-2" x-show="stockItems.length > 0">
+                            <i class="fas fa-layer-group"></i>
+                            <span x-text="stockItems.length + ' item' + (stockItems.length === 1 ? '' : 's')"></span>
+                            <span class="opacity-80"> · </span>
+                            <span x-text="totalOnHand + ' units on hand'"></span>
+                        </span>
                     </div>
                 </div>
-                <div x-show="registerFormOpen" x-cloak x-ref="registerFormPanel"
-                     class="border-t-4 border-brand-primary bg-gradient-to-b from-white to-gray-50/80 px-5 py-6 dark:from-gray-900 dark:to-gray-950/80 sm:px-7 sm:py-8">
-                    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <h2 class="text-lg font-bold text-gray-900 dark:text-white">New store item</h2>
-                            <p class="mt-1 text-xs font-normal normal-case text-gray-500 dark:text-gray-400">Required fields must be completed. Image is optional.</p>
+                <div class="si-panel-body">
+                    <div class="ss-search-bar si-normal">
+                        <div class="si-search-wrap">
+                            <i class="fas fa-search"></i>
+                            <input type="search"
+                                   x-model="catalogSearch"
+                                   @input="onCatalogSearchInput($event)"
+                                   class="si-input si-upper"
+                                   placeholder="SEARCH REF, NAME, EXPENSE CATEGORY…"
+                                   aria-label="Search store items" />
                         </div>
-                        <button type="button" @click="closeRegisterForm()"
-                                class="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
-                            <i class="fas fa-times"></i> Close
-                        </button>
+                        <button type="button" x-show="catalogSearch" x-cloak @click="clearCatalogSearch()" class="si-btn si-btn--ghost py-2 px-3 text-xs">Clear</button>
                     </div>
-                    <form method="post" :action="stockPostUrl" enctype="multipart/form-data" class="space-y-5 normal-case">
-                        <input type="hidden" name="form_action" value="register_item" />
-                        <div class="grid gap-5 sm:grid-cols-2">
-                            <div class="sm:col-span-2">
-                                <label for="reg_item_category" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Item category</label>
-                                <input list="store-stock-category-suggestions" type="text" name="item_category" id="reg_item_category" required maxlength="120" autocomplete="off"
-                                       @input="uppercaseInput($event)"
-                                       class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
-                                       placeholder="STATIONERY, TEXTBOOK, LAB SUPPLIES" />
-                                <datalist id="store-stock-category-suggestions">
-                                    {% for cat in category_suggestions %}
-                                    <option value="{{ cat }}"></option>
-                                    {% endfor %}
-                                </datalist>
-                            </div>
-                            <div class="sm:col-span-2">
-                                <label for="reg_item_name" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Item name</label>
-                                <input type="text" name="item_name" id="reg_item_name" required maxlength="255" autocomplete="off"
-                                       @input="uppercaseInput($event)"
-                                       class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
-                                       placeholder="ITEM NAME" />
-                            </div>
-                            <div class="sm:col-span-2">
-                                <label for="reg_department_station" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Department station</label>
-                                <select name="department_station" id="reg_department_station" required
-                                        class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
-                                    <option value="">SELECT STATION</option>
-                                    {% for st in department_stations %}
-                                    <option value="{{ st }}">{{ st }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="sm:col-span-2">
-                                <label for="reg_description" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Description <span class="font-normal normal-case text-gray-400">(optional)</span></label>
-                                <textarea name="description" id="reg_description" rows="3"
-                                          @input="uppercaseInput($event)"
-                                          class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
-                                          placeholder="SIZE, BRAND, NOTES"></textarea>
-                            </div>
-                            <div>
-                                <label for="reg_measure" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Measure</label>
-                                <select name="measure" id="reg_measure" required
-                                        class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
-                                    <option value="">SELECT MEASURE</option>
-                                    {% for m in measures %}
-                                    <option value="{{ m }}">{{ m }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div>
-                                <label for="reg_image" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Image <span class="font-normal normal-case text-gray-400">(optional)</span></label>
-                                <input type="file" name="image" id="reg_image" accept="image/png,image/jpeg,image/gif,image/webp"
-                                       class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm normal-case file:mr-3 file:rounded-lg file:border-0 file:bg-brand-primary/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-primary dark:border-gray-600 dark:bg-gray-950" />
-                            </div>
+
+                    <div x-show="stockItems.length === 0" class="si-empty mt-3">
+                        <i class="fas fa-boxes-stacked block"></i>
+                        <p class="font-semibold text-[var(--si-ink)] si-normal">No items in catalog</p>
+                        <p class="mt-1 text-sm si-normal"><a href="{{ employee_dash_url('store-inventory') }}" class="text-[var(--si-brand)] underline">Register items</a> to start stocking.</p>
+                    </div>
+                    <div x-show="stockItems.length > 0 && filteredCatalogItems.length === 0" x-cloak class="si-empty mt-3">
+                        <i class="fas fa-magnifying-glass block"></i>
+                        <p class="font-semibold text-[var(--si-ink)] si-normal">No items match your search</p>
+                    </div>
+
+                    <div x-show="filteredCatalogItems.length > 0" class="ss-list-table mt-3">
+                        <div class="si-table-wrap ss-table-wrap">
+                            <table class="si-table ss-table--catalog">
+                                <thead>
+                                    <tr>
+                                        <th>Ref</th>
+                                        <th>Item</th>
+                                        <th>Expense category</th>
+                                        <th>On hand</th>
+                                        <th class="text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="it in filteredCatalogItems" :key="it.id">
+                                        <tr class="ss-catalog-row cursor-pointer"
+                                            @click="goToItemAnalytics(it.id)">
+                                            <td><span class="si-ref" x-text="it.reference_code"></span></td>
+                                            <td>
+                                                <span class="font-semibold block" x-text="it.item_name"></span>
+                                                <span class="text-[0.625rem] text-[var(--si-muted)] uppercase" x-text="it.measure"></span>
+                                            </td>
+                                            <td class="max-w-[12rem] truncate" :title="it.item_category" x-text="it.item_category"></td>
+                                            <td class="ss-on-hand-cell whitespace-nowrap">
+                                                <span class="si-stock-qty" :class="stockQtyClass(it.quantity_on_hand)">
+                                                    <span class="si-stock-num" x-text="it.quantity_on_hand || 0"></span>
+                                                    <span class="si-stock-unit" x-text="it.measure"></span>
+                                                </span>
+                                            </td>
+                                            <td @click.stop>
+                                                <div class="flex justify-center gap-1 flex-wrap">
+                                                    <a :href="itemAnalyticsUrl(it.id)" class="si-btn si-btn--icon" title="Usage analytics" @click.stop>
+                                                        <i class="fas fa-chart-line"></i>
+                                                    </a>
+                                                    <button type="button" @click="openMovementModal('in', it.id)"
+                                                            class="si-btn ss-row-btn ss-row-btn--in" title="Stock in">
+                                                        <i class="fas fa-arrow-down-to-bracket"></i>
+                                                        <span>In</span>
+                                                    </button>
+                                                    <button type="button" @click="openMovementModal('out', it.id)"
+                                                            class="si-btn ss-row-btn ss-row-btn--out" title="Stock out">
+                                                        <i class="fas fa-arrow-up-from-bracket"></i>
+                                                        <span>Out</span>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
                         </div>
-                        <button type="submit"
-                                class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-primary px-6 py-3.5 text-sm font-semibold text-white shadow-md sm:w-auto hover:brightness-110">
-                            <i class="fas fa-plus-circle"></i> Add to catalog
-                        </button>
-                    </form>
+                    </div>
                 </div>
             </section>
+        </div>
 
-            <section class="rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl overflow-hidden">
-                <div class="px-5 py-5 sm:px-7 sm:py-6" x-show="!formOpen" x-cloak>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Record incoming stock or issue items from the store.</p>
-                    <div class="flex flex-col gap-3 sm:flex-row sm:gap-4">
-                        <button type="button" @click="openForm('in')" :disabled="!stockItems.length"
-                                class="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 py-4 text-sm font-semibold text-white shadow-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                            <i class="fas fa-arrow-down-to-bracket text-lg"></i> Stock in
-                        </button>
-                        <button type="button" @click="openForm('out')" :disabled="!stockItems.length"
-                                class="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-orange-600 px-6 py-4 text-sm font-semibold text-white shadow-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                            <i class="fas fa-arrow-up-from-bracket text-lg"></i> Stock out
+        {# Stock in / out modal #}
+        <div x-show="movementModalOpen" x-cloak
+             class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
+             role="dialog" aria-modal="true" :aria-labelledby="stockMode === 'in' ? 'ss-modal-in-title' : 'ss-modal-out-title'">
+            <div class="absolute inset-0 bg-gray-900/55 backdrop-blur-sm" @click="closeMovementModal()" aria-hidden="true"></div>
+            <div x-show="movementModalOpen" x-ref="movementModalPanel" tabindex="-1"
+                 class="relative mt-auto w-full max-h-[92vh] overflow-y-auto rounded-t-2xl border border-[var(--si-line)] bg-[var(--si-bg)] shadow-2xl sm:mt-0 sm:max-w-lg sm:rounded-2xl">
+                <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 ss-modal-head"
+                     :class="stockMode === 'in' ? 'ss-modal-head--in' : 'ss-modal-head--out'">
+                    <div class="min-w-0">
+                        <p class="ss-modal-head__eyebrow" x-text="stockMode === 'in' ? 'Receive stock' : 'Issue stock'"></p>
+                        <h2 class="ss-modal-head__title" :id="stockMode === 'in' ? 'ss-modal-in-title' : 'ss-modal-out-title'"
+                            x-text="stockMode === 'in' ? 'Stock in' : 'Stock out'"></h2>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="ss-mode-tabs ss-mode-tabs--compact" role="tablist">
+                            <button type="button" @click="switchMode('in')"
+                                    class="ss-mode-tab is-in" :class="stockMode === 'in' ? 'is-active' : ''">In</button>
+                            <button type="button" @click="switchMode('out')"
+                                    class="ss-mode-tab is-out" :class="stockMode === 'out' ? 'is-active' : ''">Out</button>
+                        </div>
+                        <button type="button" @click="closeMovementModal()" class="ss-modal-close" aria-label="Close">
+                            <i class="fas fa-times"></i>
                         </button>
                     </div>
                 </div>
 
-                <div x-show="formOpen" x-cloak x-ref="stockFormPanel"
-                     x-transition:enter="transition ease-out duration-200"
-                     x-transition:enter-start="opacity-0 -translate-y-1"
-                     x-transition:enter-end="opacity-100 translate-y-0">
-                <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div class="flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800 flex-1 max-w-md" role="tablist">
-                        <button type="button" @click="switchMode('in')"
-                                :class="stockMode === 'in' ? 'bg-emerald-600 text-white shadow' : 'text-gray-600 dark:text-gray-300'"
-                                class="flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition">
-                            <i class="fas fa-arrow-down-to-bracket mr-1"></i> Stock in
-                        </button>
-                        <button type="button" @click="switchMode('out')"
-                                :class="stockMode === 'out' ? 'bg-orange-600 text-white shadow' : 'text-gray-600 dark:text-gray-300'"
-                                class="flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition">
-                            <i class="fas fa-arrow-up-from-bracket mr-1"></i> Stock out
-                        </button>
-                    </div>
-                    <button type="button" @click="closeForm()"
-                            class="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 shrink-0">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                </div>
-
-                <form method="post" :action="stockPostUrl" @submit="submitCheck($event)" class="p-5 sm:p-7 space-y-5 border-t border-gray-100 dark:border-gray-800">
+                <form method="post" :action="stockPostUrl" @submit="submitCheck($event)" class="p-4 sm:p-5 space-y-4 si-normal si-upper">
                     <input type="hidden" name="movement_type" :value="stockMode" />
 
-                    <div>
-                        <label for="store_item_id" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">Store item</label>
-                        <select name="store_item_id" id="store_item_id" required x-model="storeItemId"
-                                :disabled="!stockItems.length"
-                                class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white">
-                            <option value="">SELECT ITEM</option>
-                            <template x-for="it in stockItems" :key="it.id">
-                                <option :value="String(it.id)"
-                                        x-text="it.reference_code + ' — ' + it.item_name + ' (' + it.measure + ') · on hand: ' + (it.quantity_on_hand || 0)"></option>
-                            </template>
-                        </select>
-                        <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400 normal-case" x-show="selectedItem">
-                            Category: <span class="font-medium" x-text="selectedItem.item_category"></span>
-                        </p>
-                    </div>
-
-                    <div>
-                        <label for="quantity" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">
-                            Quantity
-                            <span x-show="selectedItem && selectedItem.measure" class="text-brand-primary" x-text="'(' + selectedItem.measure + ')'"></span>
-                        </label>
-                        <div class="relative flex items-stretch">
-                            <input type="number" name="quantity" id="quantity" min="1" step="1" required x-model="quantity"
-                                   :placeholder="selectedItem && selectedItem.measure ? 'HOW MANY ' + selectedItem.measure : 'QTY'"
-                                   class="w-full min-w-0 flex-1 rounded-l-xl border border-gray-200 bg-white px-4 py-3 text-sm tabular-nums dark:border-gray-600 dark:bg-gray-950 dark:text-white focus:z-10 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20" />
-                            <span x-show="selectedItem && selectedItem.measure"
-                                  class="inline-flex shrink-0 items-center rounded-r-xl border border-l-0 border-gray-200 bg-gray-100 px-4 text-xs font-bold uppercase tracking-wide text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-                                  x-text="selectedItem.measure"></span>
-                            <span x-show="!selectedItem || !selectedItem.measure"
-                                  class="inline-flex shrink-0 items-center rounded-r-xl border border-l-0 border-gray-200 bg-gray-50 px-4 text-xs font-medium uppercase text-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-500">—</span>
-                        </div>
-                        <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400 normal-case" x-show="selectedItem && selectedItem.measure">
-                            Enter how many <span class="font-semibold uppercase" x-text="selectedItem.measure"></span> you are stocking <span x-text="stockMode === 'in' ? 'in' : 'out'"></span>.
-                        </p>
-                    </div>
-
-                    <template x-if="stockMode === 'in'">
-                        <div class="space-y-5 border-t border-gray-100 pt-5 dark:border-gray-800">
-                            <div>
-                                <label for="buying_price" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">
-                                    Buying price
-                                    <span x-show="selectedItem && selectedItem.measure" class="text-brand-primary" x-text="'(PER ' + selectedItem.measure + ')'"></span>
-                                    <span x-show="!selectedItem || !selectedItem.measure" class="font-normal normal-case text-gray-400"> (per unit)</span>
-                                </label>
-                                <input type="number" name="buying_price" id="buying_price" min="0" step="0.01" required
-                                       x-model="buyingPrice"
-                                       class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
-                            </div>
-                            <div class="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-3 dark:border-sky-900/40 dark:bg-sky-950/30">
-                                <p class="text-[11px] font-semibold uppercase text-sky-800 dark:text-sky-300">Payment (pending)</p>
-                                <p class="mt-1 text-lg font-bold tabular-nums text-sky-900 dark:text-sky-100">
-                                    <span x-text="computedTotal ? ('KES ' + computedTotal) : '—'"></span>
-                                    <span class="ml-2 text-xs font-normal text-sky-700 dark:text-sky-400">total amount</span>
-                                </p>
-                            </div>
-                            <div class="rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-950/50 space-y-4">
-                                <p class="text-[11px] font-semibold uppercase text-gray-600 dark:text-gray-400">Supplier</p>
-                                <div>
-                                    <label for="supplier_phone" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">Supplier contact</label>
-                                    <input type="tel" name="supplier_phone" id="supplier_phone" required
-                                           x-model="supplierPhone" @input="onSupplierPhoneInput()"
-                                           placeholder="e.g. 0712 345 678"
-                                           class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
-                                    <p class="mt-1.5 text-xs normal-case"
-                                       :class="supplierLookupStatus === 'found' ? 'text-emerald-700' : (supplierLookupStatus === 'new' ? 'text-amber-700' : 'text-gray-500')"
-                                       x-show="supplierLookupMessage" x-text="supplierLookupMessage"></p>
-                                </div>
-                                <div>
-                                    <label for="supplier_name" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">Supplier name</label>
-                                    <input type="text" name="supplier_name" id="supplier_name" maxlength="255"
-                                           :required="stockMode === 'in' && !supplierFound"
-                                           :readonly="supplierFound"
-                                           x-model="supplierName"
-                                           @input="supplierName = ($event.target.value || '').toUpperCase()"
-                                           placeholder="SUPPLIER / COMPANY NAME"
-                                           class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800" />
-                                </div>
-                            </div>
-                        </div>
+                    <template x-if="storeItemId">
+                        <input type="hidden" name="store_item_id" :value="storeItemId" />
                     </template>
 
-                    <template x-if="stockMode === 'out'">
-                        <div>
-                            <label for="stock_out_purpose" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">Purpose of stock out</label>
-                            <select name="stock_out_purpose" id="stock_out_purpose" required x-model="stockOutPurpose"
-                                    class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white">
-                                <option value="">SELECT PURPOSE</option>
-                                <template x-for="p in stockOutPurposes" :key="p">
-                                    <option :value="p" x-text="p"></option>
+                    <div class="ss-item-preview" x-show="selectedItem" x-cloak>
+                        <div class="ss-item-preview__block min-w-[5rem]">
+                            <p class="ss-item-preview__label">Reference</p>
+                            <p class="ss-item-preview__ref" x-text="selectedItem.reference_code"></p>
+                        </div>
+                        <div class="ss-item-preview__block flex-1 min-w-[8rem]">
+                            <p class="ss-item-preview__label">Item</p>
+                            <p class="ss-item-preview__value" x-text="selectedItem.item_name"></p>
+                        </div>
+                        <div class="ss-item-preview__block">
+                            <p class="ss-item-preview__label">Expense category</p>
+                            <p class="ss-item-preview__value" x-text="selectedItem.item_category"></p>
+                        </div>
+                        <div class="ss-item-preview__block">
+                            <p class="ss-item-preview__label">On hand</p>
+                            <p class="ss-item-preview__value">
+                                <span class="si-stock-qty" :class="stockQtyClass(selectedItem.quantity_on_hand)">
+                                    <span class="si-stock-num" x-text="selectedItem.quantity_on_hand || 0"></span>
+                                    <span class="si-stock-unit" x-text="selectedItem.measure"></span>
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <template x-if="!storeItemId">
+                        <div class="ss-picker-box">
+                            <label for="store_item_id_modal" class="si-label">Store item</label>
+                            <div class="ss-search-bar ss-picker-search si-normal" x-show="stockItems.length > 4">
+                                <div class="si-search-wrap">
+                                    <i class="fas fa-search"></i>
+                                    <input type="search"
+                                           x-model="itemPickerSearch"
+                                           @input="itemPickerSearch = ($event.target.value || '').toUpperCase()"
+                                           class="si-input si-upper"
+                                           placeholder="FILTER ITEMS…"
+                                           aria-label="Filter store items" />
+                                </div>
+                            </div>
+                            <select name="store_item_id" id="store_item_id_modal" required x-model="storeItemId"
+                                    class="si-select mt-2">
+                                <option value="">SELECT ITEM</option>
+                                <template x-for="it in filteredStockItems" :key="it.id">
+                                    <option :value="it.id" x-text="it.reference_code + ' — ' + it.item_name + ' · on hand: ' + (it.quantity_on_hand || 0)"></option>
                                 </template>
                             </select>
                         </div>
                     </template>
 
                     <div>
-                        <label for="notes" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">Notes <span class="font-normal normal-case text-gray-400">(optional)</span></label>
-                        <input type="text" name="notes" id="notes" maxlength="500" x-model="notes"
-                               @input="notes = ($event.target.value || '').toUpperCase()"
-                               class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white"
-                               :placeholder="stockMode === 'out' ? 'RECIPIENT, CLASS, DEPARTMENT, ETC.' : 'INVOICE REF, DELIVERY NOTE, REASON'" />
+                        <label for="quantity_modal" class="si-label">
+                            Quantity
+                            <span x-show="selectedItem && selectedItem.measure" class="text-[var(--si-brand)]" x-text="'(' + selectedItem.measure + ')'"></span>
+                        </label>
+                        <div class="ss-qty-wrap">
+                            <input type="number" name="quantity" id="quantity_modal" min="1" step="1" required x-model="quantity"
+                                   class="si-input tabular-nums"
+                                   :placeholder="selectedItem && selectedItem.measure ? 'QTY' : 'QTY'" />
+                            <span class="ss-qty-unit" x-text="selectedItem && selectedItem.measure ? selectedItem.measure : '—'"></span>
+                        </div>
                     </div>
 
-                    <button type="submit" :disabled="!stockItems.length"
-                            class="w-full inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-semibold text-white shadow-md disabled:opacity-50"
-                            :class="stockMode === 'in' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-600 hover:bg-orange-700'">
-                        <i class="fas" :class="stockMode === 'in' ? 'fa-arrow-down-to-bracket' : 'fa-arrow-up-from-bracket'"></i>
-                        <span x-text="stockMode === 'in' ? 'Confirm stock in' : 'Confirm stock out'"></span>
-                    </button>
-                </form>
-                </div>
-            </section>
-
-            <section class="rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl overflow-hidden">
-                <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800 sm:px-6">
-                    <h2 class="text-lg font-bold text-gray-900 dark:text-white"
-                        x-text="listMode === 'in' ? 'Recent stock in' : listMode === 'out' ? 'Recent stock out' : 'Recent movements'"></h2>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" x-show="!listMode">
-                        Choose stock in or stock out above to view matching records.
-                    </p>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" x-show="listMode === 'in'" x-cloak>
-                        Latest stock in records only.
-                    </p>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" x-show="listMode === 'out'" x-cloak>
-                        Latest stock out records only.
-                    </p>
-                </div>
-                <div class="overflow-x-auto">
-                    <p x-show="!listMode" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-                        Select <strong>Stock in</strong> or <strong>Stock out</strong> to see recent movements for that type.
-                    </p>
-                    <template x-if="listMode">
-                        <div>
-                            <table x-show="filteredMovements.length" class="min-w-[720px] w-full border-collapse text-left text-sm">
-                                <thead>
-                                    <tr class="border-b border-gray-200 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
-                                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Reference</th>
-                                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Item</th>
-                                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-right">Qty</th>
-                                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Measure</th>
-                                        <th x-show="listMode === 'in'" class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-right">Total</th>
-                                        <th x-show="listMode === 'in'" class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Payment</th>
-                                        <th x-show="listMode === 'in'" class="hidden px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 md:table-cell">Supplier</th>
-                                        <th x-show="listMode === 'out'" class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Purpose</th>
-                                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-center">Print</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                                    <template x-for="m in filteredMovements" :key="m.id">
-                                        <tr class="hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
-                                            <td class="px-4 py-3 font-mono text-xs font-bold text-brand-primary whitespace-nowrap" x-text="m.reference_number"></td>
-                                            <td class="px-4 py-3 max-w-[14rem]">
-                                                <span class="font-semibold uppercase text-gray-900 dark:text-white" x-text="m.item_name"></span>
-                                                <span class="block text-[10px] text-gray-500 dark:text-gray-400" x-text="m.item_ref"></span>
-                                            </td>
-                                            <td class="px-4 py-3 text-right tabular-nums font-medium text-gray-900 dark:text-white" x-text="m.quantity"></td>
-                                            <td class="px-4 py-3 text-xs uppercase text-gray-600 dark:text-gray-300 whitespace-nowrap" x-text="m.measure"></td>
-                                            <td x-show="listMode === 'in'" class="px-4 py-3 text-right tabular-nums text-gray-800 dark:text-gray-200" x-text="formatMovementTotal(m)"></td>
-                                            <td x-show="listMode === 'in'" class="px-4 py-3 whitespace-nowrap">
-                                                <span class="text-xs font-semibold uppercase"
-                                                      :class="m.payment_status === 'pending' ? 'text-amber-700 dark:text-amber-400' : 'text-gray-600 dark:text-gray-400'"
-                                                      x-text="m.payment_status || '—'"></span>
-                                            </td>
-                                            <td x-show="listMode === 'in'" class="hidden px-4 py-3 text-xs uppercase text-gray-600 dark:text-gray-300 max-w-[10rem] truncate md:table-cell"
-                                                :title="m.supplier_name || ''" x-text="m.supplier_name || '—'"></td>
-                                            <td x-show="listMode === 'out'" class="px-4 py-3 text-xs uppercase text-gray-600 dark:text-gray-300 max-w-[12rem]" x-text="m.stock_out_purpose || '—'"></td>
-                                            <td class="px-4 py-3 text-center">
-                                                <a :href="printHref(m.id)" target="_blank" rel="noopener"
-                                                   class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-brand-primary hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
-                                                   title="Print receipt"><i class="fas fa-print text-sm"></i></a>
-                                            </td>
-                                        </tr>
-                                    </template>
-                                </tbody>
-                            </table>
-                            <p x-show="!filteredMovements.length" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400"
-                               x-text="listMode === 'in' ? 'No stock in records yet.' : 'No stock out records yet.'"></p>
+                    <template x-if="stockMode === 'in'">
+                        <div class="space-y-4 pt-2 border-t border-[var(--si-line)]">
+                            <p class="ss-form-section-title"><i class="fas fa-truck-ramp-box mr-1.5 text-[var(--ss-in)]"></i> Stock in details</p>
+                            <div>
+                                <label for="buying_price_modal" class="si-label">Buying price (per unit)</label>
+                                <input type="number" name="buying_price" id="buying_price_modal" min="0" step="0.01" required
+                                       x-model="buyingPrice" class="si-input" />
+                                <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal"
+                                   x-show="selectedItem && selectedItem.avg_buying_price != null && selectedItem.avg_buying_price !== ''">
+                                    Prefilled with weighted average from previous stock in
+                                    (<span x-text="'KES ' + formatBuyingPrice(selectedItem.avg_buying_price)"></span>).
+                                    Edit if this delivery price differs.
+                                </p>
+                                <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal"
+                                   x-show="selectedItem && (selectedItem.avg_buying_price == null || selectedItem.avg_buying_price === '')">
+                                    No previous stock in price for this item — enter the buying price.
+                                </p>
+                            </div>
+                            <div class="ss-total-box">
+                                <p class="ss-total-label">Payment (pending)</p>
+                                <p class="ss-total-value">
+                                    <span x-text="computedTotal ? ('KES ' + computedTotal) : '—'"></span>
+                                </p>
+                            </div>
+                            <div class="ss-supplier-box space-y-3">
+                                <p class="ss-supplier-box__head"><i class="fas fa-building"></i> Supplier</p>
+                                <div>
+                                    <label for="supplier_phone_modal" class="si-label">Supplier contact</label>
+                                    <input type="tel" name="supplier_phone" id="supplier_phone_modal" required
+                                           x-model="supplierPhone" @input="onSupplierPhoneInput()"
+                                           placeholder="e.g. 0712 345 678" class="si-input" />
+                                    <p class="mt-1.5 text-xs"
+                                       :class="supplierLookupStatus === 'found' ? 'text-emerald-700 dark:text-emerald-400' : (supplierLookupStatus === 'new' ? 'text-amber-700 dark:text-amber-400' : 'text-[var(--si-muted)]')"
+                                       x-show="supplierLookupMessage" x-text="supplierLookupMessage"></p>
+                                </div>
+                                <div>
+                                    <label for="supplier_name_modal" class="si-label">Supplier name</label>
+                                    <input type="text" name="supplier_name" id="supplier_name_modal" maxlength="255"
+                                           :required="!supplierFound"
+                                           :readonly="supplierFound"
+                                           x-model="supplierName"
+                                           @input="supplierName = ($event.target.value || '').toUpperCase()"
+                                           placeholder="SUPPLIER / COMPANY NAME"
+                                           class="si-input disabled:opacity-70" />
+                                </div>
+                            </div>
                         </div>
                     </template>
-                </div>
-            </section>
+
+                    <template x-if="stockMode === 'out'">
+                        <div class="pt-2 border-t border-[var(--si-line)]">
+                            <p class="ss-form-section-title"><i class="fas fa-arrow-up-from-bracket mr-1.5 text-[var(--ss-out)]"></i> Stock out details</p>
+                            <label for="stock_out_purpose_modal" class="si-label">Purpose of stock out</label>
+                            <select name="stock_out_purpose" id="stock_out_purpose_modal" required x-model="stockOutPurpose" class="si-select">
+                                <option value="">SELECT PURPOSE</option>
+                                {% for p in stock_out_purposes %}
+                                <option value="{{ p }}">{{ p }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </template>
+
+                    <div>
+                        <label for="notes_modal" class="si-label">Notes <span class="font-normal normal-case">(optional)</span></label>
+                        <input type="text" name="notes" id="notes_modal" maxlength="500" x-model="notes"
+                               @input="notes = ($event.target.value || '').toUpperCase()" class="si-input"
+                               :placeholder="stockMode === 'out' ? 'RECIPIENT, CLASS, DEPARTMENT…' : 'INVOICE REF, DELIVERY NOTE…'" />
+                    </div>
+
+                    <div class="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t border-[var(--si-line)]">
+                        <button type="button" @click="closeMovementModal()" class="si-btn si-btn--ghost flex-1 sm:flex-none">Cancel</button>
+                        <button type="submit" :disabled="!stockItems.length"
+                                class="si-btn flex-1 sm:flex-none"
+                                :class="stockMode === 'in' ? 'ss-btn--in' : 'ss-btn--out'">
+                            <i class="fas" :class="stockMode === 'in' ? 'fa-arrow-down-to-bracket' : 'fa-arrow-up-from-bracket'"></i>
+                            <span x-text="stockMode === 'in' ? 'Confirm stock in' : 'Confirm stock out'"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>

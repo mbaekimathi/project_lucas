@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block title %}{{ report_meta.title }} — Accounts reports{% endblock %}
+
+{% block sidebar_content %}
+{% set finance_report_slug = report_slug %}
+{% include 'dashboards/includes/finance_reports_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/finance_reports_ui.html' %}
+<script type="application/json" id="fr-page-config">{{ {
+    'reportSlug': report_slug,
+    'dataApi': employee_dash_url('finance-overview/reports/' ~ report_slug ~ '/data'),
+    'defaultAcademicYearId': filter_options.default_academic_year_id,
+    'defaultTermId': filter_options.default_term_id,
+    'defaultDateFrom': filter_options.default_date_from|default(''),
+    'defaultDateTo': filter_options.default_date_to|default(''),
+    'financialYearLabel': filter_options.financial_year_label|default(''),
+    'financialYearConfigured': filter_options.financial_year_configured|default(false),
+    'defaultFinancialYearId': filter_options.default_financial_year_id,
+    'financialYears': filter_options.financial_years|default([]),
+    'expenditureVote': expenditure_vote|default(''),
+    'expenditureLedger': expenditure_ledger|default(''),
+    'financialStatement': financial_statement|default(''),
+    'expenditureListUrl': employee_dash_url('finance-overview/reports/expenditure'),
+    'expenditureVoteBase': employee_dash_url('finance-overview/reports/expenditure/votes')
+}|tojson }}</script>
+
+<div class="fr-report-shell page-content">
+    {% set _ledger_init = expenditure_ledger_initial|default(none) %}
+    {% set _stmt_init = financial_statement_initial|default(none) %}
+    {% set _stmt_summary = _stmt_init.ledger_summary|default([]) if _stmt_init else [] %}
+    {% set _stmt_table = _stmt_init.table|default({}) if _stmt_init else {} %}
+    {% set _stmt_columns = _stmt_table.columns|default([]) %}
+    {% set _stmt_rows = _stmt_table.rows|default([]) %}
+    {% set _stmt_row_count = _stmt_init.row_count if _stmt_init and _stmt_init.row_count is not none else none %}
+    {% set _stmt_blank = _stmt_init and _stmt_init.view_mode|default('') == 'statements_blank' %}
+    {% set _stmt_show_table = _stmt_init and _stmt_init.view_mode|default('') == 'financial_statement' %}
+    {% set _ledger_summary = _ledger_init.ledger_summary|default([]) if _ledger_init else [] %}
+    {% set _ledger_table = _ledger_init.table|default({}) if _ledger_init else {} %}
+    {% set _ledger_columns = _ledger_table.columns|default([]) %}
+    {% set _ledger_rows = _ledger_table.rows|default([]) %}
+    {% set _ledger_row_count = _ledger_init.row_count if _ledger_init and _ledger_init.row_count is not none else none %}
+    <div class="fr-inner">
+        <div class="fr-toolbar no-print">
+            <nav class="fr-breadcrumb" aria-label="Breadcrumb">
+                <a href="{{ employee_dash_url('finance-overview') }}">Accounts reports</a>
+                <span aria-hidden="true">/</span>
+                {% if expenditure_vote|default('') %}
+                <a href="{{ employee_dash_url('finance-overview/reports/expenditure') }}">Expenditure</a>
+                <span aria-hidden="true">/</span>
+                <span class="fr-breadcrumb__current">{{ expenditure_vote }}</span>
+                {% elif expenditure_ledger|default('') %}
+                <a href="{{ employee_dash_url('finance-overview/reports/expenditure') }}">Expenditure</a>
+                <span aria-hidden="true">/</span>
+                <span class="fr-breadcrumb__current">{% for item in expenditure_books_nav|default([]) %}{% if item.slug == expenditure_ledger %}{{ item.title }}{% endif %}{% endfor %}</span>
+                {% elif financial_statement|default('') %}
+                <a href="{{ employee_dash_url('finance-overview/reports/financial-statements') }}">Financial Statements</a>
+                <span aria-hidden="true">/</span>
+                <span class="fr-breadcrumb__current">{% for item in financial_statements_nav|default([]) %}{% if item.slug == financial_statement %}{{ item.title }}{% endif %}{% endfor %}</span>
+                {% else %}
+                <span class="fr-breadcrumb__current">{{ report_meta.title }}</span>
+                {% endif %}
+            </nav>
+            <div class="fr-toolbar__actions">
+                <button type="button" id="fr-print-top" class="fr-btn fr-btn--ghost">
+                    <i class="fas fa-print" aria-hidden="true"></i> Print
+                </button>
+            </div>
+        </div>
+
+        {% with report_title=report_meta.title if not expenditure_vote|default('') else expenditure_vote, report_description=expenditure_vote_position.description|default(report_meta.description) if expenditure_vote|default('') else report_meta.description, report_period_label='Set filters below', report_generated_at=report_generated_at %}
+        {% include 'dashboards/includes/finance_school_report_masthead.html' %}
+        {% endwith %}
+
+        {% include 'dashboards/includes/finance_reports_filters.html' %}
+
+        <div id="fr-loading" class="fr-report-state fr-report-state--loading hidden" role="status" aria-live="polite">
+            <i class="fas fa-circle-notch fa-spin fr-report-state__icon" aria-hidden="true"></i>
+            <p class="fr-report-state__title">Loading report data…</p>
+        </div>
+
+        <p id="fr-error" class="fr-report-alert hidden" role="alert"></p>
+
+        <div id="fr-vote-detail" class="fr-vote-detail{% if not expenditure_vote|default('') %} hidden{% endif %}" aria-label="Vote summary">
+            {% set vp = expenditure_vote_position|default({}) %}
+            <div class="fr-vote-kpis" id="fr-vote-kpis">
+                <article class="fr-vote-kpi fr-vote-kpi--budget">
+                    <p class="fr-vote-kpi__label">Vote Budget</p>
+                    <p class="fr-vote-kpi__value" id="fr-vp-budget">{% if vp.budget_display %}KES {{ vp.budget_display }}{% else %}—{% endif %}</p>
+                    <p class="fr-vote-kpi__hint">Total allocated for this vote</p>
+                </article>
+                <article class="fr-vote-kpi fr-vote-kpi--expenditure">
+                    <p class="fr-vote-kpi__label">Vote Expenditure</p>
+                    <p class="fr-vote-kpi__value" id="fr-vp-expenditure">{% if vp.expenditure_display %}KES {{ vp.expenditure_display }}{% else %}—{% endif %}</p>
+                    <p class="fr-vote-kpi__hint">Actual supplier payments</p>
+                </article>
+                <article class="fr-vote-kpi fr-vote-kpi--balance">
+                    <p class="fr-vote-kpi__label">Vote Balance</p>
+                    <p class="fr-vote-kpi__value" id="fr-vp-balance">{% if vp.balance_display %}KES {{ vp.balance_display }}{% else %}—{% endif %}</p>
+                    <p class="fr-vote-kpi__hint">Budget minus expenditure</p>
+                </article>
+            </div>
+
+            <section class="fr-vote-compare{% if expenditure_ledger|default('') %} hidden{% endif %}" id="fr-vote-budget-actual" aria-label="Budget vs Actual">
+                <div class="fr-vote-compare__head">
+                    <h2 class="fr-vote-compare__title"><i class="fas fa-chart-bar" aria-hidden="true"></i> Budget vs Actual</h2>
+                    <span class="fr-vote-compare__util" id="fr-vp-util">{% if vp.utilization_display %}{{ vp.utilization_display }} used{% endif %}</span>
+                </div>
+                <div class="fr-vote-compare__bar-wrap" aria-hidden="true">
+                    <div class="fr-vote-compare__bar" id="fr-vp-bar" style="width: {{ [vp.utilization_pct|default(0), 100]|min }}%;"></div>
+                </div>
+                <div class="fr-vote-compare__grid">
+                    <div class="fr-vote-compare__row">
+                        <span class="fr-vote-compare__label">Vote Budget</span>
+                        <span class="fr-vote-compare__value" id="fr-vp-row-budget">KES {{ vp.budget_display|default('0.00') }}</span>
+                    </div>
+                    <div class="fr-vote-compare__row">
+                        <span class="fr-vote-compare__label">Vote Expenditure (Actual)</span>
+                        <span class="fr-vote-compare__value fr-vote-compare__value--out" id="fr-vp-row-expenditure">KES {{ vp.expenditure_display|default('0.00') }}</span>
+                    </div>
+                    <div class="fr-vote-compare__row">
+                        <span class="fr-vote-compare__label">Fee collections (period)</span>
+                        <span class="fr-vote-compare__value fr-vote-compare__value--in" id="fr-vp-row-collections">KES {{ vp.collections_display|default('0.00') }}</span>
+                    </div>
+                    <div class="fr-vote-compare__row fr-vote-compare__row--total">
+                        <span class="fr-vote-compare__label">Vote Balance</span>
+                        <span class="fr-vote-compare__value" id="fr-vp-row-balance">KES {{ vp.balance_display|default('0.00') }}</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="fr-summary" class="fr-report-kpis{% if not _ledger_summary and not _stmt_summary %} hidden{% endif %}" aria-label="Summary">
+            {% if _stmt_summary %}
+            {% for card in _stmt_summary %}
+            <article class="fr-kpi fr-kpi--teal">
+                <p class="fr-kpi__label">{{ card.label }}</p>
+                <p class="fr-kpi__value">{{ card.value }}</p>
+                {% if card.hint %}<p class="fr-kpi__hint">{{ card.hint }}</p>{% endif %}
+            </article>
+            {% endfor %}
+            {% elif _ledger_summary %}
+            {% for card in _ledger_summary %}
+            <article class="fr-kpi fr-kpi--teal">
+                <p class="fr-kpi__label">{{ card.label }}</p>
+                <p class="fr-kpi__value">{{ card.value }}</p>
+                {% if card.hint %}<p class="fr-kpi__hint">{{ card.hint }}</p>{% endif %}
+            </article>
+            {% endfor %}
+            {% endif %}
+        </div>
+
+        <div id="fr-statements-blank" class="fr-report-state{% if not (report_slug == 'financial-statements' and not _stmt_show_table) %} hidden{% endif %}" role="status">
+            <i class="fas fa-book fr-report-state__icon" aria-hidden="true"></i>
+            <p class="fr-report-state__title" id="fr-statements-blank-title">{% if _stmt_init and _stmt_init.books_message %}{{ _stmt_init.books_message }}{% elif report_slug == 'financial-statements' %}Choose a financial statement from the sidebar.{% else %}&nbsp;{% endif %}</p>
+        </div>
+
+        <section id="fr-table-wrap" class="fr-report-panel{% if not ((report_slug == 'expenditure' and expenditure_votes_initial|default([]) and not expenditure_vote|default('') and not expenditure_ledger|default('')) or (report_slug == 'expenditure' and expenditure_ledger|default('') and not expenditure_vote|default('')) or (report_slug == 'expenditure' and expenditure_vote|default('')) or (report_slug == 'financial-statements' and _stmt_show_table)) %} hidden{% endif %}" aria-label="Report data">
+            <div class="fr-report-panel__head">
+                <h2 class="fr-report-panel__title" style="margin:0;text-transform:none;letter-spacing:0;font-size:0.9375rem;color:var(--fr-ink)">
+                    <i class="fas fa-table text-[var(--fr-teal)] mr-1" aria-hidden="true"></i>
+                    <span id="fr-table-title">{% if financial_statement|default('') %}{% for item in financial_statements_nav|default([]) %}{% if item.slug == financial_statement %}{{ item.title }}{% endif %}{% endfor %}{% elif expenditure_ledger|default('') and expenditure_vote|default('') %}{% for item in vote_ledger_nav|default([]) %}{% if item.slug == expenditure_ledger %}{{ item.title }}{% endif %}{% endfor %}{% elif expenditure_ledger|default('') %}{% for item in expenditure_books_nav|default([]) %}{% if item.slug == expenditure_ledger %}{{ item.title }}{% endif %}{% endfor %}{% elif expenditure_vote|default('') %}Vote Transactions{% elif report_slug == 'expenditure' %}Votes — budget, expenditure &amp; balance{% else %}Report detail{% endif %}</span>
+                </h2>
+            </div>
+            <div class="fr-report-panel__toolbar no-print">
+                <span id="fr-row-count">{% if _stmt_row_count is not none %}{{ _stmt_row_count }} record{{ 's' if _stmt_row_count != 1 else '' }}{% elif _ledger_row_count is not none %}{{ _ledger_row_count }} record{{ 's' if _ledger_row_count != 1 else '' }}{% elif expenditure_votes_initial|default([]) %}{{ expenditure_votes_initial|length }} record{{ 's' if expenditure_votes_initial|length != 1 else '' }}{% elif expenditure_vote_transactions_initial|default([]) and not expenditure_ledger|default('') %}{{ expenditure_vote_transactions_initial|length }} record{{ 's' if expenditure_vote_transactions_initial|length != 1 else '' }}{% endif %}</span>
+                <button type="button" id="fr-print" class="fr-btn fr-btn--text">
+                    <i class="fas fa-print" aria-hidden="true"></i> Print
+                </button>
+            </div>
+            <p class="fr-report-scroll-hint no-print">
+                <i class="fas fa-arrows-left-right" aria-hidden="true"></i> Swipe horizontally on small screens, or scroll the table
+            </p>
+            <div class="fr-report-panel__body">
+                <div class="fr-report-table-scroll fr-report-table-scroll--stack">
+                    <table class="fr-report-table fr-report-table--stack" id="fr-table">
+                        <thead id="fr-thead">
+                            {% if report_slug == 'expenditure' and expenditure_votes_initial|default([]) and not expenditure_vote|default('') %}
+                            <tr>
+                                <th>Vote</th>
+                                <th>Description</th>
+                                <th class="text-right">Vote Budget (KES)</th>
+                                <th class="text-right">Vote Expenditure (KES)</th>
+                                <th class="text-right">Vote Balance (KES)</th>
+                            </tr>
+                            {% elif report_slug == 'financial-statements' and _stmt_columns %}
+                            <tr>
+                            {% for col in _stmt_columns %}
+                            <th{% if col.align == 'right' %} class="text-right"{% endif %}>{{ col.label }}</th>
+                            {% endfor %}
+                            </tr>
+                            {% elif report_slug == 'expenditure' and _ledger_columns %}
+                            <tr>
+                            {% for col in _ledger_columns %}
+                            <th{% if col.align == 'right' %} class="text-right"{% endif %}>{{ col.label }}</th>
+                            {% endfor %}
+                            </tr>
+                            {% elif report_slug == 'expenditure' and expenditure_vote|default('') and not expenditure_ledger|default('') %}
+                            <tr>
+                                <th>Date</th>
+                                <th>Flow</th>
+                                <th>Type</th>
+                                <th>Reference</th>
+                                <th>Party</th>
+                                <th>Description</th>
+                                <th class="text-right">Amount (KES)</th>
+                            </tr>
+                            {% endif %}
+                        </thead>
+                        <tbody id="fr-tbody">
+                            {% if report_slug == 'expenditure' and expenditure_votes_initial|default([]) and not expenditure_vote|default('') %}
+                            {% for v in expenditure_votes_initial %}
+                            {% set vote_href = employee_dash_url('finance-overview/reports/expenditure') ~ '?vote=' ~ (v.vote_name|urlencode) %}
+                            {% if filter_options.default_financial_year_id %}
+                            {% set vote_href = vote_href ~ '&financial_year_id=' ~ filter_options.default_financial_year_id %}
+                            {% if filter_options.default_date_from %}{% set vote_href = vote_href ~ '&date_from=' ~ filter_options.default_date_from %}{% endif %}
+                            {% if filter_options.default_date_to %}{% set vote_href = vote_href ~ '&date_to=' ~ filter_options.default_date_to %}{% endif %}
+                            {% endif %}
+                            <tr class="fr-report-row-link" tabindex="0" role="link"
+                                data-href="{{ vote_href }}"
+                                onclick="if(!event.target.closest('a'))window.location.assign(this.getAttribute('data-href'))"
+                                title="View expenditure for {{ v.vote_name }}">
+                                <td data-label="Vote">
+                                    <a href="{{ vote_href }}" class="fr-vote-name-link">{{ v.vote_name }}</a>
+                                </td>
+                                <td data-label="Description">{{ v.description }}</td>
+                                <td class="text-right tabular-nums" data-label="Vote Budget (KES)">{{ v.allocated_display }}</td>
+                                <td class="text-right tabular-nums" data-label="Vote Expenditure (KES)">{{ v.used_display }}</td>
+                                <td class="text-right tabular-nums" data-label="Vote Balance (KES)">{{ v.balance_display|default('0.00') }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% elif report_slug == 'financial-statements' and _stmt_rows %}
+                            {% for row in _stmt_rows %}
+                            <tr{% if row._ledger_row %} class="fr-ledger-row fr-ledger-row--{{ row._ledger_row }}"{% endif %}>
+                                {% for col in _stmt_columns %}
+                                <td{% if col.align == 'right' %} class="text-right tabular-nums"{% endif %} data-label="{{ col.label }}">{{ row[col.key]|default('—') }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                            {% elif report_slug == 'expenditure' and _ledger_rows %}
+                            {% for row in _ledger_rows %}
+                            <tr{% if row._ledger_row %} class="fr-ledger-row fr-ledger-row--{{ row._ledger_row }}"{% endif %}>
+                                {% for col in _ledger_columns %}
+                                <td{% if col.align == 'right' %} class="text-right tabular-nums"{% endif %} data-label="{{ col.label }}">{{ row[col.key]|default('—') }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                            {% elif report_slug == 'expenditure' and expenditure_vote|default('') and expenditure_vote_transactions_initial|default([]) and not expenditure_ledger|default('') %}
+                            {% for t in expenditure_vote_transactions_initial %}
+                            <tr>
+                                <td data-label="Date">{{ t.date }}</td>
+                                <td data-label="Flow" class="{% if t.flow == 'in' %}fr-flow-in{% elif t.flow == 'out' %}fr-flow-out{% endif %}">{{ t.flow_label }}</td>
+                                <td data-label="Type">{{ t.type_label }}</td>
+                                <td data-label="Reference">{{ t.reference }}</td>
+                                <td data-label="Party">{{ t.payee }}</td>
+                                <td data-label="Description">{{ t.description }}</td>
+                                <td class="text-right tabular-nums" data-label="Amount (KES)">{{ t.amount_display }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <div id="fr-empty" class="fr-report-state hidden">
+            <i class="fas fa-chart-line fr-report-state__icon" aria-hidden="true"></i>
+            <p class="fr-report-state__title">Set filters above — the report updates as you change them</p>
+        </div>
+    </div>
+</div>
+
+<script>
+{% include 'dashboards/includes/finance_reports_loader.js' %}
+</script>
+{% endblock %}

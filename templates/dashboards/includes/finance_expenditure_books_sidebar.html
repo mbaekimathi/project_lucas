@@ -1,0 +1,57 @@
+{# School-wide expenditure books — sidebar on expenditure list page #}
+{% set _ledger = expenditure_ledger|default(request.args.get('ledger', '')|lower) %}
+{% set _fo = filter_options|default({}) %}
+{% set _base = employee_dash_url('finance-overview/reports/expenditure') %}
+{% set _fy = request.args.get('financial_year_id') or _fo.default_financial_year_id|default('') %}
+{% set _df = request.args.get('date_from') or _fo.default_date_from|default('') %}
+{% set _dt = request.args.get('date_to') or _fo.default_date_to|default('') %}
+
+{% macro expenditure_href(ledger_slug='') -%}
+{%- set href = _base -%}
+{%- if ledger_slug -%}
+{%- set href = href ~ '?ledger=' ~ ledger_slug -%}
+{%- elif _fy -%}
+{%- set href = href ~ '?financial_year_id=' ~ _fy -%}
+{%- endif -%}
+{%- if _fy and ledger_slug -%}
+{%- set href = href ~ '&financial_year_id=' ~ _fy -%}
+{%- endif -%}
+{%- if _df -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'date_from=' ~ _df -%}
+{%- endif -%}
+{%- if _dt -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'date_to=' ~ _dt -%}
+{%- endif -%}
+{{- href -}}
+{%- endmacro %}
+
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Expenditure books</p>
+
+<a href="{{ expenditure_href() }}"
+   class="sidebar-item {% if not _ledger %}sidebar-item-active{% endif %}"
+   title="All votes — budget, expenditure and balance">
+    <i class="fas fa-list w-5"></i>
+    <span>Vote Summary</span>
+    {% if not _ledger %}<i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>{% endif %}
+</a>
+
+{% for item in expenditure_books_nav|default([]) %}
+{% if item.external_path %}
+<a href="{{ employee_dash_url(item.external_path) }}"
+   class="sidebar-item"
+   title="{{ item.description|default(item.title) }}">
+    <i class="fas {{ item.icon }} w-5"></i>
+    <span>{{ item.title }}</span>
+    <i class="fas fa-external-link-alt ml-auto text-slate-400 text-xs shrink-0" aria-hidden="true"></i>
+</a>
+{% else %}
+<a href="{{ expenditure_href(item.slug) }}"
+   data-fr-expenditure-ledger="{{ item.slug }}"
+   class="sidebar-item {% if _ledger == item.slug %}sidebar-item-active{% endif %}"
+   title="{{ item.description|default(item.title) }}">
+    <i class="fas {{ item.icon }} w-5"></i>
+    <span>{{ item.title }}</span>
+    {% if _ledger == item.slug %}<i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>{% endif %}
+</a>
+{% endif %}
+{% endfor %}

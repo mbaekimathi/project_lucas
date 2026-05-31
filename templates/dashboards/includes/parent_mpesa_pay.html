@@ -1,0 +1,453 @@
+{# Parent portal M-Pesa STK pay — modal + script (no Alpine) #}
+<div id="parent-mpesa-modal"
+     class="fixed inset-0 z-[9999] hidden items-center justify-center p-4"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="parent-mpesa-title"
+     aria-hidden="true">
+    <div class="js-parent-mpesa-close absolute inset-0 bg-slate-900/70 backdrop-blur-sm"></div>
+    <div class="relative z-10 w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div class="px-5 py-4 bg-gradient-to-r from-emerald-600 to-teal-700 text-white">
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-emerald-100">M-Pesa</p>
+                    <h3 id="parent-mpesa-title" class="text-lg font-bold">Pay with M-Pesa</h3>
+                    <p id="parent-mpesa-subtitle" class="text-xs text-emerald-100/90 mt-1 normal-case truncate hidden"></p>
+                </div>
+                <button type="button" class="js-parent-mpesa-close p-2 rounded-lg hover:bg-white/10 shrink-0" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+        <form id="parent-mpesa-form" class="p-5 space-y-4" novalidate>
+            <ol class="text-xs text-slate-600 dark:text-slate-400 space-y-1.5 list-decimal list-inside">
+                <li>Enter the M-Pesa number that will receive the STK prompt</li>
+                <li>Enter the amount and tap Pay</li>
+                <li>Enter your M-Pesa PIN on your phone</li>
+            </ol>
+            <div>
+                <label for="parent-mpesa-phone" class="block text-xs font-semibold uppercase text-slate-500 mb-1.5">M-Pesa phone</label>
+                <input type="tel" id="parent-mpesa-phone" name="phone" required
+                       placeholder="e.g. 0712345678" autocomplete="tel"
+                       class="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2.5 text-sm dark:bg-slate-800 dark:text-white" />
+            </div>
+            <div>
+                <label for="parent-mpesa-amount" class="block text-xs font-semibold uppercase text-slate-500 mb-1.5">Amount (KES)</label>
+                <input type="number" id="parent-mpesa-amount" name="amount" min="1" step="1" required
+                       class="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2.5 text-sm tabular-nums dark:bg-slate-800 dark:text-white" />
+            </div>
+            <div id="parent-mpesa-status-row" class="hidden flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                <i class="fas fa-spinner fa-spin text-emerald-600"></i>
+                <span>Checking payment status…</span>
+            </div>
+            <p id="parent-mpesa-feedback" class="hidden text-sm rounded-lg px-3 py-2" role="status"></p>
+            <p id="parent-mpesa-receipt-row" class="hidden text-xs font-mono text-slate-500">
+                Receipt: <span id="parent-mpesa-receipt"></span>
+            </p>
+            <div id="parent-mpesa-confirm-row" class="hidden space-y-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3">
+                <p class="text-xs text-amber-900 dark:text-amber-100">Paid on your phone but still waiting? Sandbox: confirm to record the payment locally.</p>
+                <input type="text" id="parent-mpesa-receipt-input" placeholder="M-Pesa receipt (optional)"
+                       class="w-full rounded-lg border border-amber-200 dark:border-amber-700 px-3 py-2 text-sm dark:bg-slate-800 dark:text-white" />
+                <button type="button" id="parent-mpesa-confirm-btn"
+                        class="w-full rounded-lg bg-amber-600 hover:bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white">
+                    Confirm payment recorded
+                </button>
+            </div>
+            <div class="flex flex-col-reverse sm:flex-row gap-2 pt-1">
+                <button type="button" class="js-parent-mpesa-close flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Close
+                </button>
+                <button type="submit" id="parent-mpesa-submit" class="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 px-4 py-2.5 text-sm font-semibold text-white inline-flex items-center justify-center gap-2">
+                    <i id="parent-mpesa-submit-spinner" class="fas fa-spinner fa-spin hidden"></i>
+                    <i id="parent-mpesa-submit-icon" class="fas fa-mobile-alt"></i>
+                    <span id="parent-mpesa-submit-text">Pay with M-Pesa</span>
+                </button>
+            </div>
+            <p class="text-[10px] text-slate-500 text-center">You and the school are notified by email when payment completes.</p>
+        </form>
+    </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var CONFIG = {
+    stkUrl: {{ url_for('parent_mpesa_stk_push')|tojson }},
+    confirmUrl: {{ url_for('parent_mpesa_confirm_payment')|tojson }},
+    statusUrlBase: {{ (parent_dash_url('mpesa/status') + '/')|tojson }},
+    darajaReady: {{ mpesa_daraja_enabled|default(false)|tojson }},
+    sandboxConfirm: {{ mpesa_sandbox_confirm|default(false)|tojson }},
+  };
+
+  function statusPollUrl(checkoutId) {
+    var base = String(CONFIG.statusUrlBase || '/parent/mpesa/status/').replace(/\/?$/, '/');
+    return base + encodeURIComponent(checkoutId || '');
+  }
+
+  var modal = null;
+  var form = null;
+  var phoneInput = null;
+  var amountInput = null;
+  var titleEl = null;
+  var subtitleEl = null;
+  var feedbackEl = null;
+  var statusRow = null;
+  var receiptRow = null;
+  var receiptEl = null;
+  var confirmRow = null;
+  var confirmBtn = null;
+  var receiptInput = null;
+  var submitBtn = null;
+  var submitSpinner = null;
+  var submitIcon = null;
+  var submitText = null;
+
+  var session = {
+    purpose: 'school_fee',
+    studentId: '',
+    studentName: '',
+    admission: '',
+    pollId: null,
+    pollCount: 0,
+    busy: false,
+    checkoutId: null,
+  };
+
+  function cacheDom() {
+    modal = document.getElementById('parent-mpesa-modal');
+    form = document.getElementById('parent-mpesa-form');
+    phoneInput = document.getElementById('parent-mpesa-phone');
+    amountInput = document.getElementById('parent-mpesa-amount');
+    titleEl = document.getElementById('parent-mpesa-title');
+    subtitleEl = document.getElementById('parent-mpesa-subtitle');
+    feedbackEl = document.getElementById('parent-mpesa-feedback');
+    statusRow = document.getElementById('parent-mpesa-status-row');
+    receiptRow = document.getElementById('parent-mpesa-receipt-row');
+    receiptEl = document.getElementById('parent-mpesa-receipt');
+    confirmRow = document.getElementById('parent-mpesa-confirm-row');
+    confirmBtn = document.getElementById('parent-mpesa-confirm-btn');
+    receiptInput = document.getElementById('parent-mpesa-receipt-input');
+    submitBtn = document.getElementById('parent-mpesa-submit');
+    submitSpinner = document.getElementById('parent-mpesa-submit-spinner');
+    submitIcon = document.getElementById('parent-mpesa-submit-icon');
+    submitText = document.getElementById('parent-mpesa-submit-text');
+  }
+
+  function reveal(el) { if (el) el.classList.remove('hidden'); }
+  function conceal(el) { if (el) el.classList.add('hidden'); }
+
+  function openModal() {
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal() {
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+
+  function setFeedback(message, type) {
+    if (!feedbackEl) return;
+    if (!message) {
+      conceal(feedbackEl);
+      feedbackEl.textContent = '';
+      return;
+    }
+    feedbackEl.textContent = message;
+    feedbackEl.className = 'text-sm rounded-lg px-3 py-2 ' + (
+      type === 'error'
+        ? 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200'
+        : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+    );
+    reveal(feedbackEl);
+  }
+
+  function setBusy(on) {
+    session.busy = !!on;
+    if (submitBtn) submitBtn.disabled = on;
+    if (submitSpinner) submitSpinner.classList.toggle('hidden', !on);
+    if (submitIcon) submitIcon.classList.toggle('hidden', on);
+    if (submitText) submitText.textContent = on ? 'Sending…' : 'Pay with M-Pesa';
+  }
+
+  function stopPolling() {
+    if (session.pollId) {
+      clearInterval(session.pollId);
+      session.pollId = null;
+    }
+    session.pollCount = 0;
+    conceal(statusRow);
+  }
+
+  function showConfirmRow(show) {
+    if (!CONFIG.sandboxConfirm || !confirmRow) return;
+    if (show) reveal(confirmRow);
+    else conceal(confirmRow);
+  }
+
+  function handleCompleted(data) {
+    stopPolling();
+    setBusy(false);
+    showConfirmRow(false);
+    setFeedback(data.message || 'Payment successful. The school has been notified.', 'ok');
+    if (data.mpesa_receipt && receiptEl && receiptRow) {
+      receiptEl.textContent = data.mpesa_receipt;
+      reveal(receiptRow);
+    }
+    setTimeout(function () { window.location.reload(); }, 2500);
+  }
+
+  function confirmPayment() {
+    if (!session.checkoutId || !CONFIG.confirmUrl) return;
+    setBusy(true);
+    fetch(CONFIG.confirmUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({
+        checkout_request_id: session.checkoutId,
+        mpesa_receipt: receiptInput ? receiptInput.value.trim() : '',
+      }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data && data.success && String(data.status || '').toLowerCase() === 'completed') {
+          handleCompleted(data);
+        } else {
+          setFeedback((data && data.message) || 'Could not confirm payment.', 'error');
+        }
+      })
+      .catch(function () {
+        setFeedback('Could not confirm payment. Try again.', 'error');
+      })
+      .finally(function () { setBusy(false); });
+  }
+
+  function close() {
+    closeModal();
+    stopPolling();
+    setBusy(false);
+    setFeedback('');
+    conceal(receiptRow);
+    showConfirmRow(false);
+    session.checkoutId = null;
+  }
+
+  function openFromButton(btn) {
+    if (!btn || !modal) return;
+
+    session.purpose = btn.getAttribute('data-mpesa-purpose') || 'school_fee';
+    session.studentId = btn.getAttribute('data-mpesa-student-id') || '';
+    session.studentName = btn.getAttribute('data-mpesa-student-name') || '';
+    session.admission = btn.getAttribute('data-mpesa-admission') || session.studentId;
+
+    if (titleEl) {
+      titleEl.textContent = session.purpose === 'pocket_money' ? 'Top up pocket money' : 'Pay school fees';
+    }
+    if (subtitleEl) {
+      if (session.studentName) {
+        subtitleEl.textContent = session.studentName + ' · Ref ' + session.admission;
+        subtitleEl.classList.remove('hidden');
+      } else {
+        subtitleEl.textContent = '';
+        subtitleEl.classList.add('hidden');
+      }
+    }
+    if (phoneInput) phoneInput.value = '';
+    if (amountInput) {
+      var suggested = btn.getAttribute('data-mpesa-amount');
+      amountInput.value = suggested ? String(suggested) : '';
+    }
+
+    setFeedback('');
+    conceal(receiptRow);
+    showConfirmRow(false);
+    session.checkoutId = null;
+    stopPolling();
+    setBusy(false);
+
+    openModal();
+    if (phoneInput) phoneInput.focus();
+  }
+
+  function pollCheckout(checkoutId) {
+    stopPolling();
+    session.checkoutId = checkoutId;
+    reveal(statusRow);
+
+    function tick() {
+      session.pollCount += 1;
+      fetch(statusPollUrl(checkoutId), {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      })
+        .then(function (res) {
+          return res.json().then(function (data) {
+            return { ok: res.ok, status: res.status, data: data };
+          });
+        })
+        .then(function (result) {
+          var data = result.data;
+          if (!result.ok || !data || !data.success) {
+            if (result.status === 404) {
+              setFeedback('Payment session not found. Try starting payment again.', 'error');
+              stopPolling();
+            }
+            return;
+          }
+          if (data.sync_warning) {
+            setFeedback(data.sync_warning, 'error');
+          }
+          if (data.confirm_available || CONFIG.sandboxConfirm) {
+            if (session.pollCount >= 4) showConfirmRow(true);
+          }
+          var status = String(data.status || '').toLowerCase();
+          if (status === 'completed') {
+            handleCompleted(data);
+          } else if (status === 'failed' || status === 'cancelled') {
+            stopPolling();
+            setBusy(false);
+            showConfirmRow(false);
+            var failMsg = data.message || 'Payment was not completed.';
+            if (failMsg.toLowerCase().indexOf('try again') === -1) {
+              failMsg += ' Please try again.';
+            }
+            setFeedback(failMsg, 'error');
+          } else if (data.message && !data.sync_warning) {
+            setFeedback(data.message, status === 'pending' ? 'ok' : 'error');
+          }
+        })
+        .catch(function () { /* retry on next tick */ });
+
+      if (session.pollCount >= 40) {
+        stopPolling();
+        setBusy(false);
+        if (CONFIG.sandboxConfirm) {
+          showConfirmRow(true);
+          setFeedback('Still waiting for M-Pesa confirmation. If you entered your PIN, tap Confirm payment below (sandbox).', 'error');
+        } else {
+          setFeedback('Timed out waiting for M-Pesa. If you completed payment on your phone, the school will confirm shortly. Otherwise please try again.', 'error');
+        }
+      }
+    }
+
+    tick();
+    session.pollId = setInterval(tick, 3000);
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    if (session.busy) return;
+
+    var phone = phoneInput ? phoneInput.value.trim() : '';
+    var amount = amountInput ? amountInput.value.trim() : '';
+
+    if (!CONFIG.darajaReady) {
+      setFeedback('M-Pesa is not enabled yet. Ask the school to turn it on under Integration → Finance and add Daraja keys to the server .env file.', 'error');
+      return;
+    }
+    if (!phone) {
+      setFeedback('Enter the M-Pesa phone number.', 'error');
+      phoneInput && phoneInput.focus();
+      return;
+    }
+    if (!amount || Number(amount) < 1) {
+      setFeedback('Enter a valid amount (KES 1 or more).', 'error');
+      amountInput && amountInput.focus();
+      return;
+    }
+
+    setBusy(true);
+    setFeedback('');
+    conceal(receiptRow);
+
+    fetch(CONFIG.stkUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({
+        purpose: session.purpose,
+        student_id: session.studentId,
+        phone: phone,
+        amount: amount,
+      }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (!data || !data.success) {
+          setFeedback((data && data.message) || 'Could not start M-Pesa payment.', 'error');
+          return;
+        }
+        if (data.account_reference && subtitleEl && session.studentName) {
+          subtitleEl.textContent = session.studentName + ' · M-Pesa ref ' + data.account_reference;
+          subtitleEl.classList.remove('hidden');
+        }
+        setFeedback(data.message || 'Check your phone and enter your M-Pesa PIN.', 'ok');
+        if (data.sync_warning) {
+          setFeedback(data.sync_warning, 'error');
+        }
+        if (data.checkout_request_id) {
+          if (data.confirm_available || CONFIG.sandboxConfirm) showConfirmRow(false);
+          pollCheckout(data.checkout_request_id);
+        }
+      })
+      .catch(function () {
+        setFeedback('Could not reach the server. Check your connection and try again.', 'error');
+      })
+      .finally(function () { setBusy(false); });
+  }
+
+  function onDocumentClick(event) {
+    var openBtn = event.target.closest('.js-parent-mpesa-open');
+    if (openBtn) {
+      event.preventDefault();
+      openFromButton(openBtn);
+      return;
+    }
+    if (event.target.closest('.js-parent-mpesa-close')) {
+      event.preventDefault();
+      close();
+    }
+  }
+
+  function init() {
+    if (window.__parentMpesaPayReady) return;
+    window.__parentMpesaPayReady = true;
+
+    cacheDom();
+    if (!modal || !form) return;
+
+    document.addEventListener('click', onDocumentClick);
+    if (confirmBtn) confirmBtn.addEventListener('click', confirmPayment);
+    form.addEventListener('submit', submit);
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+        close();
+      }
+    });
+
+    window.ParentMpesaPay = { open: openFromButton, close: close };
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>

@@ -16,7 +16,7 @@ from datetime import datetime
 # Ensure project root is on path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Load .env + optional .env.local before importing app
+# Load .env.local (local) or .env (hosted) before importing app
 try:
     from env_loader import load_project_env
     load_project_env(os.path.dirname(os.path.abspath(__file__)))
@@ -31,7 +31,7 @@ REQUIRED_TABLES = [
     'integration_settings', 'academic_coordinator_settings',
     'academic_levels', 'subjects', 'teacher_subject_assignments',
     'academic_years', 'terms', 'term_academic_levels',
-    'fee_structures', 'fee_items', 'student_payments', 'student_payment_audit',
+    'fee_structures', 'fee_items', 'student_fee_votes', 'student_payments', 'student_payment_audit',
     'timetables', 'exams', 'exam_supervisors', 'student_marks',
     'backup_settings', 'backup_history', 'student_attendance_records',
     'password_reset_tokens',

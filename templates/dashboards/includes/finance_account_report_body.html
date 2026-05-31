@@ -1,0 +1,229 @@
+{# Expects: p (report payload) #}
+{% set kpi_accents = ['acr-kpi--teal', 'acr-kpi--sky', 'acr-kpi--violet', 'acr-kpi--amber'] %}
+
+{% if p.summary %}
+<div class="acr-kpis {% if p.summary|length == 3 %}acr-kpis--3{% endif %}" aria-label="Report summary">
+    {% for card in p.summary %}
+    <div class="acr-kpi {{ kpi_accents[loop.index0 % kpi_accents|length] }}">
+        <p class="acr-kpi__label">{{ card.label }}</p>
+        <p class="acr-kpi__value">{{ card.value }}</p>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if p.report_type == 'trial-balance' and p.trial_lines %}
+<section class="acr-section" aria-labelledby="acr-tb-title">
+    <div class="acr-section__head">
+        <div>
+            <h2 id="acr-tb-title" class="acr-section__title">
+                <i class="fas fa-balance-scale acr-icon--default" aria-hidden="true"></i>
+                Trial balance detail
+            </h2>
+            <p class="acr-section__sub">Debit and credit totals for this account in the selected period</p>
+        </div>
+    </div>
+    <div class="acr-table-scroll acr-table-scroll--stack">
+        <table class="acr-table acr-table--stack min-w-[28rem]">
+            <thead>
+                <tr>
+                    <th>Line</th>
+                    <th class="acr-num">Debit (KES)</th>
+                    <th class="acr-num">Credit (KES)</th>
+                    <th class="acr-num">Balance (KES)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in p.trial_lines %}
+                <tr class="{% if loop.last %}acr-row-total{% endif %}">
+                    <td data-label="Line">{{ line.label }}</td>
+                    <td class="acr-num" data-label="Debit">{{ line.debit or '—' }}</td>
+                    <td class="acr-num" data-label="Credit">{{ line.credit or '—' }}</td>
+                    <td class="acr-num" data-label="Balance">{{ line.balance or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if p.report_type == 'balance-sheet' and p.balance_sheet_lines %}
+<section class="acr-section">
+    <div class="acr-section__head">
+        <div>
+            <h2 class="acr-section__title">
+                <i class="fas fa-file-invoice-dollar acr-icon--default" aria-hidden="true"></i>
+                Balance sheet position
+            </h2>
+            <p class="acr-section__sub">Single-account view — consolidated statements include all accounts</p>
+        </div>
+    </div>
+    <div class="acr-table-scroll acr-table-scroll--stack">
+        <table class="acr-table acr-table--stack">
+            <thead>
+                <tr>
+                    <th>Section</th>
+                    <th>Account</th>
+                    <th class="acr-num">Amount (KES)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in p.balance_sheet_lines %}
+                <tr>
+                    <td data-label="Section">{{ line.section }}</td>
+                    <td data-label="Account" class="font-semibold">{{ line.name }}</td>
+                    <td class="acr-num" data-label="Amount">{{ line.amount_display }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if p.report_type == 'income-expenditure' %}
+<section class="acr-section">
+    <div class="acr-section__head">
+        <div>
+            <h2 class="acr-section__title">
+                <i class="fas fa-arrow-down acr-icon--income" aria-hidden="true"></i>
+                Income
+            </h2>
+            <p class="acr-section__sub">Credits — money received into this account</p>
+        </div>
+        <span class="acr-section__count">{{ p.income_rows|length }} line{{ 's' if p.income_rows|length != 1 else '' }}</span>
+    </div>
+    {% if p.income_rows %}
+    <div class="acr-table-scroll acr-table-scroll--stack">
+        <table class="acr-table acr-table--stack">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Description</th>
+                    <th class="acr-num">Amount (KES)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in p.income_rows %}
+                <tr>
+                    <td data-label="Date">{{ row.date }}</td>
+                    <td data-label="Reference" class="acr-mono">{{ row.reference }}</td>
+                    <td data-label="Description">{{ row.description }}</td>
+                    <td class="acr-num" data-label="Amount" style="color:#047857">{{ row.credit_display }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="acr-empty">
+        <i class="fas fa-inbox" aria-hidden="true"></i>
+        <p class="acr-empty__title">No income</p>
+        <p>Nothing was credited to this account in the selected period.</p>
+    </div>
+    {% endif %}
+</section>
+<section class="acr-section">
+    <div class="acr-section__head">
+        <div>
+            <h2 class="acr-section__title">
+                <i class="fas fa-arrow-up acr-icon--expense" aria-hidden="true"></i>
+                Expenditure
+            </h2>
+            <p class="acr-section__sub">Debits — money paid out from this account</p>
+        </div>
+        <span class="acr-section__count">{{ p.expense_rows|length }} line{{ 's' if p.expense_rows|length != 1 else '' }}</span>
+    </div>
+    {% if p.expense_rows %}
+    <div class="acr-table-scroll acr-table-scroll--stack">
+        <table class="acr-table acr-table--stack">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Description</th>
+                    <th class="acr-num">Amount (KES)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in p.expense_rows %}
+                <tr>
+                    <td data-label="Date">{{ row.date }}</td>
+                    <td data-label="Reference" class="acr-mono">{{ row.reference }}</td>
+                    <td data-label="Description">{{ row.description }}</td>
+                    <td class="acr-num" data-label="Amount" style="color:#be123c">{{ row.debit_display }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="acr-empty">
+        <i class="fas fa-inbox" aria-hidden="true"></i>
+        <p class="acr-empty__title">No expenditure</p>
+        <p>No debits were recorded in the selected period.</p>
+    </div>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if p.columns and p.report_type not in ('income-expenditure', 'trial-balance', 'balance-sheet') %}
+<section class="acr-section">
+    <div class="acr-section__head">
+        <div>
+            <h2 class="acr-section__title">
+                <i class="fas fa-list acr-icon--default" aria-hidden="true"></i>
+                {% if p.report_type == 'general-ledger' %}Ledger entries{% elif p.report_type == 'petty-cash-book' %}Petty cash book entries{% elif p.report_type == 'student-ledger' %}Student payments{% elif p.report_type == 'cash-flow' %}Cash flow by period{% else %}Transaction detail{% endif %}
+            </h2>
+        </div>
+        <span class="acr-section__count">{{ p.rows|length }} row{{ 's' if p.rows|length != 1 else '' }}</span>
+    </div>
+    {% if p.rows %}
+    <div class="acr-table-scroll acr-table-scroll--stack">
+        <table class="acr-table acr-table--stack">
+            <thead>
+                <tr>
+                    {% for col in p.columns %}
+                    <th class="{% if col.align == 'right' %}acr-num{% endif %}">{{ col.label }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in p.rows %}
+                <tr class="{% if row._ledger_row in ('opening', 'total', 'closing') %}acr-row-total{% endif %}">
+                    {% for col in p.columns %}
+                    <td class="{% if col.align == 'right' %}acr-num{% endif %} {% if col.key == 'reference' %}acr-mono{% endif %}"
+                        data-label="{{ col.label }}">{{ row[col.key]|default('—') }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="acr-empty">
+        <i class="fas fa-{% if p.empty_state %}coins{% else %}file-alt{% endif %}" aria-hidden="true"></i>
+        {% if p.empty_state %}
+        <p class="acr-empty__title">No petty cash account yet</p>
+        <p>Register a petty cash account to start recording receipts and payments in this book.</p>
+        <button type="button" class="acr-btn acr-btn--primary mt-3 no-print" onclick="window.dispatchEvent(new CustomEvent('pcb-open-register'))">
+            <i class="fas fa-plus-circle" aria-hidden="true"></i> Register petty cash account
+        </button>
+        {% else %}
+        <p class="acr-empty__title">No transactions</p>
+        <p>Try widening the date range or check that activity was posted to this account.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+{% elif p.report_type not in ('trial-balance', 'balance-sheet', 'income-expenditure') %}
+<div class="acr-section">
+    <div class="acr-empty">
+        <i class="fas fa-chart-line" aria-hidden="true"></i>
+        <p class="acr-empty__title">No data</p>
+        <p>No figures available for this report in the selected period.</p>
+    </div>
+</div>
+{% endif %}

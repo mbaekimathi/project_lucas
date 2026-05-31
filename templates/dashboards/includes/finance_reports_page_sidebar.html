@@ -1,0 +1,20 @@
+{% set _slug = finance_report_slug|default(report_slug|default('')) %}
+{% set _is_expenditure = _slug == 'expenditure' or '/reports/expenditure' in request.path %}
+{% set _is_statements = _slug == 'financial-statements' or '/reports/financial-statements' in request.path %}
+{% set _vote = expenditure_vote|default('') %}
+
+<div class="fr-sidebar-nav fr-sidebar-nav--reports space-y-0.5">
+    {% include 'dashboards/includes/finance_reports_accounts_sidebar.html' %}
+
+    {% if _is_statements %}
+    {% include 'dashboards/includes/finance_financial_statements_sidebar.html' %}
+    {% endif %}
+
+    {% if _is_expenditure and not _vote %}
+    {% include 'dashboards/includes/finance_expenditure_books_sidebar.html' %}
+    {% endif %}
+
+    {% if _is_expenditure and _vote %}
+    {% include 'dashboards/includes/finance_vote_expenditure_sidebar.html' %}
+    {% endif %}
+</div>

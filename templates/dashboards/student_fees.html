@@ -8,7 +8,15 @@
 
 {% block extra_head %}
 {% include 'dashboards/includes/student_fees_accounts_styles.html' %}
-<style>select{appearance:none}.sf-table tbody tr.student-row:hover{box-shadow:inset 3px 0 0 0 #0d9488}</style>
+<style>select{appearance:none}.sf-table tbody tr.student-row:hover{box-shadow:inset 3px 0 0 0 #0d9488}
+.sf-pay-modal input[type=number]::-webkit-outer-spin-button,.sf-pay-modal input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.sf-pay-modal input[type=number]{-moz-appearance:textfield}
+.sf-pay-field{width:100%;padding:.625rem .875rem;font-size:.875rem;line-height:1.25rem;border-radius:.75rem;border:1px solid rgb(226 232 240);background:#fff;color:rgb(15 23 42);transition:box-shadow .15s,border-color .15s}
+.dark .sf-pay-field{border-color:rgb(51 65 85);background:rgb(30 41 59);color:#fff}
+.sf-pay-field:focus{outline:none;border-color:rgb(20 184 166);box-shadow:0 0 0 3px rgb(20 184 166 / .15)}
+.sf-pay-label{display:block;font-size:.6875rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:rgb(100 116 139);margin-bottom:.375rem}
+.dark .sf-pay-label{color:rgb(148 163 184)}
+</style>
 {% endblock %}
 
 {% block sidebar_content %}
@@ -347,247 +355,140 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- Payment Recording Modal -->
-<div x-data="$store.paymentModal" 
+<div x-data="$store.paymentModal"
      x-show="isOpen"
      x-cloak
      @keydown.escape.window="close()"
-     class="fixed inset-0 z-50"
-     style="display: none;"
-     x-transition:enter="ease-out duration-300"
-     x-transition:enter-start="opacity-0"
-     x-transition:enter-end="opacity-100"
-     x-transition:leave="ease-in duration-200"
-     x-transition:leave-start="opacity-100"
-     x-transition:leave-end="opacity-0">
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" @click="close()"
-         x-transition:enter="ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"></div>
-    <div class="fixed inset-0 flex items-center justify-center p-2 sm:p-3 md:p-4 pointer-events-none"
-         x-transition:enter="ease-out duration-300"
-         x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-         x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-         x-transition:leave="ease-in duration-200"
-         x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-         x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95">
-        <div class="relative bg-white dark:bg-gray-800 rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto"
-             @click.stop>
-            <!-- Header -->
-            <div class="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 px-4 sm:px-6 py-4 flex items-center justify-between z-10 shadow-lg">
-                <div class="flex items-center space-x-3 flex-1 min-w-0">
-                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-money-check-alt text-white text-lg"></i>
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <h2 class="text-lg sm:text-xl font-bold text-white truncate">Record Payment</h2>
-                        <p class="text-xs text-green-100 truncate" x-text="studentName"></p>
-                    </div>
+     class="sf-pay-modal fixed inset-0 z-50"
+     style="display: none;">
+    <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" @click="close()" x-show="isOpen"
+         x-transition:enter="ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"></div>
+    <div class="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-none">
+        <div class="pointer-events-auto w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl shadow-2xl ring-1 ring-slate-200/80 dark:ring-slate-700 overflow-hidden"
+             @click.stop
+             x-show="isOpen"
+             x-transition:enter="ease-out duration-200"
+             x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-2 sm:scale-[0.98]"
+             x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+             x-transition:leave="ease-in duration-150"
+             x-transition:leave-start="opacity-100 translate-y-0"
+             x-transition:leave-end="opacity-0 translate-y-4">
+            <div class="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div class="min-w-0">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-teal-600 dark:text-teal-400">Record payment</p>
+                    <h2 class="text-lg font-semibold text-slate-900 dark:text-white truncate leading-tight mt-0.5" x-text="studentName"></h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        <span x-text="studentId"></span>
+                        <span class="mx-1.5 text-slate-300 dark:text-slate-600">·</span>
+                        Balance <span class="font-semibold text-slate-700 dark:text-slate-200">KES <span x-text="(balance || 0).toLocaleString('en-KE', {minimumFractionDigits: 2})"></span></span>
+                    </p>
                 </div>
-                <button @click="close()" 
-                        class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white/20 flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors"
-                        aria-label="Close">
-                    <i class="fas fa-times text-xl"></i>
+                <button type="button" @click="close()" class="shrink-0 p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors" aria-label="Close">
+                    <i class="fas fa-times"></i>
                 </button>
             </div>
-            
-            <!-- Scrollable Content -->
-            <div class="flex-1 overflow-y-auto custom-scrollbar">
-                <form @submit.prevent="submitPayment()" class="p-4 sm:p-6 space-y-5">
-                    <!-- Error/Success Messages -->
-                    <div x-show="error" x-cloak 
-                         class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start space-x-3">
-                        <i class="fas fa-exclamation-circle mt-0.5 flex-shrink-0"></i>
-                        <span class="text-sm" x-text="error"></span>
+
+            <form @submit.prevent="submitPayment()" class="px-5 py-4 space-y-3.5">
+                <div x-show="error" x-cloak class="text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl px-3 py-2.5" x-text="error"></div>
+                <div x-show="success" x-cloak class="text-sm text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-xl px-3 py-2.5" x-text="success"></div>
+
+                <!-- 1. Payment method -->
+                <div>
+                    <label class="sf-pay-label" for="sf-pay-method">Payment method</label>
+                    <div class="relative">
+                        <select id="sf-pay-method" x-model="paymentMethod" @change="updatePaymentFields()" required
+                                class="sf-pay-field pr-10 cursor-pointer">
+                            <option value="">Select payment method</option>
+                            <option value="Cash">Cash</option>
+                            {% if mpesa_daraja_enabled|default(false) %}
+                            <option value="M-Pesa">M-Pesa (STK push)</option>
+                            {% endif %}
+                            <option value="Mobile Money">Mobile Money (manual code)</option>
+                            <option value="Bank Transfer">Bank transfer</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Credit/Debit Card">Credit / debit card</option>
+                        </select>
+                        <i class="fas fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400"></i>
                     </div>
-                    <div x-show="success" x-cloak 
-                         class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg flex items-start space-x-3">
-                        <i class="fas fa-check-circle mt-0.5 flex-shrink-0"></i>
-                        <span class="text-sm" x-text="success"></span>
+                </div>
+
+                <!-- 2. M-Pesa phone (STK) -->
+                <div x-show="paymentMethod === 'M-Pesa'" x-cloak class="space-y-2">
+                    <label class="sf-pay-label" for="sf-pay-mpesa-phone">M-Pesa phone</label>
+                    <input id="sf-pay-mpesa-phone" type="tel" x-model="mpesaPhone" placeholder="e.g. 0712345678" class="sf-pay-field">
+                    <p x-show="mpesaAccountRef" x-cloak
+                       class="flex items-start gap-2 text-xs text-teal-800 dark:text-teal-200 bg-teal-50 dark:bg-teal-950/40 border border-teal-200/80 dark:border-teal-800/50 rounded-xl px-3 py-2">
+                        <i class="fas fa-id-card mt-0.5 shrink-0 opacity-80" aria-hidden="true"></i>
+                        <span>M-Pesa account reference sent to Safaricom: <strong class="font-mono" x-text="mpesaAccountRef"></strong></span>
+                    </p>
+                    <p x-show="mpesaPolling" class="flex items-center gap-2 text-xs text-teal-700 dark:text-teal-300 px-0.5">
+                        <i class="fas fa-spinner fa-spin"></i><span x-text="mpesaStatusMsg || 'Waiting for PIN on phone…'"></span>
+                    </p>
+                    <div x-show="mpesaSandboxConfirm && mpesaCheckoutId" x-cloak class="flex gap-2">
+                        <input type="text" x-model="mpesaReceiptInput" placeholder="Receipt (optional)" class="sf-pay-field flex-1 min-w-0 font-mono text-xs">
+                        <button type="button" @click="confirmMpesaSandbox()"
+                                class="shrink-0 px-3 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-700 text-white">Confirm</button>
                     </div>
-                    
-                    <!-- Student Info Card -->
-                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800">
-                        <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">
-                            <i class="fas fa-user-graduate mr-1.5"></i>Student Information
-                        </label>
-                        <div class="flex items-center space-x-3">
-                            <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
-                                <i class="fas fa-user text-white"></i>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-base font-bold text-gray-900 dark:text-white truncate" x-text="studentName"></p>
-                                <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">Student ID: <span x-text="studentId"></span></p>
-                            </div>
-                        </div>
+                </div>
+
+                <!-- 3. Payment date -->
+                <div x-show="paymentMethod && paymentMethod !== 'M-Pesa'" x-cloak>
+                    <label class="sf-pay-label" for="sf-pay-date">Payment date</label>
+                    <input id="sf-pay-date" type="date" x-model="paymentDate" class="sf-pay-field">
+                </div>
+
+                <!-- 4. Reference / transaction code -->
+                <div x-show="paymentMethod === 'Mobile Money'" x-cloak>
+                    <label class="sf-pay-label" for="sf-pay-txn">Reference / transaction code</label>
+                    <input id="sf-pay-txn" type="text" x-model="transactionId" placeholder="M-Pesa confirmation code" class="sf-pay-field font-mono">
+                </div>
+                <div x-show="paymentMethod === 'Bank Transfer'" x-cloak>
+                    <label class="sf-pay-label" for="sf-pay-bank-ref">Reference number</label>
+                    <input id="sf-pay-bank-ref" type="text" x-model="referenceNumber" placeholder="Bank reference" class="sf-pay-field">
+                </div>
+                <div x-show="paymentMethod === 'Cheque'" x-cloak>
+                    <label class="sf-pay-label" for="sf-pay-cheque">Reference / cheque number</label>
+                    <input id="sf-pay-cheque" type="text" x-model="chequeNumber" placeholder="Cheque number" class="sf-pay-field">
+                </div>
+
+                <!-- 5. Amount -->
+                <div>
+                    <label class="sf-pay-label" for="sf-pay-amount">Amount</label>
+                    <div class="relative">
+                        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">KES</span>
+                        <input id="sf-pay-amount" type="number" x-model="amountPaid" step="0.01" min="0.01" required placeholder="0"
+                               class="sf-pay-field pl-12 text-xl font-semibold tabular-nums bg-slate-50 dark:bg-slate-800/60"
+                               style="font-size: 1.125rem;">
                     </div>
-                    
-                    <!-- Payment Amount Section -->
-                    <div class="space-y-3">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            <i class="fas fa-money-bill-wave text-green-600 mr-2"></i>Payment Amount <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <span class="text-gray-500 font-medium">KES</span>
-                            </div>
-                            <input type="number" 
-                                   x-model="amountPaid" 
-                                   step="0.01" 
-                                   min="0.01" 
-                                   required
-                                   placeholder="0.00"
-                                   class="w-full pl-16 pr-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm"
-                                   style="font-size: 16px;">
-                        </div>
-                        <div class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-xs font-medium text-gray-600 dark:text-gray-400">Current Balance:</span>
-                                <span class="text-sm font-bold text-gray-900 dark:text-white">
-                                    KES <span x-text="(balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
-                                </span>
-                            </div>
-                            <div class="flex items-start space-x-2 mt-2 pt-2 border-t border-blue-200 dark:border-blue-700">
-                                <i class="fas fa-info-circle text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0"></i>
-                                <p class="text-xs text-blue-700 dark:text-blue-300 flex-1">
-                                    Overpayments are allowed and will be carried forward to the next term
-                                </p>
-                            </div>
-                        </div>
+                </div>
+
+                <!-- Optional extras -->
+                <div x-show="paymentMethod && paymentMethod !== 'M-Pesa'" x-cloak>
+                    <button type="button" @click="showMore = !showMore"
+                            class="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 flex items-center gap-1.5">
+                        <i class="fas fa-chevron-right text-[10px] transition-transform duration-200" :class="showMore && 'rotate-90'"></i>
+                        <span x-text="showMore ? 'Hide optional fields' : 'Attach proof or notes'"></span>
+                    </button>
+                    <div x-show="showMore" x-cloak class="mt-2.5 space-y-2">
+                        <input type="file" @change="handleFileSelect($event)" accept=".pdf,.jpg,.jpeg,.png,.gif"
+                               class="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-slate-100 file:text-slate-700 dark:file:bg-slate-800 dark:file:text-slate-200">
+                        <textarea x-model="notes" rows="2" placeholder="Notes (optional)" class="sf-pay-field resize-none"></textarea>
                     </div>
-                    
-                    <!-- Payment Method Section -->
-                    <div class="space-y-3">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            <i class="fas fa-credit-card text-purple-600 mr-2"></i>Payment Method <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <i class="fas fa-credit-card text-gray-400"></i>
-                            </div>
-                            <select x-model="paymentMethod" 
-                                    @change="updatePaymentFields()" 
-                                    required
-                                    class="w-full pl-12 pr-10 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm appearance-none cursor-pointer"
-                                    style="font-size: 16px;">
-                                <option value="">Select Payment Method</option>
-                                <option value="Cash">Cash</option>
-                                <option value="Bank Transfer">Bank Transfer / Wire</option>
-                                <option value="Cheque">Cheque</option>
-                                <option value="Mobile Money">Mobile Money</option>
-                                <option value="Credit/Debit Card">Credit/Debit Card</option>
-                            </select>
-                            <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                                <i class="fas fa-chevron-down text-gray-400"></i>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Payment Method Specific Fields -->
-                    <div x-show="paymentMethod === 'Bank Transfer'" 
-                         x-cloak
-                         class="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-200 dark:border-purple-800 space-y-3">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            <i class="fas fa-hashtag text-purple-600 mr-2"></i>Reference Number <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" 
-                               x-model="referenceNumber"
-                               placeholder="Enter bank reference number"
-                               class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all touch-manipulation shadow-sm"
-                               style="font-size: 16px;">
-                    </div>
-                    
-                    <div x-show="paymentMethod === 'Cheque'" 
-                         x-cloak
-                         class="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-200 dark:border-purple-800 space-y-3">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            <i class="fas fa-file-invoice text-purple-600 mr-2"></i>Cheque Number <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" 
-                               x-model="chequeNumber"
-                               placeholder="Enter cheque number"
-                               class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all touch-manipulation shadow-sm"
-                               style="font-size: 16px;">
-                    </div>
-                    
-                    <div x-show="paymentMethod === 'Mobile Money'" 
-                         x-cloak
-                         class="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-200 dark:border-purple-800 space-y-3">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            <i class="fas fa-mobile-alt text-purple-600 mr-2"></i>Transaction ID <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" 
-                               x-model="transactionId"
-                               placeholder="Enter mobile money transaction ID"
-                               class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all touch-manipulation shadow-sm font-mono"
-                               style="font-size: 16px;">
-                    </div>
-                    
-                    <!-- Payment Date -->
-                    <div class="space-y-3">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            <i class="fas fa-calendar-alt text-orange-600 mr-2"></i>Payment Date <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <i class="fas fa-calendar text-gray-400"></i>
-                            </div>
-                            <input type="date" 
-                                   x-model="paymentDate" 
-                                   required
-                                   class="w-full pl-12 pr-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm"
-                                   style="font-size: 16px;">
-                        </div>
-                    </div>
-                    
-                    <!-- Proof of Payment -->
-                    <div class="space-y-3">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            <i class="fas fa-file-upload text-indigo-600 mr-2"></i>Proof of Payment
-                        </label>
-                        <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 hover:border-green-500 dark:hover:border-green-600 transition-colors">
-                            <input type="file" 
-                                   @change="handleFileSelect($event)" 
-                                   accept=".pdf,.jpg,.jpeg,.png,.gif"
-                                   class="w-full text-sm text-gray-600 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 dark:file:bg-green-900/30 dark:file:text-green-300 cursor-pointer touch-manipulation">
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center">
-                                <i class="fas fa-info-circle mr-1.5"></i>
-                                Accepted: PDF, JPG, PNG, GIF (Max 10MB)
-                            </p>
-                        </div>
-                    </div>
-                    
-                    <!-- Notes -->
-                    <div class="space-y-3">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            <i class="fas fa-sticky-note text-yellow-600 mr-2"></i>Notes (Optional)
-                        </label>
-                        <textarea x-model="notes" 
-                                  rows="4"
-                                  placeholder="Add any additional notes about this payment..."
-                                  class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm resize-none"
-                                  style="font-size: 16px;"></textarea>
-                    </div>
-                    
-                    <!-- Footer Actions -->
-                    <div class="sticky bottom-0 bg-white dark:bg-gray-800 -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col-reverse sm:flex-row justify-end gap-3 shadow-lg mt-6">
-                        <button type="button" 
-                                @click="close()" 
-                                class="w-full sm:w-auto px-6 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium touch-manipulation min-h-[48px] flex items-center justify-center">
-                            <i class="fas fa-times mr-2"></i>Cancel
-                        </button>
-                        <button type="submit" 
-                                :disabled="loading" 
-                                class="w-full sm:w-auto px-6 py-3 text-base bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all touch-manipulation min-h-[48px]">
-                            <i class="fas fa-spinner fa-spin" x-show="loading"></i>
-                            <i class="fas fa-check-circle" x-show="!loading"></i>
-                            <span x-text="loading ? 'Recording Payment...' : 'Record Payment'"></span>
-                        </button>
-                    </div>
-                </form>
-            </div>
+                </div>
+
+                <div class="flex gap-2.5 pt-2">
+                    <button type="button" @click="close()"
+                            class="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit" :disabled="loading || !paymentMethod"
+                            class="flex-[1.35] py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-semibold shadow-md shadow-teal-600/25 transition-all flex items-center justify-center gap-2">
+                        <i class="fas fa-spinner fa-spin text-xs" x-show="loading"></i>
+                        <span x-text="loading ? (paymentMethod === 'M-Pesa' ? 'Sending STK…' : 'Saving…') : (paymentMethod === 'M-Pesa' ? 'Send STK push' : 'Record payment')"></span>
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -931,7 +832,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- Initialize Alpine Store for Fee Structure Modal -->
 <script>
-// Payment Modal Function
+var SF_MPESA_CFG = {
+    darajaReady: {{ mpesa_daraja_enabled|default(false)|tojson }},
+    sandboxConfirm: {{ mpesa_sandbox_confirm|default(false)|tojson }},
+    stkUrl: {{ employee_dash_url('student-fees/mpesa/stk-push')|tojson }},
+    statusUrlBase: {{ (employee_dash_url('student-fees/mpesa/status') + '/')|tojson }},
+    confirmUrl: {{ employee_dash_url('student-fees/mpesa/confirm-payment')|tojson }},
+};
+
 function paymentModal() {
     return {
         isOpen: false,
@@ -944,13 +852,114 @@ function paymentModal() {
         referenceNumber: '',
         chequeNumber: '',
         transactionId: '',
+        mpesaPhone: '',
+        mpesaPolling: false,
+        mpesaPollId: null,
+        mpesaPollCount: 0,
+        mpesaCheckoutId: null,
+        mpesaStatusMsg: '',
+        mpesaReceiptInput: '',
+        mpesaAccountRef: '',
+        mpesaSandboxConfirm: SF_MPESA_CFG.sandboxConfirm,
         paymentDate: new Date().toISOString().split('T')[0],
         proofOfPayment: null,
         notes: '',
+        showMore: false,
         loading: false,
         error: '',
         success: '',
+        stopMpesaPolling() {
+            if (this.mpesaPollId) { clearInterval(this.mpesaPollId); this.mpesaPollId = null; }
+            this.mpesaPollCount = 0;
+            this.mpesaPolling = false;
+        },
+        mpesaStatusUrl(checkoutId) {
+            var base = String(SF_MPESA_CFG.statusUrlBase || '').replace(/\/?$/, '/');
+            return base + encodeURIComponent(checkoutId || '');
+        },
+        handleMpesaCompleted(data) {
+            this.stopMpesaPolling();
+            this.loading = false;
+            this.success = data.message || 'M-Pesa payment recorded successfully.';
+            this.mpesaCheckoutId = null;
+            setTimeout(() => {
+                this.close();
+                if (window.sfReloadList) { window.sfReloadList(); } else { location.reload(); }
+            }, 1500);
+        },
+        pollMpesaStatus(checkoutId) {
+            this.stopMpesaPolling();
+            this.mpesaCheckoutId = checkoutId;
+            this.mpesaPolling = true;
+            this.mpesaStatusMsg = 'Waiting for M-Pesa PIN on the phone…';
+            var self = this;
+            function tick() {
+                self.mpesaPollCount += 1;
+                fetch(self.mpesaStatusUrl(checkoutId), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (!data || !data.success) return;
+                        if (data.sync_warning) self.mpesaStatusMsg = data.sync_warning;
+                        else if (data.message) self.mpesaStatusMsg = data.message;
+                        var st = String(data.status || '').toLowerCase();
+                        if (st === 'completed') self.handleMpesaCompleted(data);
+                        else if (st === 'failed' || st === 'cancelled') {
+                            self.stopMpesaPolling();
+                            self.loading = false;
+                            self.error = data.message || 'M-Pesa payment was not completed.';
+                        }
+                    })
+                    .catch(function () {});
+                if (self.mpesaPollCount >= 40) {
+                    self.stopMpesaPolling();
+                    self.loading = false;
+                    self.error = self.mpesaSandboxConfirm
+                        ? 'Timed out. If PIN was entered, use Confirm M-Pesa payment below.'
+                        : 'Timed out waiting for M-Pesa confirmation.';
+                }
+            }
+            tick();
+            this.mpesaPollId = setInterval(tick, 3000);
+        },
+        async confirmMpesaSandbox() {
+            if (!this.mpesaCheckoutId || !SF_MPESA_CFG.confirmUrl) return;
+            this.loading = true;
+            this.error = '';
+            try {
+                var res = await fetch(SF_MPESA_CFG.confirmUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ checkout_request_id: this.mpesaCheckoutId, mpesa_receipt: this.mpesaReceiptInput || '' }),
+                });
+                var data = await res.json();
+                if (data && data.success && String(data.status || '').toLowerCase() === 'completed') this.handleMpesaCompleted(data);
+                else { this.error = (data && data.message) || 'Could not confirm M-Pesa payment.'; this.loading = false; }
+            } catch (e) { this.error = 'Could not confirm M-Pesa payment.'; this.loading = false; }
+        },
+        async submitMpesaStk() {
+            if (!SF_MPESA_CFG.stkUrl) { this.error = 'M-Pesa STK is not configured.'; this.loading = false; return; }
+            if (!this.mpesaPhone || !String(this.mpesaPhone).trim()) {
+                this.error = 'Enter the M-Pesa phone number.'; this.loading = false; return;
+            }
+            try {
+                var res = await fetch(SF_MPESA_CFG.stkUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ student_id: this.studentId, fee_structure_id: this.feeStructureId, phone: this.mpesaPhone, amount: this.amountPaid }),
+                });
+                var data = await res.json();
+                if (!data || !data.success) { this.error = (data && data.message) || 'Could not start M-Pesa payment.'; this.loading = false; return; }
+                this.mpesaAccountRef = data.account_reference ? String(data.account_reference) : '';
+                if (data.sync_warning) this.error = data.sync_warning;
+                this.success = data.message || 'Check the phone for the M-Pesa prompt.';
+                if (data.checkout_request_id) this.pollMpesaStatus(data.checkout_request_id);
+                else this.loading = false;
+            } catch (e) { this.error = 'Could not reach the server for M-Pesa STK.'; this.loading = false; }
+        },
         openPaymentModal(studentId, feeStructureId, studentName, totalAmount, balance) {
+            this.stopMpesaPolling();
             this.studentId = studentId;
             this.feeStructureId = feeStructureId;
             this.studentName = studentName;
@@ -960,71 +969,58 @@ function paymentModal() {
             this.referenceNumber = '';
             this.chequeNumber = '';
             this.transactionId = '';
+            this.mpesaPhone = '';
+            this.mpesaCheckoutId = null;
+            this.mpesaReceiptInput = '';
+            this.mpesaAccountRef = '';
+            this.mpesaStatusMsg = '';
             this.paymentDate = new Date().toISOString().split('T')[0];
             this.proofOfPayment = null;
             this.notes = '';
+            this.showMore = false;
             this.error = '';
             this.success = '';
             this.isOpen = true;
         },
         close() {
+            this.stopMpesaPolling();
             this.isOpen = false;
-            setTimeout(() => {
-                this.error = '';
-                this.success = '';
-            }, 300);
+            this.showMore = false;
+            setTimeout(() => { this.error = ''; this.success = ''; }, 300);
         },
         updatePaymentFields() {
             this.referenceNumber = '';
             this.chequeNumber = '';
             this.transactionId = '';
+            this.mpesaPhone = '';
+            this.stopMpesaPolling();
+            this.mpesaCheckoutId = null;
+            this.mpesaAccountRef = '';
         },
-        handleFileSelect(event) {
-            this.proofOfPayment = event.target.files[0];
-        },
+        handleFileSelect(event) { this.proofOfPayment = event.target.files[0]; },
         async submitPayment() {
             this.loading = true;
             this.error = '';
             this.success = '';
-            
-            // Validate required fields
             if (!this.amountPaid || parseFloat(this.amountPaid) <= 0) {
-                this.error = 'Please enter a valid amount paid.';
-                this.loading = false;
-                return;
+                this.error = 'Please enter a valid amount paid.'; this.loading = false; return;
             }
-            
             if (!this.paymentMethod) {
-                this.error = 'Please select a payment method.';
-                this.loading = false;
-                return;
+                this.error = 'Please select a payment method.'; this.loading = false; return;
             }
-            
+            if (this.paymentMethod === 'M-Pesa') { await this.submitMpesaStk(); return; }
             if (!this.paymentDate) {
-                this.error = 'Please select a payment date.';
-                this.loading = false;
-                return;
+                this.error = 'Please select a payment date.'; this.loading = false; return;
             }
-            
-            // Validate payment method specific fields
             if (this.paymentMethod === 'Bank Transfer' && !this.referenceNumber) {
-                this.error = 'Reference number is required for bank transfer.';
-                this.loading = false;
-                return;
+                this.error = 'Reference number is required for bank transfer.'; this.loading = false; return;
             }
-            
             if (this.paymentMethod === 'Cheque' && !this.chequeNumber) {
-                this.error = 'Cheque number is required for cheque payment.';
-                this.loading = false;
-                return;
+                this.error = 'Cheque number is required for cheque payment.'; this.loading = false; return;
             }
-            
             if (this.paymentMethod === 'Mobile Money' && !this.transactionId) {
-                this.error = 'Transaction ID is required for mobile money payment.';
-                this.loading = false;
-                return;
+                this.error = 'Transaction ID is required for mobile money payment.'; this.loading = false; return;
             }
-            
             const formData = new FormData();
             formData.append('student_id', this.studentId);
             formData.append('fee_structure_id', this.feeStructureId);
@@ -1036,647 +1032,9 @@ function paymentModal() {
             if (this.transactionId) formData.append('transaction_id', this.transactionId);
             if (this.notes) formData.append('notes', this.notes);
             if (this.proofOfPayment) formData.append('proof_of_payment', this.proofOfPayment);
-            
             try {
-                const response = await fetch('{{ employee_dash_url('student-fees/record-payment') }}', {
-                    method: 'POST',
-                    body: formData
-                });
+                const response = await fetch('{{ employee_dash_url('student-fees/record-payment') }}', { method: 'POST', body: formData });
                 const data = await response.json();
-                
-                if (data.success) {
-                    this.success = data.message;
-                    setTimeout(() => {
-                        this.close();
-                        if (window.sfReloadList) { window.sfReloadList(); } else { location.reload(); }
-                    }, 1500);
-                } else {
-                    this.error = data.message || 'Failed to record payment';
-                }
-            } catch (error) {
-                this.error = 'An error occurred. Please try again.';
-            } finally {
-                this.loading = false;
-            }
-        }
-    };
-}
-
-// Transactions Modal Function
-function transactionsModal() {
-    return {
-        isOpen: false,
-        studentId: '',
-        studentName: '',
-        transactions: [],
-        loading: false,
-        error: '',
-        showEditModal: false,
-        editingTransactionId: null,
-        editAmount: '',
-        editAmountError: '',
-        editAmountLoading: false,
-        receiptPdfUrl(paymentId) {
-            const base = {{ employee_dash_url('student-fees/download-receipt')|tojson }};
-            return `${base}/${encodeURIComponent(this.studentId)}/${paymentId}?format=pdf&download=true`;
-        },
-        receiptViewUrl(paymentId) {
-            const base = {{ employee_dash_url('student-fees/download-receipt')|tojson }};
-            return `${base}/${encodeURIComponent(this.studentId)}/${paymentId}`;
-        },
-        async openTransactionsModal(studentId, studentName) {
-            this.studentId = studentId;
-            this.studentName = studentName;
-            this.transactions = [];
-            this.error = '';
-            this.showEditModal = false;
-            this.isOpen = true;
-            this.loading = true;
-            
-            try {
-                const response = await fetch({{ employee_dash_url('student-fees/transactions')|tojson }} + `/${studentId}`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    this.transactions = data.transactions;
-                } else {
-                    this.error = data.message || 'Failed to load transactions';
-                }
-            } catch (error) {
-                this.error = 'An error occurred. Please try again.';
-            } finally {
-                this.loading = false;
-            }
-        },
-        close() {
-            this.isOpen = false;
-            this.showEditModal = false;
-        },
-        openEditAmount(transaction) {
-            this.editingTransactionId = transaction.id;
-            this.editAmount = String(transaction.amount_paid);
-            this.editAmountError = '';
-            this.showEditModal = true;
-        },
-        closeEditAmount() {
-            this.showEditModal = false;
-            this.editingTransactionId = null;
-            this.editAmount = '';
-            this.editAmountError = '';
-        },
-        async saveEditAmount() {
-            const amount = parseFloat(this.editAmount);
-            if (isNaN(amount) || amount < 0) {
-                this.editAmountError = 'Please enter a valid amount (zero or greater).';
-                return;
-            }
-            this.editAmountLoading = true;
-            this.editAmountError = '';
-            try {
-                const formData = new FormData();
-                formData.append('payment_id', this.editingTransactionId);
-                formData.append('student_id', this.studentId);
-                formData.append('amount_paid', amount);
-                const response = await fetch('{{ employee_dash_url('student-fees/update-payment') }}', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
-                if (data.success) {
-                    this.closeEditAmount();
-                    if (window.sfReloadList) { window.sfReloadList(); } else { location.reload(); }
-                } else {
-                    this.editAmountError = data.message || 'Failed to update amount.';
-                }
-            } catch (error) {
-                this.editAmountError = 'An error occurred. Please try again.';
-            } finally {
-                this.editAmountLoading = false;
-            }
-        },
-        deletingTransactionId: null,
-        deleteError: '',
-        deleteLoading: false,
-        async deletePayment(transactionId) {
-            if (!confirm('Are you sure you want to delete this payment? This action cannot be undone.')) {
-                return;
-            }
-            this.deletingTransactionId = transactionId;
-            this.deleteError = '';
-            this.deleteLoading = true;
-            try {
-                const formData = new FormData();
-                formData.append('payment_id', transactionId);
-                formData.append('student_id', this.studentId);
-                const response = await fetch('{{ employee_dash_url('student-fees/delete-payment') }}', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
-                if (data.success) {
-                    // Remove the transaction from the list
-                    this.transactions = this.transactions.filter(t => t.id !== transactionId);
-                    // Reload page to update balances
-                    setTimeout(() => {
-                        if (window.sfReloadList) { window.sfReloadList(); } else { location.reload(); }
-                    }, 500);
-                } else {
-                    this.deleteError = data.message || 'Failed to delete payment.';
-                    alert(this.deleteError);
-                }
-            } catch (error) {
-                this.deleteError = 'An error occurred. Please try again.';
-                alert(this.deleteError);
-            } finally {
-                this.deleteLoading = false;
-                this.deletingTransactionId = null;
-            }
-        }
-    };
-}
-
-document.addEventListener('alpine:init', () => {
-    const paymentModalStore = paymentModal();
-    const transactionsModalStore = transactionsModal();
-    
-    Alpine.store('paymentModal', paymentModalStore);
-    Alpine.store('transactionsModal', transactionsModalStore);
-    
-    // Make stores globally accessible for debugging
-    window.paymentModalStore = paymentModalStore;
-    window.transactionsModalStore = transactionsModalStore;
-});
-
-</script>
-
-                            <i class="fas fa-times mr-2"></i>Cancel
-                        </button>
-                        <button type="submit" 
-                                :disabled="loading" 
-                                class="w-full sm:w-auto px-6 py-3 text-base bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all touch-manipulation min-h-[48px]">
-                            <i class="fas fa-spinner fa-spin" x-show="loading"></i>
-                            <i class="fas fa-check-circle" x-show="!loading"></i>
-                            <span x-text="loading ? 'Recording Payment...' : 'Record Payment'"></span>
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- View Transactions Modal -->
-<div x-data="$store.transactionsModal" 
-     x-show="isOpen"
-     x-cloak
-     @keydown.escape.window="close()"
-     class="fixed inset-0 z-50"
-     style="display: none;"
-     x-transition:enter="ease-out duration-300"
-     x-transition:enter-start="opacity-0"
-     x-transition:enter-end="opacity-100"
-     x-transition:leave="ease-in duration-200"
-     x-transition:leave-start="opacity-100"
-     x-transition:leave-end="opacity-0">
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" @click="close()"
-         x-transition:enter="ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"></div>
-    <div class="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-3 md:p-4 pointer-events-none"
-         x-transition:enter="ease-out duration-300"
-         x-transition:enter-start="opacity-0 translate-y-full sm:translate-y-4 sm:scale-95"
-         x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-         x-transition:leave="ease-in duration-200"
-         x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-         x-transition:leave-end="opacity-0 translate-y-full sm:translate-y-4 sm:scale-95">
-        <div class="relative bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-4xl max-h-[90vh] sm:max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto"
-             @click.stop>
-            <!-- Enhanced Header -->
-            <div class="sticky top-0 bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-4 flex items-center justify-between z-10 shadow-lg flex-shrink-0">
-                <div class="flex items-center space-x-3 flex-1 min-w-0">
-                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-history text-white text-lg"></i>
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <h2 class="text-base sm:text-lg md:text-xl font-bold text-white truncate">
-                            Payment Transactions
-                        </h2>
-                        <p class="text-xs text-blue-100 truncate" x-text="studentName"></p>
-                    </div>
-                    <div x-show="!loading && transactions.length > 0" class="hidden sm:flex items-center space-x-2 bg-white/20 px-3 py-1.5 rounded-lg">
-                        <i class="fas fa-list text-white text-sm"></i>
-                        <span class="text-sm font-semibold text-white" x-text="transactions.length"></span>
-                    </div>
-                </div>
-                <button @click="close()" 
-                        class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white/20 flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors"
-                        aria-label="Close">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
-            </div>
-            
-            <!-- Content area -->
-            <div class="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6">
-                <!-- Loading State -->
-                <div x-show="loading" class="text-center py-12 sm:py-16">
-                    <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full mb-4">
-                        <i class="fas fa-spinner fa-spin text-2xl text-blue-600 dark:text-blue-400"></i>
-                    </div>
-                    <p class="text-base font-medium text-gray-700 dark:text-gray-300">Loading transactions...</p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Please wait</p>
-                </div>
-                
-                <!-- Error State -->
-                <div x-show="error" x-cloak 
-                     class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-4 flex items-start space-x-3">
-                    <i class="fas fa-exclamation-circle mt-0.5 flex-shrink-0"></i>
-                    <span class="text-sm" x-text="error"></span>
-                </div>
-                
-                <!-- Empty State -->
-                <div x-show="!loading && !error && transactions.length === 0" 
-                     class="text-center py-12 sm:py-16">
-                    <div class="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full mb-4">
-                        <i class="fas fa-inbox text-3xl text-gray-400 dark:text-gray-500"></i>
-                    </div>
-                    <p class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-1">No transactions found</p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">This student has no payment transactions yet.</p>
-                </div>
-                
-                <!-- Mobile: Enhanced card layout -->
-                <div x-show="!loading && transactions.length > 0" class="block sm:hidden space-y-3">
-                    <template x-for="transaction in transactions" :key="transaction.id">
-                        <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-xl p-4 shadow-md hover:shadow-lg transition-all">
-                            <!-- Header with Amount and Date -->
-                            <div class="flex items-start justify-between mb-3 pb-3 border-b-2 border-gray-200 dark:border-gray-600">
-                                <div class="flex items-start space-x-3 flex-1 min-w-0">
-                                    <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
-                                        <i class="fas fa-money-check-alt text-white"></i>
-                                    </div>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-xl font-bold text-gray-900 dark:text-white">
-                                            KES <span x-text="transaction.amount_paid.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
-                                        </p>
-                                        <div class="flex items-center space-x-2 mt-1">
-                                            <span class="inline-flex items-center px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">
-                                                <i class="fas fa-credit-card mr-1 text-xs"></i>
-                                                <span x-text="transaction.payment_method"></span>
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="flex flex-col items-end ml-2 flex-shrink-0">
-                                    <span class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap shadow-sm" x-text="transaction.payment_date"></span>
-                                </div>
-                            </div>
-                            
-                            <!-- Transaction Details -->
-                            <div class="space-y-2 mb-3">
-                                <div x-show="transaction.reference_number" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
-                                    <i class="fas fa-hashtag text-gray-400 mt-0.5 flex-shrink-0"></i>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Reference Number</p>
-                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.reference_number"></p>
-                                    </div>
-                                </div>
-                                <div x-show="transaction.cheque_number" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
-                                    <i class="fas fa-file-invoice text-gray-400 mt-0.5 flex-shrink-0"></i>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Cheque Number</p>
-                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.cheque_number"></p>
-                                    </div>
-                                </div>
-                                <div x-show="transaction.transaction_id" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
-                                    <i class="fas fa-mobile-alt text-gray-400 mt-0.5 flex-shrink-0"></i>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Transaction ID</p>
-                                        <p class="text-sm text-gray-900 dark:text-white break-words font-mono" x-text="transaction.transaction_id"></p>
-                                    </div>
-                                </div>
-                                <div x-show="transaction.fee_name" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
-                                    <i class="fas fa-graduation-cap text-gray-400 mt-0.5 flex-shrink-0"></i>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Fee structure</p>
-                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.fee_name"></p>
-                                        <p x-show="transaction.finance_account_name" class="text-xs text-teal-600 dark:text-teal-400 mt-0.5" x-text="transaction.finance_account_name"></p>
-                                        <p x-show="transaction.billing_period" class="text-xs text-gray-500 mt-0.5" x-text="transaction.billing_period"></p>
-                                    </div>
-                                </div>
-                                <div x-show="transaction.received_by_name" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
-                                    <i class="fas fa-user-check text-gray-400 mt-0.5 flex-shrink-0"></i>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Received By</p>
-                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.received_by_name"></p>
-                                    </div>
-                                </div>
-                                <div x-show="transaction.notes" class="flex items-start space-x-2 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                                    <i class="fas fa-sticky-note text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0"></i>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-xs font-semibold text-yellow-700 dark:text-yellow-300">Notes</p>
-                                        <p class="text-sm text-yellow-800 dark:text-yellow-200 break-words italic" x-text="transaction.notes"></p>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Action Buttons -->
-                            <div class="flex flex-col gap-2 pt-3 border-t border-gray-200 dark:border-gray-600">
-                                <a :href="receiptPdfUrl(transaction.id)"
-                                   download
-                                   class="inline-flex items-center justify-center w-full px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:shadow-lg transition-all touch-manipulation font-medium shadow-md">
-                                    <i class="fas fa-file-pdf mr-2"></i>
-                                    <span>Download PDF receipt</span>
-                                </a>
-                                <a :href="receiptViewUrl(transaction.id)"
-                                   target="_blank"
-                                   rel="noopener"
-                                   class="inline-flex items-center justify-center w-full px-4 py-3 bg-white dark:bg-gray-800 text-teal-700 dark:text-teal-300 rounded-xl border border-teal-200 dark:border-teal-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all touch-manipulation font-medium">
-                                    <i class="fas fa-print mr-2"></i>
-                                    <span>View / print receipt</span>
-                                </a>
-                                <a x-show="transaction.proof_of_payment" 
-                                   :href="'/static/' + transaction.proof_of_payment" 
-                                   target="_blank" 
-                                   class="inline-flex items-center justify-center w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors touch-manipulation font-medium border border-blue-200 dark:border-blue-700">
-                                    <i class="fas fa-file-pdf mr-2"></i>
-                                    <span>View Proof of Payment</span>
-                                </a>
-                                <button type="button"
-                                        @click="deletePayment(transaction.id)"
-                                        :disabled="deleteLoading && deletingTransactionId === transaction.id"
-                                        class="inline-flex items-center justify-center w-full px-4 py-3 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation font-medium border border-red-200 dark:border-red-700">
-                                    <i class="fas fa-spinner fa-spin mr-2" x-show="deleteLoading && deletingTransactionId === transaction.id"></i>
-                                    <i class="fas fa-trash mr-2" x-show="!(deleteLoading && deletingTransactionId === transaction.id)"></i>
-                                    <span x-text="(deleteLoading && deletingTransactionId === transaction.id) ? 'Deleting...' : 'Delete Payment'"></span>
-                                </button>
-                            </div>
-                        </div>
-                    </template>
-                </div>
-                
-                <!-- Desktop: Enhanced card layout -->
-                <div x-show="!loading && transactions.length > 0" class="hidden sm:block space-y-4">
-                    <template x-for="transaction in transactions" :key="transaction.id">
-                        <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-xl p-5 shadow-md hover:shadow-xl transition-all hover:border-blue-300 dark:hover:border-blue-600">
-                            <!-- Header Section -->
-                            <div class="flex items-start justify-between mb-4 pb-4 border-b-2 border-gray-200 dark:border-gray-600">
-                                <div class="flex items-start space-x-4 flex-1">
-                                    <div class="w-14 h-14 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
-                                        <i class="fas fa-money-check-alt text-white text-xl"></i>
-                                    </div>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-                                            KES <span x-text="transaction.amount_paid.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
-                                        </p>
-                                        <div class="flex items-center space-x-2">
-                                            <span class="inline-flex items-center px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-sm font-medium">
-                                                <i class="fas fa-credit-card mr-2"></i>
-                                                <span x-text="transaction.payment_method"></span>
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="flex flex-col items-end ml-4">
-                                    <span class="px-4 py-2 bg-blue-500 text-white rounded-xl text-sm font-semibold whitespace-nowrap shadow-md" x-text="transaction.payment_date"></span>
-                                </div>
-                            </div>
-                            
-                            <!-- Details Grid -->
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                                <div x-show="transaction.reference_number" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
-                                    <div class="flex items-center space-x-2 mb-1">
-                                        <i class="fas fa-hashtag text-gray-400"></i>
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Reference Number</p>
-                                    </div>
-                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.reference_number"></p>
-                                </div>
-                                <div x-show="transaction.cheque_number" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
-                                    <div class="flex items-center space-x-2 mb-1">
-                                        <i class="fas fa-file-invoice text-gray-400"></i>
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Cheque Number</p>
-                                    </div>
-                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.cheque_number"></p>
-                                </div>
-                                <div x-show="transaction.transaction_id" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
-                                    <div class="flex items-center space-x-2 mb-1">
-                                        <i class="fas fa-mobile-alt text-gray-400"></i>
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Transaction ID</p>
-                                    </div>
-                                    <p class="text-sm text-gray-900 dark:text-white break-words font-mono font-medium" x-text="transaction.transaction_id"></p>
-                                </div>
-                                <div x-show="transaction.fee_name" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
-                                    <div class="flex items-center space-x-2 mb-1">
-                                        <i class="fas fa-graduation-cap text-gray-400"></i>
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Fee structure</p>
-                                    </div>
-                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.fee_name"></p>
-                                    <p x-show="transaction.finance_account_name" class="text-xs text-teal-600 dark:text-teal-400 mt-1" x-text="transaction.finance_account_name"></p>
-                                    <p x-show="transaction.billing_period" class="text-xs text-gray-500 mt-0.5" x-text="transaction.billing_period"></p>
-                                </div>
-                                <div x-show="transaction.received_by_name" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
-                                    <div class="flex items-center space-x-2 mb-1">
-                                        <i class="fas fa-user-check text-gray-400"></i>
-                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Received By</p>
-                                    </div>
-                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.received_by_name"></p>
-                                </div>
-                            </div>
-                            
-                            <!-- Notes Section -->
-                            <div x-show="transaction.notes" class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800 mb-4">
-                                <div class="flex items-center space-x-2 mb-2">
-                                    <i class="fas fa-sticky-note text-yellow-600 dark:text-yellow-400"></i>
-                                    <p class="text-xs font-semibold text-yellow-700 dark:text-yellow-300 uppercase tracking-wide">Notes</p>
-                                </div>
-                                <p class="text-sm text-yellow-800 dark:text-yellow-200 break-words italic" x-text="transaction.notes"></p>
-                            </div>
-                            
-                            <!-- Action Buttons -->
-                            <div class="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-600">
-                                <button type="button"
-                                        @click="openEditAmount(transaction)"
-                                        class="inline-flex items-center px-5 py-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors font-medium border border-amber-200 dark:border-amber-700">
-                                    <i class="fas fa-edit mr-2"></i>
-                                    <span>Edit amount</span>
-                                </button>
-                                <a :href="receiptPdfUrl(transaction.id)"
-                                   download
-                                   class="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:shadow-lg transition-all font-medium shadow-md">
-                                    <i class="fas fa-file-pdf mr-2"></i>
-                                    <span>Download PDF</span>
-                                </a>
-                                <a :href="receiptViewUrl(transaction.id)"
-                                   target="_blank"
-                                   rel="noopener"
-                                   class="inline-flex items-center px-5 py-2.5 bg-white dark:bg-gray-800 text-teal-700 dark:text-teal-300 rounded-xl border border-teal-200 dark:border-teal-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all font-medium">
-                                    <i class="fas fa-print mr-2"></i>
-                                    <span>View / print</span>
-                                </a>
-                                <a x-show="transaction.proof_of_payment" 
-                                   :href="'/static/' + transaction.proof_of_payment" 
-                                   target="_blank" 
-                                   class="inline-flex items-center px-5 py-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors font-medium border border-blue-200 dark:border-blue-700">
-                                    <i class="fas fa-file-pdf mr-2"></i>
-                                    <span>View Proof of Payment</span>
-                                </a>
-                                <button type="button"
-                                        @click="deletePayment(transaction.id)"
-                                        :disabled="deleteLoading && deletingTransactionId === transaction.id"
-                                        class="inline-flex items-center px-5 py-2.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium border border-red-200 dark:border-red-700">
-                                    <i class="fas fa-spinner fa-spin mr-2" x-show="deleteLoading && deletingTransactionId === transaction.id"></i>
-                                    <i class="fas fa-trash mr-2" x-show="!(deleteLoading && deletingTransactionId === transaction.id)"></i>
-                                    <span x-text="(deleteLoading && deletingTransactionId === transaction.id) ? 'Deleting...' : 'Delete'"></span>
-                                </button>
-                            </div>
-                        </div>
-                    </template>
-                </div>
-                
-                <!-- Edit amount modal (inside transactions modal) -->
-                <div x-show="showEditModal" x-cloak
-                     class="fixed inset-0 z-20 flex items-center justify-center p-4 bg-black/50"
-                     @click.self="closeEditAmount()">
-                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm p-6"
-                         @click.stop>
-                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Edit paid amount</h3>
-                        <p x-show="editAmountError" class="text-sm text-red-600 dark:text-red-400 mb-3" x-text="editAmountError"></p>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Amount (KES)</label>
-                        <input type="number" step="0.01" min="0.01"
-                               x-model="editAmount"
-                               class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500">
-                        <div class="flex gap-3 mt-4">
-                            <button type="button" @click="closeEditAmount()"
-                                    class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
-                            <button type="button" @click="saveEditAmount()" :disabled="editAmountLoading"
-                                    class="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg font-medium">
-                                <span x-show="!editAmountLoading">Save</span>
-                                <span x-show="editAmountLoading">Saving...</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Initialize Alpine Store for Fee Structure Modal -->
-<script>
-// Payment Modal Function
-function paymentModal() {
-    return {
-        isOpen: false,
-        studentId: '',
-        feeStructureId: '',
-        studentName: '',
-        balance: 0,
-        amountPaid: '',
-        paymentMethod: '',
-        referenceNumber: '',
-        chequeNumber: '',
-        transactionId: '',
-        paymentDate: new Date().toISOString().split('T')[0],
-        proofOfPayment: null,
-        notes: '',
-        loading: false,
-        error: '',
-        success: '',
-        openPaymentModal(studentId, feeStructureId, studentName, totalAmount, balance) {
-            this.studentId = studentId;
-            this.feeStructureId = feeStructureId;
-            this.studentName = studentName;
-            this.balance = balance;
-            this.amountPaid = '';
-            this.paymentMethod = '';
-            this.referenceNumber = '';
-            this.chequeNumber = '';
-            this.transactionId = '';
-            this.paymentDate = new Date().toISOString().split('T')[0];
-            this.proofOfPayment = null;
-            this.notes = '';
-            this.error = '';
-            this.success = '';
-            this.isOpen = true;
-        },
-        close() {
-            this.isOpen = false;
-            setTimeout(() => {
-                this.error = '';
-                this.success = '';
-            }, 300);
-        },
-        updatePaymentFields() {
-            this.referenceNumber = '';
-            this.chequeNumber = '';
-            this.transactionId = '';
-        },
-        handleFileSelect(event) {
-            this.proofOfPayment = event.target.files[0];
-        },
-        async submitPayment() {
-            this.loading = true;
-            this.error = '';
-            this.success = '';
-            
-            // Validate required fields
-            if (!this.amountPaid || parseFloat(this.amountPaid) <= 0) {
-                this.error = 'Please enter a valid amount paid.';
-                this.loading = false;
-                return;
-            }
-            
-            if (!this.paymentMethod) {
-                this.error = 'Please select a payment method.';
-                this.loading = false;
-                return;
-            }
-            
-            if (!this.paymentDate) {
-                this.error = 'Please select a payment date.';
-                this.loading = false;
-                return;
-            }
-            
-            // Validate payment method specific fields
-            if (this.paymentMethod === 'Bank Transfer' && !this.referenceNumber) {
-                this.error = 'Reference number is required for bank transfer.';
-                this.loading = false;
-                return;
-            }
-            
-            if (this.paymentMethod === 'Cheque' && !this.chequeNumber) {
-                this.error = 'Cheque number is required for cheque payment.';
-                this.loading = false;
-                return;
-            }
-            
-            if (this.paymentMethod === 'Mobile Money' && !this.transactionId) {
-                this.error = 'Transaction ID is required for mobile money payment.';
-                this.loading = false;
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('student_id', this.studentId);
-            formData.append('fee_structure_id', this.feeStructureId);
-            formData.append('amount_paid', this.amountPaid);
-            formData.append('payment_method', this.paymentMethod);
-            formData.append('payment_date', this.paymentDate);
-            if (this.referenceNumber) formData.append('reference_number', this.referenceNumber);
-            if (this.chequeNumber) formData.append('cheque_number', this.chequeNumber);
-            if (this.transactionId) formData.append('transaction_id', this.transactionId);
-            if (this.notes) formData.append('notes', this.notes);
-            if (this.proofOfPayment) formData.append('proof_of_payment', this.proofOfPayment);
-            
-            try {
-                const response = await fetch('{{ employee_dash_url('student-fees/record-payment') }}', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
-                
                 if (data.success) {
                     this.success = data.message;
                     setTimeout(() => {

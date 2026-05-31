@@ -55,7 +55,7 @@
     <p class="sys-settings-sidebar__section sys-settings-sidebar__section--border">Advanced</p>
 
     <a href="{{ employee_dash_url('integration-settings') }}"
-       class="sidebar-item {% if request.endpoint == 'integration_settings' %}sidebar-item-active{% endif %}">
+       class="sidebar-item {% if request.endpoint in ('integration_settings', 'integration_settings_google', 'integration_settings_communication', 'integration_settings_finance', 'integration_settings_ai') %}sidebar-item-active{% endif %}">
         <i class="fas fa-plug w-5 text-center" aria-hidden="true"></i>
         <span class="sys-settings-sidebar__label">Integrations</span>
     </a>

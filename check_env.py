@@ -7,22 +7,16 @@ Usage: python check_env.py
 import os
 from pathlib import Path
 
-# Load .env and optional .env.local (see env.local.example, env.hosted.example)
+# Load .env.local (local) or .env (hosted)
 env_root = Path(__file__).parent
 try:
     from env_loader import load_project_env
-    load_project_env(str(env_root))
-    _env = env_root / ".env"
-    _local = env_root / ".env.local"
-    if _env.is_file() or _local.is_file():
-        if _local.is_file():
-            print(f"Loaded .env and .env.local from {env_root}")
-        else:
-            print(f"Loaded .env from {env_root}")
+    loaded = load_project_env(str(env_root))
+    if loaded:
+        print(f"Loaded {loaded.name} from {env_root}")
     else:
-        print(f"WARNING: No .env or .env.local at {env_root}")
-        print("  Production: copy env.hosted.example to .env")
-        print("  Local dev:   copy env.local.example to .env.local\n")
+        print(f"WARNING: No .env.local or .env at {env_root}")
+        print("  Create .env.local for local dev or .env on the server.\n")
 except ImportError:
     print("Note: python-dotenv not installed. Using system environment only.")
 

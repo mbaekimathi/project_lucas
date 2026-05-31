@@ -2,183 +2,248 @@
 {% set rev = ad.revenue|default({}) %}
 {% set pr = ad.payroll|default({}) %}
 {% set inv = ad.payments|default({}) %}
+{% set fees = ad.fees|default({}) %}
+{% set acct = ad.accounts|default({}) %}
+{% set out = ad.outflows|default({}) %}
+{% set rpos = ad.revenue_position|default({}) %}
 
 <div class="accounts-page min-h-screen bg-[#eef2f6] dark:bg-[#0b1120]">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14 space-y-5">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14 space-y-5">
 
         <header class="accounts-hero rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
             <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4">
                 <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
-                    <i class="fas fa-chart-pie opacity-80"></i>
-                    <span>Accounts · Overview</span>
+                    <i class="fas fa-calculator opacity-80"></i>
+                    <span>Accounts module</span>
                 </div>
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div class="min-w-0">
-                        <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Accountant dashboard</h1>
-                        <p class="mt-1.5 text-sm text-slate-300/90 max-w-2xl leading-relaxed">
-                            Live summary across revenue, payroll, and payables — same metrics as each module page.
-                        </p>
-                    </div>
-                    <a href="{{ employee_dash_url('visual-analytics') }}"
-                       class="accounts-btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shrink-0 transition">
-                        <i class="fas fa-chart-pie"></i>
-                        Visual analytics
-                    </a>
+                <div class="mt-2">
+                    <h1 class="text-xl sm:text-2xl font-bold text-white tracking-tight">Finance overview</h1>
+                    <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
+                        Student fees, revenue, and outflows at a glance.
+                    </p>
                 </div>
             </div>
 
-            <div class="accounts-hero-band px-4 sm:px-6 pb-4 sm:pb-5">
-                <p class="accounts-section-title mb-2.5">Financial position</p>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
-                    <div class="accounts-stat rounded-lg px-3 py-2.5">
-                        <p class="accounts-stat-label stat-emerald">Total income</p>
-                        <p class="accounts-stat-value accounts-stat-value--lg">KES {{ ad.total_income_display|default('0.00') }}</p>
-                        <p class="accounts-stat-meta">{{ rev.total_count|default(0) }} revenue entries</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-3 py-2.5">
-                        <p class="accounts-stat-label stat-amber">Total disbursed</p>
-                        <p class="accounts-stat-value accounts-stat-value--lg">KES {{ ad.total_outflow_display|default('0.00') }}</p>
-                        <p class="accounts-stat-meta">
-                            Payroll KES {{ ad.payroll_outflow_display|default('0.00') }} · Payables KES {{ ad.payables_outflow_display|default('0.00') }}
-                        </p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-3 py-2.5">
-                        <p class="accounts-stat-label stat-sky">Net (income − outflow)</p>
-                        <p class="accounts-stat-value accounts-stat-value--lg">KES {{ ad.net_position_display|default('0.00') }}</p>
-                    </div>
+            <div class="accounts-hero-band px-4 sm:px-6 pb-5 sm:pb-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <section class="accounts-panel rounded-xl overflow-hidden">
+                        <div class="accounts-panel-head px-4 py-3">
+                            <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Student fees</h2>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400">Current term billing</p>
+                        </div>
+                        <div class="accounts-metrics-band px-4 py-3 space-y-2">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-500 dark:text-slate-400">Total billed</span>
+                                <span class="font-semibold tabular-nums">KES {{ fees.sum_total_display|default('0.00') }}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-500 dark:text-slate-400">Collected</span>
+                                <span class="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">KES {{ fees.sum_paid_display|default('0.00') }}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-500 dark:text-slate-400">Outstanding</span>
+                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-400">KES {{ fees.total_outstanding_display|default('0.00') }}</span>
+                            </div>
+                            <div class="pt-2 border-t border-[var(--acc-line)]">
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="text-slate-500">Collection rate</span>
+                                    <span class="font-bold text-teal-700 dark:text-teal-400">{{ fees.collection_pct|default(0) }}%</span>
+                                </div>
+                                <div class="mt-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                                    <div class="h-full rounded-full bg-teal-500 transition-all" style="width: {{ [fees.collection_pct|default(0), 100]|min }}%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="accounts-panel rounded-xl overflow-hidden">
+                        <div class="accounts-panel-head px-4 py-3">
+                            <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Revenue</h2>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400">Income vs outflows · net position</p>
+                        </div>
+                        <div class="accounts-metrics-band px-4 py-3 space-y-2">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-500 dark:text-slate-400">Total revenue</span>
+                                <span class="font-semibold tabular-nums">KES {{ rpos.total_revenue_display|default('0.00') }}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-500 dark:text-slate-400">Outflows</span>
+                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-400">KES {{ rpos.total_outflows_display|default('0.00') }}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-500 dark:text-slate-400">Remaining</span>
+                                <span class="font-semibold tabular-nums {% if (rpos.remaining|default(0)) >= 0 %}text-emerald-700 dark:text-emerald-400{% else %}text-red-600 dark:text-red-400{% endif %}">
+                                    KES {{ rpos.remaining_display|default('0.00') }}
+                                </span>
+                            </div>
+                            <div class="pt-2 border-t border-[var(--acc-line)]">
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="text-slate-500">Outflow share of revenue</span>
+                                    <span class="font-bold text-teal-700 dark:text-teal-400">{{ rpos.outflow_pct|default(0) }}%</span>
+                                </div>
+                                <div class="mt-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                                    <div class="h-full rounded-full bg-amber-500 transition-all" style="width: {{ [rpos.outflow_pct|default(0), 100]|min }}%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="accounts-panel rounded-xl overflow-hidden">
+                        <div class="accounts-panel-head px-4 py-3">
+                            <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Outflows</h2>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400">Due vs disbursed · payroll &amp; payables</p>
+                        </div>
+                        <div class="accounts-metrics-band px-4 py-3 space-y-2">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-500 dark:text-slate-400">Total to disburse</span>
+                                <span class="font-semibold tabular-nums">KES {{ out.total_due_display|default('0.00') }}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-500 dark:text-slate-400">Disbursed</span>
+                                <span class="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">KES {{ out.total_disbursed_display|default('0.00') }}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-500 dark:text-slate-400">Outstanding</span>
+                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-400">KES {{ out.outstanding_display|default('0.00') }}</span>
+                            </div>
+                            <div class="pt-2 border-t border-[var(--acc-line)]">
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="text-slate-500">Disbursement rate</span>
+                                    <span class="font-bold text-teal-700 dark:text-teal-400">{{ out.disbursement_pct|default(0) }}%</span>
+                                </div>
+                                <div class="mt-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                                    <div class="h-full rounded-full bg-teal-500 transition-all" style="width: {{ [out.disbursement_pct|default(0), 100]|min }}%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
         </header>
 
-        <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
-            <div class="accounts-panel-head px-4 sm:px-5 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div class="flex items-center gap-3 min-w-0">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-                        <i class="fas fa-chart-line text-sm"></i>
-                    </span>
-                    <div>
-                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Revenue</h2>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Student fees, government &amp; private income</p>
-                    </div>
+        <section class="accounts-panel rounded-xl overflow-hidden">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3">
+                <div>
+                    <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Accounts breakdown</h2>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                        Ledger balances by category · {{ acct.active_accounts|default(0) }} active of {{ acct.total_accounts|default(0) }} accounts
+                    </p>
                 </div>
-                <a href="{{ employee_dash_url('revenue') }}"
-                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-100 transition">
-                    Open revenue <i class="fas fa-arrow-right text-[10px]"></i>
-                </a>
             </div>
             <div class="accounts-metrics-band px-4 sm:px-5 py-4">
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-amber">Total income</p>
-                        <p class="accounts-stat-value">KES {{ rev.total_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-sky">Student fees</p>
-                        <p class="accounts-stat-value">KES {{ rev.fees_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-emerald">Government</p>
-                        <p class="accounts-stat-value">KES {{ rev.government_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-violet">Private</p>
-                        <p class="accounts-stat-value">KES {{ rev.private_display|default('0.00') }}</p>
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-[var(--acc-line)]">
+                    <div>
+                        <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total ledger balance</p>
+                        <p class="text-lg font-bold tabular-nums text-teal-800 dark:text-teal-300">KES {{ acct.total_balance_display|default('0.00') }}</p>
                     </div>
                 </div>
-            </div>
-        </section>
 
-        <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
-            <div class="accounts-panel-head px-4 sm:px-5 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div class="flex items-center gap-3 min-w-0">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
-                        <i class="fas fa-wallet text-sm"></i>
+                {% if acct.total_accounts|default(0) == 0 %}
+                <div class="text-center py-8 text-sm text-slate-500 dark:text-slate-400">
+                    <i class="fas fa-book text-2xl mb-2 opacity-40 block"></i>
+                    No finance accounts registered yet.
+                </div>
+                {% else %}
+                {% if acct.by_category %}
+                <div class="flex flex-wrap gap-2 mb-4">
+                    {% for row in acct.by_category %}
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                        {{ row.category }}
+                        <span class="text-slate-400">·</span>
+                        <span class="tabular-nums">{{ row.count }}</span>
+                        <span class="text-slate-400">·</span>
+                        <span class="tabular-nums font-semibold text-teal-700 dark:text-teal-400">KES {{ row.balance_display }}</span>
                     </span>
-                    <div>
-                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Staff &amp; salaries</h2>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Payroll due, outstanding &amp; disbursements</p>
-                    </div>
+                    {% endfor %}
                 </div>
-                <a href="{{ employee_dash_url('staff-and-salaries') }}"
-                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-100 transition">
-                    Open payroll <i class="fas fa-arrow-right text-[10px]"></i>
-                </a>
-            </div>
-            <div class="accounts-metrics-band px-4 sm:px-5 py-4">
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-sky">Payroll due</p>
-                        <p class="accounts-stat-value">KES {{ pr.payroll_due_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-emerald">Paid (period)</p>
-                        <p class="accounts-stat-value">KES {{ pr.paid_current_period_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-amber">Outstanding</p>
-                        <p class="accounts-stat-value">KES {{ pr.outstanding_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-teal">This month</p>
-                        <p class="accounts-stat-value">KES {{ pr.paid_this_month_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-violet">Pending staff</p>
-                        <p class="accounts-stat-value">{{ pr.pending_staff_count|default(0) }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-teal">Disbursed</p>
-                        <p class="accounts-stat-value">KES {{ pr.total_disbursed_display|default('0.00') }}</p>
-                    </div>
-                </div>
-            </div>
-        </section>
+                {% endif %}
 
-        <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
-            <div class="accounts-panel-head px-4 sm:px-5 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div class="flex items-center gap-3 min-w-0">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-                        <i class="fas fa-file-invoice-dollar text-sm"></i>
-                    </span>
-                    <div>
-                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Payments &amp; invoices</h2>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Stock-in payables and other disbursements</p>
-                    </div>
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">All accounts</p>
+                <div class="acct-breakdown-table-wrap rounded-lg border border-[var(--acc-line)] overflow-x-auto">
+                    <table class="acct-breakdown-table w-full text-sm min-w-[32rem]">
+                        <thead>
+                            <tr>
+                                <th>Account name</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                <th class="text-right">Balance (KES)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for a in acct.all_accounts|default(acct.top_accounts|default([])) %}
+                            <tr>
+                                <td class="font-semibold">{{ a.account_name }}</td>
+                                <td class="text-slate-600 dark:text-slate-300">{{ a.account_category }}</td>
+                                <td>
+                                    {% if a.account_status == 'active' %}
+                                    <span class="acct-status acct-status--active">Active</span>
+                                    {% elif a.account_status == 'suspended' %}
+                                    <span class="acct-status acct-status--suspended">Suspended</span>
+                                    {% else %}
+                                    <span class="acct-status">{{ a.account_status|upper }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-right tabular-nums font-semibold{% if a.balance < 0 %} text-red-600 dark:text-red-400{% elif a.balance > 0 %} text-emerald-700 dark:text-emerald-400{% else %} text-slate-500{% endif %}">
+                                    {{ a.balance_display }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="3" class="font-bold">Total ({{ acct.total_accounts|default(0) }} accounts)</td>
+                                <td class="text-right font-bold tabular-nums">KES {{ acct.total_balance_display|default('0.00') }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
-                <a href="{{ employee_dash_url('payments-invoices') }}"
-                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-100 transition">
-                    Open payables <i class="fas fa-arrow-right text-[10px]"></i>
-                </a>
-            </div>
-            <div class="accounts-metrics-band px-4 sm:px-5 py-4">
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-amber">Outstanding</p>
-                        <p class="accounts-stat-value">KES {{ inv.stock_in_outstanding_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-emerald">Stock paid</p>
-                        <p class="accounts-stat-value">KES {{ inv.stock_in_paid_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-violet">Other</p>
-                        <p class="accounts-stat-value">KES {{ inv.misc_total_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-sky">Invoiced</p>
-                        <p class="accounts-stat-value">KES {{ inv.stock_in_invoiced_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-teal">This month</p>
-                        <p class="accounts-stat-value">KES {{ inv.paid_this_month_display|default('0.00') }}</p>
-                    </div>
-                    <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="accounts-stat-label stat-teal">Disbursed</p>
-                        <p class="accounts-stat-value">KES {{ inv.total_disbursed_display|default('0.00') }}</p>
-                    </div>
-                </div>
+                {% endif %}
             </div>
         </section>
 
     </div>
 </div>
+
+<style>
+.acct-breakdown-table thead {
+    background: #f1f5f9;
+}
+.dark .acct-breakdown-table thead { background: #1e293b; }
+.acct-breakdown-table th,
+.acct-breakdown-table td {
+    color: var(--acc-ink);
+}
+.acct-breakdown-table th {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    text-align: left;
+}
+.acct-breakdown-table td {
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--acc-line);
+    vertical-align: middle;
+}
+.acct-breakdown-table tfoot td {
+    border-top: 2px solid var(--acc-line);
+    background: #f8fafc;
+}
+.dark .acct-breakdown-table tfoot td { background: rgba(255,255,255,0.04); }
+.acct-breakdown-table tbody tr:hover { background: rgba(13,148,136,0.04); }
+.acct-status {
+    display: inline-block;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.45rem;
+    border-radius: 9999px;
+}
+.acct-status--active { background: #d1fae5; color: #047857; }
+.acct-status--suspended { background: #fef3c7; color: #b45309; }
+.dark .acct-status--active { background: rgba(4,120,87,0.25); color: #6ee7b7; }
+.dark .acct-status--suspended { background: rgba(180,83,9,0.25); color: #fcd34d; }
+</style>

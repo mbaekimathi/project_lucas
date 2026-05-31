@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+
+{% block title %}Stock Audits — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/store_stock_page_styles.html' %}
+{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/store_manager_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('storeStockAuditsPage', function () {
+    return {
+      movements: {{ audit_movements|tojson }},
+      listMode: 'all',
+      searchQuery: '',
+      printUrlBase: {{ employee_dash_url('store-stock/print')|tojson }},
+      init: function () {},
+      setListMode: function (mode) {
+        this.listMode = mode === 'in' || mode === 'out' ? mode : 'all';
+      },
+      onSearchInput: function ($event) {
+        var val = ($event.target.value || '').toUpperCase();
+        $event.target.value = val;
+        this.searchQuery = val;
+      },
+      clearSearch: function () {
+        this.searchQuery = '';
+      },
+      haystack: function (m) {
+        return [
+          m.reference_number,
+          m.movement_type,
+          m.item_name,
+          m.item_ref,
+          m.item_category,
+          m.measure,
+          m.supplier_name,
+          m.supplier_phone,
+          m.payment_status,
+          m.stock_out_purpose,
+          m.performed_by_name,
+          m.notes,
+          m.created_at_display,
+          String(m.quantity || ''),
+          String(m.quantity_before || ''),
+          String(m.quantity_after || ''),
+        ].filter(Boolean).join(' ').toUpperCase();
+      },
+      matchesSearch: function (m) {
+        var q = (this.searchQuery || '').trim().toUpperCase();
+        if (!q) return true;
+        return this.haystack(m).indexOf(q) !== -1;
+      },
+      matchesMode: function (m) {
+        if (this.listMode === 'all') return true;
+        return (m.movement_type || '') === this.listMode;
+      },
+      get filteredMovements() {
+        var self = this;
+        return (this.movements || []).filter(function (m) {
+          return self.matchesMode(m) && self.matchesSearch(m);
+        });
+      },
+      get countIn() {
+        return (this.movements || []).filter(function (m) { return m.movement_type === 'in'; }).length;
+      },
+      get countOut() {
+        return (this.movements || []).filter(function (m) { return m.movement_type === 'out'; }).length;
+      },
+      paymentBadgeClass: function (status) {
+        var s = String(status || '').toLowerCase();
+        if (s === 'paid' || s === 'complete' || s === 'completed') return 'ss-pay-badge--paid';
+        if (s === 'partial') return 'ss-pay-badge--partial';
+        if (s === 'pending') return 'ss-pay-badge--pending';
+        return 'ss-pay-badge--muted';
+      },
+      formatKes: function (v) {
+        if (v === null || v === undefined || v === '' || v === '—') return '—';
+        var n = parseFloat(v);
+        return Number.isFinite(n) ? ('KES ' + n.toFixed(2)) : '—';
+      },
+      printUrl: function (id) {
+        return this.printUrlBase + '/' + id;
+      },
+    };
+  });
+});
+</script>
+
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }} si-page ss-page">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14" x-data="storeStockAuditsPage">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-5 space-y-2">
+            {% for category, message in messages %}
+            <div class="flex gap-3 rounded-xl border px-4 py-3 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100{% endif %}">
+                <span class="mt-0.5 shrink-0" aria-hidden="true">
+                    {% if category == 'success' %}<i class="fas fa-check"></i>{% elif category == 'error' %}<i class="fas fa-exclamation"></i>{% else %}<i class="fas fa-info"></i>{% endif %}
+                </span>
+                <span class="min-w-0 flex-1">{{ message }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <header class="ss-hero ss-hero--audit">
+            <div class="ss-hero__inner">
+                <div class="ss-hero__top">
+                    <div class="min-w-0 flex gap-3.5">
+                        <div class="ss-hero__icon" aria-hidden="true"><i class="fas fa-clipboard-check"></i></div>
+                        <div class="min-w-0">
+                            <a href="{{ employee_dash_url('store-stock') }}" class="ss-hero__back">
+                                <i class="fas fa-chevron-left text-[0.5rem]"></i> Stock in &amp; out
+                            </a>
+                            <h1 class="ss-hero__title">Stock audits</h1>
+                            <p class="ss-hero__sub si-normal">
+                                Full audit trail of every stock in and stock out — quantities, balances, suppliers, and who recorded each movement.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="ss-hero__actions">
+                    <a href="{{ employee_dash_url('store-stock') }}" class="ss-hero__link"><i class="fas fa-arrow-right-arrow-left"></i> Stock in &amp; out</a>
+                    <a href="{{ employee_dash_url('store-inventory') }}" class="ss-hero__link"><i class="fas fa-boxes-stacked"></i> Item catalog</a>
+                </div>
+            </div>
+        </header>
+
+        <section class="si-panel ss-audit-panel mt-5">
+            <div class="si-panel-head ss-list-panel__head">
+                <div class="min-w-0">
+                    <h2 class="si-title">Movement audit log</h2>
+                    <p class="si-subtitle si-normal">Detailed history of all stock movements.</p>
+                    <span class="ss-results-badge mt-2" x-show="movements.length > 0">
+                        <i class="fas fa-list-check"></i>
+                        <span x-text="movements.length + ' record' + (movements.length === 1 ? '' : 's')"></span>
+                        <span class="opacity-80"> · </span>
+                        <span x-text="countIn + ' in'"></span>
+                        <span class="opacity-80"> / </span>
+                        <span x-text="countOut + ' out'"></span>
+                    </span>
+                </div>
+                <div class="ss-list-tabs">
+                    <button type="button" @click="setListMode('all')"
+                            class="ss-list-tab" :class="listMode === 'all' ? 'is-active is-in' : ''">
+                        All (<span x-text="movements.length"></span>)
+                    </button>
+                    <button type="button" @click="setListMode('in')"
+                            class="ss-list-tab is-in" :class="listMode === 'in' ? 'is-active' : ''">
+                        Stock in (<span x-text="countIn"></span>)
+                    </button>
+                    <button type="button" @click="setListMode('out')"
+                            class="ss-list-tab is-out" :class="listMode === 'out' ? 'is-active' : ''">
+                        Stock out (<span x-text="countOut"></span>)
+                    </button>
+                </div>
+            </div>
+
+            <div class="si-panel-body">
+                <div class="ss-search-bar si-normal">
+                    <div class="si-search-wrap">
+                        <i class="fas fa-search"></i>
+                        <input type="search"
+                               x-model="searchQuery"
+                               @input="onSearchInput($event)"
+                               class="si-input si-upper"
+                               placeholder="SEARCH REF, ITEM, CATEGORY, SUPPLIER, PURPOSE, USER…"
+                               aria-label="Search audit records" />
+                    </div>
+                    <button type="button" x-show="searchQuery" x-cloak @click="clearSearch()" class="si-btn si-btn--ghost py-2 px-3 text-xs">Clear</button>
+                </div>
+
+                <div x-show="movements.length === 0" class="si-empty mt-3">
+                    <i class="fas fa-clipboard-list block"></i>
+                    <p class="font-semibold text-[var(--si-ink)] si-normal">No stock movements recorded yet</p>
+                    <p class="mt-1 text-sm si-normal"><a href="{{ employee_dash_url('store-stock') }}" class="text-[var(--si-brand)] underline">Record stock in or out</a> to build the audit trail.</p>
+                </div>
+
+                <div x-show="movements.length > 0 && filteredMovements.length === 0" x-cloak class="si-empty mt-3">
+                    <i class="fas fa-magnifying-glass block"></i>
+                    <p class="font-semibold text-[var(--si-ink)] si-normal">No records match your filters</p>
+                    <p class="mt-1 text-sm si-normal">Try a different search term or filter.</p>
+                </div>
+
+                <div x-show="filteredMovements.length > 0" class="ss-list-table mt-3">
+                    <div class="si-table-wrap ss-table-wrap ss-audit-table-wrap">
+                        <table class="si-table ss-table--audit">
+                            <thead>
+                                <tr>
+                                    <th>Date &amp; time</th>
+                                    <th>Reference</th>
+                                    <th>Type</th>
+                                    <th>Item</th>
+                                    <th>Expense category</th>
+                                    <th class="text-right">Qty</th>
+                                    <th>Measure</th>
+                                    <th class="text-right">Before</th>
+                                    <th class="text-right">After</th>
+                                    <th class="text-right">Unit price</th>
+                                    <th class="text-right">Total</th>
+                                    <th>Payment</th>
+                                    <th>Supplier / purpose</th>
+                                    <th>Recorded by</th>
+                                    <th>Notes</th>
+                                    <th class="text-center">Print</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="m in filteredMovements" :key="m.id">
+                                    <tr :class="m.movement_type === 'in' ? 'ss-row--in' : 'ss-row--out'">
+                                        <td class="whitespace-nowrap text-[0.6875rem] si-normal" x-text="m.created_at_display"></td>
+                                        <td><span class="si-ref" x-text="m.reference_number"></span></td>
+                                        <td>
+                                            <span class="ss-type-badge"
+                                                  :class="m.movement_type === 'in' ? 'ss-type-badge--in' : 'ss-type-badge--out'">
+                                                <i class="fas" :class="m.movement_type === 'in' ? 'fa-arrow-down' : 'fa-arrow-up'"></i>
+                                                <span x-text="m.movement_type === 'in' ? 'In' : 'Out'"></span>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="font-semibold block" x-text="m.item_name"></span>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)]" x-text="m.item_ref"></span>
+                                        </td>
+                                        <td class="max-w-[9rem] truncate" :title="m.item_category" x-text="m.item_category || '—'"></td>
+                                        <td class="text-right tabular-nums font-semibold" x-text="m.quantity"></td>
+                                        <td x-text="m.measure"></td>
+                                        <td class="text-right tabular-nums text-[var(--si-muted)]" x-text="m.quantity_before"></td>
+                                        <td class="text-right tabular-nums font-medium" x-text="m.quantity_after"></td>
+                                        <td class="text-right tabular-nums whitespace-nowrap">
+                                            <span x-show="m.movement_type === 'in'" x-text="formatKes(m.buying_price_display)"></span>
+                                            <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                        </td>
+                                        <td class="text-right tabular-nums font-semibold whitespace-nowrap">
+                                            <span x-show="m.movement_type === 'in'" x-text="formatKes(m.total_amount_display)"></span>
+                                            <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                        </td>
+                                        <td>
+                                            <template x-if="m.movement_type === 'in'">
+                                                <div>
+                                                    <span class="ss-pay-badge" :class="paymentBadgeClass(m.payment_status)" x-text="m.payment_status || '—'"></span>
+                                                    <span class="block text-[0.625rem] text-[var(--si-muted)] mt-0.5 tabular-nums si-normal"
+                                                          x-show="m.amount_paid_display && m.amount_paid_display !== '—'"
+                                                          x-text="'Paid: KES ' + m.amount_paid_display"></span>
+                                                </div>
+                                            </template>
+                                            <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                        </td>
+                                        <td class="max-w-[10rem]">
+                                            <template x-if="m.movement_type === 'in'">
+                                                <div class="truncate" :title="m.supplier_name || ''">
+                                                    <span class="block truncate" x-text="m.supplier_name || '—'"></span>
+                                                    <span class="text-[0.625rem] text-[var(--si-muted)] si-normal block truncate"
+                                                          x-show="m.supplier_phone" x-text="m.supplier_phone"></span>
+                                                </div>
+                                            </template>
+                                            <template x-if="m.movement_type === 'out'">
+                                                <span class="block truncate" :title="m.stock_out_purpose || ''" x-text="m.stock_out_purpose || '—'"></span>
+                                            </template>
+                                        </td>
+                                        <td class="max-w-[8rem] truncate si-normal" :title="m.performed_by_name || ''" x-text="m.performed_by_name || '—'"></td>
+                                        <td class="max-w-[10rem] truncate si-normal" :title="m.notes || ''" x-text="m.notes || '—'"></td>
+                                        <td class="text-center">
+                                            <a :href="printUrl(m.id)" target="_blank" rel="noopener"
+                                               class="si-btn si-btn--icon" title="Print receipt"><i class="fas fa-print"></i></a>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="mt-3 text-xs text-[var(--si-muted)] si-normal">
+                        Showing <span x-text="filteredMovements.length"></span> of <span x-text="movements.length"></span> records (most recent first).
+                    </p>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

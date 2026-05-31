@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}{{ account.account_name }} — Account summary{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/finance_account_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+{% include 'dashboards/includes/finance_account_reports_ui.html' %}
+
+<div class="acr-page page-content">
+    <div class="acr-inner">
+        <div class="acr-toolbar no-print">
+            <nav class="acr-breadcrumb" aria-label="Breadcrumb">
+                <a href="{{ employee_dash_url('finance-overview') }}">Reports</a>
+                <span aria-hidden="true">/</span>
+                <span class="acr-breadcrumb__current">{{ account.account_name }}</span>
+            </nav>
+            <div class="acr-toolbar__actions">
+                <button type="button" class="acr-btn" onclick="window.print()">
+                    <i class="fas fa-print" aria-hidden="true"></i> Print
+                </button>
+                <a href="{{ employee_dash_url('revenue') }}" class="acr-btn">
+                    <i class="fas fa-layer-group" aria-hidden="true"></i> All revenue
+                </a>
+                <a href="{{ employee_dash_url('accounts') }}?edit={{ account.id }}" class="acr-btn acr-btn--primary">
+                    <i class="fas fa-cog" aria-hidden="true"></i> Settings
+                </a>
+            </div>
+        </div>
+
+        {% with report_title='Account summary', report_description='Overview of fees collected and other income posted to this account. Use the sidebar for detailed ledger reports.', show_filters=false, filter_action_url='', is_summary=true %}
+        {% include 'dashboards/includes/finance_account_report_masthead.html' %}
+        {% endwith %}
+
+        <div class="acr-kpis" aria-label="Account summary">
+            <div class="acr-kpi acr-kpi--teal">
+                <p class="acr-kpi__label">Ledger balance</p>
+                <p class="acr-kpi__value">KES {{ account.current_balance_display|default('0.00') }}</p>
+                <p class="acr-kpi__hint">Book balance now</p>
+            </div>
+            <div class="acr-kpi acr-kpi--sky">
+                <p class="acr-kpi__label">Student fees</p>
+                <p class="acr-kpi__value">KES {{ report.fees_total_display }}</p>
+                <p class="acr-kpi__hint">{{ report.fee_count }} payment{{ 's' if report.fee_count != 1 else '' }}</p>
+            </div>
+            <div class="acr-kpi acr-kpi--violet">
+                <p class="acr-kpi__label">Other income</p>
+                <p class="acr-kpi__value">KES {{ report.manual_total_display }}</p>
+                <p class="acr-kpi__hint">{{ report.manual_count }} entr{{ 'ies' if report.manual_count != 1 else 'y' }}</p>
+            </div>
+            <div class="acr-kpi acr-kpi--emerald">
+                <p class="acr-kpi__label">Total received</p>
+                <p class="acr-kpi__value">KES {{ report.money_in_display }}</p>
+                <p class="acr-kpi__hint">Fees + registered income</p>
+            </div>
+        </div>
+
+        {% if fees_breakdown %}
+        <div class="acr-chips no-print" aria-label="Fees by type">
+            {% for fb in fees_breakdown %}
+            <span class="acr-chip">
+                <span>{{ fb.fee_name }}</span>
+                <span class="acr-chip__amount">KES {{ fb.total_display }}</span>
+                <span class="acr-chip__meta">{{ fb.payment_count }} pmt</span>
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <section class="acr-section" aria-labelledby="acr-fees-h">
+            <div class="acr-section__head">
+                <div>
+                    <h2 id="acr-fees-h" class="acr-section__title">
+                        <i class="fas fa-graduation-cap acr-icon--fees" aria-hidden="true"></i>
+                        Student fee payments
+                    </h2>
+                    <p class="acr-section__sub">Collections from parents allocated to this account</p>
+                </div>
+                <span class="acr-section__count">{{ fee_rows|length }} rows</span>
+            </div>
+            {% if fee_rows %}
+            <div class="acr-table-scroll acr-table-scroll--stack">
+                <table class="acr-table acr-table--stack min-w-[36rem]">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Student</th>
+                            <th>Fee</th>
+                            <th>Reference</th>
+                            <th>Method</th>
+                            <th class="acr-num">Amount (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in fee_rows %}
+                        <tr>
+                            <td data-label="Date">{{ row.created_at_display|default('—') }}</td>
+                            <td data-label="Student">
+                                <span class="font-semibold">{{ row.name|default('—') }}</span>
+                                {% if row.student_id %}<span class="block acr-mono text-[var(--acr-muted)]">{{ row.student_id }}</span>{% endif %}
+                            </td>
+                            <td data-label="Fee">{{ row.fee_name|default('—') }}</td>
+                            <td data-label="Reference" class="acr-mono">{{ row.reference_number|default('—') }}</td>
+                            <td data-label="Method">{{ row.payment_method|default('—') }}</td>
+                            <td class="acr-num" data-label="Amount">KES {{ row.amount_display|default('0.00') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="5" class="acr-num" style="text-align:right">Subtotal</td>
+                            <td class="acr-num">KES {{ report.fees_total_display }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="acr-empty">
+                <i class="fas fa-graduation-cap" aria-hidden="true"></i>
+                <p class="acr-empty__title">No fee payments</p>
+                <p>Student fee receipts will appear here when recorded against this account.</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="acr-section" aria-labelledby="acr-inc-h">
+            <div class="acr-section__head">
+                <div>
+                    <h2 id="acr-inc-h" class="acr-section__title">
+                        <i class="fas fa-coins acr-icon--default" aria-hidden="true"></i>
+                        Other income registered
+                    </h2>
+                    <p class="acr-section__sub">Grants, donations, and direct income postings</p>
+                </div>
+                <span class="acr-section__count">{{ manual_rows|length }} rows</span>
+            </div>
+            {% if manual_rows %}
+            <div class="acr-table-scroll acr-table-scroll--stack">
+                <table class="acr-table acr-table--stack min-w-[32rem]">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>From / title</th>
+                            <th>Description</th>
+                            <th>Reference</th>
+                            <th class="acr-num">Amount (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in manual_rows %}
+                        <tr>
+                            <td data-label="Date">{{ row.created_at_display|default('—') }}</td>
+                            <td data-label="From" class="font-semibold">{{ row.name|default('—') }}</td>
+                            <td data-label="Description">{{ row.description|default('—') }}</td>
+                            <td data-label="Reference" class="acr-mono">{{ row.reference_number|default('—') }}</td>
+                            <td class="acr-num" data-label="Amount">KES {{ row.amount_display|default('0.00') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" style="text-align:right">Subtotal</td>
+                            <td class="acr-num">KES {{ report.manual_total_display }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="acr-empty">
+                <i class="fas fa-coins" aria-hidden="true"></i>
+                <p class="acr-empty__title">No other income</p>
+                <p>Registered income entries will show here when added to this account.</p>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

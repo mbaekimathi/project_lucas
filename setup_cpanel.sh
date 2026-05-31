@@ -27,7 +27,7 @@ pip install -r requirements.txt
 if [ ! -f ".env" ]; then
     echo ""
     echo "WARNING: .env not found!"
-    echo "  Create .env in the project root with DB credentials and SECRET_KEY"
+    echo "  Create .env on the server with DB credentials, SECRET_KEY, and other settings"
     echo ""
 else
     echo ".env found."

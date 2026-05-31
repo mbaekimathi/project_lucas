@@ -5,11 +5,23 @@
     <span>Stock in &amp; out</span>
     {% if request.endpoint in ('store_stock', 'store_stock_print') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('store-stock/audits') }}"
+   class="sidebar-item {% if request.endpoint == 'store_stock_audits' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Stock audits</span>
+    {% if request.endpoint == 'store_stock_audits' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-stock/analytics') }}"
+   class="sidebar-item {% if request.endpoint in ('store_stock_analytics', 'store_stock_analytics_data') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Stock analytics</span>
+    {% if request.endpoint in ('store_stock_analytics', 'store_stock_analytics_data') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 <a href="{{ employee_dash_url('store-inventory') }}"
-   class="sidebar-item {% if request.endpoint == 'store_inventory' %}sidebar-item-active{% endif %}">
+   class="sidebar-item {% if request.endpoint in ('store_inventory', 'store_inventory_item_analytics') %}sidebar-item-active{% endif %}">
     <i class="fas fa-boxes-stacked w-5"></i>
     <span>Item catalog</span>
-    {% if request.endpoint == 'store_inventory' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint in ('store_inventory', 'store_inventory_item_analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('store-requisitions') }}"
    class="sidebar-item {% if request.endpoint == 'store_requisitions' %}sidebar-item-active{% endif %}">

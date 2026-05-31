@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}AI Integration - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/system_settings_sidebar_styles.html' %}
+{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/integration_settings_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set role_hero_title = 'AI Integration' %}
+{% set role_hero_subtitle = 'Configure AI providers for assisted features across the system' %}
+{% set role_hero_icon_class = 'fa-robot' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5 sm:p-6">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-violet-600 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-robot text-white text-2xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white">AI Provider</h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">API keys and default model for AI-assisted tools</p>
+                </div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" class="sr-only peer" {% if integration_data.ai.enabled %}checked{% endif %}>
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 dark:peer-focus:ring-violet-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-violet-600"></div>
+            </label>
+        </div>
+
+        <form id="ai-form" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Provider</label>
+                    <select name="provider" class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-violet-500 dark:bg-gray-700 dark:text-white">
+                        <option value="">Select provider</option>
+                        <option value="openai" {% if integration_data.ai.provider == 'openai' %}selected{% endif %}>OpenAI</option>
+                        <option value="anthropic" {% if integration_data.ai.provider == 'anthropic' %}selected{% endif %}>Anthropic</option>
+                        <option value="google" {% if integration_data.ai.provider == 'google' %}selected{% endif %}>Google Gemini</option>
+                        <option value="azure" {% if integration_data.ai.provider == 'azure' %}selected{% endif %}>Azure OpenAI</option>
+                        <option value="custom" {% if integration_data.ai.provider == 'custom' %}selected{% endif %}>Custom endpoint</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Default model</label>
+                    <input type="text" name="model" value="{{ integration_data.ai.model }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-violet-500 dark:bg-gray-700 dark:text-white"
+                           placeholder="gpt-4o-mini">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API key</label>
+                <input type="password" name="api_key" value="{{ integration_data.ai.api_key }}"
+                       class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-violet-500 dark:bg-gray-700 dark:text-white"
+                       placeholder="sk-…">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API base URL <span class="text-gray-400 font-normal">(optional, for custom/Azure)</span></label>
+                <input type="url" name="api_base_url" value="{{ integration_data.ai.api_base_url }}"
+                       class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-violet-500 dark:bg-gray-700 dark:text-white"
+                       placeholder="https://api.openai.com/v1">
+            </div>
+            <div class="flex justify-end space-x-3 pt-4">
+                <button type="button" class="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">Test connection</button>
+                <button type="submit" class="px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700">Save settings</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

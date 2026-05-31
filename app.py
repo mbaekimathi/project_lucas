@@ -15,7 +15,7 @@ import time
 from collections import defaultdict
 from functools import wraps
 from urllib.parse import quote, urlencode
-from env_loader import load_project_env
+from env_loader import load_project_env, env_file_label
 from portal_public import (
     check_rate_limit,
     portal_csrf_token,
@@ -33,6 +33,8 @@ from portal_font_families import (
     portal_google_fonts_stylesheet_href,
     portal_tailwind_font_family,
 )
+import finance_account_reports as finance_account_reports_mod
+import finance_reports as finance_reports_mod
 from school_data_backup import (
     BACKUP_CATEGORIES,
     DRIVE_BACKUP_SLICES,
@@ -71,7 +73,7 @@ try:
 except ImportError:
     EXCEL_AVAILABLE = False
 
-# Load .env (hosted) then .env.local (local dev overrides) — see env.local.example
+# Local: .env.local. Hosted: .env
 load_project_env()
 gdrive_backup.configure_oauth_transport()
 
@@ -950,6 +952,42 @@ def inject_school_settings():
         'portal_google_fonts_href': portal_google_fonts_stylesheet_href([active_font]),
         'portal_google_fonts_all_href': portal_google_fonts_stylesheet_href(),
     }
+
+
+@app.context_processor
+def inject_financial_year_session():
+    """Current financial year badge on accountant accounts pages."""
+    empty = {
+        'is_configured': False,
+        'year_label': '',
+        'financial_year_start': '',
+        'financial_year_end': '',
+        'financial_year_start_display': '',
+        'financial_year_end_display': '',
+        'is_locked': False,
+        'read_only': True,
+        'read_only_message': 'No open financial year is configured. Finance records are view-only.',
+    }
+    if not _is_accountant_accounts_portal_page():
+        return {
+            'show_financial_year_session': False,
+            'financial_year_session': empty,
+        }
+    snapshot = dict(empty)
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                snapshot = _financial_year_session_snapshot(cursor)
+        except Exception as e:
+            print(f"inject_financial_year_session: {e}")
+        finally:
+            connection.close()
+    return {
+        'show_financial_year_session': True,
+        'financial_year_session': snapshot,
+    }
+
 
 # Function to detect if running on hosted server
 def is_hosted():
@@ -7879,7 +7917,7 @@ def init_db():
                 )
             """)
             # Ensure we have placeholder rows for each integration type so the page can load
-            for itype in ('whatsapp', 'email', 'sms'):
+            for itype in ('whatsapp', 'email', 'sms', 'mpesa_daraja'):
                 try:
                     cursor.execute(
                         "INSERT IGNORE INTO integration_settings (integration_type, settings_json) VALUES (%s, %s)",
@@ -13072,7 +13110,9 @@ def parent_student_fees():
                          current_view_role=viewing_as if user_role == 'technician' and viewing_as else user_role,
                          all_students=all_students if user_role == 'technician' and viewing_as == 'parent' else [],
                          selected_student_id=selected_student_id,
-                         pocket_money_student_id=pocket_money_student_id)
+                         pocket_money_student_id=pocket_money_student_id,
+                         mpesa_daraja_enabled=_get_daraja_settings_from_flag(),
+                         mpesa_sandbox_confirm=_mpesa_sandbox_manual_confirm_enabled())
 
 @app.route('/terms-and-conditions')
 def terms_and_conditions():
@@ -14542,7 +14582,14 @@ def dashboard_employee():
                     accountant_dashboard = _fetch_accountant_dashboard_analytics(cursor)
             except Exception as acc_err:
                 print(f"Accountant dashboard analytics load: {acc_err}")
+                import traceback
+                traceback.print_exc()
                 accountant_dashboard = _accountant_dashboard_analytics_empty()
+                try:
+                    with acc_conn.cursor() as cursor:
+                        accountant_dashboard['accounts'] = _fetch_accountant_accounts_breakdown(cursor)
+                except Exception as acc_accounts_err:
+                    print(f"Accountant dashboard accounts fallback: {acc_accounts_err}")
             finally:
                 acc_conn.close()
     
@@ -16323,36 +16370,227 @@ def teacher_class_books_return():
     return jsonify({'ok': True, 'message': msg, 'results': results, 'success_count': success_count})
 
 
-# Finance Overview Route
+# Finance Overview / Accounts Reports
 @app.route('/dashboard/employee/finance-overview')
 @login_required
 def finance_overview():
-    """Finance overview shell; student rows and summaries load via API."""
+    """Accounts reports hub — pick a report (does not open a specific report by default)."""
+    if not _finance_overview_has_access():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+    return render_template(
+        'dashboards/finance_reports_hub.html',
+        finance_report_nav=finance_reports_mod.FINANCE_REPORT_NAV,
+        expenditure_books_nav=finance_reports_mod.EXPENDITURE_BOOKS_NAV,
+        filter_options={'default_financial_year_id': None, 'default_date_from': '', 'default_date_to': ''},
+        role=user_role,
+        is_secretary_finance=is_secretary,
+        report_generated_at=_account_report_generated_at(),
+    )
+
+
+@app.route('/dashboard/employee/finance-overview/reports/<report_slug>')
+@login_required
+def finance_overview_report(report_slug):
+    """Accounts report page (revenue, expenditure, statements, audit, periodic, student)."""
+    if not _finance_overview_has_access():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    report_slug = (report_slug or '').strip().lower()
+    if report_slug not in finance_reports_mod.FINANCE_REPORT_SLUGS:
+        flash('Report not found.', 'error')
+        return redirect(employee_dashboard_path('finance-overview'))
+
+    meta = finance_reports_mod.report_meta(report_slug)
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
 
-    if not _finance_overview_has_access():
-        flash('You do not have permission to access this page.', 'error')
-        return redirect(employee_dashboard_path())
-
+    filter_options = {
+        'class_options': [],
+        'academic_years': [],
+        'terms': [],
+        'finance_accounts': [],
+        'default_academic_year_id': None,
+        'default_term_id': None,
+        'default_date_from': '',
+        'default_date_to': '',
+        'financial_year_label': '',
+        'financial_year_configured': False,
+        'default_financial_year_id': None,
+        'financial_years': [],
+    }
     class_filter_options = []
+    expenditure_votes_initial = []
+    expenditure_vote_transactions_initial = []
+    expenditure_vote_position = None
+    expenditure_ledger_initial = None
+    financial_statement_initial = None
     connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
-                class_filter_options = _finance_overview_class_filter_options(cursor)
+                filter_options = finance_reports_mod.load_filter_options(
+                    cursor, _reports_current_year_term_ids,
+                )
+                financial_years = _fetch_financial_years_for_report_picker(cursor)
+                filter_options['financial_years'] = financial_years
+                default_fy_id = None
+                fy = _fetch_current_financial_year(cursor)
+                if fy.get('is_configured'):
+                    filter_options['default_date_from'] = fy.get('financial_year_start') or ''
+                    filter_options['default_date_to'] = _financial_year_report_default_end(fy)
+                    filter_options['financial_year_label'] = fy.get('year_label') or ''
+                    filter_options['financial_year_configured'] = True
+                    default_fy_id = fy.get('id')
+                elif financial_years:
+                    first = financial_years[0]
+                    filter_options['default_date_from'] = first.get('start') or ''
+                    filter_options['default_date_to'] = _financial_year_report_default_end(first)
+                    filter_options['financial_year_label'] = first.get('label') or ''
+                    filter_options['financial_year_configured'] = True
+                    default_fy_id = first.get('id')
+                filter_options['default_financial_year_id'] = default_fy_id
+                class_filter_options = filter_options.get('class_options') or []
+                if report_slug == 'expenditure' and not (request.args.get('vote') or '').strip():
+                    exp_filters = finance_reports_mod.parse_filters(request)
+                    if not exp_filters.get('financial_year_id') and default_fy_id:
+                        exp_filters['financial_year_id'] = default_fy_id
+                    exp_filters = _apply_financial_year_report_filters(cursor, exp_filters)
+                    ledger_key = (request.args.get('ledger') or '').strip().lower()
+                    if ledger_key in finance_reports_mod.EXPENDITURE_BOOKS_INLINE_SLUGS:
+                        ledger_payload = finance_reports_mod.fetch_report_payload(
+                            cursor, 'expenditure', exp_filters, _finance_report_data_helpers(),
+                        )
+                        if not ledger_payload.get('error'):
+                            expenditure_ledger_initial = ledger_payload
+                    else:
+                        expenditure_votes_initial = _finance_report_expenditure_vote_summary(cursor, exp_filters)
+                elif report_slug == 'expenditure' and (request.args.get('vote') or '').strip():
+                    exp_filters = finance_reports_mod.parse_filters(request)
+                    if not exp_filters.get('financial_year_id') and default_fy_id:
+                        exp_filters['financial_year_id'] = default_fy_id
+                    exp_filters = _apply_financial_year_report_filters(cursor, exp_filters)
+                    vote_key = (request.args.get('vote') or '').strip().upper()
+                    ledger_key = (request.args.get('ledger') or '').strip().lower()
+                    vote_summary = _finance_report_expenditure_vote_summary(cursor, exp_filters)
+                    vote_meta = next(
+                        (v for v in vote_summary if (v.get('vote_name') or '').upper() == vote_key),
+                        {},
+                    )
+                    expenditure_vote_position = finance_reports_mod.build_vote_position(vote_meta, vote_key)
+                    if ledger_key in finance_reports_mod.VOTE_LEDGER_SLUGS:
+                        ledger_payload = finance_reports_mod.fetch_report_payload(
+                            cursor, 'expenditure', exp_filters, _finance_report_data_helpers(),
+                        )
+                        if not ledger_payload.get('error'):
+                            expenditure_ledger_initial = ledger_payload
+                    else:
+                        expenditure_vote_transactions_initial = _finance_report_expenditure_vote_detail_rows(
+                            cursor, exp_filters, vote_key,
+                        )
+                elif report_slug == 'financial-statements':
+                    stmt_filters = finance_reports_mod.parse_filters(request)
+                    if not stmt_filters.get('financial_year_id') and default_fy_id:
+                        stmt_filters['financial_year_id'] = default_fy_id
+                    stmt_filters = _apply_financial_year_report_filters(cursor, stmt_filters)
+                    stmt_payload = finance_reports_mod.fetch_report_payload(
+                        cursor, 'financial-statements', stmt_filters, _finance_report_data_helpers(),
+                    )
+                    if not stmt_payload.get('error'):
+                        financial_statement_initial = stmt_payload
         except Exception as e:
-            print(f"finance_overview options: {e}")
+            print(f"finance_overview_report options: {e}")
         finally:
             connection.close()
 
+    if report_slug == 'student-specific':
+        return render_template(
+            'dashboards/finance_report_student.html',
+            report_slug=report_slug,
+            report_meta=meta,
+            finance_report_nav=finance_reports_mod.FINANCE_REPORT_NAV,
+            filter_options=filter_options,
+            class_filter_options=class_filter_options,
+            role=user_role,
+            is_secretary_finance=is_secretary,
+            report_generated_at=_account_report_generated_at(),
+        )
+
     return render_template(
-        'dashboards/finance_overview.html',
-        class_filter_options=class_filter_options,
+        'dashboards/finance_report.html',
+        report_slug=report_slug,
+        report_meta=meta,
+        finance_report_nav=finance_reports_mod.FINANCE_REPORT_NAV,
+        filter_options=filter_options,
         role=user_role,
         is_secretary_finance=is_secretary,
+        report_generated_at=_account_report_generated_at(),
+        expenditure_vote=(request.args.get('vote') or '').strip().upper(),
+        expenditure_ledger=(request.args.get('ledger') or '').strip().lower(),
+        vote_ledger_nav=finance_reports_mod.VOTE_LEDGER_NAV,
+        expenditure_books_nav=finance_reports_mod.EXPENDITURE_BOOKS_NAV,
+        expenditure_votes_initial=expenditure_votes_initial,
+        expenditure_vote_transactions_initial=expenditure_vote_transactions_initial,
+        expenditure_vote_position=expenditure_vote_position,
+        expenditure_ledger_initial=expenditure_ledger_initial,
+        financial_statement=(request.args.get('statement') or '').strip().lower(),
+        financial_statements_nav=finance_reports_mod.FINANCIAL_STATEMENTS_NAV,
+        financial_statement_initial=financial_statement_initial,
     )
+
+
+@app.route('/dashboard/employee/finance-overview/reports/expenditure/votes/<path:vote_name>')
+@login_required
+def finance_overview_expenditure_vote(vote_name):
+    """Expenditure detail for a single fee vote — redirects to expenditure report with vote filter."""
+    if not _finance_overview_has_access():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    from urllib.parse import unquote, urlencode
+    vote_key = unquote(vote_name or '').strip().upper()
+    if not vote_key:
+        return redirect(employee_dash_url('finance-overview/reports/expenditure'))
+    params = request.args.to_dict(flat=True)
+    params['vote'] = vote_key
+    return redirect(employee_dash_url('finance-overview/reports/expenditure') + '?' + urlencode(params))
+
+
+@app.route('/dashboard/employee/finance-overview/reports/<report_slug>/data')
+@login_required
+def finance_overview_report_data(report_slug):
+    """JSON data for an accounts report (filters via query string)."""
+    if not _finance_overview_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    report_slug = (report_slug or '').strip().lower()
+    if report_slug not in finance_reports_mod.FINANCE_REPORT_SLUGS:
+        return jsonify({'success': False, 'message': 'Unknown report'}), 404
+    if report_slug == 'student-specific':
+        return jsonify({'success': True, 'student_specific': True})
+
+    filters = finance_reports_mod.parse_filters(request)
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            filters = _apply_financial_year_report_filters(cursor, filters)
+            payload = finance_reports_mod.fetch_report_payload(
+                cursor, report_slug, filters, _finance_report_data_helpers(),
+            )
+        if payload.get('error'):
+            return jsonify({'success': False, 'message': payload['error']}), 400
+        return jsonify({'success': True, 'filters': filters, **payload})
+    except Exception as e:
+        print(f"finance_overview_report_data: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not load report'}), 500
+    finally:
+        connection.close()
 
 
 @app.route('/dashboard/employee/finance-overview/students', methods=['GET'])
@@ -17537,7 +17775,9 @@ def student_fees():
                          can_add_fee_structure=can_add_fee_structure,
                          can_edit_fee_structure=can_edit_fee_structure,
                          can_delete_fee_structure=can_delete_fee_structure,
-                         can_generate_invoices=can_generate_invoices)
+                         can_generate_invoices=can_generate_invoices,
+                         mpesa_daraja_enabled=_get_daraja_settings_from_flag(),
+                         mpesa_sandbox_confirm=_mpesa_sandbox_manual_confirm_enabled())
 
 
 @app.route('/dashboard/employee/student-fees/stats', methods=['GET'])
@@ -18575,6 +18815,38 @@ def get_fee_items():
         connection.close()
 
 
+@app.route('/dashboard/employee/student-fees/fee-structure/<int:structure_id>/student-votes', methods=['GET'])
+@login_required
+def fee_structure_student_votes(structure_id):
+    """Students enrolled in a fee structure batch with their assigned votes."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    has_view = check_permission_or_role('view_fees', ['accountant'])
+    has_manage = check_permission_or_role('manage_fees', ['accountant'])
+    if not (is_technician or has_view or has_manage):
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            structure_ids = _fee_structure_sibling_ids(cursor, structure_id)
+            payload = _fetch_fee_structure_student_votes_payload(cursor, structure_id)
+            if not payload.get('students'):
+                for sid in structure_ids:
+                    _sync_student_fee_votes_for_structure(cursor, sid)
+                connection.commit()
+                payload = _fetch_fee_structure_student_votes_payload(cursor, structure_id)
+            return jsonify({'success': True, **payload}), 200
+    except Exception as e:
+        print(f"fee_structure_student_votes: {e}")
+        return jsonify({'success': False, 'message': 'Could not load student votes.'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/dashboard/employee/student-fees/combined-academic-levels', methods=['GET'])
 @login_required
 def student_fees_combined_academic_levels():
@@ -18962,7 +19234,7 @@ def create_fee_structure():
             }), 400
         
         if not fee_items or len(fee_items) == 0:
-            return jsonify({'success': False, 'message': 'At least one fee item is required'}), 400
+            return jsonify({'success': False, 'message': 'At least one vote is required'}), 400
         
         # Calculate total amount
         total_amount = sum(float(item.get('amount', 0)) for item in fee_items)
@@ -19099,9 +19371,9 @@ def create_fee_structure():
                     items_inserted = 0
                     for index, item in enumerate(fee_items):
                         item_name = item.get('item_name', '').strip().upper()
-                        item_description = item.get('item_description', '').strip()
+                        item_description = item.get('item_description', '').strip().upper()
                         amount = float(item.get('amount', 0))
-                        if not item_name or amount <= 0:
+                        if not item_name or not item_description or amount <= 0:
                             continue
                         cursor.execute("""
                             INSERT INTO fee_items 
@@ -19110,13 +19382,14 @@ def create_fee_structure():
                         """, (fee_structure_id, item_name, item_description, amount, index))
                         items_inserted += 1
                     total_items_inserted += items_inserted
+                    _sync_student_fee_votes_for_structure(cursor, fee_structure_id)
                 
                 # Verify items were inserted
                 if total_items_inserted == 0:
                     connection.rollback()
                     return jsonify({
                         'success': False, 
-                        'message': 'No valid fee items were provided. Please ensure all items have a name and amount greater than 0.'
+                        'message': 'No valid votes were provided. Please ensure all votes have a name, description, and amount greater than 0.'
                     }), 400
                 
                 connection.commit()
@@ -19177,6 +19450,7 @@ def fee_structures():
         try:
             with connection.cursor() as cursor:
                 ensure_fee_structures_finance_account_column(cursor)
+                ensure_student_fee_votes_table(cursor)
                 finance_accounts_picker = _fetch_finance_accounts_for_fee_structure_picker(cursor)
 
                 # Fetch all fee structures with academic level and academic year info
@@ -19249,6 +19523,13 @@ def fee_structures():
                         'academic_year_name': row.get('academic_year_name', ''),
                         'term_name': row.get('term_name', ''),
                         'year_is_current': row.get('year_is_current', False),
+                        'enrolled_student_count': len(
+                            _students_for_fee_structure_level(
+                                cursor,
+                                row.get('academic_level_id'),
+                                row.get('category', 'both'),
+                            )
+                        ),
                         'items': [{
                             'id': item.get('id'),
                             'item_name': item.get('item_name', ''),
@@ -19700,45 +19981,23 @@ def record_payment():
                 
                 payment_id = cursor.lastrowid
 
-                cursor.execute(
-                    """
-                    SELECT finance_account_id FROM fee_structures
-                    WHERE id = %s LIMIT 1
-                    """,
-                    (fee_structure_id,),
-                )
-                fs_row = cursor.fetchone()
-                finance_account_id = None
-                if fs_row:
-                    finance_account_id = (
-                        fs_row.get('finance_account_id')
-                        if isinstance(fs_row, dict)
-                        else fs_row[0]
-                    )
-                if finance_account_id:
-                    ensure_finance_account_transactions_table(cursor)
-                    fee_ref = (
-                        reference_number or transaction_id or cheque_number
-                        or f'FEE-{payment_id}'
-                    )
-                    recorded_by = (
+                ok_credit, credit_err = _credit_student_fee_payment_accounts(
+                    cursor, payment_id, fee_structure_id, amount_paid,
+                    payment_method=payment_method,
+                    reference_code=(
+                        reference_number or transaction_id or cheque_number or f'FEE-{payment_id}'
+                    ),
+                    student_id=student_id,
+                    recorded_by_name=(
                         session.get('full_name') or session.get('username') or ''
-                    ).strip()
-                    ok_credit, credit_err = _credit_finance_account(
-                        cursor, finance_account_id, amount_paid,
-                        payment_method=payment_method,
-                        reference_code=fee_ref,
-                        description=f'Student fee — {student_id}',
-                        related_type='student_payment',
-                        related_id=payment_id,
-                        recorded_by_name=recorded_by or None,
-                    )
-                    if not ok_credit:
-                        connection.rollback()
-                        return jsonify({
-                            'success': False,
-                            'message': credit_err or 'Could not update finance account balance.',
-                        }), 400
+                    ).strip() or None,
+                )
+                if not ok_credit:
+                    connection.rollback()
+                    return jsonify({
+                        'success': False,
+                        'message': credit_err or 'Could not update finance account balance.',
+                    }), 400
                 
                 # Log audit entry for payment creation
                 payment_details = f"Amount: KES {amount_paid:,.2f}, Method: {payment_method}, Date: {payment_date}"
@@ -19777,6 +20036,362 @@ def record_payment():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': 'An error occurred while recording payment.'}), 500
+
+
+def _employee_can_process_payments():
+    user_role = session.get('role', '').lower()
+    if user_role == 'technician':
+        return True
+    return bool(check_permission_or_role('process_payments', ['accountant']))
+
+
+def _mpesa_stk_employee_context(cursor):
+    """Employee DB id + display name for accountant-initiated STK."""
+    employee_identifier = session.get('employee_id') or session.get('user_id')
+    fallback = (session.get('full_name') or session.get('username') or 'Staff').strip()
+    if not employee_identifier:
+        return None, fallback
+    cursor.execute(
+        """
+        SELECT id, full_name FROM employees
+        WHERE id = %s OR employee_id = %s LIMIT 1
+        """,
+        (employee_identifier, employee_identifier),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None, fallback
+    if isinstance(row, dict):
+        return row.get('id'), (row.get('full_name') or fallback).strip()
+    return row[0], (row[1] or fallback).strip()
+
+
+def _mpesa_stk_employee_can_view_txn(txn_row):
+    if not _employee_can_process_payments():
+        return False
+    return (txn_row.get('purpose') or '').lower() == 'accountant_school_fee'
+
+
+def _resolve_student_fee_mpesa_account(cursor, student_id, fee_structure_id):
+    """Finance account from fee structure for accountant STK."""
+    cursor.execute(
+        "SELECT finance_account_id FROM fee_structures WHERE id = %s LIMIT 1",
+        (fee_structure_id,),
+    )
+    fs = cursor.fetchone()
+    if not fs:
+        return None, None, 'Fee structure not found.'
+    finance_account_id = fs.get('finance_account_id') if isinstance(fs, dict) else fs[0]
+    if not finance_account_id:
+        return None, None, 'This fee structure has no linked finance account.'
+    return int(finance_account_id), int(fee_structure_id), None
+
+
+@app.route('/dashboard/employee/student-fees/mpesa/stk-push', methods=['POST'])
+@login_required
+def accountant_mpesa_stk_push():
+    """Accountant: Daraja STK push for student fee payment to linked finance account."""
+    import daraja_mpesa as daraja
+
+    if not _employee_can_process_payments():
+        return jsonify({'success': False, 'message': 'You do not have permission to record payments.'}), 403
+
+    data = request.get_json(silent=True) or request.form
+    student_id = (data.get('student_id') or '').strip()
+    fee_structure_id = data.get('fee_structure_id')
+    phone = (data.get('phone') or '').strip()
+    raw_amount = data.get('amount')
+
+    if not student_id or not fee_structure_id or not phone:
+        return jsonify({'success': False, 'message': 'Student, fee structure, and phone are required.'}), 400
+
+    try:
+        fee_structure_id = int(fee_structure_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Invalid fee structure.'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT student_id FROM students WHERE student_id = %s LIMIT 1",
+                (student_id,),
+            )
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'message': 'Student not found.'}), 404
+
+            daraja_settings = _get_daraja_settings(cursor)
+            if not daraja_settings.get('enabled'):
+                return jsonify({
+                    'success': False,
+                    'message': 'M-Pesa online payments are disabled. Enable under Integration → Finance.',
+                }), 400
+            if not daraja.credentials_configured(daraja_settings):
+                return jsonify({
+                    'success': False,
+                    'message': 'M-Pesa Daraja credentials are not configured on the server.',
+                }), 503
+
+            finance_account_id, fee_structure_id, err = _resolve_student_fee_mpesa_account(
+                cursor, student_id, fee_structure_id,
+            )
+            if err:
+                return jsonify({'success': False, 'message': err}), 400
+
+            mpesa_cfg, cfg_err = _finance_account_mpesa_stk_config(
+                cursor, finance_account_id, student_id, daraja_settings,
+            )
+            if cfg_err:
+                return jsonify({'success': False, 'message': cfg_err}), 400
+
+            callback_url, cb_err = daraja.resolve_stk_callback_url(
+                daraja_settings,
+                fallback_url=url_for('mpesa_stk_callback', _external=True),
+            )
+            if cb_err:
+                return jsonify({'success': False, 'message': cb_err}), 400
+
+            stk = daraja.stk_push(
+                daraja_settings,
+                phone=phone,
+                amount=raw_amount,
+                account_reference=mpesa_cfg['account_reference'],
+                transaction_desc='School fees',
+                callback_url=callback_url,
+                business_shortcode=mpesa_cfg['business_shortcode'],
+                transaction_type=mpesa_cfg['transaction_type'],
+                party_b_shortcode=mpesa_cfg.get('party_b_shortcode'),
+            )
+            if not stk.get('ok'):
+                return jsonify({'success': False, 'message': stk.get('error') or 'STK push failed.'}), 400
+
+            emp_db_id, emp_name = _mpesa_stk_employee_context(cursor)
+            stk_meta = {
+                'initiated_by': 'accountant',
+                'employee_db_id': emp_db_id,
+                'employee_name': emp_name,
+                'stk': stk.get('raw') or {},
+            }
+
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                """
+                INSERT INTO mpesa_stk_transactions
+                    (checkout_request_id, merchant_request_id, student_id, parent_email,
+                     purpose, amount, phone, finance_account_id, fee_structure_id,
+                     account_reference, business_shortcode, mpesa_type, status, raw_request_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    stk.get('checkout_request_id'),
+                    stk.get('merchant_request_id'),
+                    student_id,
+                    None,
+                    'accountant_school_fee',
+                    raw_amount,
+                    phone,
+                    finance_account_id,
+                    fee_structure_id,
+                    mpesa_cfg['account_reference'],
+                    mpesa_cfg['business_shortcode'],
+                    mpesa_cfg['mpesa_type'],
+                    'pending',
+                    json.dumps(stk_meta),
+                ),
+            )
+            connection.commit()
+
+            sync_warning = None
+            if _mpesa_should_sync_stk_to_remote():
+                sync_ok, _code, sync_detail = _mpesa_stk_sync_pending_to_remote({
+                    'checkout_request_id': stk.get('checkout_request_id'),
+                    'merchant_request_id': stk.get('merchant_request_id'),
+                    'student_id': student_id,
+                    'parent_email': None,
+                    'purpose': 'accountant_school_fee',
+                    'amount': raw_amount,
+                    'phone': phone,
+                    'finance_account_id': finance_account_id,
+                    'fee_structure_id': fee_structure_id,
+                    'account_reference': mpesa_cfg['account_reference'],
+                    'business_shortcode': mpesa_cfg['business_shortcode'],
+                    'mpesa_type': mpesa_cfg['mpesa_type'],
+                    'raw_request_json': json.dumps({'sync_origin': 'local', **stk_meta}),
+                })
+                _mpesa_stk_record_sync_meta(cursor, stk.get('checkout_request_id'), sync_ok, sync_detail)
+                connection.commit()
+                if not sync_ok:
+                    sync_warning = sync_detail
+
+            payload = {
+                'success': True,
+                'message': stk.get('customer_message') or 'Check the phone for the M-Pesa prompt.',
+                'checkout_request_id': stk.get('checkout_request_id'),
+                'account_reference': mpesa_cfg['account_reference'],
+                'business_name': mpesa_cfg.get('business_name'),
+                'mpesa_type': mpesa_cfg.get('mpesa_type'),
+            }
+            if sync_warning:
+                payload['sync_warning'] = sync_warning
+            if _mpesa_sandbox_manual_confirm_enabled():
+                payload['confirm_available'] = True
+            return jsonify(payload)
+    except Exception as e:
+        print(f"accountant_mpesa_stk_push: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not start M-Pesa payment.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/student-fees/mpesa/status/<checkout_request_id>', methods=['GET'])
+@login_required
+def accountant_mpesa_stk_status(checkout_request_id):
+    """Accountant: poll STK fee payment status."""
+    if not _employee_can_process_payments():
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                "SELECT * FROM mpesa_stk_transactions WHERE checkout_request_id = %s LIMIT 1",
+                (checkout_request_id,),
+            )
+            txn = cursor.fetchone()
+            if not txn:
+                return jsonify({'success': False, 'message': 'Transaction not found.'}), 404
+            txn_row = txn if isinstance(txn, dict) else dict(zip([d[0] for d in cursor.description], txn))
+
+            if not _mpesa_stk_employee_can_view_txn(txn_row):
+                return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+            status = (txn_row.get('status') or 'pending').lower()
+            if status == 'completed':
+                connection.commit()
+                return jsonify({
+                    'success': True,
+                    'status': 'completed',
+                    'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
+                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                })
+            if status in ('failed', 'cancelled'):
+                connection.commit()
+                return jsonify({
+                    'success': True,
+                    'status': status,
+                    'message': txn_row.get('result_desc') or 'Payment was not completed.',
+                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                })
+
+            daraja_settings = _get_daraja_settings(cursor)
+            _mpesa_stk_ensure_remote_registered(cursor, txn_row)
+            connection.commit()
+            polled = _mpesa_stk_try_complete_from_query(cursor, txn_row, daraja_settings)
+            if polled:
+                connection.commit()
+                return jsonify(polled)
+            remote = _mpesa_stk_try_complete_from_remote_sync(cursor, txn_row)
+            if remote:
+                connection.commit()
+                return jsonify(remote)
+            connection.commit()
+            pending_payload = {
+                'success': True,
+                'status': 'pending',
+                'message': 'Waiting for M-Pesa PIN on the phone…',
+            }
+            sync_warning = _mpesa_stk_sync_warning_from_row(txn_row)
+            if sync_warning:
+                pending_payload['sync_warning'] = sync_warning
+            if _mpesa_sandbox_manual_confirm_enabled():
+                pending_payload['confirm_available'] = True
+            return jsonify(pending_payload)
+    except Exception as e:
+        print(f"accountant_mpesa_stk_status: {e}")
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Could not check status.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/student-fees/mpesa/confirm-payment', methods=['POST'])
+@login_required
+def accountant_mpesa_confirm_payment():
+    """Sandbox local dev: accountant confirms STK payment after PIN entered."""
+    if not _mpesa_sandbox_manual_confirm_enabled():
+        return jsonify({'success': False, 'message': 'Manual confirm is only available in sandbox local dev.'}), 403
+    if not _employee_can_process_payments():
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    data = request.get_json(silent=True) or request.form
+    checkout_id = (data.get('checkout_request_id') or '').strip()
+    mpesa_receipt = (data.get('mpesa_receipt') or '').strip()
+    if not checkout_id:
+        return jsonify({'success': False, 'message': 'Missing payment session.'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                "SELECT * FROM mpesa_stk_transactions WHERE checkout_request_id = %s LIMIT 1",
+                (checkout_id,),
+            )
+            txn = cursor.fetchone()
+            if not txn:
+                return jsonify({'success': False, 'message': 'Payment session not found.'}), 404
+            txn_row = txn if isinstance(txn, dict) else dict(zip([d[0] for d in cursor.description], txn))
+            if not _mpesa_stk_employee_can_view_txn(txn_row):
+                return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+            status = (txn_row.get('status') or 'pending').lower()
+            if status == 'completed':
+                return jsonify({
+                    'success': True,
+                    'status': 'completed',
+                    'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
+                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                })
+
+            receipt = mpesa_receipt or checkout_id
+            callback_data = {
+                'result_code': 0,
+                'result_desc': 'Sandbox payment confirmed by accountant.',
+                'mpesa_receipt': receipt,
+            }
+            ok, msg, recorded_receipt = _mpesa_stk_finalize_success(
+                cursor, txn_row, callback_data,
+                raw_json=json.dumps({'sandbox_manual_confirm': True, 'initiated_by': 'accountant'}),
+            )
+            if not ok:
+                connection.commit()
+                return jsonify({'success': False, 'message': msg or 'Could not record payment.'}), 400
+            connection.commit()
+            return jsonify({
+                'success': True,
+                'status': 'completed',
+                'message': msg,
+                'mpesa_receipt': recorded_receipt,
+            })
+    except Exception as e:
+        print(f"accountant_mpesa_confirm_payment: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not confirm payment.'}), 500
+    finally:
+        connection.close()
+
 
 @app.route('/dashboard/employee/student-fees/transactions/<student_id>', methods=['GET'])
 @login_required
@@ -20030,6 +20645,15 @@ def delete_payment():
                 if not payment_result:
                     return jsonify({'success': False, 'message': 'Payment not found.'}), 404
 
+                payment_date = (
+                    payment_result.get('payment_date')
+                    if isinstance(payment_result, dict)
+                    else (payment_result[8] if len(payment_result) > 8 else None)
+                )
+                ok_fy, fy_err = _assert_financial_year_writable(cursor, payment_date)
+                if not ok_fy:
+                    return jsonify({'success': False, 'message': fy_err}), 403
+
                 # Create audit log entry before deletion
                 payment_details = f"Amount: KES {payment_result.get('amount_paid', 0) if isinstance(payment_result, dict) else payment_result[3] or 0}, Method: {payment_result.get('payment_method', '') if isinstance(payment_result, dict) else payment_result[4] or ''}, Date: {payment_result.get('payment_date', '') if isinstance(payment_result, dict) else payment_result[8] or ''}"
                 
@@ -20147,7 +20771,7 @@ def update_fee_structure(structure_id):
             }), 400
         
         if not fee_items or len(fee_items) == 0:
-            return jsonify({'success': False, 'message': 'At least one fee item is required'}), 400
+            return jsonify({'success': False, 'message': 'At least one vote is required'}), 400
         
         total_amount = sum(float(item.get('amount', 0)) for item in fee_items)
         
@@ -20320,12 +20944,13 @@ def update_fee_structure(structure_id):
                         return jsonify({
                             'success': False,
                             'message': (
-                                'No valid fee items were provided. Each item needs a name '
-                                'and amount greater than 0.'
+                                'No valid votes were provided. Each vote needs a name, '
+                                'description, and amount greater than 0.'
                             ),
                         }), 400
                     updated_ids.append(sid)
                     total_items_inserted += items_inserted
+                    _sync_student_fee_votes_for_structure(cursor, sid)
 
                 connection.commit()
 
@@ -20333,7 +20958,7 @@ def update_fee_structure(structure_id):
                     'success': True,
                     'message': (
                         f'Updated {len(updated_ids)} fee structure(s) with '
-                        f'{total_items_inserted} fee item row(s).'
+                        f'{total_items_inserted} vote row(s).'
                     ),
                     'fee_structure_ids': updated_ids,
                     'items_count': total_items_inserted,
@@ -20711,6 +21336,172 @@ def calculate_period_dates(effective_date, payment_period, reference_date):
     return period_start, period_end, period_num
 
 
+def _fetch_accountant_fee_overview_snapshot(cursor):
+    """In-session student fee totals for accountant home (same rules as finance overview)."""
+    bundle = _finance_overview_student_fee_bundle(cursor)
+    rows = bundle.get('student_rows') or []
+    students_with_balance = sum(
+        1 for r in rows if (r.get('balance') is not None and float(r.get('balance') or 0) > 0)
+    )
+    total_outstanding = float(bundle.get('total_outstanding') or 0)
+    sum_total = float(bundle.get('sum_total_amount') or 0)
+    sum_paid = float(bundle.get('sum_paid_amount') or 0)
+    collection_pct = round((sum_paid / sum_total) * 100, 1) if sum_total > 0 else 0.0
+    return {
+        'student_count': len(rows),
+        'students_with_balance': students_with_balance,
+        'total_outstanding': total_outstanding,
+        'total_outstanding_display': _format_kes_amount(total_outstanding),
+        'sum_total_amount': sum_total,
+        'sum_total_display': _format_kes_amount(sum_total),
+        'sum_paid_amount': sum_paid,
+        'sum_paid_display': _format_kes_amount(sum_paid),
+        'collection_pct': collection_pct,
+    }
+
+
+def _fetch_accountant_pending_requisition_count(cursor):
+    try:
+        ensure_store_requisitions_table(cursor)
+        cursor.execute(
+            "SELECT COUNT(*) AS c FROM store_requisitions WHERE status = 'pending'"
+        )
+        row = cursor.fetchone()
+        return int((row.get('c') if isinstance(row, dict) else row[0]) or 0)
+    except Exception as e:
+        print(f"_fetch_accountant_pending_requisition_count: {e}")
+        return 0
+
+
+def _finance_account_breakdown_row(r):
+    """Normalize a finance_accounts fetch row for dashboard breakdown."""
+    if isinstance(r, dict):
+        bal = float(r.get('current_balance') or 0)
+        return {
+            'id': r.get('id'),
+            'account_category': (r.get('account_category') or '').strip() or 'Other',
+            'account_name': (r.get('account_name') or '').strip(),
+            'account_status': (r.get('account_status') or 'active').strip().lower(),
+            'balance': bal,
+            'balance_display': _format_kes_amount(bal),
+        }
+    bal = float(r[4] or 0) if len(r) > 4 else 0.0
+    return {
+        'id': r[0],
+        'account_category': (r[1] or '').strip() or 'Other',
+        'account_name': (r[2] or '').strip(),
+        'account_status': (r[3] or 'active').strip().lower(),
+        'balance': bal,
+        'balance_display': _format_kes_amount(bal),
+    }
+
+
+def _fetch_accountant_accounts_breakdown_light(cursor):
+    """Finance accounts with stored balances — no mass ledger refresh (reports hot path)."""
+    ensure_finance_accounts_table(cursor)
+    all_accounts = []
+    total_accounts = 0
+    active_accounts = 0
+    total_balance = 0.0
+    try:
+        cursor.execute(
+            """
+            SELECT id, account_category, account_name, account_status,
+                   COALESCE(current_balance, 0) AS current_balance
+            FROM finance_accounts
+            ORDER BY account_category ASC, account_name ASC, id ASC
+            """
+        )
+        for r in cursor.fetchall() or []:
+            row = _finance_account_breakdown_row(r)
+            all_accounts.append(row)
+            if row['account_status'] == 'active':
+                active_accounts += 1
+            total_balance += row['balance']
+        total_accounts = len(all_accounts)
+    except Exception as e:
+        print(f"_fetch_accountant_accounts_breakdown_light: {e}")
+    return {
+        'total_accounts': total_accounts,
+        'active_accounts': active_accounts,
+        'total_balance': total_balance,
+        'total_balance_display': _format_kes_amount(total_balance),
+        'all_accounts': all_accounts,
+        'top_accounts': all_accounts[:10],
+    }
+
+
+def _fetch_accountant_accounts_breakdown(cursor):
+    """Finance ledger accounts grouped by category with ledger balances."""
+    ensure_finance_accounts_table(cursor)
+    ensure_finance_account_transactions_table(cursor)
+    try:
+        _refresh_finance_account_balances_from_ledger(cursor)
+    except Exception as e:
+        print(f"_fetch_accountant_accounts_breakdown refresh: {e}")
+
+    by_category = []
+    all_accounts = []
+    total_accounts = 0
+    active_accounts = 0
+    total_balance = 0.0
+
+    try:
+        cursor.execute(
+            """
+            SELECT id, account_category, account_name, account_status,
+                   COALESCE(current_balance, 0) AS current_balance
+            FROM finance_accounts
+            ORDER BY account_category ASC, account_name ASC, id ASC
+            """
+        )
+        for r in cursor.fetchall() or []:
+            row = _finance_account_breakdown_row(r)
+            all_accounts.append(row)
+            if row['account_status'] == 'active':
+                active_accounts += 1
+            total_balance += row['balance']
+        total_accounts = len(all_accounts)
+
+        cat_map = {}
+        for row in all_accounts:
+            cat = row['account_category'] or 'Other'
+            bucket = cat_map.setdefault(cat, {
+                'category': cat,
+                'count': 0,
+                'active_count': 0,
+                'balance': 0.0,
+            })
+            bucket['count'] += 1
+            if row['account_status'] == 'active':
+                bucket['active_count'] += 1
+            bucket['balance'] += row['balance']
+        by_category = sorted(
+            [
+                {
+                    **v,
+                    'balance_display': _format_kes_amount(v['balance']),
+                }
+                for v in cat_map.values()
+            ],
+            key=lambda x: _finance_account_category_sort_key(x.get('category')),
+        )
+    except Exception as e:
+        print(f"_fetch_accountant_accounts_breakdown: {e}")
+        import traceback
+        traceback.print_exc()
+
+    return {
+        'total_accounts': total_accounts,
+        'active_accounts': active_accounts,
+        'total_balance': total_balance,
+        'total_balance_display': _format_kes_amount(total_balance),
+        'by_category': by_category,
+        'all_accounts': all_accounts,
+        'top_accounts': all_accounts[:10],
+    }
+
+
 def _accountant_dashboard_analytics_empty():
     rev = {
         'total_count': 0, 'total_amount': 0.0, 'total_display': '0.00',
@@ -20730,11 +21521,56 @@ def _accountant_dashboard_analytics_empty():
         'misc_total_display': '0.00', 'stock_in_invoiced_display': '0.00',
         'paid_this_month_display': '0.00', 'total_disbursed_display': '0.00',
         'outstanding_count': 0, 'stock_in_count': 0,
+        'stock_in_outstanding': 0.0,
+    }
+    fees = {
+        'student_count': 0,
+        'students_with_balance': 0,
+        'total_outstanding': 0.0,
+        'total_outstanding_display': '0.00',
+        'sum_total_amount': 0.0,
+        'sum_total_display': '0.00',
+        'sum_paid_amount': 0.0,
+        'sum_paid_display': '0.00',
+        'collection_pct': 0.0,
+    }
+    accounts = {
+        'total_accounts': 0,
+        'active_accounts': 0,
+        'total_balance': 0.0,
+        'total_balance_display': '0.00',
+        'by_category': [],
+        'all_accounts': [],
+        'top_accounts': [],
     }
     return {
         'revenue': rev,
         'payroll': payroll,
         'payments': payments,
+        'fees': fees,
+        'accounts': accounts,
+        'outflows': {
+            'total_due_display': '0.00',
+            'total_disbursed_display': '0.00',
+            'outstanding_display': '0.00',
+            'disbursement_pct': 0.0,
+            'payroll_due_display': '0.00',
+            'payroll_disbursed_display': '0.00',
+            'payables_due_display': '0.00',
+            'payables_disbursed_display': '0.00',
+        },
+        'revenue_position': {
+            'total_revenue_display': '0.00',
+            'total_outflows_display': '0.00',
+            'remaining_display': '0.00',
+            'remaining': 0.0,
+            'fees_display': '0.00',
+            'government_display': '0.00',
+            'private_display': '0.00',
+            'outflow_pct': 0.0,
+            'retained_pct': 0.0,
+        },
+        'pending_requisitions': 0,
         'total_income': 0.0,
         'total_income_display': '0.00',
         'total_outflow': 0.0,
@@ -20743,6 +21579,8 @@ def _accountant_dashboard_analytics_empty():
         'net_position_display': '0.00',
         'payroll_outflow_display': '0.00',
         'payables_outflow_display': '0.00',
+        'total_obligations': 0.0,
+        'total_obligations_display': '0.00',
     }
 
 
@@ -20828,12 +21666,80 @@ def _fetch_active_salary_records_with_balances(cursor):
     return salary_records_list
 
 
+def _accountant_revenue_position_snapshot(revenue, total_income, total_outflow, net_position):
+    """Total recorded revenue vs disbursed outflows and net remaining."""
+    if total_income > 0:
+        outflow_pct = round((total_outflow / total_income) * 100, 1)
+        retained_pct = round((net_position / total_income) * 100, 1)
+    elif total_outflow > 0:
+        outflow_pct = 100.0
+        retained_pct = -100.0
+    else:
+        outflow_pct = 0.0
+        retained_pct = 0.0
+
+    return {
+        'total_revenue_display': revenue.get('total_display', '0.00'),
+        'total_outflows_display': _format_kes_amount(total_outflow),
+        'remaining_display': _format_kes_amount(net_position),
+        'remaining': net_position,
+        'fees_display': revenue.get('fees_display', '0.00'),
+        'government_display': revenue.get('government_display', '0.00'),
+        'private_display': revenue.get('private_display', '0.00'),
+        'outflow_pct': min(outflow_pct, 100.0),
+        'retained_pct': retained_pct,
+    }
+
+
+def _accountant_outflows_snapshot(payroll, payments):
+    """Combined payroll + payables due vs disbursed for dashboard outflows card."""
+    payroll_due = float(payroll.get('payroll_due') or 0)
+    payroll_disbursed = float(payroll.get('paid_current_period') or 0)
+    payroll_outstanding = float(payroll.get('outstanding') or 0)
+
+    payables_due = float(payments.get('stock_in_invoiced') or 0) + float(payments.get('misc_total') or 0)
+    payables_disbursed = float(payments.get('total_disbursed') or 0)
+    payables_outstanding = float(payments.get('stock_in_outstanding') or 0)
+
+    total_due = payroll_due + payables_due
+    total_disbursed = payroll_disbursed + payables_disbursed
+    total_outstanding = payroll_outstanding + payables_outstanding
+
+    if total_due > 0:
+        disbursement_pct = round((total_disbursed / total_due) * 100, 1)
+    elif total_disbursed > 0:
+        disbursement_pct = 100.0
+    else:
+        disbursement_pct = 0.0
+
+    return {
+        'total_due': total_due,
+        'total_due_display': _format_kes_amount(total_due),
+        'total_disbursed': total_disbursed,
+        'total_disbursed_display': _format_kes_amount(total_disbursed),
+        'outstanding': total_outstanding,
+        'outstanding_display': _format_kes_amount(total_outstanding),
+        'disbursement_pct': min(disbursement_pct, 100.0),
+        'payroll_due_display': payroll.get('payroll_due_display', '0.00'),
+        'payroll_disbursed_display': payroll.get('paid_current_period_display', '0.00'),
+        'payables_due_display': _format_kes_amount(payables_due),
+        'payables_disbursed_display': payments.get('total_disbursed_display', '0.00'),
+    }
+
+
 def _fetch_accountant_dashboard_analytics(cursor):
     """Combined analytics for accountant home dashboard."""
+    accounts = _fetch_accountant_accounts_breakdown(cursor)
     revenue = _fetch_accountant_revenue_summary(cursor)
     payments = _fetch_accountant_payment_analytics(cursor)
     salary_records = _fetch_active_salary_records_with_balances(cursor)
     payroll = _fetch_payroll_payment_analytics(salary_records, cursor)
+    try:
+        fees = _fetch_accountant_fee_overview_snapshot(cursor)
+    except Exception as e:
+        print(f"_fetch_accountant_dashboard_analytics fees: {e}")
+        fees = _accountant_dashboard_analytics_empty()['fees']
+    pending_requisitions = _fetch_accountant_pending_requisition_count(cursor)
 
     total_income = float(revenue.get('total_amount') or 0)
     payroll_out = float(payroll.get('total_disbursed') or 0)
@@ -20841,10 +21747,24 @@ def _fetch_accountant_dashboard_analytics(cursor):
     total_outflow = payroll_out + payables_out
     net_position = total_income - total_outflow
 
+    payroll_outstanding = float(payroll.get('outstanding') or 0)
+    payables_outstanding = float(payments.get('stock_in_outstanding') or 0)
+    fees_outstanding = float(fees.get('total_outstanding') or 0)
+    total_obligations = payroll_outstanding + payables_outstanding + fees_outstanding
+    outflows = _accountant_outflows_snapshot(payroll, payments)
+    revenue_position = _accountant_revenue_position_snapshot(
+        revenue, total_income, total_outflow, net_position
+    )
+
     return {
         'revenue': revenue,
         'payroll': payroll,
         'payments': payments,
+        'fees': fees,
+        'accounts': accounts,
+        'outflows': outflows,
+        'revenue_position': revenue_position,
+        'pending_requisitions': pending_requisitions,
         'total_income': total_income,
         'total_income_display': revenue.get('total_display', '0.00'),
         'total_outflow': total_outflow,
@@ -20853,6 +21773,8 @@ def _fetch_accountant_dashboard_analytics(cursor):
         'net_position_display': _format_kes_amount(net_position),
         'payroll_outflow_display': payroll.get('total_disbursed_display', '0.00'),
         'payables_outflow_display': payments.get('total_disbursed_display', '0.00'),
+        'total_obligations': total_obligations,
+        'total_obligations_display': _format_kes_amount(total_obligations),
     }
 
 
@@ -27054,7 +27976,743 @@ def parent_pocket_money_detail(student_id):
         all_students=ctx['all_students'],
         selected_student_id=ctx['selected_student_id'],
         pocket_money_student_id=student.get('student_id') or student_id,
+        mpesa_daraja_enabled=_get_daraja_settings_from_flag(),
+        mpesa_sandbox_confirm=_mpesa_sandbox_manual_confirm_enabled(),
     )
+
+
+def _get_daraja_settings_from_flag():
+    connection = get_db_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            settings = _get_daraja_settings(cursor)
+            import daraja_mpesa as daraja
+            return bool(settings.get('enabled')) and daraja.credentials_configured(settings)
+    except Exception:
+        return False
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+def _mpesa_stk_sync_config():
+    """Shared secret + hosted base URL for local→production STK handoff."""
+    secret = (os.environ.get('MPESA_STK_SYNC_SECRET') or '').strip()
+    base = (
+        os.environ.get('MPESA_STK_SYNC_URL')
+        or os.environ.get('DARAJA_CALLBACK_BASE_URL')
+        or ''
+    ).strip().rstrip('/')
+    if not secret or not base:
+        return None, None
+    return base, secret
+
+
+def _mpesa_stk_sync_authorized():
+    secret = (os.environ.get('MPESA_STK_SYNC_SECRET') or '').strip()
+    if not secret:
+        return False
+    provided = (request.headers.get('X-Mpesa-Sync-Secret') or '').strip()
+    return provided == secret
+
+
+def _mpesa_should_sync_stk_to_remote():
+    hosted = (os.environ.get('IS_HOSTED') or '').lower()
+    if hosted in ('true', '1', 'yes'):
+        return False
+    base, secret = _mpesa_stk_sync_config()
+    return bool(base and secret)
+
+
+def _mpesa_stk_sync_pending_to_remote(txn_payload):
+    """Register pending STK on hosted site so Daraja callback can complete it."""
+    base, secret = _mpesa_stk_sync_config()
+    if not base or not secret:
+        return False, 0, 'Sync not configured (MPESA_STK_SYNC_SECRET / DARAJA_CALLBACK_BASE_URL).'
+    try:
+        import requests
+        r = requests.post(
+            base + '/api/mpesa/stk-pending-sync',
+            json=txn_payload,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Mpesa-Sync-Secret': secret,
+            },
+            timeout=15,
+        )
+        if r.status_code == 200:
+            return True, r.status_code, 'Registered on callback server.'
+        msg = (r.text or '')[:240]
+        print(f"mpesa_stk_sync_pending_to_remote failed: HTTP {r.status_code} — {msg}")
+        return False, r.status_code, f'Callback server returned {r.status_code}. Deploy latest app to {base}.'
+    except Exception as e:
+        print(f"mpesa_stk_sync_pending_to_remote: {e}")
+        return False, 0, str(e)
+
+
+def _mpesa_stk_record_sync_meta(cursor, checkout_id, sync_ok, sync_detail=''):
+    """Persist remote sync attempt on the pending txn row."""
+    if not checkout_id:
+        return
+    try:
+        cursor.execute(
+            "SELECT raw_request_json FROM mpesa_stk_transactions WHERE checkout_request_id = %s LIMIT 1",
+            (checkout_id,),
+        )
+        row = cursor.fetchone()
+        raw = row.get('raw_request_json') if isinstance(row, dict) else (row[0] if row else None)
+        try:
+            meta = json.loads(raw) if raw else {}
+        except Exception:
+            meta = {'stk': raw}
+        if not isinstance(meta, dict):
+            meta = {'stk': meta}
+        meta['remote_sync_ok'] = bool(sync_ok)
+        meta['remote_sync_detail'] = (sync_detail or '')[:500]
+        meta['remote_sync_at'] = datetime.utcnow().isoformat() + 'Z'
+        cursor.execute(
+            "UPDATE mpesa_stk_transactions SET raw_request_json = %s WHERE checkout_request_id = %s",
+            (json.dumps(meta), checkout_id),
+        )
+    except Exception as e:
+        print(f"_mpesa_stk_record_sync_meta: {e}")
+
+
+def _mpesa_stk_ensure_remote_registered(cursor, txn_row):
+    """Retry registering pending txn on hosted callback server if needed."""
+    if not _mpesa_should_sync_stk_to_remote():
+        return
+    raw = txn_row.get('raw_request_json')
+    try:
+        meta = json.loads(raw) if raw else {}
+    except Exception:
+        meta = {}
+    if isinstance(meta, dict) and meta.get('remote_sync_ok'):
+        return
+    checkout_id = txn_row.get('checkout_request_id')
+    ok, _code, detail = _mpesa_stk_sync_pending_to_remote({
+        'checkout_request_id': checkout_id,
+        'merchant_request_id': txn_row.get('merchant_request_id'),
+        'student_id': txn_row.get('student_id'),
+        'parent_email': txn_row.get('parent_email'),
+        'purpose': txn_row.get('purpose'),
+        'amount': float(txn_row.get('amount') or 0),
+        'phone': txn_row.get('phone'),
+        'finance_account_id': txn_row.get('finance_account_id'),
+        'fee_structure_id': txn_row.get('fee_structure_id'),
+        'account_reference': txn_row.get('account_reference'),
+        'business_shortcode': txn_row.get('business_shortcode'),
+        'mpesa_type': txn_row.get('mpesa_type'),
+        'raw_request_json': json.dumps({'sync_origin': 'local'}),
+    })
+    _mpesa_stk_record_sync_meta(cursor, checkout_id, ok, detail)
+
+
+def _mpesa_sandbox_manual_confirm_enabled():
+    """Allow manual confirm when sandbox STK query/callback relay is unavailable."""
+    import daraja_mpesa as daraja
+    env = (daraja.load_daraja_config_from_env().get('environment') or 'sandbox').lower()
+    hosted = (os.environ.get('IS_HOSTED') or '').lower()
+    return env == 'sandbox' and hosted not in ('true', '1', 'yes')
+
+
+def _mpesa_stk_sync_warning_from_row(txn_row):
+    raw = txn_row.get('raw_request_json')
+    try:
+        meta = json.loads(raw) if raw else {}
+    except Exception:
+        meta = {}
+    if isinstance(meta, dict) and meta.get('remote_sync_ok') is False:
+        detail = meta.get('remote_sync_detail') or ''
+        if '404' in detail or 'Callback server' in detail:
+            return (
+                'M-Pesa payment may complete on your phone, but the callback server is not updated yet. '
+                'Deploy the latest app to your hosted school URL, or use Confirm payment below (sandbox).'
+            )
+    return None
+
+
+def _mpesa_stk_pull_remote_status(checkout_id):
+    base, secret = _mpesa_stk_sync_config()
+    if not base or not secret or not checkout_id:
+        return None
+    try:
+        import requests
+        r = requests.get(
+            base + '/api/mpesa/stk-status-sync/' + quote(str(checkout_id), safe=''),
+            headers={'Accept': 'application/json', 'X-Mpesa-Sync-Secret': secret},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except Exception as e:
+        print(f"mpesa_stk_pull_remote_status: {e}")
+        return None
+
+
+def _mpesa_stk_try_complete_from_remote_sync(cursor, txn_row):
+    """When sandbox STK query fails, read status from hosted callback DB."""
+    if not _mpesa_should_sync_stk_to_remote():
+        return None
+    remote = _mpesa_stk_pull_remote_status(txn_row.get('checkout_request_id'))
+    if not remote or not remote.get('success'):
+        return None
+    st = (remote.get('status') or '').lower()
+    if st == 'completed':
+        if (txn_row.get('status') or '').lower() != 'completed':
+            callback_data = {
+                'result_code': 0,
+                'result_desc': remote.get('message'),
+                'mpesa_receipt': remote.get('mpesa_receipt'),
+            }
+            ok, msg, receipt = _mpesa_stk_finalize_success(
+                cursor, txn_row, callback_data, raw_json=remote.get('raw_callback_json'),
+            )
+            if not ok:
+                return {
+                    'success': True,
+                    'status': 'failed',
+                    'message': (msg or 'Payment received but could not be recorded.') + ' Please try again.',
+                }
+            return {
+                'success': True,
+                'status': 'completed',
+                'message': msg,
+                'mpesa_receipt': receipt,
+            }
+        return {
+            'success': True,
+            'status': 'completed',
+            'message': remote.get('message') or _mpesa_parent_success_message(txn_row, remote.get('mpesa_receipt')),
+            'mpesa_receipt': remote.get('mpesa_receipt'),
+        }
+    if st in ('failed', 'cancelled'):
+        if (txn_row.get('status') or '').lower() not in ('failed', 'cancelled', 'completed'):
+            _mpesa_stk_finalize_failure(
+                cursor, txn_row, remote.get('result_code') or '',
+                remote.get('message') or 'Payment was not completed.',
+                raw_json=remote.get('raw_callback_json'),
+            )
+        msg = remote.get('message') or 'Payment was not completed.'
+        if 'try again' not in msg.lower():
+            msg += ' Please try again.'
+        return {'success': True, 'status': st, 'message': msg}
+    return None
+
+
+@app.route('/parent/mpesa/stk-push', methods=['POST'])
+@app.route('/dashboard/parent/mpesa/stk-push', methods=['POST'])
+@login_required
+def parent_mpesa_stk_push():
+    """Initiate M-Pesa STK push for school fees or pocket money (parent portal)."""
+    import daraja_mpesa as daraja
+
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    data = request.get_json(silent=True) or request.form
+    purpose = (data.get('purpose') or '').strip().lower()
+    student_id = (data.get('student_id') or '').strip()
+    phone = (data.get('phone') or '').strip()
+    raw_amount = data.get('amount')
+
+    is_tech = ctx['is_technician'] and (ctx.get('current_view_role') or '').lower() == 'parent'
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            if not _parent_can_pay_for_student(
+                cursor, ctx.get('parent_email'), student_id, is_tech_as_parent=is_tech
+            ):
+                return jsonify({'success': False, 'message': 'You cannot pay for this student.'}), 403
+
+            daraja_settings = _get_daraja_settings(cursor)
+            if not daraja_settings.get('enabled'):
+                return jsonify({
+                    'success': False,
+                    'message': 'M-Pesa online payments are disabled. Contact the school.',
+                }), 400
+            if not daraja.credentials_configured(daraja_settings):
+                return jsonify({
+                    'success': False,
+                    'message': 'M-Pesa is not configured on the server. Contact the school.',
+                }), 503
+
+            fee_structure_id = None
+            if purpose == 'school_fee':
+                finance_account_id, fee_structure_id, err = _resolve_parent_fee_mpesa_account(
+                    cursor, student_id,
+                )
+            elif purpose == 'pocket_money':
+                finance_account_id, _, err = _resolve_parent_pocket_mpesa_account(cursor, student_id)
+            else:
+                return jsonify({'success': False, 'message': 'Invalid payment purpose.'}), 400
+
+            if err:
+                return jsonify({'success': False, 'message': err}), 400
+
+            mpesa_cfg, cfg_err = _finance_account_mpesa_stk_config(
+                cursor, finance_account_id, student_id, daraja_settings,
+            )
+            if cfg_err:
+                return jsonify({'success': False, 'message': cfg_err}), 400
+
+            callback_url, cb_err = daraja.resolve_stk_callback_url(
+                daraja_settings,
+                fallback_url=url_for('mpesa_stk_callback', _external=True),
+            )
+            if cb_err:
+                return jsonify({'success': False, 'message': cb_err}), 400
+
+            stk = daraja.stk_push(
+                daraja_settings,
+                phone=phone,
+                amount=raw_amount,
+                account_reference=mpesa_cfg['account_reference'],
+                transaction_desc='School fees' if purpose == 'school_fee' else 'Pocket money',
+                callback_url=callback_url,
+                business_shortcode=mpesa_cfg['business_shortcode'],
+                transaction_type=mpesa_cfg['transaction_type'],
+                party_b_shortcode=mpesa_cfg.get('party_b_shortcode'),
+            )
+            if not stk.get('ok'):
+                return jsonify({'success': False, 'message': stk.get('error') or 'STK push failed.'}), 400
+
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                """
+                INSERT INTO mpesa_stk_transactions
+                    (checkout_request_id, merchant_request_id, student_id, parent_email,
+                     purpose, amount, phone, finance_account_id, fee_structure_id,
+                     account_reference, business_shortcode, mpesa_type, status, raw_request_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    stk.get('checkout_request_id'),
+                    stk.get('merchant_request_id'),
+                    student_id,
+                    ctx.get('parent_email'),
+                    purpose,
+                    raw_amount,
+                    phone,
+                    finance_account_id,
+                    fee_structure_id,
+                    mpesa_cfg['account_reference'],
+                    mpesa_cfg['business_shortcode'],
+                    mpesa_cfg['mpesa_type'],
+                    'pending',
+                    json.dumps(stk.get('raw') or {}),
+                ),
+            )
+            connection.commit()
+            sync_warning = None
+            if _mpesa_should_sync_stk_to_remote():
+                sync_ok, _code, sync_detail = _mpesa_stk_sync_pending_to_remote({
+                    'checkout_request_id': stk.get('checkout_request_id'),
+                    'merchant_request_id': stk.get('merchant_request_id'),
+                    'student_id': student_id,
+                    'parent_email': ctx.get('parent_email'),
+                    'purpose': purpose,
+                    'amount': raw_amount,
+                    'phone': phone,
+                    'finance_account_id': finance_account_id,
+                    'fee_structure_id': fee_structure_id,
+                    'account_reference': mpesa_cfg['account_reference'],
+                    'business_shortcode': mpesa_cfg['business_shortcode'],
+                    'mpesa_type': mpesa_cfg['mpesa_type'],
+                    'raw_request_json': json.dumps({'sync_origin': 'local', 'stk': stk.get('raw') or {}}),
+                })
+                _mpesa_stk_record_sync_meta(cursor, stk.get('checkout_request_id'), sync_ok, sync_detail)
+                connection.commit()
+                if not sync_ok:
+                    sync_warning = sync_detail
+            payload = {
+                'success': True,
+                'message': stk.get('customer_message') or 'Check your phone for the M-Pesa prompt.',
+                'checkout_request_id': stk.get('checkout_request_id'),
+                'account_reference': mpesa_cfg['account_reference'],
+                'business_name': mpesa_cfg.get('business_name'),
+                'mpesa_type': mpesa_cfg.get('mpesa_type'),
+            }
+            if sync_warning:
+                payload['sync_warning'] = sync_warning
+            if _mpesa_sandbox_manual_confirm_enabled():
+                payload['confirm_available'] = True
+            return jsonify(payload)
+    except Exception as e:
+        print(f"parent_mpesa_stk_push: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not start M-Pesa payment.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/parent/mpesa/status/<checkout_request_id>', methods=['GET'])
+@app.route('/dashboard/parent/mpesa/status/<checkout_request_id>', methods=['GET'])
+@login_required
+def parent_mpesa_stk_status(checkout_request_id):
+    """Poll STK transaction status (parent)."""
+    import daraja_mpesa as daraja
+
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                """
+                SELECT * FROM mpesa_stk_transactions
+                WHERE checkout_request_id = %s LIMIT 1
+                """,
+                (checkout_request_id,),
+            )
+            txn = cursor.fetchone()
+            if not txn:
+                return jsonify({'success': False, 'message': 'Transaction not found.'}), 404
+            if isinstance(txn, dict):
+                txn_row = txn
+            else:
+                cols = [d[0] for d in cursor.description]
+                txn_row = dict(zip(cols, txn))
+
+            is_tech = ctx['is_technician'] and (ctx.get('current_view_role') or '').lower() == 'parent'
+            if not _parent_can_pay_for_student(
+                cursor, ctx.get('parent_email'), txn_row.get('student_id'),
+                is_tech_as_parent=is_tech,
+            ):
+                return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+            status = (txn_row.get('status') or 'pending').lower()
+            if status == 'completed':
+                connection.commit()
+                return jsonify({
+                    'success': True,
+                    'status': 'completed',
+                    'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
+                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                })
+            if status in ('failed', 'cancelled'):
+                connection.commit()
+                return jsonify({
+                    'success': True,
+                    'status': status,
+                    'message': txn_row.get('result_desc') or 'Payment was not completed.',
+                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                })
+
+            daraja_settings = _get_daraja_settings(cursor)
+            _mpesa_stk_ensure_remote_registered(cursor, txn_row)
+            connection.commit()
+            polled = _mpesa_stk_try_complete_from_query(cursor, txn_row, daraja_settings)
+            if polled:
+                connection.commit()
+                return jsonify(polled)
+            remote = _mpesa_stk_try_complete_from_remote_sync(cursor, txn_row)
+            if remote:
+                connection.commit()
+                return jsonify(remote)
+            connection.commit()
+            pending_payload = {
+                'success': True,
+                'status': 'pending',
+                'message': 'Check your phone and enter your M-Pesa PIN…',
+            }
+            sync_warning = _mpesa_stk_sync_warning_from_row(txn_row)
+            if sync_warning:
+                pending_payload['sync_warning'] = sync_warning
+            if _mpesa_sandbox_manual_confirm_enabled():
+                pending_payload['confirm_available'] = True
+            return jsonify(pending_payload)
+    except Exception as e:
+        print(f"parent_mpesa_stk_status: {e}")
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Could not check status.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/parent/mpesa/confirm-payment', methods=['POST'])
+@app.route('/dashboard/parent/mpesa/confirm-payment', methods=['POST'])
+@login_required
+def parent_mpesa_confirm_payment():
+    """
+    Sandbox local dev fallback when Daraja callback cannot reach localhost.
+    Parent confirms after entering PIN on phone; records payment locally.
+    """
+    if not _mpesa_sandbox_manual_confirm_enabled():
+        return jsonify({'success': False, 'message': 'Manual confirm is only available in sandbox local dev.'}), 403
+
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    data = request.get_json(silent=True) or request.form
+    checkout_id = (data.get('checkout_request_id') or '').strip()
+    mpesa_receipt = (data.get('mpesa_receipt') or '').strip()
+    if not checkout_id:
+        return jsonify({'success': False, 'message': 'Missing payment session.'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                "SELECT * FROM mpesa_stk_transactions WHERE checkout_request_id = %s LIMIT 1",
+                (checkout_id,),
+            )
+            txn = cursor.fetchone()
+            if not txn:
+                return jsonify({'success': False, 'message': 'Payment session not found.'}), 404
+            txn_row = txn if isinstance(txn, dict) else dict(zip([d[0] for d in cursor.description], txn))
+
+            is_tech = ctx['is_technician'] and (ctx.get('current_view_role') or '').lower() == 'parent'
+            if not _parent_can_pay_for_student(
+                cursor, ctx.get('parent_email'), txn_row.get('student_id'), is_tech_as_parent=is_tech,
+            ):
+                return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+            status = (txn_row.get('status') or 'pending').lower()
+            if status == 'completed':
+                return jsonify({
+                    'success': True,
+                    'status': 'completed',
+                    'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
+                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                })
+            if status in ('failed', 'cancelled'):
+                return jsonify({'success': False, 'message': txn_row.get('result_desc') or 'Payment was not completed.'}), 400
+
+            receipt = mpesa_receipt or checkout_id
+            callback_data = {
+                'result_code': 0,
+                'result_desc': 'Sandbox payment confirmed by parent.',
+                'mpesa_receipt': receipt,
+            }
+            ok, msg, recorded_receipt = _mpesa_stk_finalize_success(
+                cursor, txn_row, callback_data,
+                raw_json=json.dumps({'sandbox_manual_confirm': True, 'checkout_request_id': checkout_id}),
+            )
+            if not ok:
+                connection.commit()
+                return jsonify({'success': False, 'message': msg or 'Could not record payment.'}), 400
+            connection.commit()
+            return jsonify({
+                'success': True,
+                'status': 'completed',
+                'message': msg,
+                'mpesa_receipt': recorded_receipt,
+            })
+    except Exception as e:
+        print(f"parent_mpesa_confirm_payment: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not confirm payment.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/api/mpesa/stk-callback', methods=['POST'])
+def mpesa_stk_callback():
+    """Daraja STK callback — records payment on success."""
+    import daraja_mpesa as daraja
+
+    body = request.get_json(silent=True) or {}
+    parsed = daraja.parse_stk_callback(body)
+    checkout_id = parsed.get('checkout_request_id')
+    print(f"mpesa_stk_callback: checkout={checkout_id} result={parsed.get('result_code')} desc={parsed.get('result_desc')}")
+    if not checkout_id:
+        return jsonify({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ResultCode': 1, 'ResultDesc': 'DB error'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                "SELECT * FROM mpesa_stk_transactions WHERE checkout_request_id = %s LIMIT 1",
+                (checkout_id,),
+            )
+            txn = cursor.fetchone()
+            if not txn:
+                print(f"mpesa_stk_callback: no txn for checkout {checkout_id}")
+                return jsonify({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+            if isinstance(txn, dict):
+                txn_row = txn
+            else:
+                cols = [d[0] for d in cursor.description]
+                txn_row = dict(zip(cols, txn))
+
+            if (txn_row.get('status') or '').lower() == 'completed':
+                connection.commit()
+                return jsonify({'ResultCode': 0, 'ResultDesc': 'Success'})
+
+            result_code = str(parsed.get('result_code'))
+            result_desc = parsed.get('result_desc') or ''
+            raw_json = json.dumps(body)
+            if _mpesa_stk_is_sync_relay_only(txn_row):
+                if result_code == '0':
+                    _mpesa_stk_mark_terminal(
+                        cursor,
+                        checkout_id,
+                        status='completed',
+                        result_code='0',
+                        result_desc=result_desc or 'Success',
+                        mpesa_receipt=parsed.get('mpesa_receipt'),
+                        raw_callback_json=raw_json,
+                    )
+                else:
+                    _mpesa_stk_finalize_failure(
+                        cursor, txn_row, result_code, result_desc, raw_json=raw_json,
+                    )
+            elif result_code == '0':
+                _mpesa_stk_finalize_success(cursor, txn_row, parsed, raw_json=raw_json)
+            else:
+                _mpesa_stk_finalize_failure(cursor, txn_row, result_code, result_desc, raw_json=raw_json)
+            connection.commit()
+    except Exception as e:
+        print(f"mpesa_stk_callback: {e}")
+        connection.rollback()
+    finally:
+        connection.close()
+    return jsonify({'ResultCode': 0, 'ResultDesc': 'Success'})
+
+
+@app.route('/api/mpesa/health', methods=['GET'])
+def mpesa_health():
+    """Verify M-Pesa callback/sync routes are deployed (no auth)."""
+    return jsonify({
+        'success': True,
+        'mpesa_routes': True,
+        'hosted': (os.environ.get('IS_HOSTED') or '').lower() in ('true', '1', 'yes'),
+    })
+
+
+@app.route('/api/mpesa/stk-pending-sync', methods=['POST'])
+def mpesa_stk_pending_sync():
+    """Hosted endpoint: register pending STK from local dev (Daraja callback lands here)."""
+    if not _mpesa_stk_sync_authorized():
+        return jsonify({'success': False, 'message': 'Unauthorized.'}), 401
+    data = request.get_json(silent=True) or {}
+    checkout_id = (data.get('checkout_request_id') or '').strip()
+    if not checkout_id:
+        return jsonify({'success': False, 'message': 'Missing checkout_request_id.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                "SELECT id FROM mpesa_stk_transactions WHERE checkout_request_id = %s LIMIT 1",
+                (checkout_id,),
+            )
+            if cursor.fetchone():
+                connection.commit()
+                return jsonify({'success': True, 'message': 'Already registered.'})
+            raw_req = data.get('raw_request_json')
+            try:
+                req_obj = json.loads(raw_req) if isinstance(raw_req, str) else (raw_req or {})
+            except Exception:
+                req_obj = {}
+            if not isinstance(req_obj, dict):
+                req_obj = {}
+            req_obj['sync_origin'] = 'local'
+            raw_req = json.dumps(req_obj)
+            cursor.execute(
+                """
+                INSERT INTO mpesa_stk_transactions
+                    (checkout_request_id, merchant_request_id, student_id, parent_email,
+                     purpose, amount, phone, finance_account_id, fee_structure_id,
+                     account_reference, business_shortcode, mpesa_type, status, raw_request_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    checkout_id,
+                    data.get('merchant_request_id'),
+                    data.get('student_id'),
+                    data.get('parent_email'),
+                    data.get('purpose'),
+                    data.get('amount'),
+                    data.get('phone'),
+                    data.get('finance_account_id'),
+                    data.get('fee_structure_id'),
+                    data.get('account_reference'),
+                    data.get('business_shortcode'),
+                    data.get('mpesa_type'),
+                    'pending',
+                    raw_req,
+                ),
+            )
+            connection.commit()
+            return jsonify({'success': True, 'message': 'Registered for callback.'})
+    except Exception as e:
+        print(f"mpesa_stk_pending_sync: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not register.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/api/mpesa/stk-status-sync/<checkout_request_id>', methods=['GET'])
+def mpesa_stk_status_sync(checkout_request_id):
+    """Hosted endpoint: local dev polls this after Daraja callback completes payment."""
+    if not _mpesa_stk_sync_authorized():
+        return jsonify({'success': False, 'message': 'Unauthorized.'}), 401
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                "SELECT * FROM mpesa_stk_transactions WHERE checkout_request_id = %s LIMIT 1",
+                (checkout_request_id,),
+            )
+            txn = cursor.fetchone()
+            if not txn:
+                return jsonify({'success': False, 'message': 'Not found.'}), 404
+            if isinstance(txn, dict):
+                txn_row = txn
+            else:
+                cols = [d[0] for d in cursor.description]
+                txn_row = dict(zip(cols, txn))
+            st = (txn_row.get('status') or 'pending').lower()
+            payload = {
+                'success': True,
+                'status': st,
+                'message': txn_row.get('result_desc') or 'Pending',
+                'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                'result_code': txn_row.get('result_code'),
+                'raw_callback_json': txn_row.get('raw_callback_json'),
+            }
+            if st == 'completed':
+                payload['message'] = txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row)
+            connection.commit()
+            return jsonify(payload)
+    except Exception as e:
+        print(f"mpesa_stk_status_sync: {e}")
+        return jsonify({'success': False, 'message': 'Error.'}), 500
+    finally:
+        connection.close()
 
 
 @app.route('/student-management/students-progress')
@@ -34812,6 +36470,437 @@ def ensure_accountant_misc_payments_table(cursor):
         _accountant_misc_payments_schema_ensuring = False
 
 
+_petty_cash_expenses_schema_ensuring = False
+
+
+def ensure_petty_cash_expenses_table(cursor):
+    """Petty cash disbursements linked to expense votes and finance accounts."""
+    global _petty_cash_expenses_schema_ensuring
+    if _petty_cash_expenses_schema_ensuring:
+        return
+    _petty_cash_expenses_schema_ensuring = True
+    try:
+        ensure_finance_accounts_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS petty_cash_expenses (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                reference_number VARCHAR(32) NOT NULL,
+                finance_account_id INT NOT NULL,
+                vote_name VARCHAR(255) NOT NULL,
+                amount DECIMAL(14,2) NOT NULL,
+                paid_to_name VARCHAR(255) NOT NULL,
+                paid_to_phone VARCHAR(20) NOT NULL,
+                payment_method VARCHAR(50) NOT NULL,
+                payment_reference VARCHAR(255) NOT NULL,
+                finance_transaction_id INT NULL,
+                recorded_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_petty_cash_expense_ref (reference_number),
+                INDEX idx_pce_account (finance_account_id),
+                INDEX idx_pce_vote (vote_name),
+                INDEX idx_pce_created (created_at),
+                FOREIGN KEY (finance_account_id) REFERENCES finance_accounts(id)
+            )
+        """)
+        for col_sql in (
+            "ADD COLUMN notes TEXT NULL AFTER payment_reference",
+        ):
+            col_name = col_sql.split('ADD COLUMN ')[1].split()[0]
+            try:
+                cursor.execute(
+                    f"SHOW COLUMNS FROM petty_cash_expenses LIKE '{col_name}'"
+                )
+                if not cursor.fetchone():
+                    cursor.execute(
+                        f"ALTER TABLE petty_cash_expenses {col_sql}"
+                    )
+            except Exception as col_err:
+                print(f"ensure_petty_cash_expenses_table {col_name}: {col_err}")
+    except Exception as e:
+        print(f"ensure_petty_cash_expenses_table: {e}")
+    finally:
+        _petty_cash_expenses_schema_ensuring = False
+
+
+_finance_account_expense_votes_schema_ensuring = False
+
+
+def ensure_finance_account_expense_votes_table(cursor):
+    """Links petty cash (and other) finance accounts to allowed expense vote names."""
+    global _finance_account_expense_votes_schema_ensuring
+    if _finance_account_expense_votes_schema_ensuring:
+        return
+    _finance_account_expense_votes_schema_ensuring = True
+    try:
+        ensure_finance_accounts_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS finance_account_expense_votes (
+                finance_account_id INT NOT NULL,
+                vote_name VARCHAR(255) NOT NULL,
+                PRIMARY KEY (finance_account_id, vote_name),
+                INDEX idx_faev_vote (vote_name),
+                FOREIGN KEY (finance_account_id) REFERENCES finance_accounts(id) ON DELETE CASCADE
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_finance_account_expense_votes_table: {e}")
+    finally:
+        _finance_account_expense_votes_schema_ensuring = False
+
+
+def _parse_expense_vote_names_from_form(form):
+    """Parse expense_vote_names[] from POST (unique uppercase vote names)."""
+    raw = form.getlist('expense_vote_names') if form else []
+    names = []
+    seen = set()
+    for v in raw:
+        name = str(v or '').strip().upper()
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
+def _save_finance_account_expense_votes(cursor, account_id, vote_names):
+    ensure_finance_account_expense_votes_table(cursor)
+    account_id = int(account_id)
+    cursor.execute(
+        "DELETE FROM finance_account_expense_votes WHERE finance_account_id = %s",
+        (account_id,),
+    )
+    for name in vote_names or []:
+        vote = str(name or '').strip().upper()
+        if not vote:
+            continue
+        cursor.execute(
+            """
+            INSERT IGNORE INTO finance_account_expense_votes
+                (finance_account_id, vote_name)
+            VALUES (%s, %s)
+            """,
+            (account_id, vote),
+        )
+
+
+def _fetch_finance_account_expense_votes_map(cursor, account_ids):
+    """Map finance_account_id -> list of vote_name strings."""
+    ensure_finance_account_expense_votes_table(cursor)
+    out = {int(aid): [] for aid in (account_ids or []) if aid is not None}
+    ids = [int(a) for a in (account_ids or []) if a is not None]
+    if not ids:
+        return out
+    try:
+        placeholders = ','.join(['%s'] * len(ids))
+        cursor.execute(
+            f"""
+            SELECT finance_account_id, vote_name
+            FROM finance_account_expense_votes
+            WHERE finance_account_id IN ({placeholders})
+            ORDER BY vote_name ASC
+            """,
+            tuple(ids),
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                aid = r.get('finance_account_id')
+                vote = (r.get('vote_name') or '').strip()
+            else:
+                aid = r[0] if len(r) > 0 else None
+                vote = (r[1] or '').strip() if len(r) > 1 else ''
+            if aid is None or not vote:
+                continue
+            aid = int(aid)
+            if aid not in out:
+                out[aid] = []
+            out[aid].append(vote)
+    except Exception as e:
+        print(f"_fetch_finance_account_expense_votes_map: {e}")
+    return out
+
+
+def _generate_petty_cash_expense_reference(cursor):
+    ensure_petty_cash_expenses_table(cursor)
+    cursor.execute("""
+        SELECT reference_number FROM petty_cash_expenses
+        ORDER BY id DESC LIMIT 1
+    """)
+    row = cursor.fetchone()
+    next_num = 1
+    if row:
+        code = (row.get('reference_number') if isinstance(row, dict) else row[0]) or ''
+        m = re.match(r'^PCASH-(\d+)$', str(code).strip().upper())
+        if m:
+            next_num = int(m.group(1)) + 1
+    return f'PCASH-{next_num:05d}'
+
+
+def _fetch_petty_cash_expense_particulars_map(cursor, account_id):
+    """Map petty cash expense id → display line for the cash book."""
+    ensure_petty_cash_expenses_table(cursor)
+    out = {}
+    try:
+        cursor.execute(
+            """
+            SELECT id, vote_name, paid_to_name, paid_to_phone, payment_method,
+                   payment_reference, reference_number, notes
+            FROM petty_cash_expenses
+            WHERE finance_account_id = %s
+            ORDER BY id DESC
+            LIMIT 5000
+            """,
+            (int(account_id),),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                eid = row.get('id')
+                vote = (row.get('vote_name') or '').strip()
+                name = (row.get('paid_to_name') or '').strip()
+                phone = (row.get('paid_to_phone') or '').strip()
+                method = (row.get('payment_method') or '').strip()
+                ext_ref = (row.get('payment_reference') or '').strip()
+                book_ref = (row.get('reference_number') or '').strip()
+                notes = (row.get('notes') or '').strip()
+            else:
+                eid = row[0]
+                vote = (row[1] or '').strip()
+                name = (row[2] or '').strip()
+                phone = (row[3] or '').strip()
+                method = (row[4] or '').strip()
+                ext_ref = (row[5] or '').strip()
+                book_ref = (row[6] or '').strip()
+                notes = (row[7] or '').strip() if len(row) > 7 else ''
+            if not eid:
+                continue
+            parts = [f'Vote: {vote}' if vote else '', f'Paid to {name}' if name else '']
+            if phone:
+                parts.append(phone)
+            if method:
+                parts.append(method)
+            if book_ref:
+                parts.append(book_ref)
+            if notes:
+                parts.append(notes)
+            out[int(eid)] = {
+                'particulars': ' · '.join(p for p in parts if p) or 'Petty cash expense',
+                'payment_reference': ext_ref,
+            }
+    except Exception as e:
+        print(f"_fetch_petty_cash_expense_particulars_map: {e}")
+    return out
+
+
+def _petty_cash_expense_vote_detail_rows(cursor, filters, vote_name=None):
+    """Petty cash outflows for vote expenditure ledgers."""
+    ensure_petty_cash_expenses_table(cursor)
+    ensure_finance_accounts_table(cursor)
+    filters = filters or {}
+    where = ['pce.amount > 0']
+    params = []
+    if vote_name:
+        where.append('UPPER(TRIM(pce.vote_name)) = %s')
+        params.append((vote_name or '').strip().upper())
+    date_parts, date_params = _finance_report_date_clause('pce.created_at', filters)
+    if date_parts:
+        where.extend(date_parts)
+        params.extend(date_params)
+    rows = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT pce.created_at, pce.amount, pce.payment_method, pce.payment_reference,
+                   pce.paid_to_name, pce.recorded_by_name, pce.reference_number,
+                   fa.account_name AS finance_account_name,
+                   UPPER(TRIM(pce.vote_name)) AS vote_name
+            FROM petty_cash_expenses pce
+            LEFT JOIN finance_accounts fa ON fa.id = pce.finance_account_id
+            WHERE {' AND '.join(where)}
+            ORDER BY pce.created_at DESC, pce.id DESC
+            LIMIT 500
+            """,
+            tuple(params),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('created_at')
+                amt = float(row.get('amount') or 0)
+                ref = (row.get('payment_reference') or row.get('reference_number') or '').strip()
+                payee = (row.get('paid_to_name') or '—').strip() or '—'
+                method = (row.get('payment_method') or '').strip()
+                acct = (row.get('finance_account_name') or '').strip()
+                vn = (row.get('vote_name') or '').strip().upper() or '—'
+                book_ref = (row.get('reference_number') or '').strip()
+            else:
+                pd = row[0]
+                amt = float(row[1] or 0)
+                method = (row[2] or '').strip() if len(row) > 2 else ''
+                ref = (row[3] or row[6] or '').strip() if len(row) > 3 else ''
+                payee = (row[4] or '—').strip() if len(row) > 4 else '—'
+                acct = (row[7] or '').strip() if len(row) > 7 else ''
+                vn = (row[8] or '—').strip().upper() if len(row) > 8 else '—'
+                book_ref = (row[6] or '').strip() if len(row) > 6 else ''
+            if amt <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            desc_parts = [p for p in (f'Petty cash {book_ref}', method, acct) if p]
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'flow': 'out',
+                'flow_label': 'Out',
+                'type_label': 'Petty cash',
+                'reference': ref or book_ref or '—',
+                'payee': payee,
+                'description': ' · '.join(desc_parts) if desc_parts else 'Petty cash payment',
+                'amount': amt,
+                'amount_display': _format_kes_amount(amt),
+                'payment_method': method,
+                'vote_name': vn,
+            })
+    except Exception as e:
+        print(f"_petty_cash_expense_vote_detail_rows: {e}")
+    return rows
+
+
+def _record_petty_cash_expense(cursor, form, recorded_by_name=None):
+    """Record a petty cash expense — debits account and posts to vote books."""
+    from decimal import Decimal, InvalidOperation
+
+    raw_amount = (form.get('amount') or form.get('amount_paid') or '').strip().replace(',', '')
+    try:
+        pay_amount = Decimal(raw_amount).quantize(Decimal('0.01'))
+    except (InvalidOperation, ValueError):
+        return False, 'Enter a valid amount greater than zero.'
+    if pay_amount <= 0:
+        return False, 'Enter a valid amount greater than zero.'
+
+    try:
+        finance_account_id = int((form.get('finance_account_id') or '').strip())
+    except (TypeError, ValueError):
+        finance_account_id = None
+    if not finance_account_id:
+        return False, 'Select the petty cash account to pay from.'
+
+    vote_name = (form.get('vote_name') or form.get('expense_vote') or '').strip().upper()
+    if not vote_name:
+        return False, 'Select the expense vote (category).'
+    if not _is_valid_store_expense_category(cursor, vote_name):
+        return False, 'Select a valid expense vote from the list.'
+    allowed_votes = _fetch_finance_account_expense_votes_map(cursor, [finance_account_id]).get(
+        int(finance_account_id), []
+    )
+    if allowed_votes:
+        allowed_set = {str(v).strip().upper() for v in allowed_votes}
+        if vote_name not in allowed_set:
+            return False, 'This expense vote is not linked to the selected petty cash account.'
+
+    paid_to_name = (form.get('paid_to_name') or form.get('paid_to_company_name') or '').strip().upper()
+    if not paid_to_name or len(paid_to_name) < 2:
+        return False, 'Enter the name of the person who incurred the expense.'
+    if len(paid_to_name) > 255:
+        paid_to_name = paid_to_name[:255]
+
+    phone_raw = (form.get('paid_to_phone') or form.get('paid_to_company_phone') or '').strip()
+    paid_to_phone = _normalize_store_supplier_phone(phone_raw)
+    if not paid_to_phone:
+        return False, 'Enter a valid phone number (at least 9 digits).'
+
+    payment_method = _normalize_supplier_payment_method(
+        (form.get('payment_method') if form else None) or ''
+    )
+    if not payment_method:
+        return False, 'Select a payment mode (Cash, Cheque, or Mobile Money).'
+
+    ensure_finance_accounts_table(cursor)
+    cursor.execute(
+        """
+        SELECT id, account_name, account_category, account_status
+        FROM finance_accounts WHERE id = %s LIMIT 1
+        """,
+        (int(finance_account_id),),
+    )
+    acct_row = cursor.fetchone()
+    if not acct_row:
+        return False, 'Petty cash account not found.'
+    if isinstance(acct_row, dict):
+        acct_cat = (acct_row.get('account_category') or '').strip().lower()
+        acct_name = (acct_row.get('account_name') or '').strip()
+        acct_status = (acct_row.get('account_status') or 'active').strip().lower()
+    else:
+        acct_cat = (acct_row[2] or '').strip().lower() if len(acct_row) > 2 else ''
+        acct_name = (acct_row[1] or '').strip() if len(acct_row) > 1 else ''
+        acct_status = (acct_row[3] or 'active').strip().lower() if len(acct_row) > 3 else 'active'
+    if acct_cat != 'petty cash':
+        return False, 'Payments from this page must use a Petty cash account.'
+    if acct_status != 'active':
+        return False, 'That petty cash account is not active.'
+
+    ensure_petty_cash_expenses_table(cursor)
+    book_ref = _generate_petty_cash_expense_reference(cursor)
+    external_ref = (
+        (form.get('external_payment_reference') or form.get('payment_reference') or '')
+        .strip()
+    )
+    if len(external_ref) > 255:
+        external_ref = external_ref[:255]
+    payment_reference = external_ref or book_ref
+    notes = (form.get('notes') or form.get('expense_notes') or '').strip()
+    if notes and len(notes) > 2000:
+        notes = notes[:2000]
+    notes = notes or None
+    recorded_by = (recorded_by_name or '').strip() or None
+
+    cursor.execute(
+        """
+        INSERT INTO petty_cash_expenses
+            (reference_number, finance_account_id, vote_name, amount,
+             paid_to_name, paid_to_phone, payment_method, payment_reference,
+             notes, recorded_by_name)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            book_ref, int(finance_account_id), vote_name, pay_amount,
+            paid_to_name, paid_to_phone, payment_method, payment_reference,
+            notes, recorded_by,
+        ),
+    )
+    expense_id = cursor.lastrowid
+    description = f'{vote_name} — {paid_to_name} · {payment_method} · {book_ref}'
+    if notes:
+        description = f'{description} — {notes}'
+
+    ok, err = _debit_finance_account(
+        cursor,
+        finance_account_id,
+        pay_amount,
+        payment_method,
+        payment_reference,
+        description,
+        related_type='petty_cash_expense',
+        related_id=expense_id,
+        recorded_by_name=recorded_by,
+    )
+    if not ok:
+        return False, err or 'Could not debit petty cash account.'
+
+    txn_id = cursor.lastrowid
+    try:
+        cursor.execute(
+            """
+            UPDATE petty_cash_expenses
+            SET finance_transaction_id = %s
+            WHERE id = %s
+            """,
+            (txn_id, expense_id),
+        )
+    except Exception as e:
+        print(f"_record_petty_cash_expense txn link: {e}")
+
+    return True, (
+        f'Petty cash expense {book_ref} of KES {pay_amount:,.2f} recorded '
+        f'for {paid_to_name} ({vote_name}) from {acct_name}.'
+    )
+
+
 def _generate_accountant_misc_payment_reference(cursor):
     ensure_accountant_misc_payments_table(cursor)
     cursor.execute("""
@@ -35933,10 +38022,14 @@ def _validate_disbursement_finance_account(cursor, finance_account_id, payment_m
 def _debit_finance_account(
     cursor, finance_account_id, amount, payment_method, reference_code,
     description, related_type=None, related_id=None, recorded_by_name=None,
+    activity_date=None,
 ):
     """Debit (reduce) a finance account and write a ledger transaction."""
     from decimal import Decimal, InvalidOperation
 
+    ok_fy, fy_err = _assert_financial_year_writable(cursor, activity_date)
+    if not ok_fy:
+        return False, fy_err
     ok, acct, err = _validate_disbursement_finance_account(
         cursor, finance_account_id, payment_method, amount,
     )
@@ -35990,10 +38083,14 @@ def _debit_finance_account(
 def _credit_finance_account(
     cursor, finance_account_id, amount, payment_method=None, reference_code=None,
     description=None, related_type=None, related_id=None, recorded_by_name=None,
+    activity_date=None,
 ):
     """Credit (increase) a finance account and write a ledger transaction."""
     from decimal import Decimal, InvalidOperation
 
+    ok_fy, fy_err = _assert_financial_year_writable(cursor, activity_date)
+    if not ok_fy:
+        return False, fy_err
     ensure_finance_accounts_table(cursor)
     try:
         amt = Decimal(str(amount)).quantize(Decimal('0.01'))
@@ -36027,7 +38124,9 @@ def _credit_finance_account(
 
     ensure_finance_account_transactions_table(cursor)
     if related_type and related_id is not None:
-        if _finance_ledger_exists(cursor, related_type, related_id, 'credit'):
+        if _finance_ledger_exists(
+            cursor, related_type, related_id, 'credit', finance_account_id=fid,
+        ):
             return True, name
 
     cursor.execute(
@@ -36069,7 +38168,7 @@ def _credit_finance_account(
     return True, name
 
 
-def _finance_ledger_exists(cursor, related_type, related_id, direction):
+def _finance_ledger_exists(cursor, related_type, related_id, direction, finance_account_id=None):
     """True when a ledger row already exists for this source record."""
     ensure_finance_account_transactions_table(cursor)
     if not related_type or related_id is None:
@@ -36078,14 +38177,16 @@ def _finance_ledger_exists(cursor, related_type, related_id, direction):
         rid = int(related_id)
     except (TypeError, ValueError):
         return False
-    cursor.execute(
-        """
+    params = [str(related_type).strip(), rid, direction]
+    sql = """
         SELECT id FROM finance_account_transactions
         WHERE related_type = %s AND related_id = %s AND direction = %s
-        LIMIT 1
-        """,
-        (str(related_type).strip(), rid, direction),
-    )
+    """
+    if finance_account_id is not None:
+        sql += ' AND finance_account_id = %s'
+        params.append(int(finance_account_id))
+    sql += ' LIMIT 1'
+    cursor.execute(sql, tuple(params))
     return cursor.fetchone() is not None
 
 
@@ -36112,6 +38213,38 @@ def _refresh_finance_account_balances_from_ledger(cursor):
         ) ledger ON ledger.finance_account_id = fa.id
         SET fa.current_balance = COALESCE(ledger.computed_balance, 0)
         """
+    )
+
+
+def _refresh_finance_account_balance_from_ledger(cursor, account_id):
+    """Refresh stored balance for one finance account from its ledger rows."""
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return
+    if account_id <= 0:
+        return
+    ensure_finance_accounts_table(cursor)
+    ensure_finance_account_transactions_table(cursor)
+    cursor.execute(
+        """
+        UPDATE finance_accounts fa
+        SET fa.current_balance = COALESCE((
+            SELECT ROUND(
+                SUM(
+                    CASE
+                        WHEN direction = 'credit' THEN amount
+                        ELSE -amount
+                    END
+                ),
+                2
+            )
+            FROM finance_account_transactions
+            WHERE finance_account_id = %s
+        ), 0)
+        WHERE fa.id = %s
+        """,
+        (account_id, account_id),
     )
 
 
@@ -36169,10 +38302,11 @@ def _sync_finance_account_balances(cursor):
             """
             SELECT sp.id, sp.student_id, sp.amount_paid, sp.payment_method,
                    sp.reference_number, sp.transaction_id, sp.cheque_number,
-                   fs.finance_account_id, sp.received_by
+                   sp.fee_structure_id, fs.finance_account_id, fs.academic_level_id,
+                   sp.received_by
             FROM student_payments sp
             INNER JOIN fee_structures fs ON fs.id = sp.fee_structure_id
-            WHERE fs.finance_account_id IS NOT NULL AND sp.amount_paid > 0
+            WHERE sp.amount_paid > 0
             ORDER BY sp.id ASC
             """
         )
@@ -36190,6 +38324,7 @@ def _sync_finance_account_balances(cursor):
             reference_number = row.get('reference_number')
             transaction_id = row.get('transaction_id')
             cheque_number = row.get('cheque_number')
+            fee_structure_id = row.get('fee_structure_id')
             finance_account_id = row.get('finance_account_id')
         else:
             payment_id = row[0]
@@ -36199,24 +38334,40 @@ def _sync_finance_account_balances(cursor):
             reference_number = row[4] if len(row) > 4 else None
             transaction_id = row[5] if len(row) > 5 else None
             cheque_number = row[6] if len(row) > 6 else None
-            finance_account_id = row[7] if len(row) > 7 else None
-        if _finance_ledger_exists(cursor, 'student_payment', payment_id, 'credit'):
-            continue
+            fee_structure_id = row[7] if len(row) > 7 else None
+            finance_account_id = row[8] if len(row) > 8 else None
         ref = (
             (reference_number or '').strip()
             or (transaction_id or '').strip()
             or (cheque_number or '').strip()
             or f'FEE-{payment_id}'
         )
-        ok, _ = _credit_finance_account(
-            cursor, finance_account_id, amount,
+        if not fee_structure_id:
+            if finance_account_id and not _finance_ledger_exists(
+                cursor, 'student_payment', payment_id, 'credit', finance_account_id=finance_account_id,
+            ):
+                ok, _ = _credit_finance_account(
+                    cursor, finance_account_id, amount,
+                    payment_method=payment_method,
+                    reference_code=ref,
+                    description=f'Student fee — {student_id}',
+                    related_type='student_payment',
+                    related_id=payment_id,
+                )
+                if ok:
+                    changed = True
+            continue
+        level_id = (
+            row.get('academic_level_id') if isinstance(row, dict) else (row[9] if len(row) > 9 else None)
+        )
+        if _reconcile_student_payment_ledger_splits(
+            cursor, payment_id, fee_structure_id, amount,
             payment_method=payment_method,
             reference_code=ref,
-            description=f'Student fee — {student_id}',
-            related_type='student_payment',
-            related_id=payment_id,
-        )
-        if ok:
+            student_id=student_id,
+            fs_finance_account_id=finance_account_id,
+            level_id=level_id,
+        ):
             changed = True
 
     cursor.execute(
@@ -36354,6 +38505,590 @@ def _is_finance_mpesa_paybill_admission_ref(account_number):
 def _finance_mpesa_paybill_account_display():
     return 'Student admission number'
 
+
+_mpesa_stk_schema_ensuring = False
+
+
+def ensure_mpesa_stk_transactions_table(cursor):
+    """Pending/completed Daraja STK pushes initiated from parent portal."""
+    global _mpesa_stk_schema_ensuring
+    if _mpesa_stk_schema_ensuring:
+        return
+    _mpesa_stk_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mpesa_stk_transactions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                checkout_request_id VARCHAR(64) NULL,
+                merchant_request_id VARCHAR(64) NULL,
+                student_id VARCHAR(20) NOT NULL,
+                parent_email VARCHAR(255) NULL,
+                purpose VARCHAR(32) NOT NULL,
+                amount DECIMAL(14,2) NOT NULL,
+                phone VARCHAR(20) NOT NULL,
+                finance_account_id INT NULL,
+                fee_structure_id INT NULL,
+                account_reference VARCHAR(20) NULL,
+                business_shortcode VARCHAR(20) NULL,
+                mpesa_type VARCHAR(20) NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                result_code VARCHAR(16) NULL,
+                result_desc VARCHAR(500) NULL,
+                mpesa_receipt VARCHAR(64) NULL,
+                student_payment_id INT NULL,
+                raw_request_json TEXT NULL,
+                raw_callback_json TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                INDEX idx_mpesa_stk_checkout (checkout_request_id),
+                INDEX idx_mpesa_stk_student (student_id),
+                INDEX idx_mpesa_stk_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+    except Exception as e:
+        print(f"ensure_mpesa_stk_transactions_table: {e}")
+    finally:
+        _mpesa_stk_schema_ensuring = False
+
+
+def _get_daraja_settings(cursor):
+    """Load Daraja API credentials from integration_settings + env."""
+    import daraja_mpesa as daraja
+
+    stored = {}
+    try:
+        cursor.execute(
+            """
+            SELECT settings_json FROM integration_settings
+            WHERE integration_type = %s LIMIT 1
+            """,
+            ('mpesa_daraja',),
+        )
+        row = cursor.fetchone()
+        if row:
+            raw = row.get('settings_json') if isinstance(row, dict) else row[0]
+            stored = json.loads(raw) if raw else {}
+    except Exception as e:
+        print(f"_get_daraja_settings: {e}")
+    return daraja.merge_daraja_settings(stored)
+
+
+def _finance_account_mpesa_stk_config(cursor, finance_account_id, student_id, daraja_settings):
+    """
+  Resolve M-Pesa STK shortcode and transaction type from finance account payment methods.
+    Paybill account reference: student admission number or fixed account number per profile.
+    """
+    import daraja_mpesa as daraja
+
+    ensure_finance_accounts_table(cursor)
+    pay_map = _fetch_finance_account_payment_methods_map(cursor, [int(finance_account_id)])
+    methods = pay_map.get(int(finance_account_id)) or []
+    mpesa = next((m for m in methods if (m.get('payment_mode') or '') == 'mpesa'), None)
+    if not mpesa:
+        return None, 'This account does not accept M-Pesa. Configure M-Pesa on the finance account.'
+    mt = (mpesa.get('mpesa_type') or '').lower()
+    admission = (student_id or '').strip()
+    if not admission:
+        return None, 'Student admission number is required.'
+    stored_acct = (mpesa.get('account_number') or '').strip()
+    if mt == 'paybill' and _is_finance_mpesa_paybill_admission_ref(stored_acct):
+        account_ref = admission[:12]
+    elif mt == 'paybill':
+        account_ref = (stored_acct or admission)[:12]
+    else:
+        account_ref = admission[:12]
+    biz = mpesa.get('business_name') or ''
+    global_shortcode = (daraja_settings.get('shortcode') or '').strip()
+    if mt == 'till':
+        shortcode = (mpesa.get('account_number') or global_shortcode or '').strip()
+        txn_type = 'CustomerBuyGoodsOnline'
+        party_b = shortcode
+    elif mt == 'paybill':
+        shortcode = (mpesa.get('mpesa_shortcode') or global_shortcode or '').strip()
+        txn_type = 'CustomerPayBillOnline'
+        party_b = shortcode
+    else:
+        return None, 'M-Pesa type must be Paybill or Till on this account.'
+    if not shortcode:
+        return None, 'Paybill/Till number is not configured on this finance account.'
+    return {
+        'mpesa_type': mt,
+        'business_shortcode': shortcode,
+        'transaction_type': txn_type,
+        'party_b_shortcode': party_b,
+        'account_reference': account_ref,
+        'business_name': biz,
+        'admission_number': admission,
+    }, None
+
+
+def _resolve_parent_fee_mpesa_account(cursor, student_id):
+    """Finance account from active fee structure for student's level."""
+    cy, ct = _reports_current_year_term_ids(cursor)
+    cursor.execute(
+        """
+        SELECT current_grade, LOWER(TRIM(COALESCE(student_category, ''))) AS student_category
+        FROM students WHERE student_id = %s AND status = 'in session' LIMIT 1
+        """,
+        (student_id,),
+    )
+    st = cursor.fetchone()
+    if not st:
+        return None, None, 'Student not found.'
+    grade = (st.get('current_grade') if isinstance(st, dict) else st[0]) or ''
+    category = (st.get('student_category') if isinstance(st, dict) else (st[1] if len(st) > 1 else '')) or ''
+    level_by_name = _student_fees_level_by_name(cursor)
+    level_id = (level_by_name.get(grade) or {}).get('id')
+    if not level_id:
+        return None, None, 'No academic level matched for this student.'
+    fs = _reports_select_fee_structure_for_student(cursor, level_id, category, cy, ct)
+    if not fs or not fs.get('finance_account_id'):
+        return None, None, 'No fee structure with a linked finance account for this student.'
+    return int(fs['finance_account_id']), int(fs['id']), None
+
+
+def _resolve_parent_pocket_mpesa_account(cursor, student_id):
+    """First pocket-money account for student's grade with M-Pesa enabled."""
+    cursor.execute(
+        "SELECT current_grade FROM students WHERE student_id = %s LIMIT 1",
+        (student_id,),
+    )
+    row = cursor.fetchone()
+    grade = (row.get('current_grade') if isinstance(row, dict) else row[0]) if row else ''
+    accounts = _fetch_finance_accounts_for_pocket_money_picker(cursor)
+    level_by_name = _student_fees_level_by_name(cursor)
+    level_id = (level_by_name.get(grade) or {}).get('id')
+    if level_id:
+        ensure_finance_accounts_table(cursor)
+        cursor.execute(
+            """
+            SELECT fa.id FROM finance_accounts fa
+            INNER JOIN finance_account_academic_levels faal ON faal.finance_account_id = fa.id
+            WHERE faal.academic_level_id = %s
+              AND LOWER(COALESCE(fa.account_status, 'active')) = 'active'
+              AND LOWER(TRIM(fa.account_category)) IN ('pocket money account', 'pocket money')
+            """,
+            (level_id,),
+        )
+        level_ids = [r.get('id') if isinstance(r, dict) else r[0] for r in cursor.fetchall() or []]
+        accounts = [a for a in accounts if a.get('id') in level_ids]
+    for acct in accounts:
+        pay_map = _fetch_finance_account_payment_methods_map(cursor, [acct['id']])
+        if any((m.get('payment_mode') or '') == 'mpesa' for m in pay_map.get(acct['id']) or []):
+            return int(acct['id']), None, None
+    if accounts:
+        return int(accounts[0]['id']), None, None
+    return None, None, 'No pocket money account with M-Pesa configured for this grade.'
+
+
+def _parent_can_pay_for_student(cursor, parent_email, student_id, is_tech_as_parent=False):
+    """Verify parent portal user may pay for this student."""
+    sid = (student_id or '').strip()
+    if not sid:
+        return False
+    if is_tech_as_parent:
+        cursor.execute(
+            "SELECT 1 FROM students WHERE student_id = %s AND status = 'in session' LIMIT 1",
+            (sid,),
+        )
+        return bool(cursor.fetchone())
+    pem = (parent_email or '').strip()
+    if not pem:
+        return False
+    allowed, _ = _parent_may_view_student(cursor, pem, sid)
+    return allowed
+
+
+def _mpesa_stk_txn_meta(txn_row):
+    raw = txn_row.get('raw_request_json')
+    try:
+        data = json.loads(raw) if raw else {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _complete_mpesa_stk_success(cursor, txn_row, callback_data):
+    """Record fee payment or pocket top-up after successful STK."""
+    from decimal import Decimal
+
+    purpose = (txn_row.get('purpose') or '').strip()
+    student_id = txn_row.get('student_id')
+    amount = Decimal(str(txn_row.get('amount') or 0))
+    receipt = callback_data.get('mpesa_receipt') or txn_row.get('checkout_request_id') or ''
+    finance_account_id = txn_row.get('finance_account_id')
+    fee_structure_id = txn_row.get('fee_structure_id')
+    meta = _mpesa_stk_txn_meta(txn_row)
+    is_accountant = purpose == 'accountant_school_fee'
+    recorded_by = meta.get('employee_name') or 'Parent M-Pesa'
+    received_by_id = meta.get('employee_db_id')
+
+    if purpose == 'pocket_money':
+        ok, result, err = _top_up_student_pocket_money(
+            cursor, student_id, amount,
+            finance_account_id, 'Mobile Money', receipt,
+            notes='Parent M-Pesa STK top-up',
+            recorded_by_name=recorded_by,
+        )
+        return ok, err, result
+
+    notes_text = (
+        'Accountant M-Pesa STK payment' if is_accountant else 'Parent portal M-Pesa STK payment'
+    )
+    ensure_finance_account_transactions_table(cursor)
+    cursor.execute(
+        """
+        INSERT INTO student_payments
+            (student_id, fee_structure_id, amount_paid, payment_method,
+             transaction_id, reference_number, received_by, payment_date, notes)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, CURDATE(), %s)
+        """,
+        (
+            student_id,
+            fee_structure_id,
+            amount,
+            'Mobile Money',
+            receipt[:255] if receipt else None,
+            receipt[:255] if receipt else None,
+            received_by_id,
+            notes_text,
+        ),
+    )
+    payment_id = cursor.lastrowid
+    if fee_structure_id:
+        ok_credit, credit_err = _credit_student_fee_payment_accounts(
+            cursor, payment_id, fee_structure_id, amount,
+            payment_method='Mobile Money',
+            reference_code=receipt,
+            student_id=student_id,
+            recorded_by_name=recorded_by,
+        )
+        if not ok_credit:
+            return False, credit_err or 'Could not update finance account balance.', None
+    elif finance_account_id:
+        _credit_finance_account(
+            cursor, finance_account_id, amount,
+            payment_method='Mobile Money',
+            reference_code=receipt,
+            description=(
+                f'Accountant M-Pesa fee — {student_id}'
+                if is_accountant else f'Parent M-Pesa fee — {student_id}'
+            ),
+            related_type='student_payment',
+            related_id=payment_id,
+            recorded_by_name=recorded_by,
+        )
+    if is_accountant and received_by_id:
+        payment_details = (
+            f"Amount: KES {float(amount):,.2f}, Method: M-Pesa STK, Receipt: {receipt}"
+        )
+        cursor.execute(
+            """
+            INSERT INTO student_payment_audit
+                (payment_id, student_id, action_type, field_name, old_value, new_value, changed_by)
+            VALUES (%s, %s, 'INSERT', 'Payment Created', NULL, %s, %s)
+            """,
+            (payment_id, student_id, payment_details, received_by_id),
+        )
+    return True, 'Payment recorded.', {'payment_id': payment_id}
+
+
+def _mpesa_purpose_label(purpose):
+    p = (purpose or '').strip().lower()
+    if p == 'pocket_money':
+        return 'Pocket money top-up'
+    if p == 'accountant_school_fee':
+        return 'School fees payment (accountant M-Pesa)'
+    return 'School fees payment'
+
+
+def _mpesa_parent_success_message(txn_row, receipt=None):
+    amt = txn_row.get('amount')
+    sid = txn_row.get('student_id') or ''
+    label = _mpesa_purpose_label(txn_row.get('purpose'))
+    ref = (receipt or txn_row.get('mpesa_receipt') or '').strip()
+    try:
+        amt_display = f'{float(amt):,.2f}'
+    except (TypeError, ValueError):
+        amt_display = str(amt)
+    msg = f'{label} of KES {amt_display} for {sid} was successful.'
+    if ref:
+        msg += f' M-Pesa receipt: {ref}.'
+    return msg
+
+
+def _mpesa_fetch_notification_emails(cursor, txn_row):
+    """Parent email(s) and school finance inbox for M-Pesa alerts."""
+    parent_emails = []
+    pem = (txn_row.get('parent_email') or '').strip()
+    if pem:
+        parent_emails.append(pem)
+    sid = (txn_row.get('student_id') or '').strip()
+    if sid:
+        cursor.execute(
+            """
+            SELECT DISTINCT email FROM parents
+            WHERE student_id = %s AND email IS NOT NULL AND TRIM(email) != ''
+            """,
+            (sid,),
+        )
+        for row in cursor.fetchall() or []:
+            em = (row.get('email') if isinstance(row, dict) else row[0] or '').strip()
+            if em and em.lower() not in {e.lower() for e in parent_emails}:
+                parent_emails.append(em)
+    settings = get_school_settings() or {}
+    school_emails = []
+    for key in ('school_email',):
+        em = (settings.get(key) or '').strip()
+        if em:
+            school_emails.append(em)
+    for key in ('SUPPORT_EMAIL', 'MAIL_DEFAULT_SENDER'):
+        em = (os.environ.get(key) or '').strip()
+        if em and em.lower() not in {e.lower() for e in school_emails}:
+            school_emails.append(em)
+    return parent_emails, school_emails
+
+
+def _send_mpesa_payment_notifications(cursor, txn_row, *, success, message, receipt=None):
+    """Email parent and school when an M-Pesa payment finishes (best effort)."""
+    if not apply_mail_config_from_env_and_integration():
+        return
+    parent_emails, school_emails = _mpesa_fetch_notification_emails(cursor, txn_row)
+    if not parent_emails and not school_emails:
+        return
+    settings = get_school_settings() or {}
+    school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'School').strip()
+    sid = txn_row.get('student_id') or ''
+    amt = txn_row.get('amount')
+    purpose_label = _mpesa_purpose_label(txn_row.get('purpose'))
+    ref = (receipt or txn_row.get('mpesa_receipt') or '').strip()
+    status_word = 'received' if success else 'not completed'
+    subject_parent = (
+        f'M-Pesa payment {status_word} — {school_name}'
+        if success
+        else f'M-Pesa payment failed — {school_name}'
+    )
+    subject_school = f'Parent M-Pesa: {purpose_label} {status_word} ({sid})'
+    body_lines = [
+        f'Student admission: {sid}',
+        f'Type: {purpose_label}',
+        f'Amount: KES {amt}',
+        f'Phone: {txn_row.get("phone") or ""}',
+        f'Status: {"Successful" if success else "Failed / cancelled"}',
+        f'Details: {message}',
+    ]
+    if ref:
+        body_lines.append(f'M-Pesa receipt: {ref}')
+    text_body = '\n'.join(body_lines)
+    html_body = '<br>'.join(body_lines)
+
+    def _send_bulk(recipients, subject):
+        for em in recipients:
+            try:
+                mail.send(Message(
+                    subject=subject,
+                    recipients=[em],
+                    body=text_body,
+                    html=f'<p>{html_body}</p>',
+                ))
+            except Exception as ex:
+                print(f"M-Pesa notify email to {em}: {ex}")
+
+    if parent_emails:
+        _send_bulk(parent_emails, subject_parent)
+    if school_emails:
+        _send_bulk(school_emails, subject_school)
+
+
+def _mpesa_stk_is_sync_relay_only(txn_row):
+    """Hosted relay txn from local dev — callback updates status only, no fee posting."""
+    raw = txn_row.get('raw_request_json')
+    if not raw:
+        return False
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        return isinstance(data, dict) and data.get('sync_origin') == 'local'
+    except Exception:
+        return False
+
+
+def _mpesa_stk_mark_terminal(cursor, checkout_id, *, status, result_code, result_desc,
+                             mpesa_receipt=None, raw_callback_json=None):
+    cursor.execute(
+        """
+        UPDATE mpesa_stk_transactions SET
+            status = %s,
+            result_code = %s,
+            result_desc = %s,
+            mpesa_receipt = COALESCE(%s, mpesa_receipt),
+            raw_callback_json = COALESCE(%s, raw_callback_json),
+            completed_at = NOW()
+        WHERE checkout_request_id = %s
+        """,
+        (
+            status,
+            result_code,
+            result_desc[:500] if result_desc else None,
+            mpesa_receipt,
+            raw_callback_json,
+            checkout_id,
+        ),
+    )
+
+
+def _mpesa_stk_finalize_success(cursor, txn_row, callback_data, raw_json=None):
+    """Record payment, update txn row, notify parent and school."""
+    checkout_id = txn_row.get('checkout_request_id')
+    if (txn_row.get('status') or '').lower() == 'completed':
+        return True, _mpesa_parent_success_message(txn_row), txn_row.get('mpesa_receipt')
+
+    ok, msg, _extra = _complete_mpesa_stk_success(cursor, txn_row, callback_data)
+    receipt = callback_data.get('mpesa_receipt') or txn_row.get('mpesa_receipt')
+    if ok:
+        user_msg = _mpesa_parent_success_message(txn_row, receipt)
+        _mpesa_stk_mark_terminal(
+            cursor,
+            checkout_id,
+            status='completed',
+            result_code=str(callback_data.get('result_code') or '0'),
+            result_desc=user_msg,
+            mpesa_receipt=receipt,
+            raw_callback_json=raw_json,
+        )
+        _send_mpesa_payment_notifications(
+            cursor, txn_row, success=True, message=user_msg, receipt=receipt,
+        )
+        return True, user_msg, receipt
+    fail_msg = msg or 'Payment could not be recorded.'
+    _mpesa_stk_mark_terminal(
+        cursor, checkout_id, status='failed',
+        result_code=str(callback_data.get('result_code') or ''),
+        result_desc=fail_msg, raw_callback_json=raw_json,
+    )
+    _send_mpesa_payment_notifications(
+        cursor, txn_row, success=False, message=fail_msg, receipt=receipt,
+    )
+    return False, fail_msg, receipt
+
+
+def _mpesa_stk_finalize_failure(cursor, txn_row, result_code, result_desc, raw_json=None):
+    checkout_id = txn_row.get('checkout_request_id')
+    if (txn_row.get('status') or '').lower() in ('completed', 'failed', 'cancelled'):
+        return
+    desc = (result_desc or 'Payment was not completed.').strip()
+    if str(result_code) in ('1032', '1031'):
+        status = 'cancelled'
+        desc = 'You cancelled the M-Pesa prompt on your phone.'
+    else:
+        status = 'failed'
+    _mpesa_stk_mark_terminal(
+        cursor, checkout_id, status=status,
+        result_code=str(result_code or ''), result_desc=desc, raw_callback_json=raw_json,
+    )
+    _send_mpesa_payment_notifications(
+        cursor, txn_row, success=False, message=desc,
+    )
+
+
+def _mpesa_stk_query_unavailable(q, parsed=None):
+    """Sandbox STK query often returns 404 — treat as unavailable, not user-facing error."""
+    parsed = parsed or {}
+    code = str(q.get('error_code') or parsed.get('error_code') or '').strip()
+    msg = (
+        (q.get('error') or '')
+        + ' '
+        + (parsed.get('error_message') or '')
+    ).lower()
+    if code in ('404.001.01', '404.001.03'):
+        return True
+    if 'resource not found' in msg or 'invalid checkoutrequestid' in msg:
+        return True
+    return False
+
+
+def _mpesa_stk_try_complete_from_query(cursor, txn_row, daraja_settings):
+    """If Daraja STK query shows paid, finalize without waiting for callback."""
+    import daraja_mpesa as daraja
+
+    checkout_id = txn_row.get('checkout_request_id')
+    q = daraja.stk_query(
+        daraja_settings,
+        checkout_id,
+        txn_row.get('business_shortcode') or '',
+    )
+    if not q.get('ok'):
+        if _mpesa_stk_query_unavailable(q):
+            return None
+        return {
+            'success': True,
+            'status': 'pending',
+            'message': 'Check your phone and enter your M-Pesa PIN…',
+        }
+
+    raw = q.get('raw') or {}
+    parsed = daraja.parse_stk_query_response(raw)
+    if parsed.get('error_code'):
+        if _mpesa_stk_query_unavailable(q, parsed):
+            return None
+        return {
+            'success': True,
+            'status': 'pending',
+            'message': 'Check your phone and enter your M-Pesa PIN…',
+        }
+
+    rc = parsed.get('result_code')
+    desc = parsed.get('result_desc') or q.get('result_desc') or ''
+    phase = daraja.stk_query_result_status(rc)
+
+    if phase == 'completed':
+        callback_data = {
+            'result_code': 0,
+            'result_desc': desc,
+            'mpesa_receipt': parsed.get('mpesa_receipt'),
+            'amount': parsed.get('amount'),
+            'phone': parsed.get('phone'),
+        }
+        ok, msg, receipt = _mpesa_stk_finalize_success(
+            cursor, txn_row, callback_data, raw_json=json.dumps(raw),
+        )
+        if ok:
+            return {
+                'success': True,
+                'status': 'completed',
+                'message': msg,
+                'mpesa_receipt': receipt,
+            }
+        return {
+            'success': True,
+            'status': 'failed',
+            'message': msg or 'Payment was received but could not be recorded. Contact the school.',
+        }
+
+    if phase == 'cancelled':
+        fail_msg = desc or 'You cancelled the M-Pesa prompt on your phone.'
+        _mpesa_stk_finalize_failure(cursor, txn_row, str(rc), fail_msg, raw_json=json.dumps(raw))
+        return {
+            'success': True,
+            'status': 'cancelled',
+            'message': fail_msg + ' Please try again.',
+        }
+
+    if phase == 'failed':
+        fail_msg = desc or 'M-Pesa payment failed.'
+        _mpesa_stk_finalize_failure(cursor, txn_row, str(rc), fail_msg, raw_json=json.dumps(raw))
+        return {
+            'success': True,
+            'status': 'failed',
+            'message': fail_msg + ' Please try again.',
+        }
+
+    return {
+        'success': True,
+        'status': 'pending',
+        'message': desc or 'Waiting for you to enter your M-Pesa PIN on your phone…',
+    }
+
+
 _finance_accounts_schema_ensuring = False
 
 
@@ -36420,6 +39155,7 @@ def ensure_finance_accounts_table(cursor):
                 mpesa_type VARCHAR(20) NULL,
                 business_name VARCHAR(255) NULL,
                 account_number VARCHAR(100) NULL,
+                mpesa_shortcode VARCHAR(20) NULL,
                 bank_name VARCHAR(255) NULL,
                 UNIQUE KEY uq_fapm_account_mode (finance_account_id, payment_mode),
                 INDEX idx_fapm_account (finance_account_id),
@@ -36428,6 +39164,17 @@ def ensure_finance_accounts_table(cursor):
                     ON DELETE CASCADE
             )
         """)
+        cursor.execute(
+            "SHOW COLUMNS FROM finance_account_payment_methods LIKE 'mpesa_shortcode'"
+        )
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                ALTER TABLE finance_account_payment_methods
+                ADD COLUMN mpesa_shortcode VARCHAR(20) NULL
+                AFTER account_number
+                """
+            )
         cursor.execute("SHOW COLUMNS FROM finance_accounts LIKE 'current_balance'")
         if not cursor.fetchone():
             cursor.execute(
@@ -36441,6 +39188,1155 @@ def ensure_finance_accounts_table(cursor):
         print(f"ensure_finance_accounts_table: {e}")
     finally:
         _finance_accounts_schema_ensuring = False
+
+
+_finance_settings_schema_ensuring = False
+
+
+def ensure_finance_settings_table(cursor):
+    """School-wide finance module settings (financial years)."""
+    global _finance_settings_schema_ensuring
+    if _finance_settings_schema_ensuring:
+        return
+    _finance_settings_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS finance_settings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                year_label VARCHAR(255) NULL,
+                financial_year_start DATE NULL,
+                financial_year_end DATE NULL,
+                is_current TINYINT(1) NOT NULL DEFAULT 0,
+                is_locked TINYINT(1) NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_finance_settings_current (is_current),
+                INDEX idx_finance_settings_start (financial_year_start)
+            )
+        """)
+        cursor.execute("SHOW COLUMNS FROM finance_settings LIKE 'year_label'")
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                ALTER TABLE finance_settings
+                ADD COLUMN year_label VARCHAR(255) NULL
+                AFTER id
+                """
+            )
+        cursor.execute("SHOW COLUMNS FROM finance_settings LIKE 'is_current'")
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                ALTER TABLE finance_settings
+                ADD COLUMN is_current TINYINT(1) NOT NULL DEFAULT 0
+                AFTER financial_year_end
+                """
+            )
+            cursor.execute(
+                """
+                SELECT id FROM finance_settings
+                WHERE financial_year_start IS NOT NULL AND financial_year_end IS NOT NULL
+                ORDER BY id ASC
+                LIMIT 1
+                """
+            )
+            first_row = cursor.fetchone()
+            if first_row:
+                first_id = first_row.get('id') if isinstance(first_row, dict) else first_row[0]
+                cursor.execute(
+                    "UPDATE finance_settings SET is_current = 1 WHERE id = %s",
+                    (first_id,),
+                )
+        cursor.execute("SHOW COLUMNS FROM finance_settings LIKE 'is_locked'")
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                ALTER TABLE finance_settings
+                ADD COLUMN is_locked TINYINT(1) NOT NULL DEFAULT 0
+                AFTER is_current
+                """
+            )
+        cursor.execute("SHOW COLUMNS FROM finance_settings LIKE 'opening_balance'")
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                ALTER TABLE finance_settings
+                ADD COLUMN opening_balance DECIMAL(14,2) NOT NULL DEFAULT 0
+                AFTER financial_year_end
+                """
+            )
+    except Exception as e:
+        print(f"ensure_finance_settings_table: {e}")
+    finally:
+        _finance_settings_schema_ensuring = False
+
+
+def _parse_finance_settings_amount(raw):
+    """Parse a monetary amount for finance settings (opening balance)."""
+    if raw is None or raw == '':
+        return None
+    try:
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        value = Decimal(str(raw).replace(',', '').strip())
+        return float(value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _financial_year_net_movement(cursor, start_raw, end_raw):
+    """Net ledger movement (credits minus debits) within a financial year period."""
+    start = _parse_finance_settings_date(start_raw)
+    end = _parse_finance_settings_date(end_raw)
+    if not start or not end:
+        return 0.0
+    ensure_finance_account_transactions_table(cursor)
+    cursor.execute(
+        """
+        SELECT COALESCE(SUM(
+            CASE WHEN direction = 'credit' THEN amount ELSE -amount END
+        ), 0) AS net_movement
+        FROM finance_account_transactions
+        WHERE DATE(created_at) >= %s AND DATE(created_at) <= %s
+        """,
+        (start, end),
+    )
+    row = cursor.fetchone() or {}
+    if isinstance(row, dict):
+        return float(row.get('net_movement') or 0)
+    return float(row[0] if row else 0)
+
+
+def _financial_year_closing_balance(cursor, opening_balance, start_raw, end_raw):
+    """Live closing balance = opening balance + net ledger movement in period."""
+    opening = float(opening_balance or 0)
+    net = _financial_year_net_movement(cursor, start_raw, end_raw)
+    return round(opening + net, 2)
+
+
+def _financial_year_lock_message_for_date(cursor, activity_date):
+    """Return an error message if activity_date falls in a closed financial year."""
+    activity = _parse_finance_settings_date(activity_date)
+    if not activity:
+        return None
+    ensure_finance_settings_table(cursor)
+    cursor.execute(
+        """
+        SELECT year_label FROM finance_settings
+        WHERE is_locked = 1
+          AND financial_year_start IS NOT NULL
+          AND financial_year_end IS NOT NULL
+          AND financial_year_start <= %s AND financial_year_end >= %s
+        ORDER BY financial_year_start DESC, id DESC
+        LIMIT 1
+        """,
+        (activity, activity),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    label = row.get('year_label') if isinstance(row, dict) else (row[0] if row else None)
+    label = (label or '').strip() or 'This financial year'
+    return f'{label} is closed. Records for this period are view-only.'
+
+
+def _assert_financial_year_writable(cursor, activity_date=None):
+    """
+    Block finance mutations when no open year is active or the activity date
+    falls inside a closed financial year. Returns (ok, message).
+    """
+    from datetime import date
+
+    ensure_finance_settings_table(cursor)
+    lock_msg = _financial_year_lock_message_for_date(
+        cursor, activity_date or date.today(),
+    )
+    if lock_msg:
+        return False, lock_msg
+
+    current = _fetch_current_financial_year(cursor)
+    if not current.get('is_configured'):
+        return (
+            False,
+            'No open financial year is configured. Set up the current year in Finance settings before recording transactions.',
+        )
+    if current.get('is_locked'):
+        return (
+            False,
+            'The current financial year is closed. Create or activate an open financial year in Finance settings.',
+        )
+    return True, ''
+
+
+def _fetch_latest_financial_year_row(cursor):
+    """Most recent financial year by start date."""
+    ensure_finance_settings_table(cursor)
+    cursor.execute(
+        """
+        SELECT id, year_label, financial_year_start, financial_year_end,
+               is_current, is_locked, opening_balance
+        FROM finance_settings
+        WHERE financial_year_start IS NOT NULL AND financial_year_end IS NOT NULL
+        ORDER BY financial_year_start DESC, id DESC
+        LIMIT 1
+        """
+    )
+    return cursor.fetchone()
+
+
+def _financial_year_create_context(cursor):
+    """Whether a new year can be created and the suggested opening balance."""
+    latest = _fetch_latest_financial_year_row(cursor)
+    if not latest:
+        return True, '', 0.0
+    if isinstance(latest, dict):
+        is_locked = bool(latest.get('is_locked'))
+        start = latest.get('financial_year_start')
+        end = latest.get('financial_year_end')
+        opening = float(latest.get('opening_balance') or 0)
+    else:
+        is_locked = bool(latest[5]) if len(latest) > 5 else False
+        start = latest[2] if len(latest) > 2 else None
+        end = latest[3] if len(latest) > 3 else None
+        opening = float(latest[6] if len(latest) > 6 else 0)
+    if not is_locked:
+        label = _financial_year_label(
+            _finance_settings_date_input(start),
+            _finance_settings_date_input(end),
+        )
+        return False, f'Close (lock) {label} before opening a new financial year.', 0.0
+    suggested = _financial_year_closing_balance(cursor, opening, start, end)
+    return True, '', suggested
+
+
+def _fetch_next_financial_year_row(cursor, after_end_date):
+    """First financial year starting after a given end date."""
+    end = _parse_finance_settings_date(after_end_date)
+    if not end:
+        return None
+    ensure_finance_settings_table(cursor)
+    cursor.execute(
+        """
+        SELECT id, year_label, financial_year_start, financial_year_end,
+               is_current, is_locked, opening_balance
+        FROM finance_settings
+        WHERE financial_year_start IS NOT NULL
+          AND financial_year_end IS NOT NULL
+          AND financial_year_start > %s
+        ORDER BY financial_year_start ASC, id ASC
+        LIMIT 1
+        """,
+        (end,),
+    )
+    return cursor.fetchone()
+
+
+def _fetch_financial_year_for_report(cursor, date_from=None, date_to=None, financial_year_id=None):
+    """Resolve the financial year for reports (explicit id or date overlap)."""
+    ensure_finance_settings_table(cursor)
+    if financial_year_id:
+        try:
+            fy_id = int(financial_year_id)
+        except (TypeError, ValueError):
+            fy_id = None
+        if fy_id and fy_id > 0:
+            row = _fetch_financial_year_row(cursor, fy_id)
+            if row:
+                payload = _financial_year_item_payload(cursor, row)
+                if payload and payload.get('is_configured'):
+                    return payload
+    df = (date_from or '').strip()[:10] or None
+    dt = (date_to or '').strip()[:10] or None
+    if df and dt:
+        cursor.execute(
+            """
+            SELECT id, year_label, financial_year_start, financial_year_end,
+                   is_current, is_locked, opening_balance
+            FROM finance_settings
+            WHERE financial_year_start <= %s AND financial_year_end >= %s
+            ORDER BY is_current DESC, financial_year_start DESC, id DESC
+            LIMIT 1
+            """,
+            (dt, df),
+        )
+        row = cursor.fetchone()
+        if row:
+            return _financial_year_item_payload(cursor, row)
+    return _fetch_current_financial_year(cursor)
+
+
+def _fetch_financial_years_for_report_picker(cursor):
+    """All financial years for report filter dropdowns."""
+    return [
+        {
+            'id': y.get('id'),
+            'label': y.get('year_label') or '',
+            'start': y.get('financial_year_start') or '',
+            'end': y.get('financial_year_end') or '',
+            'start_display': y.get('financial_year_start_display') or '',
+            'end_display': y.get('financial_year_end_display') or '',
+            'is_current': bool(y.get('is_current')),
+            'is_locked': bool(y.get('is_locked')),
+        }
+        for y in (_fetch_all_financial_years(cursor) or [])
+        if y.get('id')
+    ]
+
+
+def _financial_year_report_default_end(fy):
+    """Default report date_to: today for the current FY, otherwise the year end."""
+    end = (fy.get('financial_year_end') or fy.get('end') or '').strip()[:10]
+    if not end:
+        return date_cls.today().isoformat()
+    if fy.get('is_current'):
+        today = date_cls.today().isoformat()
+        return min(today, end)
+    return end
+
+
+def _apply_financial_year_report_filters(cursor, filters):
+    """When a financial year is selected, clamp report dates to that period."""
+    filters = dict(filters or {})
+    fy_id = filters.get('financial_year_id')
+    if not fy_id:
+        return filters
+    try:
+        fy_id = int(fy_id)
+    except (TypeError, ValueError):
+        filters.pop('financial_year_id', None)
+        return filters
+    if fy_id <= 0:
+        filters.pop('financial_year_id', None)
+        return filters
+    row = _fetch_financial_year_row(cursor, fy_id)
+    if not row:
+        filters.pop('financial_year_id', None)
+        return filters
+    fy = _financial_year_item_payload(cursor, row)
+    start = (fy.get('financial_year_start') or '').strip()
+    end = (fy.get('financial_year_end') or '').strip()
+    if not start or not end:
+        return filters
+    default_end = _financial_year_report_default_end(fy)
+    df = (filters.get('date_from') or start).strip()[:10]
+    dt = (filters.get('date_to') or default_end).strip()[:10]
+    if df < start:
+        df = start
+    if dt > end:
+        dt = end
+    if df > dt:
+        df, dt = start, end
+    filters['date_from'] = df
+    filters['date_to'] = dt
+    filters['financial_year_id'] = fy_id
+    filters['financial_year_label'] = fy.get('year_label') or ''
+    return filters
+
+
+def _financial_year_report_context(cursor, filters=None):
+    """Financial year opening/closing for report summaries."""
+    filters = filters or {}
+    fy = _fetch_financial_year_for_report(
+        cursor,
+        filters.get('date_from'),
+        filters.get('date_to'),
+        financial_year_id=filters.get('financial_year_id'),
+    )
+    if not fy or not fy.get('is_configured'):
+        return {
+            'is_configured': False,
+            'year_label': '',
+            'financial_year_start': '',
+            'financial_year_end': '',
+            'opening_balance': 0.0,
+            'opening_balance_display': '0.00',
+            'closing_balance': 0.0,
+            'closing_balance_display': '0.00',
+        }
+    return {
+        'is_configured': True,
+        'year_label': fy.get('year_label') or '',
+        'financial_year_start': fy.get('financial_year_start') or '',
+        'financial_year_end': fy.get('financial_year_end') or '',
+        'financial_year_start_display': fy.get('financial_year_start_display') or '',
+        'financial_year_end_display': fy.get('financial_year_end_display') or '',
+        'opening_balance': fy.get('opening_balance', 0.0),
+        'opening_balance_display': fy.get('opening_balance_display', '0.00'),
+        'closing_balance': fy.get('closing_balance', 0.0),
+        'closing_balance_display': fy.get('closing_balance_display', '0.00'),
+        'is_locked': bool(fy.get('is_locked')),
+    }
+
+
+def _account_balance_before_date(cursor, account_id, date_before):
+    """Account net balance from all ledger entries strictly before date_before."""
+    if not date_before:
+        return 0.0
+    ensure_finance_account_transactions_table(cursor)
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return 0.0
+    cursor.execute(
+        """
+        SELECT COALESCE(SUM(
+            CASE WHEN direction = 'credit' THEN amount ELSE -amount END
+        ), 0) AS balance
+        FROM finance_account_transactions
+        WHERE finance_account_id = %s AND DATE(created_at) < %s
+        """,
+        (account_id, date_before),
+    )
+    row = cursor.fetchone() or {}
+    if isinstance(row, dict):
+        return float(row.get('balance') or 0)
+    return float(row[0] if row else 0)
+
+
+def _account_balance_through_date(cursor, account_id, date_through):
+    """Account net balance including all entries through date_through."""
+    if not date_through:
+        return 0.0
+    ensure_finance_account_transactions_table(cursor)
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return 0.0
+    cursor.execute(
+        """
+        SELECT COALESCE(SUM(
+            CASE WHEN direction = 'credit' THEN amount ELSE -amount END
+        ), 0) AS balance
+        FROM finance_account_transactions
+        WHERE finance_account_id = %s AND DATE(created_at) <= %s
+        """,
+        (account_id, date_through),
+    )
+    row = cursor.fetchone() or {}
+    if isinstance(row, dict):
+        return float(row.get('balance') or 0)
+    return float(row[0] if row else 0)
+
+
+def _finance_settings_date_input(value):
+    if not value:
+        return ''
+    if hasattr(value, 'strftime'):
+        return value.strftime('%Y-%m-%d')
+    text = str(value).strip()
+    return text[:10] if len(text) >= 10 else ''
+
+
+def _parse_finance_settings_date(raw):
+    if raw is None:
+        return None
+    text = str(raw).strip()[:10]
+    if not text:
+        return None
+    try:
+        datetime.strptime(text, '%Y-%m-%d')
+        return text
+    except ValueError:
+        return None
+
+
+def _finance_settings_term_payload(row):
+    if isinstance(row, dict):
+        term_id = row.get('id')
+        term_name = row.get('term_name') or ''
+        start = row.get('start_date')
+        end = row.get('end_date')
+        year_name = row.get('year_name') or ''
+        status = row.get('status') or ''
+        academic_year_id = row.get('academic_year_id')
+    else:
+        term_id = row[0] if row else None
+        term_name = row[1] if row and len(row) > 1 else ''
+        start = row[2] if row and len(row) > 2 else None
+        end = row[3] if row and len(row) > 3 else None
+        year_name = row[4] if row and len(row) > 4 else ''
+        status = row[5] if row and len(row) > 5 else ''
+        academic_year_id = row[6] if row and len(row) > 6 else None
+    return {
+        'id': int(term_id) if term_id else None,
+        'term_name': term_name,
+        'start_date': _finance_settings_date_input(start),
+        'end_date': _finance_settings_date_input(end),
+        'start_display': _format_date_short(start) if start else '',
+        'end_display': _format_date_short(end) if end else '',
+        'year_name': year_name,
+        'academic_year_id': _coerce_finance_settings_id(academic_year_id),
+        'status': status,
+    }
+
+
+def _finance_settings_academic_year_payload(row):
+    if isinstance(row, dict):
+        year_id = row.get('id')
+        year_name = row.get('year_name') or ''
+        start = row.get('start_date')
+        end = row.get('end_date')
+        status = row.get('status') or ''
+    else:
+        year_id = row[0] if row else None
+        year_name = row[1] if row and len(row) > 1 else ''
+        start = row[2] if row and len(row) > 2 else None
+        end = row[3] if row and len(row) > 3 else None
+        status = row[4] if row and len(row) > 4 else ''
+    start_input = _finance_settings_date_input(start)
+    end_input = _finance_settings_date_input(end)
+    return {
+        'id': int(year_id) if year_id else None,
+        'year_name': year_name,
+        'start_date': start_input,
+        'end_date': end_input,
+        'start_display': _format_date_short(start) if start else '',
+        'end_display': _format_date_short(end) if end else '',
+        'status': status,
+    }
+
+
+def _coerce_finance_settings_id(value):
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _dedupe_finance_settings_terms(terms):
+    seen = set()
+    deduped = []
+    for term in terms or []:
+        term_id = _coerce_finance_settings_id(term.get('id'))
+        key = term_id if term_id else (
+            term.get('term_name'),
+            term.get('start_date'),
+            term.get('end_date'),
+            _coerce_finance_settings_id(term.get('academic_year_id')),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(term)
+    return deduped
+
+
+def _fetch_terms_for_academic_year(cursor, academic_year_id, period_start=None, period_end=None):
+    """Terms for an academic year, optionally limited to those within a date period."""
+    year_id = _coerce_finance_settings_id(academic_year_id)
+    if not year_id:
+        return []
+    fy_start = _parse_finance_settings_date(period_start)
+    fy_end = _parse_finance_settings_date(period_end)
+    sql = """
+        SELECT t.id, t.term_name, t.start_date, t.end_date, t.status, t.academic_year_id,
+               ay.year_name
+        FROM terms t
+        INNER JOIN academic_years ay ON t.academic_year_id = ay.id
+        WHERE t.academic_year_id = %s
+    """
+    params = [year_id]
+    if fy_start and fy_end:
+        sql += " AND t.start_date <= %s AND t.end_date >= %s"
+        params.extend([fy_end, fy_start])
+    sql += " ORDER BY t.start_date ASC, t.term_name ASC"
+    cursor.execute(sql, tuple(params))
+    rows = cursor.fetchall() or []
+    return [_finance_settings_term_payload(r) for r in rows]
+
+
+def _academic_years_with_terms_for_financial_year(cursor, start_raw, end_raw):
+    """Academic years overlapping the financial year, with only terms inside that period."""
+    fy_start = _parse_finance_settings_date(start_raw)
+    fy_end = _parse_finance_settings_date(end_raw)
+    if not fy_start or not fy_end:
+        return [], []
+    academic_years = _fetch_academic_years_overlapping_period(cursor, start_raw, end_raw)
+    grouped = []
+    all_terms = []
+    for ay in academic_years or []:
+        ay_terms = _fetch_terms_for_academic_year(cursor, ay.get('id'), fy_start, fy_end)
+        if not ay_terms:
+            continue
+        grouped.append({
+            **ay,
+            'terms': ay_terms,
+            'terms_count': len(ay_terms),
+        })
+        all_terms.extend(ay_terms)
+    return grouped, _dedupe_finance_settings_terms(all_terms)
+
+
+def _group_terms_by_academic_years(academic_years, terms):
+    """Attach each academic year's full term list for finance settings display."""
+    buckets = {_coerce_finance_settings_id(y['id']): [] for y in (academic_years or []) if _coerce_finance_settings_id(y.get('id'))}
+    for term in terms or []:
+        ay_id = _coerce_finance_settings_id(term.get('academic_year_id'))
+        if ay_id in buckets:
+            buckets[ay_id].append(term)
+    grouped = []
+    for ay in academic_years or []:
+        ay_id = _coerce_finance_settings_id(ay.get('id'))
+        ay_terms = buckets.get(ay_id, [])
+        grouped.append({
+            **ay,
+            'terms': ay_terms,
+            'terms_count': len(ay_terms),
+        })
+    return grouped
+
+
+def _fetch_academic_years_overlapping_period(cursor, start_raw, end_raw):
+    """Academic years whose calendar overlaps a financial year period."""
+    start = _parse_finance_settings_date(start_raw)
+    end = _parse_finance_settings_date(end_raw)
+    if not start or not end:
+        return []
+    cursor.execute(
+        """
+        SELECT id, year_name, start_date, end_date, status
+        FROM academic_years
+        WHERE start_date <= %s AND end_date >= %s
+          AND status IN ('active', 'draft', 'closed', 'suspended')
+        ORDER BY start_date ASC, year_name ASC
+        """,
+        (end, start),
+    )
+    rows = cursor.fetchall() or []
+    return [_finance_settings_academic_year_payload(r) for r in rows]
+
+
+def _fetch_academic_terms_for_financial_year(cursor, start_raw, end_raw):
+    """Terms whose dates fall within the financial year period."""
+    _grouped, terms = _academic_years_with_terms_for_financial_year(cursor, start_raw, end_raw)
+    return terms
+
+
+def _fetch_academic_terms_overlapping_period(cursor, start_raw, end_raw):
+    """Backward-compatible alias — returns terms from overlapping academic years."""
+    return _fetch_academic_terms_for_financial_year(cursor, start_raw, end_raw)
+
+
+def _fetch_academic_terms_catalog(cursor):
+    cursor.execute(
+        """
+        SELECT t.id, t.term_name, t.start_date, t.end_date, t.status, t.academic_year_id,
+               ay.year_name
+        FROM terms t
+        INNER JOIN academic_years ay ON t.academic_year_id = ay.id
+        WHERE ay.status IN ('active', 'draft', 'closed', 'suspended')
+        ORDER BY ay.start_date ASC, t.start_date ASC, t.term_name ASC
+        """
+    )
+    rows = cursor.fetchall() or []
+    return _dedupe_finance_settings_terms([_finance_settings_term_payload(r) for r in rows])
+
+
+def _fetch_academic_years_catalog(cursor):
+    cursor.execute(
+        """
+        SELECT id, year_name, start_date, end_date, status
+        FROM academic_years
+        WHERE status IN ('active', 'draft', 'closed', 'suspended')
+        ORDER BY start_date ASC, year_name ASC
+        """
+    )
+    rows = cursor.fetchall() or []
+    return [_finance_settings_academic_year_payload(r) for r in rows]
+
+
+def _get_preferred_academic_year_row(cursor):
+    cursor.execute(
+        """
+        SELECT id, year_name, start_date, end_date
+        FROM academic_years
+        WHERE is_current = TRUE AND status = 'active'
+        LIMIT 1
+        """
+    )
+    row = cursor.fetchone()
+    if row:
+        return row
+    cursor.execute(
+        """
+        SELECT id, year_name, start_date, end_date
+        FROM academic_years
+        WHERE status = 'active'
+        ORDER BY start_date DESC, id DESC
+        LIMIT 1
+        """
+    )
+    return cursor.fetchone()
+
+
+def _fetch_academic_calendar_reference(cursor):
+    """Optional reference dates from the current academic year (not auto-applied to financial year)."""
+    year_row = _get_preferred_academic_year_row(cursor)
+    if not year_row:
+        return {
+            'reference_start': '',
+            'reference_end': '',
+            'reference_start_display': '',
+            'reference_end_display': '',
+            'academic_year_name': '',
+            'academic_year_start_display': '',
+            'academic_year_end_display': '',
+            'terms': [],
+            'financial_year_start': '',
+            'financial_year_end': '',
+            'financial_year_start_display': '',
+            'financial_year_end_display': '',
+        }
+
+    if isinstance(year_row, dict):
+        year_id = year_row.get('id')
+        year_name = year_row.get('year_name') or ''
+        year_start = year_row.get('start_date')
+        year_end = year_row.get('end_date')
+    else:
+        year_id = year_row[0]
+        year_name = year_row[1] if len(year_row) > 1 else ''
+        year_start = year_row[2] if len(year_row) > 2 else None
+        year_end = year_row[3] if len(year_row) > 3 else None
+
+    cursor.execute(
+        """
+        SELECT MIN(start_date) AS min_start, MAX(end_date) AS max_end
+        FROM terms
+        WHERE academic_year_id = %s
+        """,
+        (year_id,),
+    )
+    span = cursor.fetchone() or {}
+    if isinstance(span, dict):
+        term_min = span.get('min_start')
+        term_max = span.get('max_end')
+    else:
+        term_min = span[0] if span else None
+        term_max = span[1] if span and len(span) > 1 else None
+
+    start_value = term_min or year_start
+    end_value = term_max or year_end
+    start_input = _finance_settings_date_input(start_value)
+    end_input = _finance_settings_date_input(end_value)
+    terms = _fetch_academic_terms_for_financial_year(cursor, start_input, end_input) if start_input and end_input else []
+
+    return {
+        'reference_start': start_input,
+        'reference_end': end_input,
+        'reference_start_display': _format_date_short(start_value) if start_value else '',
+        'reference_end_display': _format_date_short(end_value) if end_value else '',
+        'academic_year_name': year_name,
+        'academic_year_start_display': _format_date_short(year_start) if year_start else '',
+        'academic_year_end_display': _format_date_short(year_end) if year_end else '',
+        'terms': terms,
+        # Backward-compatible keys (reference only — financial year is independent)
+        'financial_year_start': start_input,
+        'financial_year_end': end_input,
+        'financial_year_start_display': _format_date_short(start_value) if start_value else '',
+        'financial_year_end_display': _format_date_short(end_value) if end_value else '',
+    }
+
+
+def _suggest_financial_year_from_academic_calendar(cursor):
+    """Deprecated alias — use _fetch_academic_calendar_reference."""
+    return _fetch_academic_calendar_reference(cursor)
+
+
+def _financial_year_label(start_input, end_input):
+    if not start_input:
+        return 'Financial year'
+    y1 = start_input[:4]
+    y2 = end_input[:4] if end_input and len(end_input) >= 4 else y1
+    if y1 == y2:
+        return f'FY {y1}'
+    return f'FY {y1}/{y2[-2:]}'
+
+
+def _financial_year_item_payload(cursor, row):
+    if not row:
+        return None
+    if isinstance(row, dict):
+        row_id = row.get('id')
+        label = row.get('year_label')
+        start = row.get('financial_year_start')
+        end = row.get('financial_year_end')
+        is_current = bool(row.get('is_current'))
+        is_locked = bool(row.get('is_locked'))
+        opening_balance = float(row.get('opening_balance') or 0)
+    else:
+        row_id = row[0]
+        label = row[1] if len(row) > 1 else None
+        start = row[2] if len(row) > 2 else None
+        end = row[3] if len(row) > 3 else None
+        is_current = bool(row[4]) if len(row) > 4 else False
+        is_locked = bool(row[5]) if len(row) > 5 else False
+        opening_balance = float(row[6] if len(row) > 6 else 0)
+    start_input = _finance_settings_date_input(start)
+    end_input = _finance_settings_date_input(end)
+    closing_balance = _financial_year_closing_balance(cursor, opening_balance, start_input, end_input)
+    terms_in_period = []
+    academic_years_in_period = []
+    if start_input and end_input:
+        academic_years_in_period, terms_in_period = _academic_years_with_terms_for_financial_year(
+            cursor, start_input, end_input
+        )
+    return {
+        'id': int(row_id) if row_id else None,
+        'year_label': label or _financial_year_label(start_input, end_input),
+        'financial_year_start': start_input,
+        'financial_year_end': end_input,
+        'financial_year_start_display': _format_date_short(start) if start else '',
+        'financial_year_end_display': _format_date_short(end) if end else '',
+        'opening_balance': opening_balance,
+        'opening_balance_display': _format_kes_amount(opening_balance),
+        'closing_balance': closing_balance,
+        'closing_balance_display': _format_kes_amount(closing_balance),
+        'is_current': is_current,
+        'is_locked': is_locked,
+        'is_configured': bool(start_input and end_input),
+        'academic_years_in_period': academic_years_in_period,
+        'terms_in_period': terms_in_period,
+        'terms_count': len(terms_in_period),
+    }
+
+
+def _fetch_financial_year_row(cursor, year_id):
+    ensure_finance_settings_table(cursor)
+    try:
+        year_id = int(year_id)
+    except (TypeError, ValueError):
+        return None
+    if year_id <= 0:
+        return None
+    cursor.execute(
+        """
+        SELECT id, year_label, financial_year_start, financial_year_end,
+               is_current, is_locked, opening_balance
+        FROM finance_settings
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (year_id,),
+    )
+    return cursor.fetchone()
+
+
+def _fetch_all_financial_years(cursor):
+    ensure_finance_settings_table(cursor)
+    cursor.execute(
+        """
+        SELECT id, year_label, financial_year_start, financial_year_end,
+               is_current, is_locked, opening_balance
+        FROM finance_settings
+        WHERE financial_year_start IS NOT NULL AND financial_year_end IS NOT NULL
+        ORDER BY is_current DESC, financial_year_start DESC, id DESC
+        """
+    )
+    rows = cursor.fetchall() or []
+    return [
+        item for item in (_financial_year_item_payload(cursor, row) for row in rows)
+        if item
+    ]
+
+
+def _fetch_current_financial_year(cursor):
+    ensure_finance_settings_table(cursor)
+    cursor.execute(
+        """
+        SELECT id, year_label, financial_year_start, financial_year_end,
+               is_current, is_locked, opening_balance
+        FROM finance_settings
+        WHERE is_current = TRUE
+          AND financial_year_start IS NOT NULL
+          AND financial_year_end IS NOT NULL
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    )
+    row = cursor.fetchone()
+    if not row:
+        cursor.execute(
+            """
+            SELECT id, year_label, financial_year_start, financial_year_end,
+                   is_current, is_locked, opening_balance
+            FROM finance_settings
+            WHERE financial_year_start IS NOT NULL AND financial_year_end IS NOT NULL
+              AND is_locked = 0
+            ORDER BY financial_year_start DESC, id DESC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+    if not row:
+        return {
+            'id': None,
+            'year_label': '',
+            'financial_year_start': '',
+            'financial_year_end': '',
+            'financial_year_start_display': '',
+            'financial_year_end_display': '',
+            'opening_balance': 0.0,
+            'opening_balance_display': '0.00',
+            'closing_balance': 0.0,
+            'closing_balance_display': '0.00',
+            'is_current': False,
+            'is_locked': False,
+            'is_configured': False,
+            'terms_in_period': [],
+            'terms_count': 0,
+        }
+    return _financial_year_item_payload(cursor, row)
+
+
+def _fetch_finance_settings(cursor):
+    """Current financial year snapshot (backward compatible)."""
+    return _fetch_current_financial_year(cursor)
+
+
+def _financial_year_exists(cursor, start, end, exclude_id=None):
+    sql = """
+        SELECT id FROM finance_settings
+        WHERE financial_year_start = %s AND financial_year_end = %s
+    """
+    params = [start, end]
+    if exclude_id:
+        sql += " AND id != %s"
+        params.append(exclude_id)
+    cursor.execute(sql + " LIMIT 1", tuple(params))
+    return cursor.fetchone()
+
+
+def _set_current_financial_year(cursor, year_id):
+    ensure_finance_settings_table(cursor)
+    try:
+        year_id = int(year_id)
+    except (TypeError, ValueError):
+        return False, 'Invalid financial year selected.'
+    if year_id <= 0:
+        return False, 'Invalid financial year selected.'
+    cursor.execute(
+        """
+        SELECT id, is_locked FROM finance_settings
+        WHERE id = %s
+          AND financial_year_start IS NOT NULL
+          AND financial_year_end IS NOT NULL
+        LIMIT 1
+        """,
+        (year_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return False, 'Financial year not found.'
+    is_locked = bool(row.get('is_locked') if isinstance(row, dict) else (row[1] if len(row) > 1 else False))
+    if is_locked:
+        return False, 'Closed financial years are view-only and cannot be set as current.'
+    cursor.execute("UPDATE finance_settings SET is_current = 0")
+    cursor.execute(
+        "UPDATE finance_settings SET is_current = 1 WHERE id = %s",
+        (year_id,),
+    )
+    return True, 'Current financial year updated.'
+
+
+def _create_financial_year(cursor, start_raw, end_raw, set_current=True, opening_balance_raw=None):
+    start = _parse_finance_settings_date(start_raw)
+    end = _parse_finance_settings_date(end_raw)
+    if not start or not end:
+        return False, 'Financial year start and end dates are required.', None
+    if end < start:
+        return False, 'End date must be on or after the start date.', None
+    ensure_finance_settings_table(cursor)
+    can_create, block_reason, suggested_opening = _financial_year_create_context(cursor)
+    if not can_create:
+        return False, block_reason, None
+    if _financial_year_exists(cursor, start, end):
+        return False, 'A financial year with these dates already exists.', None
+
+    if opening_balance_raw is None or opening_balance_raw == '':
+        opening_balance = suggested_opening
+    else:
+        opening_balance = _parse_finance_settings_amount(opening_balance_raw)
+        if opening_balance is None:
+            return False, 'Enter a valid opening balance.', None
+
+    label = _financial_year_label(start, end)
+    cursor.execute("SELECT COUNT(*) AS cnt FROM finance_settings")
+    count_row = cursor.fetchone() or {}
+    total = int(count_row.get('cnt') if isinstance(count_row, dict) else (count_row[0] if count_row else 0))
+    make_current = bool(set_current) or total == 0
+    if make_current:
+        cursor.execute("UPDATE finance_settings SET is_current = 0")
+
+    cursor.execute(
+        """
+        INSERT INTO finance_settings (
+            year_label, financial_year_start, financial_year_end, opening_balance, is_current
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (label, start, end, opening_balance, 1 if make_current else 0),
+    )
+    new_id = cursor.lastrowid
+    cursor.execute(
+        """
+        SELECT id, year_label, financial_year_start, financial_year_end,
+               is_current, is_locked, opening_balance
+        FROM finance_settings
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (new_id,),
+    )
+    created = _financial_year_item_payload(cursor, cursor.fetchone())
+    return True, 'Financial year added.', created
+
+
+def _update_financial_year(cursor, year_id, start_raw, end_raw, opening_balance_raw=None):
+    row = _fetch_financial_year_row(cursor, year_id)
+    if not row:
+        return False, 'Financial year not found.', None
+    existing = _financial_year_item_payload(cursor, row)
+    if existing.get('is_locked'):
+        return False, 'This financial year is locked and cannot be edited.', None
+
+    start = _parse_finance_settings_date(start_raw)
+    end = _parse_finance_settings_date(end_raw)
+    if not start or not end:
+        return False, 'Financial year start and end dates are required.', None
+    if end < start:
+        return False, 'End date must be on or after the start date.', None
+    if _financial_year_exists(cursor, start, end, exclude_id=year_id):
+        return False, 'A financial year with these dates already exists.', None
+
+    opening_balance = existing.get('opening_balance', 0.0)
+    if opening_balance_raw is not None and opening_balance_raw != '':
+        parsed_opening = _parse_finance_settings_amount(opening_balance_raw)
+        if parsed_opening is None:
+            return False, 'Enter a valid opening balance.', None
+        opening_balance = parsed_opening
+
+    label = _financial_year_label(start, end)
+    cursor.execute(
+        """
+        UPDATE finance_settings
+        SET year_label = %s, financial_year_start = %s, financial_year_end = %s,
+            opening_balance = %s
+        WHERE id = %s
+        """,
+        (label, start, end, opening_balance, int(year_id)),
+    )
+    updated = _financial_year_item_payload(cursor, _fetch_financial_year_row(cursor, year_id))
+    return True, 'Financial year updated.', updated
+
+
+def _fetch_financial_year_balance_snapshots(cursor):
+    """Lightweight closing balances for live UI refresh."""
+    years = _fetch_all_financial_years(cursor)
+    return [
+        {
+            'id': y.get('id'),
+            'opening_balance': y.get('opening_balance', 0),
+            'opening_balance_display': y.get('opening_balance_display', '0.00'),
+            'closing_balance': y.get('closing_balance', 0),
+            'closing_balance_display': y.get('closing_balance_display', '0.00'),
+        }
+        for y in years
+        if y.get('id')
+    ]
+
+
+def _delete_financial_year(cursor, year_id):
+    row = _fetch_financial_year_row(cursor, year_id)
+    if not row:
+        return False, 'Financial year not found.'
+    existing = _financial_year_item_payload(cursor, row)
+    if existing.get('is_locked'):
+        return False, 'This financial year is locked and cannot be deleted.'
+
+    was_current = existing.get('is_current')
+    cursor.execute("DELETE FROM finance_settings WHERE id = %s", (int(year_id),))
+    if was_current:
+        cursor.execute(
+            """
+            SELECT id FROM finance_settings
+            WHERE financial_year_start IS NOT NULL AND financial_year_end IS NOT NULL
+            ORDER BY financial_year_start DESC, id DESC
+            LIMIT 1
+            """
+        )
+        next_row = cursor.fetchone()
+        if next_row:
+            next_id = next_row.get('id') if isinstance(next_row, dict) else next_row[0]
+            cursor.execute("UPDATE finance_settings SET is_current = 0")
+            cursor.execute(
+                "UPDATE finance_settings SET is_current = 1 WHERE id = %s",
+                (next_id,),
+            )
+    return True, 'Financial year deleted.'
+
+
+def _set_financial_year_locked(cursor, year_id, locked=True):
+    row = _fetch_financial_year_row(cursor, year_id)
+    if not row:
+        return False, 'Financial year not found.', {}
+    existing = _financial_year_item_payload(cursor, row)
+    lock_val = 1 if locked else 0
+    cursor.execute(
+        "UPDATE finance_settings SET is_locked = %s WHERE id = %s",
+        (lock_val, int(year_id)),
+    )
+    meta = {
+        'needs_next_year': False,
+        'next_year_id': None,
+        'next_year_label': '',
+        'finance_settings_url': '',
+    }
+    if locked:
+        was_current = bool(existing.get('is_current'))
+        if was_current:
+            cursor.execute(
+                "UPDATE finance_settings SET is_current = 0 WHERE id = %s",
+                (int(year_id),),
+            )
+            next_row = _fetch_next_financial_year_row(
+                cursor, existing.get('financial_year_end'),
+            )
+            if next_row:
+                next_id = next_row.get('id') if isinstance(next_row, dict) else next_row[0]
+                cursor.execute("UPDATE finance_settings SET is_current = 0")
+                cursor.execute(
+                    "UPDATE finance_settings SET is_current = 1 WHERE id = %s",
+                    (int(next_id),),
+                )
+                next_payload = _financial_year_item_payload(cursor, next_row)
+                meta['next_year_id'] = next_payload.get('id')
+                meta['next_year_label'] = next_payload.get('year_label') or ''
+                return (
+                    True,
+                    f"Financial year closed. Current year is now {meta['next_year_label']}.",
+                    meta,
+                )
+            meta['needs_next_year'] = True
+            return (
+                True,
+                'Financial year closed. Create the next financial year to continue.',
+                meta,
+            )
+        closing_display = existing.get('closing_balance_display') or _format_kes_amount(
+            existing.get('closing_balance', 0),
+        )
+        return (
+            True,
+            f"Financial year closed at KES {closing_display}.",
+            meta,
+        )
+    return True, 'Financial year reopened for editing.', meta
+
+
+def _save_finance_settings(cursor, start_raw, end_raw):
+    """Backward compatible: create a new financial year and set as current."""
+    ok, message, _created = _create_financial_year(cursor, start_raw, end_raw, set_current=True)
+    return ok, message
 
 
 _finance_account_transactions_schema_ensuring = False
@@ -36621,6 +40517,11 @@ def _prepare_finance_account_payment_records(form, selected_modes):
     mpesa_account = normalize_text(
         form.get('mpesa_account_number') if form else None, allow_empty=True
     )
+    mpesa_shortcode = normalize_text(
+        form.get('mpesa_shortcode') if form else None, allow_empty=True
+    ) or normalize_text(
+        form.get('mpesa_paybill_number') if form else None, allow_empty=True
+    )
     bank_name = normalize_text(form.get('bank_name') if form else None, allow_empty=True)
     bank_account = normalize_text(
         form.get('bank_account_number') if form else None, allow_empty=True
@@ -36634,18 +40535,26 @@ def _prepare_finance_account_payment_records(form, selected_modes):
             if not mpesa_business:
                 return None, 'Enter the M-Pesa business name.'
             if mpesa_type == 'paybill':
-                mpesa_account = FINANCE_MPESA_PAYBILL_ACCOUNT_REF
+                if _is_finance_mpesa_paybill_admission_ref(mpesa_account):
+                    mpesa_account = FINANCE_MPESA_PAYBILL_ACCOUNT_REF
+                elif not mpesa_account:
+                    return None, 'Enter the Paybill account number for M-Pesa.'
+                if not mpesa_shortcode:
+                    return None, 'Enter the Paybill number for M-Pesa.'
             elif not mpesa_account:
                 return None, 'Enter the Till number.'
             if len(mpesa_business) > 255:
                 mpesa_business = mpesa_business[:255]
             if mpesa_account and len(mpesa_account) > 100:
                 mpesa_account = mpesa_account[:100]
+            if mpesa_shortcode and len(mpesa_shortcode) > 20:
+                mpesa_shortcode = mpesa_shortcode[:20]
             records.append({
                 'payment_mode': 'mpesa',
                 'mpesa_type': mpesa_type,
                 'business_name': mpesa_business,
                 'account_number': mpesa_account,
+                'mpesa_shortcode': mpesa_shortcode if mpesa_type == 'paybill' else None,
                 'bank_name': None,
             })
         elif mode == 'bank':
@@ -36687,8 +40596,8 @@ def _save_finance_account_payment_methods(cursor, account_id, records):
             """
             INSERT INTO finance_account_payment_methods
                 (finance_account_id, payment_mode, mpesa_type,
-                 business_name, account_number, bank_name)
-            VALUES (%s, %s, %s, %s, %s, %s)
+                 business_name, account_number, mpesa_shortcode, bank_name)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 account_id,
@@ -36696,6 +40605,7 @@ def _save_finance_account_payment_methods(cursor, account_id, records):
                 rec.get('mpesa_type'),
                 rec.get('business_name'),
                 rec.get('account_number'),
+                rec.get('mpesa_shortcode'),
                 rec.get('bank_name'),
             ),
         )
@@ -36715,7 +40625,7 @@ def _fetch_finance_account_payment_methods_map(cursor, account_ids):
         cursor.execute(
             f"""
             SELECT finance_account_id, payment_mode, mpesa_type,
-                   business_name, account_number, bank_name
+                   business_name, account_number, mpesa_shortcode, bank_name
             FROM finance_account_payment_methods
             WHERE finance_account_id IN ({placeholders})
             ORDER BY payment_mode ASC, id ASC
@@ -36730,6 +40640,7 @@ def _fetch_finance_account_payment_methods_map(cursor, account_ids):
                     'mpesa_type': (r.get('mpesa_type') or '').strip().lower() or None,
                     'business_name': (r.get('business_name') or '').strip(),
                     'account_number': (r.get('account_number') or '').strip(),
+                    'mpesa_shortcode': (r.get('mpesa_shortcode') or '').strip(),
                     'bank_name': (r.get('bank_name') or '').strip(),
                 }
             else:
@@ -36739,7 +40650,8 @@ def _fetch_finance_account_payment_methods_map(cursor, account_ids):
                     'mpesa_type': (r[2] or '').strip().lower() or None if r[2] else None,
                     'business_name': (r[3] or '').strip(),
                     'account_number': (r[4] or '').strip(),
-                    'bank_name': (r[5] or '').strip() if len(r) > 5 else '',
+                    'mpesa_shortcode': (r[5] or '').strip() if len(r) > 5 else '',
+                    'bank_name': (r[6] or '').strip() if len(r) > 6 else '',
                 }
             out.setdefault(aid, []).append(row)
     except Exception as e:
@@ -37204,6 +41116,335 @@ def ensure_fee_structures_finance_account_column(cursor):
         print(f"ensure_fee_structures_finance_account_column: {e}")
 
 
+def ensure_fee_items_finance_account_column(cursor):
+    """Optional per-item finance account for multi-fund fee splits."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM fee_items LIKE 'finance_account_id'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "ALTER TABLE fee_items ADD COLUMN finance_account_id INT NULL "
+                "AFTER fee_structure_id"
+            )
+            cursor.execute(
+                "CREATE INDEX idx_fee_items_finance_account ON fee_items (finance_account_id)"
+            )
+    except Exception as e:
+        print(f"ensure_fee_items_finance_account_column: {e}")
+
+
+_FEE_ITEM_ACCOUNT_NAME_HINTS = (
+    (('PROPERTY', 'DEVELOPMENT', 'INFRA', 'CAPITAL'), ('DEVELOPMENT', 'INFRA')),
+    (('MEDICAL', 'BUS', 'CONTIGEN', 'OPERATION', 'ACTIVITY', 'STORE'), ('OPERATION',)),
+    (
+        ('B.E.S', 'P.E', 'R.M.I', 'L.T.T', 'TEST', 'S.E.S', 'SHA', 'NSSF'),
+        ('TUTION', 'TUITION'),
+    ),
+)
+
+
+def _fee_item_name_matches_account(item_name, account_name):
+    iname = (item_name or '').upper()
+    aname = (account_name or '').upper()
+    for item_keys, acct_keys in _FEE_ITEM_ACCOUNT_NAME_HINTS:
+        if any(k in iname for k in item_keys):
+            return any(k in aname for k in acct_keys)
+    return False
+
+
+def _finance_accounts_for_academic_level(cursor, level_id):
+    if not level_id:
+        return []
+    accounts = []
+    try:
+        cursor.execute(
+            """
+            SELECT fa.id, fa.account_name
+            FROM finance_accounts fa
+            INNER JOIN finance_account_academic_levels fal ON fal.finance_account_id = fa.id
+            WHERE fal.academic_level_id = %s
+              AND LOWER(COALESCE(fa.account_status, 'active')) = 'active'
+            ORDER BY fa.account_name ASC
+            """,
+            (int(level_id),),
+        )
+        for r in cursor.fetchall() or []:
+            accounts.append({
+                'id': r.get('id') if isinstance(r, dict) else r[0],
+                'account_name': (r.get('account_name') if isinstance(r, dict) else r[1]) or '',
+            })
+    except Exception as e:
+        print(f"_finance_accounts_for_academic_level: {e}")
+    return accounts
+
+
+def _resolve_fee_item_finance_account_id(cursor, item, fs_finance_account_id, level_id):
+    if item.get('finance_account_id'):
+        try:
+            return int(item['finance_account_id'])
+        except (TypeError, ValueError):
+            pass
+    item_name = (item.get('item_name') or '').strip()
+    matches = []
+    for acct in _finance_accounts_for_academic_level(cursor, level_id):
+        if _fee_item_name_matches_account(item_name, acct.get('account_name')):
+            matches.append(acct)
+    if matches:
+        matches.sort(
+            key=lambda a: len((a.get('account_name') or '').strip()),
+            reverse=True,
+        )
+        return int(matches[0]['id'])
+    if fs_finance_account_id:
+        try:
+            return int(fs_finance_account_id)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def _fetch_fee_structure_items_with_accounts_cached(
+    cursor, fee_structure_id, fs_finance_account_id=None, level_id=None,
+):
+    """Per-request cache for fee structure line items (report allocation hot path)."""
+    try:
+        from flask import g, has_request_context
+        if has_request_context():
+            cache = getattr(g, '_fee_structure_items_cache', None)
+            if cache is None:
+                cache = {}
+                g._fee_structure_items_cache = cache
+            key = (int(fee_structure_id), fs_finance_account_id, level_id)
+            if key not in cache:
+                cache[key] = _fetch_fee_structure_items_with_accounts(
+                    cursor, fee_structure_id, fs_finance_account_id, level_id,
+                )
+            return cache[key]
+    except Exception:
+        pass
+    return _fetch_fee_structure_items_with_accounts(
+        cursor, fee_structure_id, fs_finance_account_id, level_id,
+    )
+
+
+def _fetch_fee_structure_items_with_accounts(cursor, fee_structure_id, fs_finance_account_id=None, level_id=None):
+    ensure_fee_items_finance_account_column(cursor)
+    if fs_finance_account_id is None or level_id is None:
+        cursor.execute(
+            """
+            SELECT finance_account_id, academic_level_id
+            FROM fee_structures WHERE id = %s LIMIT 1
+            """,
+            (int(fee_structure_id),),
+        )
+        fs = cursor.fetchone()
+        if fs:
+            if fs_finance_account_id is None:
+                fs_finance_account_id = (
+                    fs.get('finance_account_id') if isinstance(fs, dict) else fs[0]
+                )
+            if level_id is None:
+                level_id = (
+                    fs.get('academic_level_id') if isinstance(fs, dict) else (fs[1] if len(fs) > 1 else None)
+                )
+    cursor.execute(
+        """
+        SELECT id, item_name, item_description, amount, finance_account_id
+        FROM fee_items
+        WHERE fee_structure_id = %s
+        ORDER BY item_order ASC, id ASC
+        """,
+        (int(fee_structure_id),),
+    )
+    items = []
+    for r in cursor.fetchall() or []:
+        if isinstance(r, dict):
+            item = {
+                'id': r.get('id'),
+                'item_name': r.get('item_name'),
+                'item_description': r.get('item_description'),
+                'amount': float(r.get('amount') or 0),
+                'finance_account_id': r.get('finance_account_id'),
+            }
+        else:
+            item = {
+                'id': r[0],
+                'item_name': r[1],
+                'item_description': r[2] if len(r) > 2 else '',
+                'amount': float(r[3] or 0) if len(r) > 3 else 0.0,
+                'finance_account_id': r[4] if len(r) > 4 else None,
+            }
+        item['target_account_id'] = _resolve_fee_item_finance_account_id(
+            cursor, item, fs_finance_account_id, level_id,
+        )
+        items.append(item)
+    return items
+
+
+def _allocate_fee_payment_to_accounts(cursor, fee_structure_id, amount_paid, fs_finance_account_id=None, level_id=None):
+    """Return {finance_account_id: allocated_amount} for a student fee payment."""
+    from decimal import Decimal, ROUND_HALF_UP
+
+    try:
+        paid = Decimal(str(amount_paid)).quantize(Decimal('0.01'))
+    except Exception:
+        return {}
+    if paid <= 0:
+        return {}
+    items = _fetch_fee_structure_items_with_accounts_cached(
+        cursor, fee_structure_id, fs_finance_account_id, level_id,
+    )
+    if not items:
+        if fs_finance_account_id:
+            try:
+                return {int(fs_finance_account_id): float(paid)}
+            except (TypeError, ValueError):
+                pass
+        return {}
+    total_items = sum(Decimal(str(i.get('amount') or 0)) for i in items)
+    if total_items <= 0:
+        if fs_finance_account_id:
+            try:
+                return {int(fs_finance_account_id): float(paid)}
+            except (TypeError, ValueError):
+                pass
+        return {}
+    buckets = {}
+    for item in items:
+        target = item.get('target_account_id')
+        if not target:
+            continue
+        share = (paid * Decimal(str(item.get('amount') or 0)) / total_items).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP,
+        )
+        if share <= 0:
+            continue
+        buckets[int(target)] = buckets.get(int(target), Decimal('0')) + share
+    return {aid: float(val) for aid, val in buckets.items()}
+
+
+def _credit_student_fee_payment_accounts(
+    cursor, payment_id, fee_structure_id, amount_paid,
+    payment_method=None, reference_code=None, student_id=None,
+    recorded_by_name=None,
+):
+    """Credit one or more finance accounts for a student fee payment."""
+    from decimal import Decimal
+
+    buckets = _allocate_fee_payment_to_accounts(cursor, fee_structure_id, amount_paid)
+    if not buckets:
+        cursor.execute(
+            "SELECT finance_account_id FROM fee_structures WHERE id = %s LIMIT 1",
+            (int(fee_structure_id),),
+        )
+        fs = cursor.fetchone()
+        fid = fs.get('finance_account_id') if isinstance(fs, dict) else (fs[0] if fs else None)
+        if not fid:
+            return True, ''
+        buckets = {int(fid): float(amount_paid)}
+    desc = f'Student fee — {student_id or payment_id}'
+    for fid, share in buckets.items():
+        if _finance_ledger_exists(
+            cursor, 'student_payment', payment_id, 'credit', finance_account_id=fid,
+        ):
+            continue
+        ok, err = _credit_finance_account(
+            cursor, fid, Decimal(str(share)),
+            payment_method=payment_method,
+            reference_code=reference_code,
+            description=desc,
+            related_type='student_payment',
+            related_id=payment_id,
+            recorded_by_name=recorded_by_name,
+        )
+        if not ok:
+            return False, err
+    return True, ''
+
+
+def _student_payment_ledger_matches(cursor, payment_id, expected_buckets):
+    """True when existing ledger credits match the expected allocation."""
+    if not expected_buckets:
+        return False
+    try:
+        pid = int(payment_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        cursor.execute(
+            """
+            SELECT finance_account_id, amount
+            FROM finance_account_transactions
+            WHERE related_type = 'student_payment'
+              AND related_id = %s
+              AND LOWER(COALESCE(direction, 'credit')) = 'credit'
+            """,
+            (pid,),
+        )
+        rows = cursor.fetchall() or []
+    except Exception:
+        return False
+    if not rows:
+        return False
+    actual = {}
+    for row in rows:
+        if isinstance(row, dict):
+            fid = row.get('finance_account_id')
+            amt = float(row.get('amount') or 0)
+        else:
+            fid = row[0] if len(row) > 0 else None
+            amt = float(row[1] or 0) if len(row) > 1 else 0.0
+        if fid is None:
+            continue
+        actual[int(fid)] = actual.get(int(fid), 0.0) + amt
+    if set(actual.keys()) != set(int(k) for k in expected_buckets.keys()):
+        return False
+    for fid, expected in expected_buckets.items():
+        if abs(actual.get(int(fid), 0.0) - float(expected)) > 0.01:
+            return False
+    return True
+
+
+def _reconcile_student_payment_ledger_splits(
+    cursor, payment_id, fee_structure_id, amount_paid,
+    payment_method=None, reference_code=None, student_id=None,
+    recorded_by_name=None, fs_finance_account_id=None, level_id=None,
+):
+    """Replace student_payment ledger rows with proportional multi-fund credits."""
+    buckets = _allocate_fee_payment_to_accounts(
+        cursor, fee_structure_id, amount_paid, fs_finance_account_id, level_id,
+    )
+    if not buckets:
+        return False
+    try:
+        pid = int(payment_id)
+    except (TypeError, ValueError):
+        return False
+    if _student_payment_ledger_matches(cursor, pid, buckets):
+        return False
+    cursor.execute(
+        """
+        DELETE FROM finance_account_transactions
+        WHERE related_type = 'student_payment' AND related_id = %s
+        """,
+        (pid,),
+    )
+    desc = f'Student fee — {student_id or payment_id}'
+    for fid, share in buckets.items():
+        ok, err = _credit_finance_account(
+            cursor, fid, share,
+            payment_method=payment_method,
+            reference_code=reference_code,
+            description=desc,
+            related_type='student_payment',
+            related_id=pid,
+            recorded_by_name=recorded_by_name,
+        )
+        if not ok:
+            print(f"_reconcile_student_payment_ledger_splits: {err}")
+            return False
+    return True
+
+
 def _fetch_finance_accounts_for_fee_structure_picker(cursor):
     """Active finance accounts that have at least one active academic level."""
     ensure_finance_accounts_table(cursor)
@@ -37403,9 +41644,9 @@ def _replace_fee_structure_items(cursor, structure_id, fee_items):
     items_inserted = 0
     for index, item in enumerate(fee_items):
         item_name = item.get('item_name', '').strip().upper()
-        item_description = item.get('item_description', '').strip()
+        item_description = item.get('item_description', '').strip().upper()
         amount = float(item.get('amount', 0))
-        if not item_name or amount <= 0:
+        if not item_name or not item_description or amount <= 0:
             continue
         cursor.execute(
             """
@@ -37417,6 +41658,345 @@ def _replace_fee_structure_items(cursor, structure_id, fee_items):
         )
         items_inserted += 1
     return items_inserted
+
+
+_student_fee_votes_schema_ensuring = False
+
+
+def ensure_student_fee_votes_table(cursor):
+    """Per-student vote rows copied from a fee structure's fee_items."""
+    global _student_fee_votes_schema_ensuring
+    if _student_fee_votes_schema_ensuring:
+        return
+    _student_fee_votes_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS student_fee_votes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id VARCHAR(20) NOT NULL,
+                fee_structure_id INT NOT NULL,
+                fee_item_id INT NULL,
+                item_name VARCHAR(255) NOT NULL,
+                item_description TEXT,
+                amount DECIMAL(10, 2) NOT NULL,
+                item_order INT DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_student_structure_vote (student_id, fee_structure_id, item_name),
+                INDEX idx_sfv_structure (fee_structure_id),
+                INDEX idx_sfv_student (student_id),
+                INDEX idx_sfv_fee_item (fee_item_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+    except Exception as e:
+        print(f"ensure_student_fee_votes_table: {e}")
+    finally:
+        _student_fee_votes_schema_ensuring = False
+
+
+def _students_for_fee_structure_level(cursor, academic_level_id, category):
+    """Active students in a class level who match the fee structure category."""
+    try:
+        academic_level_id = int(academic_level_id)
+    except (TypeError, ValueError):
+        return []
+    cursor.execute(
+        "SELECT level_name FROM academic_levels WHERE id = %s LIMIT 1",
+        (academic_level_id,),
+    )
+    level_row = cursor.fetchone()
+    if not level_row:
+        return []
+    level_name = (
+        (level_row.get('level_name') if isinstance(level_row, dict) else level_row[0]) or ''
+    ).strip()
+    if not level_name:
+        return []
+
+    cat = (category or 'both').strip().lower()
+    params = [level_name]
+    if cat == 'self sponsored':
+        cat_sql = (
+            " AND LOWER(TRIM(COALESCE(student_category, ''))) "
+            "IN ('self sponsored', 'both')"
+        )
+    elif cat == 'sponsored':
+        cat_sql = (
+            " AND LOWER(TRIM(COALESCE(student_category, ''))) "
+            "IN ('sponsored', 'both')"
+        )
+    else:
+        cat_sql = ""
+
+    cursor.execute(
+        f"""
+        SELECT student_id, full_name, current_grade, student_category
+        FROM students
+        WHERE TRIM(COALESCE(current_grade, '')) = %s
+          AND LOWER(TRIM(COALESCE(status, ''))) IN ('in session', 'active')
+          {cat_sql}
+        ORDER BY full_name ASC
+        """,
+        tuple(params),
+    )
+    students = []
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            students.append({
+                'student_id': (row.get('student_id') or '').strip(),
+                'full_name': (row.get('full_name') or '').strip(),
+                'current_grade': (row.get('current_grade') or '').strip(),
+                'student_category': (row.get('student_category') or '').strip(),
+            })
+        else:
+            students.append({
+                'student_id': (row[0] or '').strip() if len(row) > 0 else '',
+                'full_name': (row[1] or '').strip() if len(row) > 1 else '',
+                'current_grade': (row[2] or '').strip() if len(row) > 2 else '',
+                'student_category': (row[3] or '').strip() if len(row) > 3 else '',
+            })
+    return [s for s in students if s.get('student_id')]
+
+
+def _fee_structure_sibling_ids(cursor, structure_id):
+    """Fee structure rows in the same batch (multi-level create/edit)."""
+    cursor.execute(
+        """
+        SELECT id, fee_name, academic_year_id, term_id, category, finance_account_id
+        FROM fee_structures
+        WHERE id = %s AND status = 'active'
+        LIMIT 1
+        """,
+        (int(structure_id),),
+    )
+    anchor = cursor.fetchone()
+    if not anchor:
+        return [int(structure_id)]
+    if isinstance(anchor, dict):
+        fee_name = anchor.get('fee_name') or ''
+        year_id = anchor.get('academic_year_id')
+        term_id = anchor.get('term_id')
+        category = anchor.get('category') or 'both'
+        finance_account_id = anchor.get('finance_account_id')
+    else:
+        fee_name = anchor[1] if len(anchor) > 1 else ''
+        year_id = anchor[2] if len(anchor) > 2 else None
+        term_id = anchor[3] if len(anchor) > 3 else None
+        category = (anchor[4] if len(anchor) > 4 else None) or 'both'
+        finance_account_id = anchor[5] if len(anchor) > 5 else None
+
+    if finance_account_id is None:
+        cursor.execute(
+            """
+            SELECT id FROM fee_structures
+            WHERE status = 'active'
+              AND fee_name = %s
+              AND academic_year_id <=> %s
+              AND term_id <=> %s
+              AND category = %s
+              AND finance_account_id IS NULL
+            ORDER BY id ASC
+            """,
+            (fee_name, year_id, term_id, category),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT id FROM fee_structures
+            WHERE status = 'active'
+              AND fee_name = %s
+              AND academic_year_id <=> %s
+              AND term_id <=> %s
+              AND category = %s
+              AND finance_account_id = %s
+            ORDER BY id ASC
+            """,
+            (fee_name, year_id, term_id, category, finance_account_id),
+        )
+    ids = []
+    for row in cursor.fetchall() or []:
+        rid = row.get('id') if isinstance(row, dict) else row[0]
+        if rid:
+            ids.append(int(rid))
+    return ids or [int(structure_id)]
+
+
+def _sync_student_fee_votes_for_structure(cursor, fee_structure_id):
+    """Assign each fee structure vote to every matching enrolled student."""
+    ensure_student_fee_votes_table(cursor)
+    fee_structure_id = int(fee_structure_id)
+    cursor.execute(
+        """
+        SELECT academic_level_id, category
+        FROM fee_structures
+        WHERE id = %s AND status = 'active'
+        LIMIT 1
+        """,
+        (fee_structure_id,),
+    )
+    fs_row = cursor.fetchone()
+    if not fs_row:
+        return 0
+    if isinstance(fs_row, dict):
+        level_id = fs_row.get('academic_level_id')
+        category = fs_row.get('category') or 'both'
+    else:
+        level_id = fs_row[0] if len(fs_row) > 0 else None
+        category = (fs_row[1] if len(fs_row) > 1 else None) or 'both'
+
+    cursor.execute(
+        """
+        SELECT id, item_name, item_description, amount, item_order
+        FROM fee_items
+        WHERE fee_structure_id = %s
+        ORDER BY item_order ASC, id ASC
+        """,
+        (fee_structure_id,),
+    )
+    items = cursor.fetchall() or []
+    cursor.execute(
+        "DELETE FROM student_fee_votes WHERE fee_structure_id = %s",
+        (fee_structure_id,),
+    )
+    if not items:
+        return 0
+
+    students = _students_for_fee_structure_level(cursor, level_id, category)
+    rows_inserted = 0
+    for student in students:
+        student_id = student.get('student_id')
+        if not student_id:
+            continue
+        for item in items:
+            if isinstance(item, dict):
+                fee_item_id = item.get('id')
+                item_name = (item.get('item_name') or '').strip().upper()
+                item_description = (item.get('item_description') or '').strip().upper()
+                amount = float(item.get('amount') or 0)
+                item_order = int(item.get('item_order') or 0)
+            else:
+                fee_item_id = item[0] if len(item) > 0 else None
+                item_name = (item[1] or '').strip().upper() if len(item) > 1 else ''
+                item_description = (item[2] or '').strip().upper() if len(item) > 2 else ''
+                amount = float(item[3] if len(item) > 3 and item[3] else 0)
+                item_order = int(item[4] or 0) if len(item) > 4 else 0
+            if not item_name or amount <= 0:
+                continue
+            cursor.execute(
+                """
+                INSERT INTO student_fee_votes
+                    (student_id, fee_structure_id, fee_item_id,
+                     item_name, item_description, amount, item_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    fee_item_id = VALUES(fee_item_id),
+                    item_description = VALUES(item_description),
+                    amount = VALUES(amount),
+                    item_order = VALUES(item_order)
+                """,
+                (
+                    student_id,
+                    fee_structure_id,
+                    fee_item_id,
+                    item_name,
+                    item_description,
+                    amount,
+                    item_order,
+                ),
+            )
+            rows_inserted += 1
+    return rows_inserted
+
+
+def _fetch_fee_structure_student_votes_payload(cursor, structure_id):
+    """Students in a fee structure batch with their assigned votes."""
+    ensure_student_fee_votes_table(cursor)
+    structure_ids = _fee_structure_sibling_ids(cursor, structure_id)
+    if not structure_ids:
+        return {'students': [], 'student_count': 0, 'structure_ids': []}
+
+    placeholders = ','.join(['%s'] * len(structure_ids))
+    cursor.execute(
+        f"""
+        SELECT sfv.student_id, sfv.fee_structure_id, sfv.item_name, sfv.item_description,
+               sfv.amount, sfv.item_order, s.full_name, s.current_grade, s.student_category
+        FROM student_fee_votes sfv
+        INNER JOIN students s ON s.student_id = sfv.student_id
+        WHERE sfv.fee_structure_id IN ({placeholders})
+        ORDER BY s.full_name ASC, sfv.item_order ASC, sfv.id ASC
+        """,
+        tuple(structure_ids),
+    )
+    by_student = {}
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            sid = row.get('student_id')
+            payload = {
+                'student_id': sid,
+                'full_name': (row.get('full_name') or '').strip(),
+                'current_grade': (row.get('current_grade') or '').strip(),
+                'student_category': (row.get('student_category') or '').strip(),
+                'fee_structure_id': row.get('fee_structure_id'),
+                'vote': {
+                    'item_name': (row.get('item_name') or '').strip(),
+                    'item_description': (row.get('item_description') or '').strip(),
+                    'amount': float(row.get('amount') or 0),
+                },
+            }
+        else:
+            sid = row[0] if len(row) > 0 else None
+            payload = {
+                'student_id': sid,
+                'full_name': (row[6] or '').strip() if len(row) > 6 else '',
+                'current_grade': (row[7] or '').strip() if len(row) > 7 else '',
+                'student_category': (row[8] or '').strip() if len(row) > 8 else '',
+                'fee_structure_id': row[1] if len(row) > 1 else None,
+                'vote': {
+                    'item_name': (row[2] or '').strip() if len(row) > 2 else '',
+                    'item_description': (row[3] or '').strip() if len(row) > 3 else '',
+                    'amount': float(row[4] if len(row) > 4 and row[4] else 0),
+                },
+            }
+        if not sid:
+            continue
+        entry = by_student.setdefault(sid, {
+            'student_id': payload['student_id'],
+            'full_name': payload['full_name'],
+            'current_grade': payload['current_grade'],
+            'student_category': payload['student_category'],
+            'fee_structure_id': payload['fee_structure_id'],
+            'votes': [],
+            'total_amount': 0.0,
+        })
+        vote = payload['vote']
+        entry['votes'].append(vote)
+        entry['total_amount'] += float(vote.get('amount') or 0)
+
+    students = list(by_student.values())
+    students.sort(key=lambda x: (x.get('full_name') or '').upper())
+    return {
+        'students': students,
+        'student_count': len(students),
+        'structure_ids': structure_ids,
+    }
+
+
+def _count_students_for_fee_structure_ids(cursor, structure_ids):
+    """Count distinct students with synced votes across structure ids."""
+    ensure_student_fee_votes_table(cursor)
+    if not structure_ids:
+        return 0
+    placeholders = ','.join(['%s'] * len(structure_ids))
+    cursor.execute(
+        f"""
+        SELECT COUNT(DISTINCT student_id) AS c
+        FROM student_fee_votes
+        WHERE fee_structure_id IN ({placeholders})
+        """,
+        tuple(structure_ids),
+    )
+    row = cursor.fetchone()
+    return int((row.get('c') if isinstance(row, dict) else row[0]) or 0) if row else 0
 
 
 def _fee_structure_category_conflict(
@@ -37862,6 +42442,39 @@ def _fetch_student_fees_paid_breakdown(cursor, finance_account_id=None):
     """Aggregate paid student fees by fee structure name."""
     breakdown = []
     try:
+        if finance_account_id:
+            sql = """
+                SELECT COALESCE(NULLIF(TRIM(fs.fee_name), ''), 'Fee payment') AS fee_name,
+                       COUNT(DISTINCT sp.id) AS payment_count,
+                       COALESCE(SUM(fat.amount), 0) AS total_paid
+                FROM finance_account_transactions fat
+                INNER JOIN student_payments sp ON sp.id = fat.related_id AND sp.amount_paid > 0
+                LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
+                WHERE fat.finance_account_id = %s
+                  AND fat.related_type = 'student_payment'
+                  AND LOWER(COALESCE(fat.direction, 'credit')) = 'credit'
+                GROUP BY COALESCE(NULLIF(TRIM(fs.fee_name), ''), 'Fee payment')
+                ORDER BY total_paid DESC, fee_name ASC
+                LIMIT 24
+            """
+            cursor.execute(sql, (int(finance_account_id),))
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    name = (row.get('fee_name') or 'Fee payment').strip()
+                    cnt = int(row.get('payment_count') or 0)
+                    total = float(row.get('total_paid') or 0)
+                else:
+                    name = (row[0] or 'Fee payment').strip()
+                    cnt = int(row[1] or 0)
+                    total = float(row[2] or 0)
+                breakdown.append({
+                    'fee_name': name,
+                    'payment_count': cnt,
+                    'total_paid': round(total, 2),
+                    'total_display': _format_kes_amount(total),
+                })
+            return breakdown
+
         sql = """
             SELECT COALESCE(NULLIF(TRIM(fs.fee_name), ''), 'Fee payment') AS fee_name,
                    COUNT(sp.id) AS payment_count,
@@ -37871,9 +42484,6 @@ def _fetch_student_fees_paid_breakdown(cursor, finance_account_id=None):
             WHERE sp.amount_paid > 0
         """
         params = []
-        if finance_account_id:
-            sql += ' AND fs.finance_account_id = %s'
-            params.append(int(finance_account_id))
         sql += """
             GROUP BY COALESCE(NULLIF(TRIM(fs.fee_name), ''), 'Fee payment')
             ORDER BY total_paid DESC, fee_name ASC
@@ -37903,38 +42513,79 @@ def _fetch_student_fees_paid_breakdown(cursor, finance_account_id=None):
 def _fetch_student_fee_payments_as_revenue(cursor, limit=500, finance_account_id=None):
     rows = []
     try:
-        sql = """
-            SELECT sp.id, sp.reference_number, sp.amount_paid, sp.payment_method,
-                   sp.payment_date, sp.notes, s.full_name AS student_name,
-                   sp.student_id, fs.fee_name, e.full_name AS recorded_by_name,
-                   sp.transaction_id, fs.finance_account_id,
-                   fa.account_name AS finance_account_name,
-                   al.level_name AS level_name
-            FROM student_payments sp
-            LEFT JOIN students s ON sp.student_id = s.student_id
-            LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
-            LEFT JOIN academic_levels al ON al.id = fs.academic_level_id
-            LEFT JOIN finance_accounts fa ON fa.id = fs.finance_account_id
-            LEFT JOIN employees e ON sp.received_by = e.id
-            WHERE sp.amount_paid > 0
-        """
-        params = []
+        ensure_finance_account_transactions_table(cursor)
         if finance_account_id:
-            sql += ' AND fs.finance_account_id = %s'
-            params.append(int(finance_account_id))
-        sql += ' ORDER BY sp.payment_date DESC, sp.id DESC LIMIT %s'
-        params.append(int(limit))
+            sql = """
+                SELECT sp.id, sp.reference_number, fat.amount AS amount_paid, sp.payment_method,
+                       sp.payment_date, sp.notes, s.full_name AS student_name,
+                       sp.student_id, fs.fee_name, e.full_name AS recorded_by_name,
+                       sp.transaction_id, fs.finance_account_id, fs.academic_level_id,
+                       fa.account_name AS finance_account_name,
+                       al.level_name AS level_name, sp.fee_structure_id
+                FROM finance_account_transactions fat
+                INNER JOIN student_payments sp ON sp.id = fat.related_id AND sp.amount_paid > 0
+                LEFT JOIN students s ON sp.student_id = s.student_id
+                LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
+                LEFT JOIN academic_levels al ON al.id = fs.academic_level_id
+                LEFT JOIN finance_accounts fa ON fa.id = fs.finance_account_id
+                LEFT JOIN employees e ON sp.received_by = e.id
+                WHERE fat.finance_account_id = %s
+                  AND fat.related_type = 'student_payment'
+                  AND LOWER(COALESCE(fat.direction, 'credit')) = 'credit'
+                ORDER BY sp.payment_date DESC, sp.id DESC
+                LIMIT %s
+            """
+            params = [int(finance_account_id), int(limit)]
+        else:
+            sql = """
+                SELECT sp.id, sp.reference_number, sp.amount_paid, sp.payment_method,
+                       sp.payment_date, sp.notes, s.full_name AS student_name,
+                       sp.student_id, fs.fee_name, e.full_name AS recorded_by_name,
+                       sp.transaction_id, fs.finance_account_id, fs.academic_level_id,
+                       fa.account_name AS finance_account_name,
+                       al.level_name AS level_name, sp.fee_structure_id
+                FROM student_payments sp
+                LEFT JOIN students s ON sp.student_id = s.student_id
+                LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
+                LEFT JOIN academic_levels al ON al.id = fs.academic_level_id
+                LEFT JOIN finance_accounts fa ON fa.id = fs.finance_account_id
+                LEFT JOIN employees e ON sp.received_by = e.id
+                WHERE sp.amount_paid > 0
+                ORDER BY sp.payment_date DESC, sp.id DESC
+                LIMIT %s
+            """
+            params = [int(limit)]
         cursor.execute(sql, tuple(params))
         for row in cursor.fetchall() or []:
-            item = _student_fee_payment_to_revenue_row(row)
             if isinstance(row, dict):
-                item['finance_account_id'] = row.get('finance_account_id')
-                item['finance_account_name'] = (
-                    row.get('finance_account_name') or ''
-                ).strip()
-            elif len(row) > 11:
-                item['finance_account_id'] = row[11]
-                item['finance_account_name'] = (row[12] or '').strip() if len(row) > 12 else ''
+                data = dict(row)
+            else:
+                data = {
+                    'id': row[0] if len(row) > 0 else None,
+                    'reference_number': row[1] if len(row) > 1 else '',
+                    'amount_paid': row[2] if len(row) > 2 else 0,
+                    'payment_method': row[3] if len(row) > 3 else '',
+                    'payment_date': row[4] if len(row) > 4 else None,
+                    'notes': row[5] if len(row) > 5 else '',
+                    'student_name': row[6] if len(row) > 6 else '',
+                    'student_id': row[7] if len(row) > 7 else '',
+                    'fee_name': row[8] if len(row) > 8 else '',
+                    'recorded_by_name': row[9] if len(row) > 9 else '',
+                    'transaction_id': row[10] if len(row) > 10 else '',
+                    'finance_account_id': row[11] if len(row) > 11 else None,
+                    'academic_level_id': row[12] if len(row) > 12 else None,
+                    'finance_account_name': row[13] if len(row) > 13 else '',
+                    'level_name': row[14] if len(row) > 14 else '',
+                    'fee_structure_id': row[15] if len(row) > 15 else None,
+                }
+            fs_faid = data.get('finance_account_id')
+            item = _student_fee_payment_to_revenue_row(data)
+            item['finance_account_id'] = (
+                int(finance_account_id) if finance_account_id else fs_faid
+            )
+            item['finance_account_name'] = (
+                data.get('finance_account_name') or ''
+            ).strip()
             rows.append(item)
         _attach_finance_account_levels_to_revenue_rows(cursor, rows)
     except Exception as e:
@@ -37986,6 +42637,644 @@ def _fetch_revenue_lists_for_page(cursor, source_filter=None, finance_account_id
         'manual_rows': manual_rows,
         'display_rows': display_rows,
     }
+
+
+def _fetch_finance_account_revenue_report(cursor, account_id):
+    """Summary + transaction lists for one finance account (accountant account page)."""
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return None
+    if account_id <= 0:
+        return None
+    ensure_finance_accounts_table(cursor)
+    account = _fetch_finance_account_by_id(cursor, account_id)
+    if not account:
+        return None
+    balance = 0.0
+    try:
+        cursor.execute(
+            """
+            SELECT COALESCE(current_balance, 0) AS bal
+            FROM finance_accounts WHERE id = %s LIMIT 1
+            """,
+            (account_id,),
+        )
+        br = cursor.fetchone()
+        if br:
+            balance = float(
+                br.get('bal') if isinstance(br, dict) else (br[0] if br else 0) or 0
+            )
+    except Exception as e:
+        print(f"_fetch_finance_account_revenue_report balance: {e}")
+    account['current_balance'] = balance
+    account['current_balance_display'] = _format_kes_amount(balance)
+    levels = account.get('academic_levels') or []
+    level_names = [
+        (lv.get('level_name') or '').strip()
+        for lv in levels
+        if (lv.get('level_name') or '').strip()
+    ]
+    account['levels_label'] = ', '.join(level_names) if level_names else '—'
+
+    lists = _fetch_revenue_lists_for_page(
+        cursor, source_filter='all', finance_account_id=account_id,
+    )
+    fee_rows = lists.get('fee_rows') or []
+    manual_rows = lists.get('manual_rows') or []
+    fees_breakdown = _fetch_student_fees_paid_breakdown(
+        cursor, finance_account_id=account_id,
+    )
+
+    def _row_amount(row):
+        for key in ('amount', 'amount_paid'):
+            if row.get(key) is not None:
+                try:
+                    return float(row.get(key) or 0)
+                except (TypeError, ValueError):
+                    pass
+        return 0.0
+
+    fees_total = sum(_row_amount(r) for r in fee_rows)
+    manual_total = sum(_row_amount(r) for r in manual_rows)
+    return {
+        'account': account,
+        'fee_rows': fee_rows,
+        'manual_rows': manual_rows,
+        'fees_breakdown': fees_breakdown,
+        'fees_total_display': _format_kes_amount(fees_total),
+        'manual_total_display': _format_kes_amount(manual_total),
+        'money_in_display': _format_kes_amount(fees_total + manual_total),
+        'fee_count': len(fee_rows),
+        'manual_count': len(manual_rows),
+    }
+
+
+def _render_finance_account_revenue_page(account_id):
+    """Render per-account revenue report (shared by /accounts/<id> and legacy ?account=)."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        flash('Invalid account.', 'error')
+        return redirect(employee_dashboard_path('accounts'))
+    if account_id <= 0:
+        flash('Invalid account.', 'error')
+        return redirect(employee_dashboard_path('accounts'))
+
+    user_role = session.get('role', '').lower()
+    report = None
+    filter_options = {'finance_accounts': []}
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_accountant_revenue_table(cursor)
+                ensure_accountant_revenue_finance_account_column(cursor)
+                ensure_finance_accounts_table(cursor)
+                connection.commit()
+                report = _fetch_finance_account_revenue_report(cursor, account_id)
+                if report:
+                    filter_options = finance_reports_mod.load_filter_options(
+                        cursor, _reports_current_year_term_ids,
+                    )
+        except Exception as e:
+            print(f"_render_finance_account_revenue_page: {e}")
+        finally:
+            connection.close()
+    else:
+        flash('Could not connect to the database.', 'error')
+
+    if not report:
+        flash('Account not found.', 'error')
+        return redirect(employee_dashboard_path('accounts'))
+
+    acct = report['account']
+    return render_template(
+        'dashboards/accountant_finance_account_revenue.html',
+        role=user_role,
+        account_id=account_id,
+        finance_account_filter=account_id,
+        report=report,
+        account=acct,
+        fee_rows=report['fee_rows'],
+        manual_rows=report['manual_rows'],
+        fees_breakdown=report['fees_breakdown'],
+        filter_options=filter_options,
+        account_report_nav=finance_account_reports_mod.ACCOUNT_REPORT_NAV,
+        report_period_label='All dates',
+        report_generated_at=_account_report_generated_at(),
+    )
+
+
+def _account_report_period_label(date_from='', date_to=''):
+    """Human-readable period for account report masthead."""
+    df = (date_from or '').strip()
+    dt = (date_to or '').strip()
+    if df and dt:
+        return f'{df} to {dt}'
+    if df:
+        return f'From {df}'
+    if dt:
+        return f'Until {dt}'
+    return 'All dates'
+
+
+def _account_report_generated_at():
+    return datetime.now().strftime('%d %b %Y, %H:%M')
+
+
+def _load_account_for_report(cursor, account_id):
+    """Lightweight account row with balance for per-account reports."""
+    account = _fetch_finance_account_by_id(cursor, account_id)
+    if not account:
+        return None
+    balance = 0.0
+    try:
+        cursor.execute(
+            """
+            SELECT COALESCE(current_balance, 0) AS bal
+            FROM finance_accounts WHERE id = %s LIMIT 1
+            """,
+            (int(account_id),),
+        )
+        br = cursor.fetchone()
+        if br:
+            balance = float(
+                br.get('bal') if isinstance(br, dict) else (br[0] if br else 0) or 0
+            )
+    except Exception as e:
+        print(f"_load_account_for_report balance: {e}")
+    account['current_balance'] = balance
+    account['current_balance_display'] = _format_kes_amount(balance)
+    levels = account.get('academic_levels') or []
+    level_names = [
+        (lv.get('level_name') or '').strip()
+        for lv in levels
+        if (lv.get('level_name') or '').strip()
+    ]
+    account['levels_label'] = ', '.join(level_names) if level_names else '—'
+    return account
+
+
+def _finance_account_report_helpers():
+    return {
+        'ensure_ledger_table': ensure_finance_account_transactions_table,
+        'refresh_balances': _refresh_finance_account_balance_from_ledger,
+        'load_account': _load_account_for_report,
+        'load_student_fee_rows': lambda cursor, aid: (
+            _fetch_revenue_lists_for_page(
+                cursor, source_filter='all', finance_account_id=aid,
+            ).get('fee_rows')
+            or []
+        ),
+        'fetch_financial_year_context': _financial_year_report_context,
+        'account_balance_before': _account_balance_before_date,
+        'account_balance_through': _account_balance_through_date,
+    }
+
+
+def _fetch_finance_account_report_context(account_id, report_slug, raw_filters=None):
+    """Load account report data for HTML or JSON responses."""
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return {'error': 'Invalid account.'}
+    report_slug = (report_slug or '').strip().lower()
+    if report_slug not in finance_account_reports_mod.ACCOUNT_REPORT_SLUGS:
+        return {'error': 'Report not found.'}
+
+    raw_filters = raw_filters if raw_filters is not None else {}
+    financial_year_id = raw_filters.get('financial_year_id')
+    if financial_year_id is not None and financial_year_id != '':
+        try:
+            financial_year_id = int(financial_year_id)
+        except (TypeError, ValueError):
+            financial_year_id = None
+    else:
+        financial_year_id = None
+    filters = {
+        'date_from': (raw_filters.get('date_from') or '').strip(),
+        'date_to': (raw_filters.get('date_to') or '').strip(),
+        'financial_year_id': financial_year_id,
+    }
+
+    connection = get_db_connection()
+    if not connection:
+        return {'error': 'Could not connect to the database.'}
+
+    account = None
+    payload = None
+    financial_years = []
+    default_financial_year_id = None
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            ensure_finance_account_transactions_table(cursor)
+            ensure_finance_settings_table(cursor)
+            financial_years = _fetch_financial_years_for_report_picker(cursor)
+            if not any([
+                filters.get('financial_year_id'),
+                filters.get('date_from'),
+                filters.get('date_to'),
+            ]):
+                fy_default = _fetch_current_financial_year(cursor)
+                if fy_default.get('is_configured'):
+                    filters['financial_year_id'] = fy_default.get('id')
+                elif financial_years:
+                    filters['financial_year_id'] = financial_years[0].get('id')
+            filters = _apply_financial_year_report_filters(cursor, filters)
+            default_financial_year_id = filters.get('financial_year_id')
+            if not default_financial_year_id:
+                fy = _fetch_current_financial_year(cursor)
+                if fy.get('is_configured'):
+                    default_financial_year_id = fy.get('id')
+            account = _load_account_for_report(cursor, account_id)
+            helpers = _finance_account_report_helpers()
+            if account:
+                helpers['preloaded_account'] = account
+            payload = finance_account_reports_mod.fetch_account_report_payload(
+                cursor,
+                account_id,
+                report_slug,
+                filters,
+                helpers,
+            )
+            if not account:
+                account = (payload or {}).get('account')
+    except Exception as e:
+        print(f'_fetch_finance_account_report_context: {e}')
+    finally:
+        connection.close()
+
+    if not account or (payload or {}).get('error'):
+        return {'error': (payload or {}).get('error') or 'Account not found.'}
+
+    return {
+        'account_id': account_id,
+        'account': account,
+        'account_report_slug': report_slug,
+        'account_report_meta': finance_account_reports_mod.report_meta(report_slug),
+        'payload': payload,
+        'filters': filters,
+        'financial_years': financial_years,
+        'default_financial_year_id': default_financial_year_id,
+        'report_period_label': _account_report_period_label(
+            filters.get('date_from'), filters.get('date_to'),
+        ),
+        'report_generated_at': _account_report_generated_at(),
+    }
+
+
+def _render_finance_account_report_page(account_id, report_slug):
+    """Render a standard accountant report for one finance account."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    ctx = _fetch_finance_account_report_context(
+        account_id,
+        report_slug,
+        {
+            'date_from': request.args.get('date_from'),
+            'date_to': request.args.get('date_to'),
+            'financial_year_id': request.args.get('financial_year_id', type=int),
+        },
+    )
+    if ctx.get('error'):
+        flash(ctx['error'], 'error')
+        try:
+            redirect_account_id = int(account_id)
+        except (TypeError, ValueError):
+            redirect_account_id = account_id
+        return redirect(employee_dashboard_path(f'accounts/{redirect_account_id}'))
+
+    user_role = session.get('role', '').lower()
+    filters = ctx.get('filters') or {}
+    return render_template(
+        'dashboards/accountant_finance_account_report.html',
+        role=user_role,
+        account_id=ctx['account_id'],
+        account=ctx['account'],
+        account_report_slug=ctx['account_report_slug'],
+        account_report_meta=ctx['account_report_meta'],
+        account_report_nav=finance_account_reports_mod.ACCOUNT_REPORT_NAV,
+        report_payload=ctx['payload'],
+        date_from=filters.get('date_from'),
+        date_to=filters.get('date_to'),
+        financial_year_id=filters.get('financial_year_id'),
+        financial_years=ctx.get('financial_years') or [],
+        default_financial_year_id=ctx.get('default_financial_year_id'),
+        report_period_label=ctx.get('report_period_label'),
+        report_generated_at=ctx.get('report_generated_at'),
+    )
+
+
+def _fetch_petty_cash_accounts(cursor):
+    """Active petty cash finance accounts for the petty cash book."""
+    ensure_finance_accounts_table(cursor)
+    _sync_finance_account_balances(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT id, account_category, account_name, account_description,
+                   COALESCE(current_balance, 0) AS current_balance,
+                   account_status
+            FROM finance_accounts
+            WHERE LOWER(TRIM(account_category)) = 'petty cash'
+            ORDER BY account_name ASC, id ASC
+            """
+        )
+        raw = cursor.fetchall() or []
+        account_ids = []
+        for r in raw:
+            aid = r.get('id') if isinstance(r, dict) else r[0]
+            account_ids.append(aid)
+        payments_map = _fetch_finance_account_payment_methods_map(cursor, account_ids)
+        votes_map = _fetch_finance_account_expense_votes_map(cursor, account_ids)
+        for r in raw:
+            if isinstance(r, dict):
+                aid = r.get('id')
+                bal = float(r.get('current_balance') or 0)
+                row = {
+                    'id': aid,
+                    'account_category': (r.get('account_category') or '').strip(),
+                    'account_name': (r.get('account_name') or '').strip(),
+                    'account_description': (r.get('account_description') or '').strip(),
+                    'account_status': (r.get('account_status') or 'active').strip().lower(),
+                    'current_balance': bal,
+                    'current_balance_display': _format_kes_amount(bal),
+                }
+            else:
+                aid = r[0]
+                bal = float(r[4] if len(r) > 4 else 0)
+                row = {
+                    'id': aid,
+                    'account_category': (r[1] or '').strip() if len(r) > 1 else '',
+                    'account_name': (r[2] or '').strip() if len(r) > 2 else '',
+                    'account_description': (r[3] or '').strip() if len(r) > 3 else '',
+                    'account_status': (r[5] or 'active').strip().lower() if len(r) > 5 else 'active',
+                    'current_balance': bal,
+                    'current_balance_display': _format_kes_amount(bal),
+                }
+            modes = [
+                (pm.get('payment_mode') or '').lower()
+                for pm in (payments_map.get(aid) or [])
+                if pm.get('payment_mode')
+            ]
+            row['payment_modes'] = modes
+            row['expense_votes'] = votes_map.get(int(aid), []) if aid is not None else []
+            rows.append(row)
+    except Exception as e:
+        print(f"_fetch_petty_cash_accounts: {e}")
+    return rows
+
+
+def _fetch_petty_cash_book_context(raw_filters=None):
+    """Load petty cash book data for HTML or JSON responses."""
+    raw_filters = raw_filters if raw_filters is not None else {}
+    account_id = raw_filters.get('finance_account_id')
+    if account_id is not None and account_id != '':
+        try:
+            account_id = int(account_id)
+        except (TypeError, ValueError):
+            account_id = None
+    else:
+        account_id = None
+
+    fy_id = raw_filters.get('financial_year_id')
+    if fy_id is not None and fy_id != '':
+        try:
+            fy_id = int(fy_id)
+        except (TypeError, ValueError):
+            fy_id = None
+    else:
+        fy_id = None
+
+    filters = {
+        'date_from': (raw_filters.get('date_from') or '').strip(),
+        'date_to': (raw_filters.get('date_to') or '').strip(),
+        'financial_year_id': fy_id,
+    }
+
+    connection = get_db_connection()
+    if not connection:
+        return {'error': 'Could not connect to the database.'}
+
+    petty_cash_accounts = []
+    account = None
+    payload = None
+    financial_years = []
+    default_financial_year_id = None
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            ensure_finance_account_transactions_table(cursor)
+            ensure_finance_settings_table(cursor)
+            financial_years = _fetch_financial_years_for_report_picker(cursor)
+            petty_cash_accounts = _fetch_petty_cash_accounts(cursor)
+
+            if not any([
+                filters.get('financial_year_id'),
+                filters.get('date_from'),
+                filters.get('date_to'),
+            ]):
+                fy = _fetch_current_financial_year(cursor)
+                if fy.get('is_configured'):
+                    filters['date_from'] = fy.get('financial_year_start') or ''
+                    filters['date_to'] = _financial_year_report_default_end(fy)
+                    default_financial_year_id = fy.get('id')
+                elif financial_years:
+                    current = next((y for y in financial_years if y.get('is_current')), financial_years[0])
+                    if current:
+                        filters['date_from'] = current.get('start') or ''
+                        filters['date_to'] = current.get('end') or ''
+                        default_financial_year_id = current.get('id')
+            elif filters.get('financial_year_id'):
+                fy_row = next(
+                    (y for y in financial_years if y.get('id') == filters['financial_year_id']),
+                    None,
+                )
+                if fy_row:
+                    if not filters.get('date_from'):
+                        filters['date_from'] = fy_row.get('start') or ''
+                    if not filters.get('date_to'):
+                        filters['date_to'] = fy_row.get('end') or ''
+                    default_financial_year_id = fy_row.get('id')
+
+            if not petty_cash_accounts:
+                return {
+                    'empty': True,
+                    'account_id': None,
+                    'account': {
+                        'account_name': 'Petty cash',
+                        'account_category': 'Petty cash',
+                        'account_status': 'active',
+                        'levels_label': '—',
+                        'current_balance_display': '0.00',
+                    },
+                    'petty_cash_accounts': [],
+                    'payload': finance_account_reports_mod.petty_cash_book_empty_payload(),
+                    'filters': filters,
+                    'financial_years': financial_years,
+                    'default_financial_year_id': default_financial_year_id,
+                    'report_period_label': _account_report_period_label(
+                        filters.get('date_from'), filters.get('date_to'),
+                    ),
+                    'report_generated_at': _account_report_generated_at(),
+                }
+
+            if not account_id or not any(a['id'] == account_id for a in petty_cash_accounts):
+                account_id = petty_cash_accounts[0]['id']
+
+            account = _load_account_for_report(cursor, account_id)
+            if not account:
+                return {'error': 'Account not found.'}
+
+            helpers = _finance_account_report_helpers()
+            payload = finance_account_reports_mod.fetch_petty_cash_book_payload(
+                cursor, account_id, filters, {
+                    **helpers,
+                    'preloaded_account': account,
+                    'load_petty_cash_expense_particulars': _fetch_petty_cash_expense_particulars_map,
+                },
+            )
+            connection.commit()
+    except Exception as e:
+        print(f"_fetch_petty_cash_book_context: {e}")
+        return {'error': 'Could not load petty cash book.'}
+    finally:
+        connection.close()
+
+    if (payload or {}).get('error'):
+        return {'error': payload['error']}
+
+    return {
+        'account_id': account_id,
+        'account': account,
+        'petty_cash_accounts': petty_cash_accounts,
+        'payload': payload,
+        'filters': filters,
+        'financial_years': financial_years,
+        'default_financial_year_id': default_financial_year_id,
+        'report_period_label': _account_report_period_label(
+            filters.get('date_from'), filters.get('date_to'),
+        ),
+        'report_generated_at': _account_report_generated_at(),
+    }
+
+
+def _link_existing_account_to_petty_cash_book(
+    cursor, account_id, description, vote_names, payment_records
+):
+    """Set an existing finance account as petty cash and save votes / payment modes."""
+    ensure_finance_accounts_table(cursor)
+    row = _fetch_finance_account_by_id(cursor, account_id)
+    if not row:
+        return False, 'Selected account was not found.'
+    status = (row.get('account_status') or 'active').strip().lower()
+    if status != 'active':
+        return False, 'That account is not active.'
+    desc = normalize_text(description, allow_empty=True)
+    cursor.execute(
+        """
+        UPDATE finance_accounts
+        SET account_category = %s,
+            account_description = %s
+        WHERE id = %s
+        """,
+        ('Petty cash', desc or row.get('account_description'), int(account_id)),
+    )
+    _save_finance_account_expense_votes(cursor, account_id, vote_names)
+    _save_finance_account_payment_methods(cursor, account_id, payment_records)
+    name = (row.get('account_name') or '').strip()
+    return True, f'"{name}" is now in the petty cash book.'
+
+
+def _render_petty_cash_book_page():
+    """Render petty cash book for a selected petty cash account."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    ctx = _fetch_petty_cash_book_context({
+        'finance_account_id': request.args.get('finance_account_id', type=int),
+        'date_from': request.args.get('date_from'),
+        'date_to': request.args.get('date_to'),
+        'financial_year_id': request.args.get('financial_year_id', type=int),
+    })
+    if ctx.get('error'):
+        flash(ctx['error'], 'error')
+        return redirect(employee_dashboard_path('accounts'))
+
+    user_role = session.get('role', '').lower()
+    filters = ctx.get('filters') or {}
+    expense_votes = []
+    finance_accounts_picker = []
+    next_expense_reference = ''
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                expense_votes = _fetch_store_expense_category_picker_votes(cursor)
+                finance_accounts_picker = _fetch_finance_accounts_for_disbursement_picker(cursor)
+                next_expense_reference = _generate_petty_cash_expense_reference(cursor)
+        except Exception as e:
+            print(f"_render_petty_cash_book_page votes: {e}")
+        finally:
+            connection.close()
+
+    register_modal_open = (
+        ctx.get('empty')
+        or request.args.get('register') in ('1', 'true', 'yes')
+    )
+    expense_modal_open = request.args.get('expense') in ('1', 'true', 'yes')
+    return render_template(
+        'dashboards/accountant_petty_cash_book.html',
+        role=user_role,
+        account_id=ctx.get('account_id'),
+        account=ctx['account'],
+        petty_cash_empty=ctx.get('empty', False),
+        petty_cash_accounts=ctx.get('petty_cash_accounts') or [],
+        report_payload=ctx['payload'],
+        date_from=filters.get('date_from'),
+        date_to=filters.get('date_to'),
+        financial_year_id=filters.get('financial_year_id'),
+        financial_years=ctx.get('financial_years') or [],
+        default_financial_year_id=ctx.get('default_financial_year_id'),
+        report_period_label=ctx.get('report_period_label'),
+        report_generated_at=ctx.get('report_generated_at'),
+        register_modal_open=register_modal_open,
+        expense_modal_open=expense_modal_open,
+        expense_votes=expense_votes,
+        finance_accounts_picker=finance_accounts_picker,
+        next_expense_reference=next_expense_reference,
+        mpesa_account_presets=_get_mpesa_account_presets(),
+    )
+
+
+@app.route('/dashboard/employee/accounts/petty-cash-book/next-reference')
+@login_required
+def accountant_petty_cash_book_next_reference():
+    """Preview the next petty cash book reference (PCASH-#####)."""
+    redir = _accountant_guard()
+    if redir:
+        return jsonify(ok=False, message='Unauthorized.'), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify(ok=False, message='Database connection error.'), 500
+    try:
+        with connection.cursor() as cursor:
+            ref = _generate_petty_cash_expense_reference(cursor)
+            return jsonify(ok=True, reference=ref)
+    except Exception as e:
+        print(f"accountant_petty_cash_book_next_reference: {e}")
+        return jsonify(ok=False, message='Could not generate reference.'), 500
+    finally:
+        connection.close()
 
 
 def _fetch_combined_revenue_list(cursor, limit=100, source_filter=None, finance_account_id=None):
@@ -38793,16 +44082,36 @@ def _generate_store_stock_reference_number(cursor, movement_type):
 def _fetch_store_items_for_stock(cursor):
     """Active catalog items with on-hand quantity for stock in/out UI."""
     ensure_store_inventory_items_table(cursor)
+    ensure_store_stock_movements_table(cursor)
     items = []
     try:
         cursor.execute("""
-            SELECT id, reference_code, item_category, item_name, measure,
-                   COALESCE(quantity_on_hand, 0) AS quantity_on_hand
-            FROM store_inventory_items
-            WHERE item_status = 'active'
-            ORDER BY item_category ASC, item_name ASC
+            SELECT si.id, si.reference_code, si.item_category, si.item_name, si.measure,
+                   COALESCE(si.quantity_on_hand, 0) AS quantity_on_hand,
+                   avg_bp.avg_buying_price
+            FROM store_inventory_items si
+            LEFT JOIN (
+                SELECT store_item_id,
+                       ROUND(SUM(buying_price * quantity) / NULLIF(SUM(quantity), 0), 2) AS avg_buying_price
+                FROM store_stock_movements
+                WHERE movement_type = 'in'
+                  AND buying_price IS NOT NULL
+                  AND quantity > 0
+                GROUP BY store_item_id
+            ) avg_bp ON avg_bp.store_item_id = si.id
+            WHERE si.item_status = 'active'
+            ORDER BY si.item_category ASC, si.item_name ASC
         """)
         for row in cursor.fetchall() or []:
+            avg_raw = row.get('avg_buying_price') if isinstance(row, dict) else (row[6] if len(row) > 6 else None)
+            avg_buying_price = None
+            if avg_raw is not None:
+                try:
+                    avg_buying_price = float(avg_raw)
+                    if avg_buying_price < 0:
+                        avg_buying_price = None
+                except (TypeError, ValueError):
+                    avg_buying_price = None
             if isinstance(row, dict):
                 items.append({
                     'id': int(row.get('id') or 0),
@@ -38811,6 +44120,7 @@ def _fetch_store_items_for_stock(cursor):
                     'item_name': (row.get('item_name') or '').strip(),
                     'measure': (row.get('measure') or '').strip(),
                     'quantity_on_hand': int(row.get('quantity_on_hand') or 0),
+                    'avg_buying_price': avg_buying_price,
                 })
             else:
                 items.append({
@@ -38820,6 +44130,7 @@ def _fetch_store_items_for_stock(cursor):
                     'item_name': (row[3] or '').strip(),
                     'measure': (row[4] or '').strip(),
                     'quantity_on_hand': int(row[5] or 0),
+                    'avg_buying_price': avg_buying_price,
                 })
     except Exception as e:
         print(f"_fetch_store_items_for_stock: {e}")
@@ -38889,6 +44200,108 @@ def _fetch_store_stock_movements_recent(cursor, limit=40):
                 })
     except Exception as e:
         print(f"_fetch_store_stock_movements_recent: {e}")
+    return rows
+
+
+def _store_stock_movement_audit_row(row):
+    """Map a stock movement JOIN row to an audit list dict."""
+    if isinstance(row, dict):
+        data = {
+            'id': int(row.get('id') or 0),
+            'reference_number': (row.get('reference_number') or '').strip(),
+            'movement_type': (row.get('movement_type') or '').strip(),
+            'quantity': int(row.get('quantity') or 0),
+            'buying_price': row.get('buying_price'),
+            'total_amount': row.get('total_amount'),
+            'payment_status': (row.get('payment_status') or '').strip(),
+            'amount_paid': row.get('amount_paid'),
+            'notes': (row.get('notes') or '').strip() or None,
+            'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
+            'quantity_before': int(row.get('quantity_before') or 0),
+            'quantity_after': int(row.get('quantity_after') or 0),
+            'created_at': row.get('created_at'),
+            'performed_by_name': (row.get('performed_by_name') or '').strip() or None,
+            'item_ref': (row.get('item_ref') or '').strip(),
+            'item_name': (row.get('item_name') or '').strip(),
+            'item_category': (row.get('item_category') or '').strip(),
+            'measure': (row.get('measure') or '').strip(),
+            'supplier_name': (row.get('supplier_name') or '').strip() or None,
+            'supplier_phone': (row.get('supplier_phone') or '').strip() or None,
+        }
+    else:
+        data = {
+            'id': int(row[0] or 0),
+            'reference_number': (row[1] or '').strip(),
+            'movement_type': (row[2] or '').strip(),
+            'quantity': int(row[3] or 0),
+            'buying_price': row[4] if len(row) > 4 else None,
+            'total_amount': row[5] if len(row) > 5 else None,
+            'payment_status': (row[6] or '').strip() if len(row) > 6 else '',
+            'amount_paid': row[7] if len(row) > 7 else 0,
+            'notes': (row[8] or '').strip() or None if len(row) > 8 else None,
+            'stock_out_purpose': (row[9] or '').strip() or None if len(row) > 9 else None,
+            'quantity_before': int(row[10] or 0) if len(row) > 10 else 0,
+            'quantity_after': int(row[11] or 0) if len(row) > 11 else 0,
+            'created_at': row[12] if len(row) > 12 else None,
+            'performed_by_name': (row[13] or '').strip() or None if len(row) > 13 else None,
+            'item_ref': (row[14] or '').strip() if len(row) > 14 else '',
+            'item_name': (row[15] or '').strip() if len(row) > 15 else '',
+            'item_category': (row[16] or '').strip() if len(row) > 16 else '',
+            'measure': (row[17] or '').strip() if len(row) > 17 else '',
+            'supplier_name': (row[18] or '').strip() or None if len(row) > 18 else None,
+            'supplier_phone': (row[19] or '').strip() or None if len(row) > 19 else None,
+        }
+    ca = data.get('created_at')
+    if ca and hasattr(ca, 'strftime'):
+        data['created_at_display'] = ca.strftime('%d %b %Y, %H:%M')
+    elif ca:
+        data['created_at_display'] = str(ca)
+    else:
+        data['created_at_display'] = '—'
+    try:
+        bp = float(data['buying_price']) if data.get('buying_price') is not None else None
+        data['buying_price_display'] = f'{bp:.2f}' if bp is not None else '—'
+    except (TypeError, ValueError):
+        data['buying_price_display'] = '—'
+    try:
+        ta = float(data['total_amount']) if data.get('total_amount') is not None else None
+        data['total_amount_display'] = f'{ta:.2f}' if ta is not None else '—'
+    except (TypeError, ValueError):
+        data['total_amount_display'] = '—'
+    try:
+        ap = float(data['amount_paid']) if data.get('amount_paid') is not None else None
+        data['amount_paid_display'] = f'{ap:.2f}' if ap is not None else '—'
+    except (TypeError, ValueError):
+        data['amount_paid_display'] = '—'
+    return data
+
+
+def _fetch_store_stock_movements_audit(cursor, limit=2000):
+    """Full stock movement history for audits page."""
+    ensure_store_stock_movements_table(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT m.id, m.reference_number, m.movement_type, m.quantity,
+                   m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
+                   m.notes, m.stock_out_purpose,
+                   m.quantity_before, m.quantity_after, m.created_at,
+                   m.performed_by_name,
+                   si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_stock_movements m
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            ORDER BY m.created_at DESC, m.id DESC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            rows.append(_store_stock_movement_audit_row(row))
+    except Exception as e:
+        print(f"_fetch_store_stock_movements_audit: {e}")
     return rows
 
 
@@ -39356,8 +44769,8 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
         cursor.execute(
             """
             SELECT m.id, m.reference_number, m.movement_type, m.quantity,
-                   m.buying_price, m.total_amount, m.payment_status, m.notes,
-                   m.stock_out_purpose,
+                   m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
+                   m.notes, m.stock_out_purpose,
                    m.quantity_before, m.quantity_after, m.created_at,
                    m.performed_by_name,
                    si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
@@ -39381,6 +44794,7 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
                 'buying_price': row.get('buying_price'),
                 'total_amount': row.get('total_amount'),
                 'payment_status': (row.get('payment_status') or '').strip(),
+                'amount_paid': row.get('amount_paid'),
                 'notes': (row.get('notes') or '').strip() or None,
                 'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
                 'quantity_before': int(row.get('quantity_before') or 0),
@@ -39402,18 +44816,19 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
             'buying_price': row[4] if len(row) > 4 else None,
             'total_amount': row[5] if len(row) > 5 else None,
             'payment_status': (row[6] or '').strip() if len(row) > 6 else '',
-            'notes': (row[7] or '').strip() or None if len(row) > 7 else None,
-            'stock_out_purpose': (row[8] or '').strip() or None if len(row) > 8 else None,
-            'quantity_before': int(row[9] or 0) if len(row) > 9 else 0,
-            'quantity_after': int(row[10] or 0) if len(row) > 10 else 0,
-            'created_at': row[11] if len(row) > 11 else None,
-            'performed_by_name': (row[12] or '').strip() or None if len(row) > 12 else None,
-            'item_ref': (row[13] or '').strip() if len(row) > 13 else '',
-            'item_name': (row[14] or '').strip() if len(row) > 14 else '',
-            'item_category': (row[15] or '').strip() if len(row) > 15 else '',
-            'measure': (row[16] or '').strip() if len(row) > 16 else '',
-            'supplier_name': (row[17] or '').strip() or None if len(row) > 17 else None,
-            'supplier_phone': (row[18] or '').strip() or None if len(row) > 18 else None,
+            'amount_paid': row[7] if len(row) > 7 else 0,
+            'notes': (row[8] or '').strip() or None if len(row) > 8 else None,
+            'stock_out_purpose': (row[9] or '').strip() or None if len(row) > 9 else None,
+            'quantity_before': int(row[10] or 0) if len(row) > 10 else 0,
+            'quantity_after': int(row[11] or 0) if len(row) > 11 else 0,
+            'created_at': row[12] if len(row) > 12 else None,
+            'performed_by_name': (row[13] or '').strip() or None if len(row) > 13 else None,
+            'item_ref': (row[14] or '').strip() if len(row) > 14 else '',
+            'item_name': (row[15] or '').strip() if len(row) > 15 else '',
+            'item_category': (row[16] or '').strip() if len(row) > 16 else '',
+            'measure': (row[17] or '').strip() if len(row) > 17 else '',
+            'supplier_name': (row[18] or '').strip() or None if len(row) > 18 else None,
+            'supplier_phone': (row[19] or '').strip() or None if len(row) > 19 else None,
         }
     except Exception as e:
         print(f"_fetch_store_stock_movement_detail: {e}")
@@ -39433,6 +44848,109 @@ def _store_inventory_guard():
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
     return None
+
+
+STORE_FEE_VOTE_NAME_COL = 28
+
+
+def _store_fee_vote_option_label(item_name, item_description=None):
+    """Monospace-friendly option label: vote name column + description."""
+    name = str(item_name or '').strip().upper()
+    if not name:
+        return ''
+    desc = str(item_description or '').strip().upper() or '—'
+    gap = max(2, STORE_FEE_VOTE_NAME_COL - len(name))
+    return f'{name}{" " * gap}{desc}'
+
+
+def _fetch_store_fee_structure_votes(cursor):
+    """
+    Fee structure votes (fee_items) for store expense category pickers.
+    Returns dicts: name (stored value), description, label (aligned display).
+    """
+    votes = []
+    seen = set()
+    try:
+        cursor.execute("""
+            SELECT TRIM(item_name) AS item_name,
+                   TRIM(MAX(item_description)) AS item_description
+            FROM fee_items
+            WHERE COALESCE(TRIM(item_name), '') != ''
+            GROUP BY TRIM(item_name)
+            ORDER BY item_name ASC
+        """)
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                raw_name = r.get('item_name') or ''
+                raw_desc = r.get('item_description') or ''
+            else:
+                raw_name = r[0] if len(r) > 0 else ''
+                raw_desc = r[1] if len(r) > 1 else ''
+            name = str(raw_name).strip().upper()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            description = str(raw_desc).strip().upper() or None
+            votes.append({
+                'name': name,
+                'description': description,
+                'label': _store_fee_vote_option_label(name, description),
+            })
+    except Exception as e:
+        print(f"_fetch_store_fee_structure_votes: {e}")
+    return votes
+
+
+def _fetch_store_expense_categories(cursor, extra_categories=None):
+    """
+    Distinct fee line item names from fee structures — store inventory expense categories.
+    Optionally merges extra values (e.g. a legacy category on an existing store item).
+    """
+    categories = [v['name'] for v in _fetch_store_fee_structure_votes(cursor)]
+    seen = set(categories)
+    for raw in extra_categories or ():
+        name = str(raw or '').strip().upper()
+        if name and name not in seen:
+            seen.add(name)
+            categories.append(name)
+    categories.sort(key=lambda x: x.lower())
+    return categories
+
+
+def _fetch_store_expense_category_picker_votes(cursor):
+    """Fee structure votes plus legacy store categories for expense category pickers."""
+    votes = _fetch_store_fee_structure_votes(cursor)
+    seen = {v['name'] for v in votes}
+    try:
+        ensure_store_inventory_items_table(cursor)
+        cursor.execute("""
+            SELECT DISTINCT TRIM(item_category) AS item_category
+            FROM store_inventory_items
+            WHERE COALESCE(TRIM(item_category), '') != ''
+        """)
+        for r in cursor.fetchall() or []:
+            legacy_cat = (r.get('item_category') if isinstance(r, dict) else r[0]) or ''
+            legacy_cat = str(legacy_cat).strip().upper()
+            if legacy_cat and legacy_cat not in seen:
+                seen.add(legacy_cat)
+                votes.append({
+                    'name': legacy_cat,
+                    'description': None,
+                    'label': legacy_cat,
+                })
+    except Exception as e:
+        print(f"_fetch_store_expense_category_picker_votes: {e}")
+    votes.sort(key=lambda v: v['name'].lower())
+    return votes
+
+
+def _is_valid_store_expense_category(cursor, category, extra_allowed=None):
+    """True when category matches a registered fee item name (case-insensitive)."""
+    cat = str(category or '').strip().upper()
+    if not cat:
+        return False
+    allowed = set(_fetch_store_expense_categories(cursor, extra_categories=extra_allowed))
+    return cat in allowed
 
 
 def _generate_store_item_reference_code(cursor):
@@ -39644,7 +45162,15 @@ def _register_store_inventory_item_from_request(cursor, request):
     department_station = _normalize_store_department_station(request.form.get('department_station'))
 
     if not item_category or not item_name:
-        return {'ok': False, 'message': 'Item category and item name are required.'}
+        return {'ok': False, 'message': 'Expense category and item name are required.'}
+    if not _is_valid_store_expense_category(cursor, item_category):
+        return {
+            'ok': False,
+            'message': (
+                'Please select a valid expense category registered '
+                'in Student fees → Fee structures.'
+            ),
+        }
     if not department_station:
         return {'ok': False, 'message': 'Please select a department station for this item.'}
     if not measure:
@@ -39701,9 +45227,40 @@ def _register_store_inventory_item_from_request(cursor, request):
         return {'ok': False, 'message': 'An error occurred while registering the store item.'}
 
 
+def _fetch_store_inventory_summary(cursor):
+    """Aggregate counts for store catalog dashboard stats."""
+    ensure_store_inventory_items_table(cursor)
+    cursor.execute(
+        """
+        SELECT
+            COUNT(*) AS total_items,
+            COALESCE(SUM(quantity_on_hand), 0) AS units_on_hand,
+            SUM(CASE WHEN item_status = 'suspended' THEN 1 ELSE 0 END) AS suspended_count,
+            SUM(CASE WHEN item_status != 'suspended'
+                     AND COALESCE(quantity_on_hand, 0) <= 5 THEN 1 ELSE 0 END) AS low_stock_count
+        FROM store_inventory_items
+        """
+    )
+    row = cursor.fetchone()
+    if isinstance(row, dict):
+        return {
+            'total_items': int(row.get('total_items') or 0),
+            'units_on_hand': int(row.get('units_on_hand') or 0),
+            'suspended_count': int(row.get('suspended_count') or 0),
+            'low_stock_count': int(row.get('low_stock_count') or 0),
+        }
+    return {
+        'total_items': int(row[0] or 0) if row else 0,
+        'units_on_hand': int(row[1] or 0) if row and len(row) > 1 else 0,
+        'suspended_count': int(row[2] or 0) if row and len(row) > 2 else 0,
+        'low_stock_count': int(row[3] or 0) if row and len(row) > 3 else 0,
+    }
+
+
 def _fetch_store_inventory_page(cursor, page=1, per_page=50, q=''):
     """Paginated store catalog rows."""
     ensure_store_inventory_items_table(cursor)
+    ensure_store_stock_movements_table(cursor)
     per_page = max(1, min(int(per_page or 50), 100))
     page = max(1, int(page or 1))
     offset = (page - 1) * per_page
@@ -39713,22 +45270,32 @@ def _fetch_store_inventory_page(cursor, page=1, per_page=50, q=''):
     if q:
         like = '%' + q + '%'
         where.append(
-            '(item_category LIKE %s OR item_name LIKE %s OR reference_code LIKE %s '
-            'OR description LIKE %s OR department_station LIKE %s)'
+            '(si.item_category LIKE %s OR si.item_name LIKE %s OR si.reference_code LIKE %s '
+            'OR si.description LIKE %s OR si.department_station LIKE %s)'
         )
         params.extend([like, like, like, like, like])
     where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
-    cursor.execute(f'SELECT COUNT(*) AS c FROM store_inventory_items{where_sql}', tuple(params))
+    cursor.execute(f'SELECT COUNT(*) AS c FROM store_inventory_items si{where_sql}', tuple(params))
     count_row = cursor.fetchone()
     total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
     cursor.execute(
         f"""
-        SELECT id, reference_code, item_category, item_name, description, measure,
-               image_path, item_status, quantity_on_hand, department_station,
-               library_book_id, created_at
-        FROM store_inventory_items
+        SELECT si.id, si.reference_code, si.item_category, si.item_name, si.description, si.measure,
+               si.image_path, si.item_status, si.quantity_on_hand, si.department_station,
+               si.library_book_id, si.created_at,
+               avg_bp.avg_buying_price
+        FROM store_inventory_items si
+        LEFT JOIN (
+            SELECT store_item_id,
+                   ROUND(SUM(buying_price * quantity) / NULLIF(SUM(quantity), 0), 2) AS avg_buying_price
+            FROM store_stock_movements
+            WHERE movement_type = 'in'
+              AND buying_price IS NOT NULL
+              AND quantity > 0
+            GROUP BY store_item_id
+        ) avg_bp ON avg_bp.store_item_id = si.id
         {where_sql}
-        ORDER BY department_station ASC, item_category ASC, item_name ASC, id ASC
+        ORDER BY si.department_station ASC, si.item_category ASC, si.item_name ASC, si.id ASC
         LIMIT %s OFFSET %s
         """,
         tuple(params) + (per_page, offset),
@@ -39741,8 +45308,10 @@ def _fetch_store_inventory_page(cursor, page=1, per_page=50, q=''):
 
 
 def _store_inventory_row_dict(row):
+    avg_raw = None
     if isinstance(row, dict):
-        return {
+        avg_raw = row.get('avg_buying_price')
+        data = {
             'id': int(row.get('id') or 0),
             'reference_code': (row.get('reference_code') or '').strip(),
             'item_category': (row.get('item_category') or '').strip(),
@@ -39756,19 +45325,667 @@ def _store_inventory_row_dict(row):
             'library_book_id': int(row.get('library_book_id') or 0) or None,
             'created_at': row.get('created_at'),
         }
+    else:
+        avg_raw = row[12] if len(row) > 12 else None
+        data = {
+            'id': int(row[0] or 0),
+            'reference_code': (row[1] or '').strip(),
+            'item_category': (row[2] or '').strip(),
+            'item_name': (row[3] or '').strip(),
+            'description': (row[4] or '').strip() or None,
+            'measure': (row[5] or '').strip(),
+            'image_path': (row[6] or '').strip() or None,
+            'item_status': (row[7] or 'active').strip(),
+            'quantity_on_hand': int(row[8] or 0) if len(row) > 8 else 0,
+            'department_station': (row[9] or '').strip() if len(row) > 9 else '',
+            'library_book_id': int(row[10] or 0) or None if len(row) > 10 else None,
+            'created_at': row[11] if len(row) > 11 else None,
+        }
+    ca = data.get('created_at')
+    if ca and hasattr(ca, 'strftime'):
+        data['created_at_display'] = ca.strftime('%d %b %Y')
+    elif ca:
+        data['created_at_display'] = str(ca)
+    else:
+        data['created_at_display'] = '—'
+    avg_buying_price = None
+    if avg_raw is not None:
+        try:
+            avg_buying_price = float(avg_raw)
+            if avg_buying_price < 0:
+                avg_buying_price = None
+        except (TypeError, ValueError):
+            avg_buying_price = None
+    data['avg_buying_price'] = avg_buying_price
+    return data
+
+
+def _store_inventory_client_item(row):
+    """Serialize a catalog row for Alpine / JSON APIs."""
     return {
-        'id': int(row[0] or 0),
-        'reference_code': (row[1] or '').strip(),
-        'item_category': (row[2] or '').strip(),
-        'item_name': (row[3] or '').strip(),
-        'description': (row[4] or '').strip() or None,
-        'measure': (row[5] or '').strip(),
-        'image_path': (row[6] or '').strip() or None,
-        'item_status': (row[7] or 'active').strip(),
-        'quantity_on_hand': int(row[8] or 0) if len(row) > 8 else 0,
-        'department_station': (row[9] or '').strip() if len(row) > 9 else '',
-        'library_book_id': int(row[10] or 0) or None if len(row) > 10 else None,
-        'created_at': row[11] if len(row) > 11 else None,
+        'id': row['id'],
+        'reference_code': row.get('reference_code') or '',
+        'item_category': row.get('item_category') or '',
+        'item_name': row.get('item_name') or '',
+        'description': row.get('description') or '',
+        'measure': row.get('measure') or '',
+        'image_path': row.get('image_path') or '',
+        'item_status': row.get('item_status') or 'active',
+        'department_station': row.get('department_station') or '',
+        'library_book_id': row.get('library_book_id'),
+        'quantity_on_hand': int(row.get('quantity_on_hand') or 0),
+        'created_at_display': row.get('created_at_display') or '—',
+        'avg_buying_price': row.get('avg_buying_price'),
+    }
+
+
+def _parse_store_item_analytics_window(period, date_val='', date_from='', date_to=''):
+    """Return (start_dt, end_dt_exclusive, label) for movement analytics filters."""
+    from datetime import datetime, date, timedelta
+    from calendar import monthrange
+
+    period = (period or 'all').strip().lower()
+    if period == 'all':
+        return None, None, 'All time'
+
+    def _parse_ymd(raw):
+        raw = (raw or '').strip()[:10]
+        if not raw:
+            return None
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except ValueError:
+            return None
+
+    if period == 'day':
+        d = _parse_ymd(date_val)
+        if not d:
+            d = date.today()
+        start = datetime.combine(d, datetime.min.time())
+        end = start + timedelta(days=1)
+        return start, end, d.strftime('%d %b %Y')
+
+    if period == 'month':
+        raw = (date_val or '').strip()[:7]
+        try:
+            y, m = raw.split('-')
+            y, m = int(y), int(m)
+            d0 = date(y, m, 1)
+        except (ValueError, TypeError):
+            today = date.today()
+            d0 = date(today.year, today.month, 1)
+        last_day = monthrange(d0.year, d0.month)[1]
+        start = datetime.combine(d0, datetime.min.time())
+        end = datetime.combine(date(d0.year, d0.month, last_day), datetime.min.time()) + timedelta(days=1)
+        return start, end, d0.strftime('%B %Y')
+
+    if period == 'year':
+        raw = (date_val or '').strip()[:4]
+        try:
+            y = int(raw)
+        except (TypeError, ValueError):
+            y = date.today().year
+        start = datetime(y, 1, 1)
+        end = datetime(y + 1, 1, 1)
+        return start, end, str(y)
+
+    if period == 'range':
+        d_from = _parse_ymd(date_from)
+        d_to = _parse_ymd(date_to)
+        if not d_from and not d_to:
+            return None, None, 'All time'
+        if not d_from:
+            d_from = d_to
+        if not d_to:
+            d_to = d_from
+        if d_from > d_to:
+            d_from, d_to = d_to, d_from
+        start = datetime.combine(d_from, datetime.min.time())
+        end = datetime.combine(d_to, datetime.min.time()) + timedelta(days=1)
+        if d_from == d_to:
+            label = d_from.strftime('%d %b %Y')
+        else:
+            label = f"{d_from.strftime('%d %b %Y')} – {d_to.strftime('%d %b %Y')}"
+        return start, end, label
+
+    return None, None, 'All time'
+
+
+def _store_item_trend_bucket_config(period, start_dt, end_dt):
+    """Return (grain, mysql_bucket_expr) for movement trend aggregation."""
+    # %% escapes literal % for pymysql parameterised queries (DATE_FORMAT codes).
+    period = (period or 'all').strip().lower()
+    if period == 'day':
+        return 'hour', "DATE_FORMAT(m.created_at, '%%Y-%%m-%%d %%H:00:00')"
+    if period == 'month':
+        return 'day', 'DATE(m.created_at)'
+    if period == 'year':
+        return 'month', "DATE_FORMAT(m.created_at, '%%Y-%%m-01')"
+    if period == 'range' and start_dt is not None and end_dt is not None:
+        days = max(1, (end_dt - start_dt).days)
+        if days <= 2:
+            return 'hour', "DATE_FORMAT(m.created_at, '%%Y-%%m-%%d %%H:00:00')"
+        if days <= 120:
+            return 'day', 'DATE(m.created_at)'
+        return 'month', "DATE_FORMAT(m.created_at, '%%Y-%%m-01')"
+    return 'month', "DATE_FORMAT(m.created_at, '%%Y-%%m-01')"
+
+
+def _store_item_trend_bucket_label(bucket_key, grain):
+    """Human-readable axis label for a trend bucket."""
+    from datetime import datetime
+
+    raw = str(bucket_key or '').strip()
+    if not raw:
+        return '—'
+    if hasattr(bucket_key, 'strftime'):
+        if grain == 'hour':
+            return bucket_key.strftime('%H:%M')
+        if grain == 'day':
+            return bucket_key.strftime('%d %b')
+        return bucket_key.strftime('%b %Y')
+    try:
+        if grain == 'hour':
+            dt = datetime.strptime(raw[:19], '%Y-%m-%d %H:00:00')
+            return dt.strftime('%H:%M')
+        if grain == 'day':
+            dt = datetime.strptime(raw[:10], '%Y-%m-%d')
+            return dt.strftime('%d %b')
+        if grain == 'month':
+            dt = datetime.strptime(raw[:7] + '-01', '%Y-%m-%d')
+            return dt.strftime('%b %Y')
+    except (ValueError, TypeError):
+        pass
+    return raw[:16]
+
+
+def _store_item_trend_bucket_key_str(bucket_key, grain):
+    """Normalize bucket key to a sortable string."""
+    if bucket_key is None:
+        return ''
+    if hasattr(bucket_key, 'strftime'):
+        if grain == 'hour':
+            return bucket_key.strftime('%Y-%m-%d %H:00:00')
+        if grain == 'day':
+            return bucket_key.strftime('%Y-%m-%d')
+        return bucket_key.strftime('%Y-%m-01')
+    return str(bucket_key).strip()
+
+
+def _fetch_store_item_usage_trend(cursor, where_sql, params, period, start_dt, end_dt):
+    """Time-series buckets: stock in/out quantities and end-of-bucket on-hand balance."""
+    grain, bucket_expr = _store_item_trend_bucket_config(period, start_dt, end_dt)
+    trend = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT
+                {bucket_expr} AS bucket_key,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'in' THEN m.quantity ELSE 0 END), 0) AS stock_in_qty,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'out' THEN m.quantity ELSE 0 END), 0) AS stock_out_qty,
+                COUNT(*) AS movement_count,
+                MAX(m.id) AS last_movement_id
+            FROM store_stock_movements m
+            WHERE {where_sql}
+            GROUP BY bucket_key
+            ORDER BY bucket_key ASC
+            """,
+            tuple(params),
+        )
+        parsed = []
+        last_ids = []
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                bk = row.get('bucket_key')
+                in_q = int(row.get('stock_in_qty') or 0)
+                out_q = int(row.get('stock_out_qty') or 0)
+                mc = int(row.get('movement_count') or 0)
+                lid = row.get('last_movement_id')
+            else:
+                bk = row[0]
+                in_q = int(row[1] or 0)
+                out_q = int(row[2] or 0)
+                mc = int(row[3] or 0)
+                lid = row[4]
+            parsed.append((bk, in_q, out_q, mc, lid))
+            if lid:
+                last_ids.append(int(lid))
+
+        balance_by_id = {}
+        if last_ids:
+            placeholders = ','.join(['%s'] * len(last_ids))
+            cursor.execute(
+                f"SELECT id, quantity_after FROM store_stock_movements WHERE id IN ({placeholders})",
+                tuple(last_ids),
+            )
+            for brow in cursor.fetchall() or []:
+                if isinstance(brow, dict):
+                    balance_by_id[int(brow['id'])] = int(brow.get('quantity_after') or 0)
+                else:
+                    balance_by_id[int(brow[0])] = int(brow[1] or 0)
+
+        for bk, in_q, out_q, mc, lid in parsed:
+            key_str = _store_item_trend_bucket_key_str(bk, grain)
+            trend.append({
+                'key': key_str,
+                'label': _store_item_trend_bucket_label(bk if bk is not None else key_str, grain),
+                'stock_in_qty': in_q,
+                'stock_out_qty': out_q,
+                'net_qty': in_q - out_q,
+                'movement_count': mc,
+                'balance': balance_by_id.get(int(lid)) if lid else None,
+            })
+    except Exception as e:
+        print(f"_fetch_store_item_usage_trend: {e}")
+    return trend, grain
+
+
+def _fetch_store_inventory_item_brief(cursor, item_id):
+    ensure_store_inventory_items_table(cursor)
+    cursor.execute(
+        """
+        SELECT id, reference_code, item_category, item_name, description, measure,
+               image_path, item_status, quantity_on_hand, department_station,
+               library_book_id, created_at
+        FROM store_inventory_items
+        WHERE id = %s
+        """,
+        (item_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return _store_inventory_client_item(_store_inventory_row_dict(row))
+
+
+def _fetch_store_item_usage_analytics(cursor, item_id, period='all', date_val='',
+                                      date_from='', date_to=''):
+    """Analytics payload for a single catalog item and optional date window."""
+    ensure_store_stock_movements_table(cursor)
+    item = _fetch_store_inventory_item_brief(cursor, item_id)
+    if not item:
+        return None
+
+    start_dt, end_dt, period_label = _parse_store_item_analytics_window(
+        period, date_val, date_from, date_to,
+    )
+    where = ['m.store_item_id = %s']
+    params = [item_id]
+    if start_dt is not None and end_dt is not None:
+        where.append('m.created_at >= %s AND m.created_at < %s')
+        params.extend([start_dt, end_dt])
+    where_sql = ' AND '.join(where)
+
+    summary = {
+        'movement_count': 0,
+        'stock_in_count': 0,
+        'stock_out_count': 0,
+        'stock_in_qty': 0,
+        'stock_out_qty': 0,
+        'net_qty': 0,
+        'stock_in_value': 0.0,
+        'amount_paid': 0.0,
+        'avg_buying_price': None,
+        'pending_payments': 0,
+    }
+    try:
+        cursor.execute(
+            f"""
+            SELECT
+                COUNT(*) AS movement_count,
+                SUM(CASE WHEN m.movement_type = 'in' THEN 1 ELSE 0 END) AS stock_in_count,
+                SUM(CASE WHEN m.movement_type = 'out' THEN 1 ELSE 0 END) AS stock_out_count,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'in' THEN m.quantity ELSE 0 END), 0) AS stock_in_qty,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'out' THEN m.quantity ELSE 0 END), 0) AS stock_out_qty,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'in' THEN m.total_amount ELSE 0 END), 0) AS stock_in_value,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'in' THEN m.amount_paid ELSE 0 END), 0) AS amount_paid,
+                ROUND(
+                    SUM(CASE WHEN m.movement_type = 'in' AND m.buying_price IS NOT NULL THEN m.buying_price * m.quantity ELSE 0 END)
+                    / NULLIF(SUM(CASE WHEN m.movement_type = 'in' THEN m.quantity ELSE 0 END), 0),
+                    2
+                ) AS avg_buying_price,
+                SUM(CASE WHEN m.movement_type = 'in' AND m.payment_status = 'pending' THEN 1 ELSE 0 END) AS pending_payments
+            FROM store_stock_movements m
+            WHERE {where_sql}
+            """,
+            tuple(params),
+        )
+        row = cursor.fetchone()
+        if row:
+            if isinstance(row, dict):
+                summary = {
+                    'movement_count': int(row.get('movement_count') or 0),
+                    'stock_in_count': int(row.get('stock_in_count') or 0),
+                    'stock_out_count': int(row.get('stock_out_count') or 0),
+                    'stock_in_qty': int(row.get('stock_in_qty') or 0),
+                    'stock_out_qty': int(row.get('stock_out_qty') or 0),
+                    'net_qty': int(row.get('stock_in_qty') or 0) - int(row.get('stock_out_qty') or 0),
+                    'stock_in_value': float(row.get('stock_in_value') or 0),
+                    'amount_paid': float(row.get('amount_paid') or 0),
+                    'avg_buying_price': float(row['avg_buying_price']) if row.get('avg_buying_price') is not None else None,
+                    'pending_payments': int(row.get('pending_payments') or 0),
+                }
+            else:
+                summary = {
+                    'movement_count': int(row[0] or 0),
+                    'stock_in_count': int(row[1] or 0),
+                    'stock_out_count': int(row[2] or 0),
+                    'stock_in_qty': int(row[3] or 0),
+                    'stock_out_qty': int(row[4] or 0),
+                    'net_qty': int(row[3] or 0) - int(row[4] or 0),
+                    'stock_in_value': float(row[5] or 0),
+                    'amount_paid': float(row[6] or 0),
+                    'avg_buying_price': float(row[7]) if len(row) > 7 and row[7] is not None else None,
+                    'pending_payments': int(row[8] or 0) if len(row) > 8 else 0,
+                }
+    except Exception as e:
+        print(f"_fetch_store_item_usage_analytics summary: {e}")
+
+    purposes = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT COALESCE(NULLIF(TRIM(m.stock_out_purpose), ''), 'UNSPECIFIED') AS purpose,
+                   COUNT(*) AS move_count,
+                   COALESCE(SUM(m.quantity), 0) AS total_qty
+            FROM store_stock_movements m
+            WHERE {where_sql} AND m.movement_type = 'out'
+            GROUP BY purpose
+            ORDER BY total_qty DESC, purpose ASC
+            """,
+            tuple(params),
+        )
+        for prow in cursor.fetchall() or []:
+            if isinstance(prow, dict):
+                purposes.append({
+                    'purpose': (prow.get('purpose') or 'UNSPECIFIED').strip(),
+                    'count': int(prow.get('move_count') or 0),
+                    'quantity': int(prow.get('total_qty') or 0),
+                })
+            else:
+                purposes.append({
+                    'purpose': (prow[0] or 'UNSPECIFIED').strip(),
+                    'count': int(prow[1] or 0),
+                    'quantity': int(prow[2] or 0),
+                })
+    except Exception as e:
+        print(f"_fetch_store_item_usage_analytics purposes: {e}")
+
+    movements = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT m.id, m.reference_number, m.movement_type, m.quantity,
+                   m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
+                   m.notes, m.stock_out_purpose,
+                   m.quantity_before, m.quantity_after, m.created_at,
+                   m.performed_by_name,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_stock_movements m
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            WHERE {where_sql}
+            ORDER BY m.created_at DESC, m.id DESC
+            LIMIT 500
+            """,
+            tuple(params),
+        )
+        for mrow in cursor.fetchall() or []:
+            md = _store_stock_movement_audit_row(mrow)
+            md.pop('item_ref', None)
+            md.pop('item_name', None)
+            md.pop('item_category', None)
+            md.pop('measure', None)
+            movements.append(md)
+    except Exception as e:
+        print(f"_fetch_store_item_usage_analytics movements: {e}")
+
+    trend, trend_grain = _fetch_store_item_usage_trend(
+        cursor, where_sql, params, period, start_dt, end_dt,
+    )
+
+    return {
+        'item': item,
+        'period': (period or 'all').strip().lower(),
+        'period_label': period_label,
+        'date_val': (date_val or '').strip(),
+        'date_from': (date_from or '').strip(),
+        'date_to': (date_to or '').strip(),
+        'summary': summary,
+        'purposes': purposes,
+        'movements': movements,
+        'trend': trend,
+        'trend_grain': trend_grain,
+    }
+
+
+def _fetch_store_stock_analytics(cursor, period='all', date_val='', date_from='', date_to=''):
+    """Analytics across all catalog items for the store stock analytics page."""
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_inventory_items_table(cursor)
+
+    start_dt, end_dt, period_label = _parse_store_item_analytics_window(
+        period, date_val, date_from, date_to,
+    )
+    where = ['1=1']
+    params = []
+    if start_dt is not None and end_dt is not None:
+        where.append('m.created_at >= %s AND m.created_at < %s')
+        params.extend([start_dt, end_dt])
+    where_sql = ' AND '.join(where)
+
+    summary = {
+        'catalog_items': 0,
+        'items_with_activity': 0,
+        'movement_count': 0,
+        'stock_in_count': 0,
+        'stock_out_count': 0,
+        'stock_in_qty': 0,
+        'stock_out_qty': 0,
+        'net_qty': 0,
+        'stock_in_value': 0.0,
+        'amount_paid': 0.0,
+        'avg_buying_price': None,
+        'pending_payments': 0,
+    }
+    try:
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM store_inventory_items WHERE item_status != 'deleted'"
+        )
+        crow = cursor.fetchone()
+        if crow:
+            summary['catalog_items'] = int(
+                (crow.get('cnt') if isinstance(crow, dict) else crow[0]) or 0
+            )
+    except Exception as e:
+        print(f"_fetch_store_stock_analytics catalog count: {e}")
+
+    try:
+        cursor.execute(
+            f"""
+            SELECT
+                COUNT(*) AS movement_count,
+                COUNT(DISTINCT m.store_item_id) AS items_with_activity,
+                SUM(CASE WHEN m.movement_type = 'in' THEN 1 ELSE 0 END) AS stock_in_count,
+                SUM(CASE WHEN m.movement_type = 'out' THEN 1 ELSE 0 END) AS stock_out_count,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'in' THEN m.quantity ELSE 0 END), 0) AS stock_in_qty,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'out' THEN m.quantity ELSE 0 END), 0) AS stock_out_qty,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'in' THEN m.total_amount ELSE 0 END), 0) AS stock_in_value,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'in' THEN m.amount_paid ELSE 0 END), 0) AS amount_paid,
+                ROUND(
+                    SUM(CASE WHEN m.movement_type = 'in' AND m.buying_price IS NOT NULL THEN m.buying_price * m.quantity ELSE 0 END)
+                    / NULLIF(SUM(CASE WHEN m.movement_type = 'in' THEN m.quantity ELSE 0 END), 0),
+                    2
+                ) AS avg_buying_price,
+                SUM(CASE WHEN m.movement_type = 'in' AND m.payment_status = 'pending' THEN 1 ELSE 0 END) AS pending_payments
+            FROM store_stock_movements m
+            WHERE {where_sql}
+            """,
+            tuple(params),
+        )
+        row = cursor.fetchone()
+        if row:
+            if isinstance(row, dict):
+                summary.update({
+                    'movement_count': int(row.get('movement_count') or 0),
+                    'items_with_activity': int(row.get('items_with_activity') or 0),
+                    'stock_in_count': int(row.get('stock_in_count') or 0),
+                    'stock_out_count': int(row.get('stock_out_count') or 0),
+                    'stock_in_qty': int(row.get('stock_in_qty') or 0),
+                    'stock_out_qty': int(row.get('stock_out_qty') or 0),
+                    'net_qty': int(row.get('stock_in_qty') or 0) - int(row.get('stock_out_qty') or 0),
+                    'stock_in_value': float(row.get('stock_in_value') or 0),
+                    'amount_paid': float(row.get('amount_paid') or 0),
+                    'avg_buying_price': float(row['avg_buying_price']) if row.get('avg_buying_price') is not None else None,
+                    'pending_payments': int(row.get('pending_payments') or 0),
+                })
+            else:
+                summary.update({
+                    'movement_count': int(row[0] or 0),
+                    'items_with_activity': int(row[1] or 0),
+                    'stock_in_count': int(row[2] or 0),
+                    'stock_out_count': int(row[3] or 0),
+                    'stock_in_qty': int(row[4] or 0),
+                    'stock_out_qty': int(row[5] or 0),
+                    'net_qty': int(row[4] or 0) - int(row[5] or 0),
+                    'stock_in_value': float(row[6] or 0),
+                    'amount_paid': float(row[7] or 0),
+                    'avg_buying_price': float(row[8]) if len(row) > 8 and row[8] is not None else None,
+                    'pending_payments': int(row[9] or 0) if len(row) > 9 else 0,
+                })
+    except Exception as e:
+        print(f"_fetch_store_stock_analytics summary: {e}")
+
+    purposes = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT COALESCE(NULLIF(TRIM(m.stock_out_purpose), ''), 'UNSPECIFIED') AS purpose,
+                   COUNT(*) AS move_count,
+                   COALESCE(SUM(m.quantity), 0) AS total_qty
+            FROM store_stock_movements m
+            WHERE {where_sql} AND m.movement_type = 'out'
+            GROUP BY purpose
+            ORDER BY total_qty DESC, purpose ASC
+            """,
+            tuple(params),
+        )
+        for prow in cursor.fetchall() or []:
+            if isinstance(prow, dict):
+                purposes.append({
+                    'purpose': (prow.get('purpose') or 'UNSPECIFIED').strip(),
+                    'count': int(prow.get('move_count') or 0),
+                    'quantity': int(prow.get('total_qty') or 0),
+                })
+            else:
+                purposes.append({
+                    'purpose': (prow[0] or 'UNSPECIFIED').strip(),
+                    'count': int(prow[1] or 0),
+                    'quantity': int(prow[2] or 0),
+                })
+    except Exception as e:
+        print(f"_fetch_store_stock_analytics purposes: {e}")
+
+    items = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT
+                si.id,
+                si.reference_code,
+                si.item_name,
+                si.measure,
+                si.department_station,
+                si.item_category,
+                si.quantity_on_hand,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'in' THEN m.quantity ELSE 0 END), 0) AS stock_in_qty,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'out' THEN m.quantity ELSE 0 END), 0) AS stock_out_qty,
+                COUNT(m.id) AS movement_count
+            FROM store_stock_movements m
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            WHERE {where_sql}
+            GROUP BY si.id, si.reference_code, si.item_name, si.measure,
+                     si.department_station, si.item_category, si.quantity_on_hand
+            ORDER BY stock_out_qty DESC, stock_in_qty DESC, si.item_name ASC
+            LIMIT 30
+            """,
+            tuple(params),
+        )
+        for irow in cursor.fetchall() or []:
+            if isinstance(irow, dict):
+                items.append({
+                    'id': int(irow.get('id') or 0),
+                    'reference_code': (irow.get('reference_code') or '').strip(),
+                    'item_name': (irow.get('item_name') or '').strip(),
+                    'measure': (irow.get('measure') or '').strip(),
+                    'department_station': (irow.get('department_station') or '').strip(),
+                    'item_category': (irow.get('item_category') or '').strip(),
+                    'quantity_on_hand': int(irow.get('quantity_on_hand') or 0),
+                    'stock_in_qty': int(irow.get('stock_in_qty') or 0),
+                    'stock_out_qty': int(irow.get('stock_out_qty') or 0),
+                    'movement_count': int(irow.get('movement_count') or 0),
+                })
+            else:
+                items.append({
+                    'id': int(irow[0] or 0),
+                    'reference_code': (irow[1] or '').strip(),
+                    'item_name': (irow[2] or '').strip(),
+                    'measure': (irow[3] or '').strip(),
+                    'department_station': (irow[4] or '').strip(),
+                    'item_category': (irow[5] or '').strip(),
+                    'quantity_on_hand': int(irow[6] or 0),
+                    'stock_in_qty': int(irow[7] or 0),
+                    'stock_out_qty': int(irow[8] or 0),
+                    'movement_count': int(irow[9] or 0),
+                })
+    except Exception as e:
+        print(f"_fetch_store_stock_analytics items: {e}")
+
+    movements = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT m.id, m.store_item_id, m.reference_number, m.movement_type, m.quantity,
+                   m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
+                   m.notes, m.stock_out_purpose,
+                   m.quantity_before, m.quantity_after, m.created_at,
+                   m.performed_by_name,
+                   si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_stock_movements m
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            WHERE {where_sql}
+            ORDER BY m.created_at DESC, m.id DESC
+            LIMIT 500
+            """,
+            tuple(params),
+        )
+        for mrow in cursor.fetchall() or []:
+            md = _store_stock_movement_audit_row(mrow)
+            if isinstance(mrow, dict):
+                md['store_item_id'] = int(mrow.get('store_item_id') or 0)
+            movements.append(md)
+    except Exception as e:
+        print(f"_fetch_store_stock_analytics movements: {e}")
+
+    trend, trend_grain = _fetch_store_item_usage_trend(
+        cursor, where_sql, params, period, start_dt, end_dt,
+    )
+    for pt in trend:
+        pt['balance'] = pt.get('net_qty')
+
+    return {
+        'period': (period or 'all').strip().lower(),
+        'period_label': period_label,
+        'date_val': (date_val or '').strip(),
+        'date_from': (date_from or '').strip(),
+        'date_to': (date_to or '').strip(),
+        'summary': summary,
+        'purposes': purposes,
+        'items': items,
+        'movements': movements,
+        'trend': trend,
+        'trend_grain': trend_grain,
     }
 
 
@@ -42636,22 +48853,7 @@ def store_inventory_items_api():
     try:
         with connection.cursor() as cursor:
             payload = _fetch_store_inventory_page(cursor, page=page, per_page=per_page, q=q)
-        client_items = [
-            {
-                'id': it['id'],
-                'reference_code': it.get('reference_code') or '',
-                'item_category': it.get('item_category') or '',
-                'item_name': it.get('item_name') or '',
-                'description': it.get('description') or '',
-                'measure': it.get('measure') or '',
-                'image_path': it.get('image_path') or '',
-                'item_status': it.get('item_status') or 'active',
-                'department_station': it.get('department_station') or '',
-                'library_book_id': it.get('library_book_id'),
-                'quantity_on_hand': int(it.get('quantity_on_hand') or 0),
-            }
-            for it in payload['items']
-        ]
+        client_items = [_store_inventory_client_item(it) for it in payload['items']]
         return jsonify({
             'success': True,
             'items': client_items,
@@ -42667,6 +48869,68 @@ def store_inventory_items_api():
         return jsonify({'success': False, 'message': 'Could not load items'}), 500
     finally:
         connection.close()
+
+
+@app.route('/dashboard/employee/store-inventory/<int:item_id>/analytics/data', methods=['GET'])
+@login_required
+def store_inventory_item_analytics_data(item_id):
+    if _store_inventory_effective_role() != 'store manager':
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    period = request.args.get('period') or 'all'
+    date_val = request.args.get('date') or ''
+    date_from = request.args.get('from') or ''
+    date_to = request.args.get('to') or ''
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_store_item_usage_analytics(
+                cursor, item_id, period=period, date_val=date_val,
+                date_from=date_from, date_to=date_to,
+            )
+        if not payload:
+            return jsonify({'success': False, 'message': 'Item not found'}), 404
+        return jsonify({'success': True, **payload})
+    except Exception as e:
+        print(f"store_inventory_item_analytics_data: {e}")
+        return jsonify({'success': False, 'message': 'Could not load analytics'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/store-inventory/<int:item_id>/analytics', methods=['GET'])
+@login_required
+def store_inventory_item_analytics(item_id):
+    """Per-item stock usage analytics."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    item = None
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                item = _fetch_store_inventory_item_brief(cursor, item_id)
+        except Exception as e:
+            print(f"store_inventory_item_analytics: {e}")
+        finally:
+            connection.close()
+
+    if not item:
+        flash('Store item not found.', 'error')
+        return redirect(employee_dash_url('store-inventory'))
+
+    return render_template(
+        'dashboards/store_inventory_item_analytics.html',
+        role=user_role,
+        is_technician=is_technician,
+        item=item,
+        item_id=item_id,
+    )
 
 
 @app.route('/dashboard/employee/store-inventory/<int:item_id>/delete', methods=['POST'])
@@ -42760,6 +49024,17 @@ def store_inventory():
     is_technician = user_role == 'technician'
     items = []
     category_suggestions = []
+    fee_structure_votes = []
+    items_q = (request.args.get('q') or '').strip() if request.method == 'GET' else ''
+    items_total = 0
+    items_page = 1
+    items_pages = 1
+    inventory_summary = {
+        'total_items': 0,
+        'units_on_hand': 0,
+        'suspended_count': 0,
+        'low_stock_count': 0,
+    }
 
     connection = get_db_connection()
     if not connection:
@@ -42771,10 +49046,16 @@ def store_inventory():
             items=items,
             store_items_client=[],
             category_suggestions=category_suggestions,
+            fee_structure_votes=fee_structure_votes,
             measures=list(STORE_ITEM_MEASURES),
             department_stations=list(STORE_DEPARTMENT_STATIONS),
             open_edit_item_id=None,
             inventory_form_open_default=False,
+            items_q=items_q,
+            items_total=items_total,
+            items_page=items_page,
+            items_pages=items_pages,
+            inventory_summary=inventory_summary,
         )
 
     try:
@@ -42796,9 +49077,15 @@ def store_inventory():
                 )
 
                 if not item_category or not item_name:
-                    flash('Item category and item name are required.', 'error')
+                    flash('Expense category and item name are required.', 'error')
                     if item_id_update:
                         return redirect(employee_dash_url('store-inventory') + '?edit=%s' % item_id_update)
+                elif not item_id_update and not _is_valid_store_expense_category(cursor, item_category):
+                    flash(
+                        'Please select a valid expense category registered '
+                        'in Student fees → Fee structures.',
+                        'error',
+                    )
                 elif not department_station:
                     flash('Please select a department station for this item.', 'error')
                     if item_id_update:
@@ -42812,7 +49099,7 @@ def store_inventory():
                         ensure_library_books_table(cursor)
                         cursor.execute(
                             """
-                            SELECT id, image_path, department_station, library_book_id
+                            SELECT id, image_path, department_station, library_book_id, item_category
                             FROM store_inventory_items WHERE id = %s
                             """,
                             (item_id_update,),
@@ -42825,10 +49112,23 @@ def store_inventory():
                             old_image = existing.get('image_path')
                             old_station = (existing.get('department_station') or '').strip().upper()
                             library_book_id = int(existing.get('library_book_id') or 0) or None
+                            existing_category = (existing.get('item_category') or '').strip().upper()
                         else:
                             old_image = existing[1] if len(existing) > 1 else None
                             old_station = ((existing[2] or '') if len(existing) > 2 else '').strip().upper()
                             library_book_id = int(existing[3] or 0) or None if len(existing) > 3 else None
+                            existing_category = ((existing[4] or '') if len(existing) > 4 else '').strip().upper()
+                        if not _is_valid_store_expense_category(
+                            cursor,
+                            item_category,
+                            extra_allowed=[existing_category],
+                        ):
+                            flash(
+                                'Please select a valid expense category registered '
+                                'in Student fees → Fee structures.',
+                                'error',
+                            )
+                            return redirect(employee_dash_url('store-inventory') + '?edit=%s' % item_id_update)
                         new_image = _save_store_item_image(request.files.get('image'))
                         image_path = new_image if new_image else old_image
                         cursor.execute(
@@ -42891,17 +49191,32 @@ def store_inventory():
                         return redirect(employee_dash_url('store-inventory'))
                     flash(result.get('message', 'Could not register the store item.'), 'error')
 
+            items_q = (request.args.get('q') or '').strip() if request.method == 'GET' else ''
+            items_page_num = max(1, request.args.get('page', 1, type=int) or 1) if request.method == 'GET' else 1
+            page_payload = _fetch_store_inventory_page(
+                cursor, page=items_page_num, per_page=50, q=items_q
+            )
+            items = page_payload.get('items') or []
+            category_suggestions = _fetch_store_expense_categories(cursor)
+            fee_structure_votes = _fetch_store_expense_category_picker_votes(cursor)
+            seen_cats = set(category_suggestions)
             cursor.execute("""
-                SELECT DISTINCT item_category FROM store_inventory_items
-                WHERE COALESCE(item_category, '') != ''
+                SELECT DISTINCT TRIM(item_category) AS item_category
+                FROM store_inventory_items
+                WHERE COALESCE(TRIM(item_category), '') != ''
                 ORDER BY item_category ASC
             """)
             for r in cursor.fetchall() or []:
-                cat = (r.get('item_category') if isinstance(r, dict) else r[0]) or ''
-                cat = str(cat).strip()
-                if cat:
-                    category_suggestions.append(cat)
-            items = []
+                legacy_cat = (r.get('item_category') if isinstance(r, dict) else r[0]) or ''
+                legacy_cat = str(legacy_cat).strip().upper()
+                if legacy_cat and legacy_cat not in seen_cats:
+                    seen_cats.add(legacy_cat)
+                    category_suggestions.append(legacy_cat)
+            category_suggestions.sort(key=lambda x: x.lower())
+            items_total = int(page_payload.get('total') or 0)
+            items_page = int(page_payload.get('page') or 1)
+            items_pages = int(page_payload.get('pages') or 1)
+            inventory_summary = _fetch_store_inventory_summary(cursor)
     except Exception as e:
         print(f"store_inventory: {e}")
         flash('An error occurred loading store inventory.', 'error')
@@ -42924,7 +49239,7 @@ def store_inventory():
             flash('Store item not found.', 'error')
             open_edit_item_id = None
 
-    store_items_client = []
+    store_items_client = [_store_inventory_client_item(it) for it in items]
     inventory_form_open_default = bool(
         request.method == 'POST' and not request.form.get('item_id', type=int)
     )
@@ -42936,10 +49251,16 @@ def store_inventory():
         items=items,
         store_items_client=store_items_client,
         category_suggestions=category_suggestions,
+        fee_structure_votes=fee_structure_votes,
         measures=list(STORE_ITEM_MEASURES),
         department_stations=list(STORE_DEPARTMENT_STATIONS),
         open_edit_item_id=open_edit_item_id,
         inventory_form_open_default=inventory_form_open_default,
+        items_q=items_q,
+        items_total=items_total,
+        items_page=items_page,
+        items_pages=items_pages,
+        inventory_summary=inventory_summary,
     )
 
 
@@ -43010,7 +49331,7 @@ def store_stock_print(movement_id):
             connection.close()
     if not movement:
         flash('Stock record not found.', 'error')
-        return redirect(employee_dash_url('store-stock'))
+        return redirect(employee_dash_url('store-stock/audits'))
     return render_template(
         'dashboards/store_stock_print.html',
         movement=movement,
@@ -43018,10 +49339,94 @@ def store_stock_print(movement_id):
     )
 
 
+@app.route('/dashboard/employee/store-stock/analytics/data', methods=['GET'])
+@login_required
+def store_stock_analytics_data():
+    if _store_inventory_effective_role() != 'store manager':
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    period = request.args.get('period') or 'all'
+    date_val = request.args.get('date') or ''
+    date_from = request.args.get('from') or ''
+    date_to = request.args.get('to') or ''
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_store_stock_analytics(
+                cursor, period=period, date_val=date_val,
+                date_from=date_from, date_to=date_to,
+            )
+        return jsonify({'success': True, **payload})
+    except Exception as e:
+        print(f"store_stock_analytics_data: {e}")
+        return jsonify({'success': False, 'message': 'Could not load analytics'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/store-stock/analytics', methods=['GET'])
+@login_required
+def store_stock_analytics():
+    """Stock analytics across all catalog items."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    return render_template(
+        'dashboards/store_stock_analytics.html',
+        role=user_role,
+        is_technician=is_technician,
+    )
+
+
+@app.route('/dashboard/employee/store-stock/audits', methods=['GET'])
+@login_required
+def store_stock_audits():
+    """Detailed stock movement audit trail."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    audit_movements = []
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return render_template(
+            'dashboards/store_stock_audits.html',
+            role=user_role,
+            is_technician=is_technician,
+            audit_movements=[],
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_stock_movements_table(cursor)
+            connection.commit()
+            audit_movements = _fetch_store_stock_movements_audit(cursor)
+    except Exception as e:
+        print(f"store_stock_audits: {e}")
+        flash('Could not load stock audit records.', 'error')
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/store_stock_audits.html',
+        role=user_role,
+        is_technician=is_technician,
+        audit_movements=audit_movements,
+    )
+
+
 @app.route('/dashboard/employee/store-stock', methods=['GET', 'POST'])
 @login_required
 def store_stock():
-    """Stock in / stock out for school store items."""
+    """Stock in / stock out for school store items (quantities + movement modal)."""
     if _store_inventory_effective_role() != 'store manager':
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -43029,14 +49434,13 @@ def store_stock():
     user_role = session.get('role', '').lower()
     is_technician = user_role == 'technician'
     stock_items = []
-    recent_movements = []
     default_mode = (request.args.get('mode') or 'in').strip().lower()
     if default_mode not in ('in', 'out'):
         default_mode = 'in'
     last_print_id = request.args.get('print', type=int)
 
     connection = get_db_connection()
-    category_suggestions = []
+    fee_structure_votes = []
     register_form_open_default = request.args.get('register') == '1'
     preselect_item_id = request.args.get('item', type=int)
 
@@ -43048,11 +49452,10 @@ def store_stock():
             is_technician=is_technician,
             stock_items=[],
             stock_items_client=[],
-            recent_movements=[],
             stock_out_purposes=STORE_STOCK_OUT_PURPOSES,
             default_mode=default_mode,
             last_print_id=last_print_id,
-            category_suggestions=category_suggestions,
+            fee_structure_votes=fee_structure_votes,
             measures=list(STORE_ITEM_MEASURES),
             department_stations=list(STORE_DEPARTMENT_STATIONS),
             register_form_open_default=register_form_open_default,
@@ -43221,14 +49624,7 @@ def store_stock():
                                     )
 
             stock_items = _fetch_store_items_for_stock(cursor)
-            recent_movements = _fetch_store_stock_movements_recent(cursor)
-            seen_cats = set()
-            for it in stock_items:
-                cat = (it.get('item_category') or '').strip()
-                if cat and cat not in seen_cats:
-                    seen_cats.add(cat)
-                    category_suggestions.append(cat)
-            category_suggestions.sort(key=lambda x: x.lower())
+            fee_structure_votes = _fetch_store_expense_category_picker_votes(cursor)
     except Exception as e:
         print(f"store_stock: {e}")
         connection.rollback()
@@ -43242,13 +49638,12 @@ def store_stock():
         is_technician=is_technician,
         stock_items=stock_items,
         stock_items_client=stock_items,
-        recent_movements=recent_movements,
         stock_out_purposes=STORE_STOCK_OUT_PURPOSES,
         default_mode=default_mode,
         last_print_id=last_print_id,
         measures=list(STORE_ITEM_MEASURES),
         department_stations=list(STORE_DEPARTMENT_STATIONS),
-        category_suggestions=category_suggestions,
+        fee_structure_votes=fee_structure_votes,
         register_form_open_default=register_form_open_default,
         preselect_item_id=preselect_item_id,
     )
@@ -43540,6 +49935,68 @@ def _accountant_guard():
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
     return None
+
+
+ACCOUNTANT_ACCOUNTS_PORTAL_PATH_MARKERS = (
+    '/accounts',
+    '/petty-cash-book',
+    '/revenue',
+    '/finance-settings',
+    '/student-fees',
+    '/fee-structures',
+    '/payments-audit',
+    '/pocket-money',
+    '/staff-and-salaries',
+    '/salary-records',
+    '/salary-audits',
+    '/expense-records',
+    '/expense-audits',
+    '/payments-invoices',
+    '/visual-analytics',
+    '/notifications',
+)
+
+
+def _is_accountant_accounts_portal_page():
+    """True on accountant finance/accounts UI pages and accountant dashboard home."""
+    if _accountant_effective_role() != 'accountant':
+        return False
+    if not has_request_context():
+        return False
+    path = (request.path or '').replace('\\', '/').lower().rstrip('/') or '/'
+    if path in ('/accountant', '/dashboard/employee'):
+        return True
+    if request.endpoint == 'dashboard_employee':
+        return True
+    return any(marker in path for marker in ACCOUNTANT_ACCOUNTS_PORTAL_PATH_MARKERS)
+
+
+def _financial_year_session_snapshot(cursor):
+    """Compact current financial year for page chrome."""
+    fy = _fetch_current_financial_year(cursor)
+    configured = bool(fy.get('is_configured'))
+    is_locked = bool(fy.get('is_locked'))
+    read_only = (not configured) or is_locked
+    read_only_message = ''
+    if not configured:
+        read_only_message = (
+            'No open financial year is configured. Finance records are view-only until a new year is created.'
+        )
+    elif is_locked:
+        read_only_message = (
+            f"{fy.get('year_label') or 'Financial year'} is closed. Finance records are view-only."
+        )
+    return {
+        'is_configured': configured,
+        'year_label': fy.get('year_label') or '',
+        'financial_year_start': fy.get('financial_year_start') or '',
+        'financial_year_end': fy.get('financial_year_end') or '',
+        'financial_year_start_display': fy.get('financial_year_start_display') or '',
+        'financial_year_end_display': fy.get('financial_year_end_display') or '',
+        'is_locked': is_locked,
+        'read_only': read_only,
+        'read_only_message': read_only_message,
+    }
 
 
 @app.route('/dashboard/employee/store-requisitions', methods=['GET', 'POST'])
@@ -51108,6 +57565,1644 @@ FINANCE_OVERVIEW_LIST_SORTS = {
 }
 
 
+def _finance_report_date_clause(column, filters):
+    where = []
+    params = []
+    if filters.get('date_from'):
+        where.append(f'DATE({column}) >= %s')
+        params.append(filters['date_from'])
+    if filters.get('date_to'):
+        where.append(f'DATE({column}) <= %s')
+        params.append(filters['date_to'])
+    return where, params
+
+
+def _finance_report_fee_payment_totals(cursor, filters):
+    filters = filters or {}
+    finance_account_id = filters.get('finance_account_id')
+    if finance_account_id:
+        ensure_finance_account_transactions_table(cursor)
+        where, params = _finance_report_date_clause('sp.payment_date', filters)
+        extra = [
+            'fat.finance_account_id = %s',
+            "fat.related_type = 'student_payment'",
+            "LOWER(COALESCE(fat.direction, 'credit')) = 'credit'",
+            'sp.amount_paid > 0',
+        ]
+        params = [int(finance_account_id)] + list(params)
+        join_students = bool(filters.get('grade'))
+        if filters.get('grade'):
+            extra.append('s.current_grade = %s')
+            params.append(filters['grade'])
+        all_where = extra + where
+        student_join = (
+            ' INNER JOIN students s ON s.student_id = sp.student_id'
+            if join_students else ''
+        )
+        sql = f"""
+            SELECT COUNT(DISTINCT sp.id) AS cnt, COALESCE(SUM(fat.amount), 0) AS total
+            FROM finance_account_transactions fat
+            INNER JOIN student_payments sp ON sp.id = fat.related_id AND sp.amount_paid > 0{student_join}
+        """
+        if all_where:
+            sql += ' WHERE ' + ' AND '.join(all_where)
+        cursor.execute(sql, tuple(params))
+        row = cursor.fetchone()
+        if not row:
+            return {'count': 0, 'total': 0.0}
+        if isinstance(row, dict):
+            return {'count': int(row.get('cnt') or 0), 'total': float(row.get('total') or 0)}
+        return {'count': int(row[0] or 0), 'total': float(row[1] or 0)}
+
+    where, params = _finance_report_date_clause('sp.payment_date', filters)
+    sql = """
+        SELECT COUNT(*) AS cnt, COALESCE(SUM(sp.amount_paid), 0) AS total
+        FROM student_payments sp
+    """
+    if where:
+        sql += ' WHERE ' + ' AND '.join(where)
+    cursor.execute(sql, tuple(params))
+    row = cursor.fetchone()
+    if not row:
+        return {'count': 0, 'total': 0.0}
+    if isinstance(row, dict):
+        return {'count': int(row.get('cnt') or 0), 'total': float(row.get('total') or 0)}
+    return {'count': int(row[0] or 0), 'total': float(row[1] or 0)}
+
+
+def _finance_report_fee_payment_rows(cursor, filters):
+    filters = filters or {}
+    ensure_fee_structures_finance_account_column(cursor)
+    finance_account_id = filters.get('finance_account_id')
+    if finance_account_id:
+        ensure_finance_account_transactions_table(cursor)
+        where, params = _finance_report_date_clause('sp.payment_date', filters)
+        extra = [
+            'fat.finance_account_id = %s',
+            "fat.related_type = 'student_payment'",
+            "LOWER(COALESCE(fat.direction, 'credit')) = 'credit'",
+            'sp.amount_paid > 0',
+        ]
+        params = [int(finance_account_id)] + list(params)
+        if filters.get('grade'):
+            extra.append('s.current_grade = %s')
+            params.append(filters['grade'])
+        all_where = extra + where
+        sql = """
+            SELECT sp.payment_date, sp.reference_number, sp.transaction_id, fat.amount AS amount_paid,
+                   sp.payment_method, s.full_name, s.student_id, s.current_grade,
+                   fa.account_name, fs.fee_name
+            FROM finance_account_transactions fat
+            INNER JOIN student_payments sp ON sp.id = fat.related_id AND sp.amount_paid > 0
+            INNER JOIN students s ON s.student_id = sp.student_id
+            LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
+            LEFT JOIN finance_accounts fa ON fa.id = fat.finance_account_id
+        """
+        if all_where:
+            sql += ' WHERE ' + ' AND '.join(all_where)
+        sql += ' ORDER BY sp.payment_date DESC, sp.id DESC LIMIT 500'
+        cursor.execute(sql, tuple(params))
+    else:
+        where, params = _finance_report_date_clause('sp.payment_date', filters)
+        extra = ['sp.amount_paid > 0']
+        if filters.get('grade'):
+            extra.append('s.current_grade = %s')
+            params.append(filters['grade'])
+        all_where = where + extra
+        sql = """
+            SELECT sp.payment_date, sp.reference_number, sp.transaction_id, sp.amount_paid,
+                   sp.payment_method, s.full_name, s.student_id, s.current_grade,
+                   fa.account_name, fs.fee_name
+            FROM student_payments sp
+            INNER JOIN students s ON s.student_id = sp.student_id
+            LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
+            LEFT JOIN finance_accounts fa ON fa.id = fs.finance_account_id
+        """
+        if all_where:
+            sql += ' WHERE ' + ' AND '.join(all_where)
+        sql += ' ORDER BY sp.payment_date DESC, sp.id DESC LIMIT 500'
+        cursor.execute(sql, tuple(params))
+    rows = []
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            pd = row.get('payment_date')
+            amt = float(row.get('amount_paid') or 0)
+            ref = (row.get('reference_number') or row.get('transaction_id') or '').strip()
+            name = row.get('full_name') or ''
+            grade = row.get('current_grade') or ''
+            method = row.get('payment_method') or ''
+            acct = row.get('account_name') or '—'
+            fee_name = row.get('fee_name') or ''
+        else:
+            pd, ref_n, txn, amt_v = row[0], row[1], row[2], row[3]
+            method = row[4] if len(row) > 4 else ''
+            name = row[5] if len(row) > 5 else ''
+            grade = row[7] if len(row) > 7 else ''
+            acct = row[8] if len(row) > 8 else '—'
+            fee_name = row[9] if len(row) > 9 else ''
+            amt = float(amt_v or 0)
+            ref = (ref_n or txn or '').strip()
+        sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+        desc_parts = [p for p in (name, fee_name, method) if p]
+        rows.append({
+            '_sort_ts': sort_ts,
+            'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+            'reference': ref or '—',
+            'source_label': 'Fee collection',
+            'description': ' · '.join(desc_parts) if desc_parts else 'Fee payment',
+            'amount_display': _format_kes_amount(amt),
+            'amount': amt,
+            'account': acct,
+            'class_name': grade,
+        })
+    return rows
+
+
+def _finance_report_revenue_rows_for_report(cursor, limit=500, source_filter=None, finance_account_id=None, filters=None):
+    filters = filters or {}
+    ensure_accountant_revenue_table(cursor)
+    ensure_accountant_revenue_finance_account_column(cursor)
+    where, params = _finance_report_date_clause('ar.created_at', filters)
+    if finance_account_id:
+        where.append('ar.finance_account_id = %s')
+        params.append(int(finance_account_id))
+    elif source_filter in ('government', 'private'):
+        where.append('ar.source_type = %s')
+        params.append(source_filter)
+    sql = """
+        SELECT ar.created_at, ar.reference_number, ar.source_type, ar.name,
+               ar.description, ar.amount, fa.account_name
+        FROM accountant_revenue ar
+        LEFT JOIN finance_accounts fa ON fa.id = ar.finance_account_id
+    """
+    if where:
+        sql += ' WHERE ' + ' AND '.join(where)
+    sql += ' ORDER BY ar.created_at DESC, ar.id DESC LIMIT %s'
+    params.append(int(limit))
+    cursor.execute(sql, tuple(params))
+    out = []
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            created = row.get('created_at')
+            st = (row.get('source_type') or 'manual').replace('_', ' ').title()
+            ref = row.get('reference_number') or '—'
+            desc = row.get('description') or row.get('name') or '—'
+            amt = float(row.get('amount') or 0)
+            acct = row.get('account_name') or '—'
+        else:
+            created, ref, st_raw, _nm, desc, amt_v, acct = row[0], row[1], row[2], row[3], row[4], row[5], row[6]
+            st = (st_raw or 'manual').replace('_', ' ').title()
+            amt = float(amt_v or 0)
+            acct = acct or '—'
+        sort_ts = created.timestamp() if created and hasattr(created, 'timestamp') else 0
+        out.append({
+            '_sort_ts': sort_ts,
+            'date': created.strftime('%Y-%m-%d') if created and hasattr(created, 'strftime') else '—',
+            'reference': ref or '—',
+            'source_label': st,
+            'description': desc or '—',
+            'amount_display': _format_kes_amount(amt),
+            'amount': amt,
+            'account': acct,
+        })
+    return out
+
+
+def _finance_report_expenditure_rows(cursor, filters):
+    rows = []
+    src = filters.get('source') or 'all'
+
+    if src in ('all', 'salary'):
+        where, params = _finance_report_date_clause('esp.payment_date', filters)
+        sql = """
+            SELECT esp.payment_date, esp.amount_paid, esp.payment_method, esp.payment_reference,
+                   e.full_name
+            FROM employee_salary_payments esp
+            INNER JOIN employee_salaries es ON es.id = esp.salary_id
+            INNER JOIN employees e ON e.id = es.employee_id
+        """
+        if where:
+            sql += ' WHERE ' + ' AND '.join(where)
+        sql += ' ORDER BY esp.payment_date DESC LIMIT 500'
+        try:
+            cursor.execute(sql, tuple(params))
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    pd = row.get('payment_date')
+                    amt = float(row.get('amount_paid') or 0)
+                    ref = (row.get('payment_reference') or '').strip()
+                    payee = row.get('full_name') or '—'
+                    method = row.get('payment_method') or ''
+                else:
+                    pd, amt, method, ref, payee = row[0], float(row[1] or 0), row[2], row[3], row[4]
+                rows.append({
+                    'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                    'type_label': 'Salary',
+                    'reference': ref or '—',
+                    'payee': payee,
+                    'description': method or 'Salary payment',
+                    'amount': amt,
+                    'amount_display': _format_kes_amount(amt),
+                })
+        except Exception as e:
+            print(f"_finance_report_expenditure_rows salary: {e}")
+
+    if src in ('all', 'payment', 'store', 'misc'):
+        audit_entries, _ = _fetch_all_expense_audit_entries(
+            cursor,
+            source_filter='misc' if src == 'misc' else ('payment' if src == 'payment' else ('store' if src == 'store' else 'all')),
+            limit=500,
+        )
+        for entry in audit_entries:
+            created = entry.get('created_at')
+            if filters.get('date_from') and created:
+                d = created.strftime('%Y-%m-%d') if hasattr(created, 'strftime') else str(created)[:10]
+                if d < filters['date_from']:
+                    continue
+            if filters.get('date_to') and created:
+                d = created.strftime('%Y-%m-%d') if hasattr(created, 'strftime') else str(created)[:10]
+                if d > filters['date_to']:
+                    continue
+            amt = float(entry.get('amount') or 0)
+            if entry.get('event_type') == 'stock_in_created':
+                tl = 'Stock-in (invoiced)'
+            elif entry.get('event_type') == 'stock_in_payment':
+                tl = 'Supplier payment'
+            else:
+                tl = 'Miscellaneous'
+            rows.append({
+                'date': entry.get('created_at_display') or '—',
+                'type_label': tl,
+                'reference': entry.get('reference_number') or '—',
+                'payee': entry.get('payee_name') or '—',
+                'description': entry.get('description') or '—',
+                'amount': amt,
+                'amount_display': entry.get('amount_display') or _format_kes_amount(amt),
+            })
+
+    rows.sort(key=lambda r: r.get('date') or '', reverse=True)
+    return rows
+
+
+def _finance_report_expenditure_vote_summary(cursor, filters):
+    """Per-vote allocated, available (fee collections), and used (store payments)."""
+    from collections import defaultdict
+    from urllib.parse import quote
+
+    filters = filters or {}
+    ensure_student_fee_votes_table(cursor)
+    ensure_fee_structures_finance_account_column(cursor)
+    ensure_fee_items_finance_account_column(cursor)
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+    ensure_store_inventory_items_table(cursor)
+
+    vote_defs = {}
+    for v in _fetch_store_expense_category_picker_votes(cursor):
+        name = (v.get('name') or '').strip().upper()
+        if not name:
+            continue
+        vote_defs[name] = {
+            'vote_name': name,
+            'description': (v.get('description') or '—').strip() or '—',
+        }
+
+    allocated = defaultdict(float)
+    where_alloc = ['1=1']
+    params_alloc = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT UPPER(TRIM(sfv.item_name)) AS vote_name,
+                   COALESCE(SUM(sfv.amount), 0) AS total_allocated
+            FROM student_fee_votes sfv
+            WHERE {' AND '.join(where_alloc)}
+            GROUP BY UPPER(TRIM(sfv.item_name))
+            """,
+            tuple(params_alloc),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                name = (row.get('vote_name') or '').strip().upper()
+                total = float(row.get('total_allocated') or 0)
+            else:
+                name = (row[0] or '').strip().upper()
+                total = float(row[1] or 0)
+            if name:
+                allocated[name] = total
+                if name not in vote_defs:
+                    vote_defs[name] = {'vote_name': name, 'description': '—'}
+    except Exception as e:
+        print(f"_finance_report_expenditure_vote_summary allocated: {e}")
+
+    available = defaultdict(float)
+    where_avail = ['sp.amount_paid > 0', 'ft.total_amount > 0']
+    params_avail = []
+    date_avail, params_date_avail = _finance_report_date_clause('sp.payment_date', filters)
+    if date_avail:
+        where_avail.extend(date_avail)
+        params_avail.extend(params_date_avail)
+    try:
+        cursor.execute(
+            f"""
+            SELECT UPPER(TRIM(fi.item_name)) AS vote_name,
+                   COALESCE(SUM(sp.amount_paid * fi.amount / ft.total_amount), 0) AS total_available
+            FROM student_payments sp
+            INNER JOIN fee_items fi ON fi.fee_structure_id = sp.fee_structure_id
+            INNER JOIN (
+                SELECT fee_structure_id, COALESCE(SUM(amount), 0) AS total_amount
+                FROM fee_items
+                GROUP BY fee_structure_id
+            ) ft ON ft.fee_structure_id = sp.fee_structure_id
+            WHERE {' AND '.join(where_avail)}
+            GROUP BY UPPER(TRIM(fi.item_name))
+            """,
+            tuple(params_avail),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                name = (row.get('vote_name') or '').strip().upper()
+                total = float(row.get('total_available') or 0)
+            else:
+                name = (row[0] or '').strip().upper()
+                total = float(row[1] or 0)
+            if name:
+                available[name] = total
+                if name not in vote_defs:
+                    vote_defs[name] = {'vote_name': name, 'description': '—'}
+    except Exception as e:
+        print(f"_finance_report_expenditure_vote_summary available: {e}")
+
+    used = defaultdict(float)
+    where_used = ["m.movement_type = 'in'"]
+    params_used = []
+    date_used, params_date_used = _finance_report_date_clause('pl.created_at', filters)
+    if date_used:
+        where_used.extend(date_used)
+        params_used.extend(params_date_used)
+    try:
+        cursor.execute(
+            f"""
+            SELECT UPPER(TRIM(si.item_category)) AS vote_name,
+                   COALESCE(SUM(pl.amount_paid), 0) AS total_used
+            FROM store_stock_in_payment_lines pl
+            INNER JOIN store_stock_movements m ON m.id = pl.movement_id
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            WHERE {' AND '.join(where_used)}
+              AND COALESCE(TRIM(si.item_category), '') != ''
+            GROUP BY UPPER(TRIM(si.item_category))
+            """,
+            tuple(params_used),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                name = (row.get('vote_name') or '').strip().upper()
+                total = float(row.get('total_used') or 0)
+            else:
+                name = (row[0] or '').strip().upper()
+                total = float(row[1] or 0)
+            if name:
+                used[name] = total
+                if name not in vote_defs:
+                    vote_defs[name] = {'vote_name': name, 'description': '—'}
+    except Exception as e:
+        print(f"_finance_report_expenditure_vote_summary used: {e}")
+
+    ensure_petty_cash_expenses_table(cursor)
+    where_pc = ['1=1']
+    params_pc = []
+    date_pc, params_date_pc = _finance_report_date_clause('pce.created_at', filters)
+    if date_pc:
+        where_pc.extend(date_pc)
+        params_pc.extend(params_date_pc)
+    try:
+        cursor.execute(
+            f"""
+            SELECT UPPER(TRIM(pce.vote_name)) AS vote_name,
+                   COALESCE(SUM(pce.amount), 0) AS total_used
+            FROM petty_cash_expenses pce
+            WHERE {' AND '.join(where_pc)}
+            GROUP BY UPPER(TRIM(pce.vote_name))
+            """,
+            tuple(params_pc),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                name = (row.get('vote_name') or '').strip().upper()
+                total = float(row.get('total_used') or 0)
+            else:
+                name = (row[0] or '').strip().upper()
+                total = float(row[1] or 0)
+            if name:
+                used[name] = float(used.get(name) or 0) + total
+                if name not in vote_defs:
+                    vote_defs[name] = {'vote_name': name, 'description': '—'}
+    except Exception as e:
+        print(f"_finance_report_expenditure_vote_summary petty cash: {e}")
+
+    rows = []
+    all_names = set(vote_defs.keys()) | set(allocated.keys()) | set(available.keys()) | set(used.keys())
+    for name in sorted(all_names, key=lambda x: x.lower()):
+        alloc = float(allocated.get(name) or 0)
+        avail = float(available.get(name) or 0)
+        usd = float(used.get(name) or 0)
+        balance = alloc - usd
+        meta = vote_defs.get(name, {'vote_name': name, 'description': '—'})
+        rows.append({
+            'vote_name': name,
+            'description': meta.get('description') or '—',
+            'allocated': alloc,
+            'allocated_display': _format_kes_amount(alloc),
+            'available': avail,
+            'available_display': _format_kes_amount(avail),
+            'used': usd,
+            'used_display': _format_kes_amount(usd),
+            'balance': balance,
+            'balance_display': _format_kes_amount(balance),
+            'vote_slug': quote(name, safe=''),
+        })
+    return rows
+
+
+def _finance_report_expenditure_vote_detail_rows(cursor, filters, vote_name):
+    """All vote transactions: fee collections (in) and supplier payments (out)."""
+    filters = filters or {}
+    vote_name = (vote_name or '').strip().upper()
+    if not vote_name:
+        return []
+
+    ensure_student_fee_votes_table(cursor)
+    ensure_fee_items_finance_account_column(cursor)
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+    ensure_store_inventory_items_table(cursor)
+    ensure_finance_accounts_table(cursor)
+
+    rows = []
+
+    # Fee collections attributed to this vote (inflow).
+    where_in = [
+        'sp.amount_paid > 0',
+        'ft.total_amount > 0',
+        'UPPER(TRIM(fi.item_name)) = %s',
+    ]
+    params_in = [vote_name]
+    date_in, params_date_in = _finance_report_date_clause('sp.payment_date', filters)
+    if date_in:
+        where_in.extend(date_in)
+        params_in.extend(params_date_in)
+    try:
+        cursor.execute(
+            f"""
+            SELECT sp.payment_date, sp.amount_paid, sp.reference_number, sp.transaction_id,
+                   sp.payment_method, s.full_name, fs.fee_name,
+                   (sp.amount_paid * fi.amount / ft.total_amount) AS vote_amount,
+                   fa.account_name AS finance_account_name
+            FROM student_payments sp
+            INNER JOIN fee_items fi ON fi.fee_structure_id = sp.fee_structure_id
+            INNER JOIN (
+                SELECT fee_structure_id, COALESCE(SUM(amount), 0) AS total_amount
+                FROM fee_items
+                GROUP BY fee_structure_id
+            ) ft ON ft.fee_structure_id = sp.fee_structure_id
+            LEFT JOIN students s ON s.student_id = sp.student_id
+            LEFT JOIN fee_structures fs ON fs.id = sp.fee_structure_id
+            LEFT JOIN finance_accounts fa ON fa.id = fs.finance_account_id
+            WHERE {' AND '.join(where_in)}
+            ORDER BY sp.payment_date DESC, sp.id DESC
+            LIMIT 500
+            """,
+            tuple(params_in),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('payment_date')
+                amt = float(row.get('vote_amount') or 0)
+                ref = (row.get('reference_number') or row.get('transaction_id') or '').strip()
+                student = (row.get('full_name') or '—').strip() or '—'
+                method = (row.get('payment_method') or '').strip()
+                fee_name = (row.get('fee_name') or '').strip()
+                acct = (row.get('finance_account_name') or '').strip()
+            else:
+                pd = row[0]
+                amt = float(row[7] or 0) if len(row) > 7 else 0.0
+                ref = (row[2] or row[3] or '').strip() if len(row) > 3 else ''
+                student = (row[5] or '—').strip() if len(row) > 5 else '—'
+                method = (row[4] or '').strip() if len(row) > 4 else ''
+                fee_name = (row[6] or '').strip() if len(row) > 6 else ''
+                acct = (row[8] or '').strip() if len(row) > 8 else ''
+            if amt <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            desc_parts = [p for p in (fee_name, method, acct) if p]
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'flow': 'in',
+                'flow_label': 'In',
+                'type_label': 'Fee collection',
+                'reference': ref or '—',
+                'payee': student,
+                'description': ' · '.join(desc_parts) if desc_parts else f'Collection for {vote_name}',
+                'amount': amt,
+                'amount_display': _format_kes_amount(amt),
+                'payment_method': method,
+                'vote_name': vote_name,
+            })
+    except Exception as e:
+        print(f"_finance_report_expenditure_vote_detail_rows collections: {e}")
+
+    # Supplier payments for store items in this vote category (outflow).
+    where_out = [
+        "m.movement_type = 'in'",
+        'UPPER(TRIM(si.item_category)) = %s',
+    ]
+    params_out = [vote_name]
+    date_out, params_date_out = _finance_report_date_clause('pl.created_at', filters)
+    if date_out:
+        where_out.extend(date_out)
+        params_out.extend(params_date_out)
+    try:
+        cursor.execute(
+            f"""
+            SELECT pl.created_at, pl.amount_paid, pl.payment_method, pl.payment_reference,
+                   pl.paid_to_company_name, pl.paid_by_name,
+                   m.reference_number AS movement_reference,
+                   si.item_name,
+                   fa.account_name AS finance_account_name
+            FROM store_stock_in_payment_lines pl
+            INNER JOIN store_stock_movements m ON m.id = pl.movement_id
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN finance_accounts fa ON fa.id = pl.finance_account_id
+            WHERE {' AND '.join(where_out)}
+            ORDER BY pl.created_at DESC, pl.id DESC
+            LIMIT 500
+            """,
+            tuple(params_out),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('created_at')
+                amt = float(row.get('amount_paid') or 0)
+                ref = (row.get('payment_reference') or row.get('movement_reference') or '').strip()
+                payee = (row.get('paid_to_company_name') or '—').strip() or '—'
+                method = (row.get('payment_method') or '').strip()
+                item_name = (row.get('item_name') or '').strip()
+                acct = (row.get('finance_account_name') or '').strip()
+            else:
+                pd, amt, method, ref, payee = row[0], float(row[1] or 0), row[2], row[3], row[4]
+                item_name = row[7] if len(row) > 7 else ''
+                acct = row[8] if len(row) > 8 else ''
+            if amt <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            desc_parts = [p for p in (item_name, method, acct) if p]
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'flow': 'out',
+                'flow_label': 'Out',
+                'type_label': 'Supplier payment',
+                'reference': ref or '—',
+                'payee': payee,
+                'description': ' · '.join(desc_parts) if desc_parts else 'Store payment',
+                'amount': amt,
+                'amount_display': _format_kes_amount(amt),
+                'payment_method': method,
+                'vote_name': vote_name,
+            })
+    except Exception as e:
+        print(f"_finance_report_expenditure_vote_detail_rows payments: {e}")
+
+    rows.extend(_petty_cash_expense_vote_detail_rows(cursor, filters, vote_name))
+
+    rows.sort(key=lambda r: r.get('_sort_ts', 0), reverse=True)
+    return rows[:500]
+
+
+def _finance_all_votes_expenditure_detail_rows(cursor, filters):
+    """All vote transactions across every fee vote: collections (in) and supplier payments (out)."""
+    filters = filters or {}
+    ensure_student_fee_votes_table(cursor)
+    ensure_fee_items_finance_account_column(cursor)
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+    ensure_store_inventory_items_table(cursor)
+    ensure_finance_accounts_table(cursor)
+
+    rows = []
+
+    where_in = ['sp.amount_paid > 0', 'ft.total_amount > 0']
+    params_in = []
+    date_in, params_date_in = _finance_report_date_clause('sp.payment_date', filters)
+    if date_in:
+        where_in.extend(date_in)
+        params_in.extend(params_date_in)
+    try:
+        cursor.execute(
+            f"""
+            SELECT sp.payment_date, sp.amount_paid, sp.reference_number, sp.transaction_id,
+                   sp.payment_method, s.full_name, fs.fee_name,
+                   (sp.amount_paid * fi.amount / ft.total_amount) AS vote_amount,
+                   fa.account_name AS finance_account_name,
+                   UPPER(TRIM(fi.item_name)) AS vote_name
+            FROM student_payments sp
+            INNER JOIN fee_items fi ON fi.fee_structure_id = sp.fee_structure_id
+            INNER JOIN (
+                SELECT fee_structure_id, COALESCE(SUM(amount), 0) AS total_amount
+                FROM fee_items
+                GROUP BY fee_structure_id
+            ) ft ON ft.fee_structure_id = sp.fee_structure_id
+            LEFT JOIN students s ON s.student_id = sp.student_id
+            LEFT JOIN fee_structures fs ON fs.id = sp.fee_structure_id
+            LEFT JOIN finance_accounts fa ON fa.id = fs.finance_account_id
+            WHERE {' AND '.join(where_in)}
+            ORDER BY sp.payment_date DESC, sp.id DESC
+            LIMIT 2000
+            """,
+            tuple(params_in),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('payment_date')
+                amt = float(row.get('vote_amount') or 0)
+                ref = (row.get('reference_number') or row.get('transaction_id') or '').strip()
+                student = (row.get('full_name') or '—').strip() or '—'
+                method = (row.get('payment_method') or '').strip()
+                fee_name = (row.get('fee_name') or '').strip()
+                acct = (row.get('finance_account_name') or '').strip()
+                vote_name = (row.get('vote_name') or '').strip().upper() or '—'
+            else:
+                pd = row[0]
+                amt = float(row[7] or 0) if len(row) > 7 else 0.0
+                ref = (row[2] or row[3] or '').strip() if len(row) > 3 else ''
+                student = (row[5] or '—').strip() if len(row) > 5 else '—'
+                method = (row[4] or '').strip() if len(row) > 4 else ''
+                fee_name = (row[6] or '').strip() if len(row) > 6 else ''
+                acct = (row[8] or '').strip() if len(row) > 8 else ''
+                vote_name = (row[9] or '—').strip().upper() if len(row) > 9 else '—'
+            if amt <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            desc_parts = [p for p in (fee_name, method, acct) if p]
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'flow': 'in',
+                'flow_label': 'In',
+                'type_label': 'Fee collection',
+                'reference': ref or '—',
+                'payee': student,
+                'description': ' · '.join(desc_parts) if desc_parts else f'Collection for {vote_name}',
+                'amount': amt,
+                'amount_display': _format_kes_amount(amt),
+                'payment_method': method,
+                'vote_name': vote_name,
+            })
+    except Exception as e:
+        print(f"_finance_all_votes_expenditure_detail_rows collections: {e}")
+
+    where_out = ["m.movement_type = 'in'", "COALESCE(TRIM(si.item_category), '') != ''"]
+    params_out = []
+    date_out, params_date_out = _finance_report_date_clause('pl.created_at', filters)
+    if date_out:
+        where_out.extend(date_out)
+        params_out.extend(params_date_out)
+    try:
+        cursor.execute(
+            f"""
+            SELECT pl.created_at, pl.amount_paid, pl.payment_method, pl.payment_reference,
+                   pl.paid_to_company_name, pl.paid_by_name,
+                   m.reference_number AS movement_reference,
+                   si.item_name,
+                   fa.account_name AS finance_account_name,
+                   UPPER(TRIM(si.item_category)) AS vote_name
+            FROM store_stock_in_payment_lines pl
+            INNER JOIN store_stock_movements m ON m.id = pl.movement_id
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN finance_accounts fa ON fa.id = pl.finance_account_id
+            WHERE {' AND '.join(where_out)}
+            ORDER BY pl.created_at DESC, pl.id DESC
+            LIMIT 2000
+            """,
+            tuple(params_out),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('created_at')
+                amt = float(row.get('amount_paid') or 0)
+                ref = (row.get('payment_reference') or row.get('movement_reference') or '').strip()
+                payee = (row.get('paid_to_company_name') or '—').strip() or '—'
+                method = (row.get('payment_method') or '').strip()
+                item_name = (row.get('item_name') or '').strip()
+                acct = (row.get('finance_account_name') or '').strip()
+                vote_name = (row.get('vote_name') or '').strip().upper() or '—'
+            else:
+                pd, amt, method, ref, payee = row[0], float(row[1] or 0), row[2], row[3], row[4]
+                item_name = row[7] if len(row) > 7 else ''
+                acct = row[8] if len(row) > 8 else ''
+                vote_name = (row[9] or '—').strip().upper() if len(row) > 9 else '—'
+            if amt <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            desc_parts = [p for p in (item_name, method, acct) if p]
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'flow': 'out',
+                'flow_label': 'Out',
+                'type_label': 'Supplier payment',
+                'reference': ref or '—',
+                'payee': payee,
+                'description': ' · '.join(desc_parts) if desc_parts else 'Store payment',
+                'amount': amt,
+                'amount_display': _format_kes_amount(amt),
+                'payment_method': method,
+                'vote_name': vote_name,
+            })
+    except Exception as e:
+        print(f"_finance_all_votes_expenditure_detail_rows payments: {e}")
+
+    rows.extend(_petty_cash_expense_vote_detail_rows(cursor, filters))
+
+    rows.sort(key=lambda r: r.get('_sort_ts', 0), reverse=True)
+    return rows[:2000]
+
+
+def _finance_expenditure_books_ap_lines(cursor, filters):
+    """Invoice and payment lines for all votes AP subsidiary ledger."""
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_inventory_items_table(cursor)
+    ensure_store_suppliers_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+    lines = []
+    try:
+        cursor.execute(
+            """
+            SELECT m.id, m.created_at, m.reference_number, m.total_amount,
+                   m.paid_to_company_name, si.item_name,
+                   sup.company_name AS supplier_name,
+                   UPPER(TRIM(si.item_category)) AS vote_name
+            FROM store_stock_movements m
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            WHERE m.movement_type = 'in'
+              AND COALESCE(TRIM(si.item_category), '') != ''
+            ORDER BY m.created_at ASC, m.id ASC
+            LIMIT 3000
+            """
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('created_at')
+                invoiced = float(row.get('total_amount') or 0)
+                ref = (row.get('reference_number') or '').strip()
+                supplier = (row.get('supplier_name') or row.get('paid_to_company_name') or '—').strip() or '—'
+                item_name = (row.get('item_name') or '').strip()
+                vote_name = (row.get('vote_name') or '—').strip().upper() or '—'
+                sort_id = int(row.get('id') or 0)
+            else:
+                sort_id = int(row[0] or 0)
+                pd = row[1]
+                ref = (row[2] or '').strip() if len(row) > 2 else ''
+                invoiced = float(row[3] or 0) if len(row) > 3 else 0.0
+                supplier = (row[6] or row[4] or '—').strip() if len(row) > 4 else '—'
+                item_name = (row[5] or '').strip() if len(row) > 5 else ''
+                vote_name = (row[7] or '—').strip().upper() if len(row) > 7 else '—'
+            if invoiced <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else sort_id
+            lines.append({
+                '_sort_ts': sort_ts,
+                '_txn_type': 'invoice',
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'reference': ref or '—',
+                'vote_name': vote_name,
+                'supplier': supplier,
+                'particulars': f'Invoice — {item_name or "Stock-in"}',
+                '_invoice': invoiced,
+                '_payment': 0.0,
+            })
+    except Exception as e:
+        print(f"_finance_expenditure_books_ap_lines invoices: {e}")
+
+    try:
+        cursor.execute(
+            """
+            SELECT pl.id, pl.created_at, pl.amount_paid, pl.payment_reference,
+                   pl.paid_to_company_name, si.item_name,
+                   sup.company_name AS supplier_name,
+                   UPPER(TRIM(si.item_category)) AS vote_name
+            FROM store_stock_in_payment_lines pl
+            INNER JOIN store_stock_movements m ON m.id = pl.movement_id
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            WHERE m.movement_type = 'in'
+              AND COALESCE(TRIM(si.item_category), '') != ''
+            ORDER BY pl.created_at ASC, pl.id ASC
+            LIMIT 5000
+            """
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('created_at')
+                paid = float(row.get('amount_paid') or 0)
+                ref = (row.get('payment_reference') or '').strip()
+                supplier = (row.get('supplier_name') or row.get('paid_to_company_name') or '—').strip() or '—'
+                item_name = (row.get('item_name') or '').strip()
+                vote_name = (row.get('vote_name') or '—').strip().upper() or '—'
+                sort_id = int(row.get('id') or 0)
+            else:
+                sort_id = int(row[0] or 0)
+                pd = row[1]
+                paid = float(row[2] or 0)
+                ref = (row[3] or '').strip() if len(row) > 3 else ''
+                supplier = (row[6] or row[4] or '—').strip() if len(row) > 4 else '—'
+                item_name = (row[5] or '').strip() if len(row) > 5 else ''
+                vote_name = (row[7] or '—').strip().upper() if len(row) > 7 else '—'
+            if paid <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else sort_id
+            lines.append({
+                '_sort_ts': sort_ts,
+                '_txn_type': 'payment',
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'reference': ref or '—',
+                'vote_name': vote_name,
+                'supplier': supplier,
+                'particulars': f'Payment — {item_name or "Stock-in"}',
+                '_invoice': 0.0,
+                '_payment': paid,
+            })
+    except Exception as e:
+        print(f"_finance_expenditure_books_ap_lines payments: {e}")
+    return lines
+
+
+def _finance_expenditure_books_cheque_register(cursor, filters):
+    """All vote receipts and payments for school-wide cheque register."""
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+    ensure_store_inventory_items_table(cursor)
+    ensure_fee_items_finance_account_column(cursor)
+    rows = []
+
+    where_out = ["m.movement_type = 'in'", "COALESCE(TRIM(si.item_category), '') != ''"]
+    params_out = []
+    date_out, params_date_out = _finance_report_date_clause('pl.created_at', filters)
+    if date_out:
+        where_out.extend(date_out)
+        params_out.extend(params_date_out)
+    try:
+        cursor.execute(
+            f"""
+            SELECT pl.created_at, pl.amount_paid, pl.payment_method, pl.payment_reference,
+                   pl.paid_to_company_name, si.item_name,
+                   UPPER(TRIM(si.item_category)) AS vote_name
+            FROM store_stock_in_payment_lines pl
+            INNER JOIN store_stock_movements m ON m.id = pl.movement_id
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            WHERE {' AND '.join(where_out)}
+            ORDER BY pl.created_at DESC, pl.id DESC
+            LIMIT 2000
+            """,
+            tuple(params_out),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('created_at')
+                amt = float(row.get('amount_paid') or 0)
+                ref = (row.get('payment_reference') or '').strip()
+                payee = (row.get('paid_to_company_name') or '—').strip() or '—'
+                method = (row.get('payment_method') or '—').strip() or '—'
+                item_name = (row.get('item_name') or '').strip()
+                vote_name = (row.get('vote_name') or '—').strip().upper() or '—'
+            else:
+                pd, amt = row[0], float(row[1] or 0)
+                method = (row[2] or '—').strip() if len(row) > 2 else '—'
+                ref = (row[3] or '').strip() if len(row) > 3 else ''
+                payee = (row[4] or '—').strip() if len(row) > 4 else '—'
+                item_name = row[5] if len(row) > 5 else ''
+                vote_name = (row[6] or '—').strip().upper() if len(row) > 6 else '—'
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'reference': ref or '—',
+                'payee': payee,
+                'method_label': method,
+                'type_label': 'Supplier payment',
+                'amount_display': _format_kes_amount(amt),
+                '_amount': amt,
+                '_flow': 'out',
+                'vote_name': vote_name,
+                'particulars_extra': item_name,
+            })
+    except Exception as e:
+        print(f"_finance_expenditure_books_cheque_register payments: {e}")
+
+    where_in = ['sp.amount_paid > 0', 'ft.total_amount > 0']
+    params_in = []
+    date_in, params_date_in = _finance_report_date_clause('sp.payment_date', filters)
+    if date_in:
+        where_in.extend(date_in)
+        params_in.extend(params_date_in)
+    try:
+        cursor.execute(
+            f"""
+            SELECT sp.payment_date, sp.amount_paid, sp.payment_method,
+                   sp.reference_number, sp.transaction_id, s.full_name,
+                   (sp.amount_paid * fi.amount / ft.total_amount) AS vote_amount,
+                   UPPER(TRIM(fi.item_name)) AS vote_name
+            FROM student_payments sp
+            INNER JOIN fee_items fi ON fi.fee_structure_id = sp.fee_structure_id
+            INNER JOIN (
+                SELECT fee_structure_id, COALESCE(SUM(amount), 0) AS total_amount
+                FROM fee_items GROUP BY fee_structure_id
+            ) ft ON ft.fee_structure_id = sp.fee_structure_id
+            LEFT JOIN students s ON s.student_id = sp.student_id
+            WHERE {' AND '.join(where_in)}
+            ORDER BY sp.payment_date DESC, sp.id DESC
+            LIMIT 2000
+            """,
+            tuple(params_in),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('payment_date')
+                amt = float(row.get('vote_amount') or 0)
+                method = (row.get('payment_method') or '—').strip() or '—'
+                ref = (row.get('reference_number') or row.get('transaction_id') or '').strip()
+                payee = (row.get('full_name') or '—').strip() or '—'
+                vote_name = (row.get('vote_name') or '—').strip().upper() or '—'
+            else:
+                pd = row[0]
+                amt = float(row[6] or 0) if len(row) > 6 else 0.0
+                method = (row[2] or '—').strip() if len(row) > 2 else '—'
+                ref = (row[3] or row[4] or '').strip() if len(row) > 4 else ''
+                payee = (row[5] or '—').strip() if len(row) > 5 else '—'
+                vote_name = (row[7] or '—').strip().upper() if len(row) > 7 else '—'
+            if amt <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'reference': ref or '—',
+                'payee': payee,
+                'method_label': method,
+                'type_label': 'Fee collection',
+                'amount_display': _format_kes_amount(amt),
+                '_amount': amt,
+                '_flow': 'in',
+                'vote_name': vote_name,
+            })
+    except Exception as e:
+        print(f"_finance_expenditure_books_cheque_register collections: {e}")
+
+    return rows[:2000]
+
+
+def _finance_expenditure_books_payroll_lines(cursor, filters):
+    """School-wide payroll lines for expenditure books payroll ledger."""
+    return _finance_vote_payroll_ledger_rows(cursor, filters, None)
+
+
+def _finance_vote_general_ledger_rows(cursor, filters, vote_name):
+    """Double-entry style ledger for a vote (collections = credit, payments = debit)."""
+    detail = _finance_report_expenditure_vote_detail_rows(cursor, filters, vote_name)
+    detail.sort(key=lambda r: (r.get('date') or '', r.get('_sort_ts', 0)))
+    running = 0.0
+    rows = []
+    for r in detail:
+        amt = float(r.get('amount') or 0)
+        if r.get('flow') == 'in':
+            debit, credit = 0.0, amt
+        else:
+            debit, credit = amt, 0.0
+        running += credit - debit
+        rows.append({
+            'date': r.get('date', '—'),
+            'reference': r.get('reference', '—'),
+            'description': f"{r.get('type_label', '')} · {r.get('payee', '')}".strip(' · ') or r.get('description', '—'),
+            'debit_display': _format_kes_amount(debit) if debit else '—',
+            'credit_display': _format_kes_amount(credit) if credit else '—',
+            'balance_display': _format_kes_amount(running),
+        })
+    rows.reverse()
+    return rows[:500]
+
+
+def _finance_vote_expenditure_ledger_rows(cursor, filters, vote_name):
+    """Expenditure outflows only for a vote."""
+    detail = _finance_report_expenditure_vote_detail_rows(cursor, filters, vote_name)
+    rows = []
+    for r in detail:
+        if r.get('flow') != 'out':
+            continue
+        rows.append({
+            'date': r.get('date', '—'),
+            'reference': r.get('reference', '—'),
+            'payee': r.get('payee', '—'),
+            'description': r.get('description', '—'),
+            'amount_display': r.get('amount_display', '0.00'),
+            '_sort_ts': r.get('_sort_ts', 0),
+        })
+    rows.sort(key=lambda x: x.get('_sort_ts', 0), reverse=True)
+    return rows[:500]
+
+
+def _finance_vote_accounts_payable_ledger_rows(cursor, filters, vote_name):
+    """Invoice and payment lines for vote AP subsidiary ledger (chronological listing)."""
+    vote_name = (vote_name or '').strip().upper()
+    if not vote_name:
+        return []
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_inventory_items_table(cursor)
+    ensure_store_suppliers_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+    lines = []
+    try:
+        cursor.execute(
+            """
+            SELECT m.id, m.created_at, m.reference_number, m.total_amount,
+                   m.paid_to_company_name, si.item_name,
+                   sup.company_name AS supplier_name
+            FROM store_stock_movements m
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            WHERE m.movement_type = 'in'
+              AND UPPER(TRIM(si.item_category)) = %s
+            ORDER BY m.created_at ASC, m.id ASC
+            LIMIT 1000
+            """,
+            (vote_name,),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('created_at')
+                invoiced = float(row.get('total_amount') or 0)
+                ref = (row.get('reference_number') or '').strip()
+                supplier = (row.get('supplier_name') or row.get('paid_to_company_name') or '—').strip() or '—'
+                item_name = (row.get('item_name') or '').strip()
+                sort_id = int(row.get('id') or 0)
+            else:
+                sort_id = int(row[0] or 0)
+                pd = row[1]
+                ref = (row[2] or '').strip() if len(row) > 2 else ''
+                invoiced = float(row[3] or 0) if len(row) > 3 else 0.0
+                supplier = (row[6] or row[4] or '—').strip() if len(row) > 4 else '—'
+                item_name = (row[5] or '').strip() if len(row) > 5 else ''
+            if invoiced <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else sort_id
+            lines.append({
+                '_sort_ts': sort_ts,
+                '_txn_type': 'invoice',
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'reference': ref or '—',
+                'supplier': supplier,
+                'particulars': f'Invoice — {item_name or "Stock-in"}',
+                '_invoice': invoiced,
+                '_payment': 0.0,
+            })
+    except Exception as e:
+        print(f"_finance_vote_accounts_payable_ledger_rows invoices: {e}")
+
+    try:
+        cursor.execute(
+            """
+            SELECT pl.id, pl.created_at, pl.amount_paid, pl.payment_reference,
+                   pl.paid_to_company_name, si.item_name,
+                   sup.company_name AS supplier_name
+            FROM store_stock_in_payment_lines pl
+            INNER JOIN store_stock_movements m ON m.id = pl.movement_id
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            WHERE m.movement_type = 'in'
+              AND UPPER(TRIM(si.item_category)) = %s
+            ORDER BY pl.created_at ASC, pl.id ASC
+            LIMIT 2000
+            """,
+            (vote_name,),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('created_at')
+                paid = float(row.get('amount_paid') or 0)
+                ref = (row.get('payment_reference') or '').strip()
+                supplier = (row.get('supplier_name') or row.get('paid_to_company_name') or '—').strip() or '—'
+                item_name = (row.get('item_name') or '').strip()
+                sort_id = int(row.get('id') or 0)
+            else:
+                sort_id = int(row[0] or 0)
+                pd = row[1]
+                paid = float(row[2] or 0)
+                ref = (row[3] or '').strip() if len(row) > 3 else ''
+                supplier = (row[6] or row[4] or '—').strip() if len(row) > 4 else '—'
+                item_name = (row[5] or '').strip() if len(row) > 5 else ''
+            if paid <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else sort_id
+            lines.append({
+                '_sort_ts': sort_ts,
+                '_txn_type': 'payment',
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'reference': ref or '—',
+                'supplier': supplier,
+                'particulars': f'Payment — {item_name or "Stock-in"}',
+                '_invoice': 0.0,
+                '_payment': paid,
+            })
+    except Exception as e:
+        print(f"_finance_vote_accounts_payable_ledger_rows payments: {e}")
+    return lines
+
+
+def _finance_vote_payroll_ledger_rows(cursor, filters, vote_name):
+    """School-wide salary payments in the report period (not vote-specific)."""
+    where, params = _finance_report_date_clause('esp.payment_date', filters)
+    sql = """
+        SELECT esp.payment_date, esp.amount_paid, esp.payment_method, esp.reference_number,
+               e.full_name, es.payment_period
+        FROM employee_salary_payments esp
+        INNER JOIN employee_salaries es ON es.id = esp.salary_id
+        INNER JOIN employees e ON e.id = es.employee_id
+    """
+    if where:
+        sql += ' WHERE ' + ' AND '.join(where)
+    sql += ' ORDER BY esp.payment_date ASC, esp.id ASC LIMIT 500'
+    rows = []
+    try:
+        cursor.execute(sql, tuple(params))
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('payment_date')
+                amt = float(row.get('amount_paid') or 0)
+                ref = (row.get('reference_number') or '').strip()
+                name = (row.get('full_name') or '—').strip() or '—'
+                period = (row.get('payment_period') or '').strip()
+                method = (row.get('payment_method') or '').strip()
+            else:
+                pd, amt = row[0], float(row[1] or 0)
+                method = row[2] if len(row) > 2 else ''
+                ref = (row[3] or '').strip() if len(row) > 3 else ''
+                name = (row[4] or '—').strip() if len(row) > 4 else '—'
+                period = (row[5] or '').strip() if len(row) > 5 else ''
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'reference': ref or '—',
+                'payee': name,
+                'pay_period': period or '—',
+                'method_label': method or '—',
+                'amount_display': _format_kes_amount(amt),
+                '_amount': amt,
+            })
+    except Exception as e:
+        print(f"_finance_vote_payroll_ledger_rows: {e}")
+    return rows
+
+
+def _finance_vote_cheque_register_rows(cursor, filters, vote_name):
+    """All payment lines for a vote with method and reference."""
+    vote_name = (vote_name or '').strip().upper()
+    if not vote_name:
+        return []
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+    ensure_store_inventory_items_table(cursor)
+    ensure_fee_items_finance_account_column(cursor)
+    rows = []
+
+    where_out = [
+        "m.movement_type = 'in'",
+        'UPPER(TRIM(si.item_category)) = %s',
+    ]
+    params_out = [vote_name]
+    date_out, params_date_out = _finance_report_date_clause('pl.created_at', filters)
+    if date_out:
+        where_out.extend(date_out)
+        params_out.extend(params_date_out)
+    try:
+        cursor.execute(
+            f"""
+            SELECT pl.created_at, pl.amount_paid, pl.payment_method, pl.payment_reference,
+                   pl.paid_to_company_name, si.item_name
+            FROM store_stock_in_payment_lines pl
+            INNER JOIN store_stock_movements m ON m.id = pl.movement_id
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            WHERE {' AND '.join(where_out)}
+            ORDER BY pl.created_at DESC, pl.id DESC
+            LIMIT 500
+            """,
+            tuple(params_out),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('created_at')
+                amt = float(row.get('amount_paid') or 0)
+                ref = (row.get('payment_reference') or '').strip()
+                payee = (row.get('paid_to_company_name') or '—').strip() or '—'
+                method = (row.get('payment_method') or '—').strip() or '—'
+                item_name = (row.get('item_name') or '').strip()
+            else:
+                pd, amt = row[0], float(row[1] or 0)
+                method = (row[2] or '—').strip() if len(row) > 2 else '—'
+                ref = (row[3] or '').strip() if len(row) > 3 else ''
+                payee = (row[4] or '—').strip() if len(row) > 4 else '—'
+                item_name = row[5] if len(row) > 5 else ''
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'reference': ref or '—',
+                'payee': payee,
+                'method_label': method,
+                'type_label': 'Supplier payment',
+                'amount_display': _format_kes_amount(amt),
+                '_amount': amt,
+                '_flow': 'out',
+            })
+    except Exception as e:
+        print(f"_finance_vote_cheque_register_rows payments: {e}")
+
+    where_in = [
+        'sp.amount_paid > 0',
+        'ft.total_amount > 0',
+        'UPPER(TRIM(fi.item_name)) = %s',
+    ]
+    params_in = [vote_name]
+    date_in, params_date_in = _finance_report_date_clause('sp.payment_date', filters)
+    if date_in:
+        where_in.extend(date_in)
+        params_in.extend(params_date_in)
+    try:
+        cursor.execute(
+            f"""
+            SELECT sp.payment_date, sp.amount_paid, sp.payment_method,
+                   sp.reference_number, sp.transaction_id, s.full_name,
+                   (sp.amount_paid * fi.amount / ft.total_amount) AS vote_amount
+            FROM student_payments sp
+            INNER JOIN fee_items fi ON fi.fee_structure_id = sp.fee_structure_id
+            INNER JOIN (
+                SELECT fee_structure_id, COALESCE(SUM(amount), 0) AS total_amount
+                FROM fee_items GROUP BY fee_structure_id
+            ) ft ON ft.fee_structure_id = sp.fee_structure_id
+            LEFT JOIN students s ON s.student_id = sp.student_id
+            WHERE {' AND '.join(where_in)}
+            ORDER BY sp.payment_date DESC, sp.id DESC
+            LIMIT 500
+            """,
+            tuple(params_in),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                pd = row.get('payment_date')
+                amt = float(row.get('vote_amount') or 0)
+                method = (row.get('payment_method') or '—').strip() or '—'
+                ref = (row.get('reference_number') or row.get('transaction_id') or '').strip()
+                payee = (row.get('full_name') or '—').strip() or '—'
+            else:
+                pd = row[0]
+                amt = float(row[6] or 0) if len(row) > 6 else 0.0
+                method = (row[2] or '—').strip() if len(row) > 2 else '—'
+                ref = (row[3] or row[4] or '').strip() if len(row) > 4 else ''
+                payee = (row[5] or '—').strip() if len(row) > 5 else '—'
+            if amt <= 0:
+                continue
+            sort_ts = pd.timestamp() if pd and hasattr(pd, 'timestamp') else 0
+            rows.append({
+                '_sort_ts': sort_ts,
+                'date': pd.strftime('%Y-%m-%d') if pd and hasattr(pd, 'strftime') else '—',
+                'reference': ref or '—',
+                'payee': payee,
+                'method_label': method,
+                'type_label': 'Fee collection',
+                'amount_display': _format_kes_amount(amt),
+                '_amount': amt,
+                '_flow': 'in',
+            })
+    except Exception as e:
+        print(f"_finance_vote_cheque_register_rows collections: {e}")
+
+    return rows[:500]
+
+
+def _finance_report_audit_rows(cursor, filters):
+    rows = []
+    src = filters.get('source') or 'all'
+
+    if src in ('all', 'fees'):
+        where, params = _finance_report_date_clause('spa.changed_at', filters)
+        sql = """
+            SELECT spa.changed_at, spa.action_type, spa.field_name,
+                   spa.old_value, spa.new_value, s.full_name, e.full_name AS emp_name,
+                   sp.reference_number
+            FROM student_payment_audit spa
+            LEFT JOIN students s ON s.student_id = spa.student_id
+            LEFT JOIN employees e ON e.id = spa.changed_by
+            LEFT JOIN student_payments sp ON sp.id = spa.payment_id
+        """
+        if where:
+            sql += ' WHERE ' + ' AND '.join(where)
+        sql += ' ORDER BY spa.changed_at DESC LIMIT 300'
+        try:
+            cursor.execute(sql, tuple(params))
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    ca = row.get('changed_at')
+                    action = row.get('action_type') or '—'
+                    field = row.get('field_name') or ''
+                    student = row.get('full_name') or '—'
+                    emp = row.get('emp_name') or '—'
+                    ref = row.get('reference_number') or '—'
+                    detail = field or f"{row.get('old_value')} → {row.get('new_value')}"
+                else:
+                    ca, action, field = row[0], row[1], row[2]
+                    student, emp, ref = row[6], row[7], row[8]
+                    detail = field or '—'
+                rows.append({
+                    'date': ca.strftime('%Y-%m-%d %H:%M') if ca and hasattr(ca, 'strftime') else '—',
+                    'audit_type': 'Fee payment',
+                    'action': action,
+                    'reference': ref or '—',
+                    'subject': student,
+                    'detail': (detail or '—')[:120],
+                    'by': emp,
+                })
+        except Exception as e:
+            print(f"_finance_report_audit_rows fees: {e}")
+
+    if src in ('all', 'store', 'payment', 'misc'):
+        audit_entries, _ = _fetch_all_expense_audit_entries(cursor, source_filter=src if src in ('store', 'payment', 'misc') else 'all', limit=200)
+        for entry in audit_entries:
+            created = entry.get('created_at')
+            if filters.get('date_from') and created:
+                d = created.strftime('%Y-%m-%d') if hasattr(created, 'strftime') else str(created)[:10]
+                if d < filters['date_from']:
+                    continue
+            if filters.get('date_to') and created:
+                d = created.strftime('%Y-%m-%d') if hasattr(created, 'strftime') else str(created)[:10]
+                if d > filters['date_to']:
+                    continue
+            rows.append({
+                'date': entry.get('created_at_display') or '—',
+                'audit_type': 'Expense',
+                'action': entry.get('action_label') or '—',
+                'reference': entry.get('reference_number') or '—',
+                'subject': entry.get('payee_name') or '—',
+                'detail': (entry.get('description') or '—')[:120],
+                'by': entry.get('recorded_by_name') or '—',
+            })
+
+    if src in ('all', 'salary'):
+        where, params = _finance_report_date_clause('esa.changed_at', filters)
+        try:
+            _ensure_salary_audit_payment_column(cursor)
+            sql = """
+                SELECT esa.changed_at, esa.action_type, esa.field_name,
+                       esa.old_value, esa.new_value, e.full_name
+                FROM employee_salary_audits esa
+                LEFT JOIN employees e ON e.id = esa.changed_by
+            """
+            if where:
+                sql += ' WHERE ' + ' AND '.join(where)
+            sql += ' ORDER BY esa.changed_at DESC LIMIT 200'
+            cursor.execute(sql, tuple(params))
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    ca = row.get('changed_at')
+                    action = row.get('action_type') or '—'
+                    emp = row.get('full_name') or '—'
+                    field = row.get('field_name') or ''
+                else:
+                    ca, action, field, _, _, emp = row[0], row[1], row[2], row[3], row[4], row[5]
+                rows.append({
+                    'date': ca.strftime('%Y-%m-%d %H:%M') if ca and hasattr(ca, 'strftime') else '—',
+                    'audit_type': 'Salary',
+                    'action': action,
+                    'reference': '—',
+                    'subject': emp,
+                    'detail': field or '—',
+                    'by': emp,
+                })
+        except Exception as e:
+            print(f"_finance_report_audit_rows salary: {e}")
+
+    rows.sort(key=lambda r: r.get('date') or '', reverse=True)
+    return rows[:500]
+
+
+def _finance_report_periodic_rows(cursor, filters):
+    period = filters.get('period') or 'monthly'
+    buckets = defaultdict(lambda: {'revenue': 0.0, 'expenditure': 0.0})
+
+    def bucket_key(dt):
+        if not dt or not hasattr(dt, 'strftime'):
+            return 'Unknown'
+        if period == 'daily':
+            return dt.strftime('%Y-%m-%d')
+        if period == 'weekly':
+            iso = dt.isocalendar()
+            return f'{iso[0]}-W{iso[1]:02d}'
+        if period == 'term':
+            cy, ct = _reports_current_year_term_ids(cursor)
+            return f'Term {ct or "current"}' if ct else dt.strftime('%Y-%m')
+        return dt.strftime('%Y-%m')
+
+    where, params = _finance_report_date_clause('sp.payment_date', filters)
+    sql = 'SELECT sp.payment_date, sp.amount_paid FROM student_payments sp'
+    if where:
+        sql += ' WHERE ' + ' AND '.join(where)
+    cursor.execute(sql, tuple(params))
+    for row in cursor.fetchall() or []:
+        pd = row.get('payment_date') if isinstance(row, dict) else row[0]
+        amt = float((row.get('amount_paid') if isinstance(row, dict) else row[1]) or 0)
+        buckets[bucket_key(pd)]['revenue'] += amt
+
+    where2, params2 = _finance_report_date_clause('ar.created_at', filters)
+    ensure_accountant_revenue_table(cursor)
+    sql2 = 'SELECT ar.created_at, ar.amount FROM accountant_revenue ar'
+    if where2:
+        sql2 += ' WHERE ' + ' AND '.join(where2)
+    cursor.execute(sql2, tuple(params2))
+    for row in cursor.fetchall() or []:
+        created = row.get('created_at') if isinstance(row, dict) else row[0]
+        amt = float((row.get('amount') if isinstance(row, dict) else row[1]) or 0)
+        buckets[bucket_key(created)]['revenue'] += amt
+
+    for exp_row in _finance_report_expenditure_rows(cursor, filters):
+        d = exp_row.get('date') or ''
+        try:
+            dt = datetime.strptime(d[:10], '%Y-%m-%d')
+        except ValueError:
+            dt = None
+        key = bucket_key(dt) if dt else 'Unknown'
+        buckets[key]['expenditure'] += float(exp_row.get('amount') or 0)
+
+    rows = []
+    for key in sorted(buckets.keys(), reverse=True):
+        rev = buckets[key]['revenue']
+        exp = buckets[key]['expenditure']
+        net = rev - exp
+        rows.append({
+            'period_label': key,
+            'revenue': rev,
+            'expenditure': exp,
+            'revenue_display': _format_kes_amount(rev),
+            'expenditure_display': _format_kes_amount(exp),
+            'net_display': _format_kes_amount(net),
+        })
+    return rows
+
+
+def _finance_report_revenue_summary(cursor, filters=None):
+    """Registered revenue totals for finance overview reports (date-filtered)."""
+    filters = filters or {}
+    ensure_accountant_revenue_table(cursor)
+    ensure_accountant_revenue_finance_account_column(cursor)
+    where, params = _finance_report_date_clause('ar.created_at', filters)
+    if filters.get('finance_account_id'):
+        where.append('ar.finance_account_id = %s')
+        params.append(int(filters['finance_account_id']))
+    clause = (' WHERE ' + ' AND '.join(where)) if where else ''
+    summary = {
+        'manual_count': 0,
+        'manual_amount': 0.0,
+        'government_count': 0,
+        'government_amount': 0.0,
+        'private_count': 0,
+        'private_amount': 0.0,
+        'total_amount': 0.0,
+        'total_display': '0.00',
+        'government_display': '0.00',
+        'private_display': '0.00',
+    }
+    try:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+            FROM accountant_revenue ar{clause}
+            """,
+            tuple(params),
+        )
+        all_row = cursor.fetchone()
+        if all_row:
+            if isinstance(all_row, dict):
+                summary['manual_count'] = int(all_row.get('cnt') or 0)
+                summary['manual_amount'] = float(all_row.get('total') or 0)
+            else:
+                summary['manual_count'] = int(all_row[0] or 0)
+                summary['manual_amount'] = float(all_row[1] or 0)
+        cursor.execute(
+            f"""
+            SELECT source_type, COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+            FROM accountant_revenue ar{clause}
+            GROUP BY source_type
+            """,
+            tuple(params),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                st = (row.get('source_type') or '').lower()
+                cnt = int(row.get('cnt') or 0)
+                total = float(row.get('total') or 0)
+            else:
+                st = (row[0] or '').lower()
+                cnt = int(row[1] or 0)
+                total = float(row[2] or 0)
+            if st == 'government':
+                summary['government_count'] = cnt
+                summary['government_amount'] = total
+            elif st == 'private':
+                summary['private_count'] = cnt
+                summary['private_amount'] = total
+    except Exception as e:
+        print(f"_finance_report_revenue_summary: {e}")
+    summary['total_amount'] = summary['manual_amount']
+    summary['total_display'] = _format_kes_amount(summary['manual_amount'])
+    summary['government_display'] = _format_kes_amount(summary['government_amount'])
+    summary['private_display'] = _format_kes_amount(summary['private_amount'])
+    return summary
+
+
+def _finance_report_statements_snapshot(cursor, filters=None):
+    """Lightweight income/balance snapshot for financial-statements report."""
+    filters = filters or {}
+    accounts = _fetch_accountant_accounts_breakdown_light(cursor)
+    fees = _finance_report_fee_payment_totals(cursor, filters)
+    rev_where, rev_params = _finance_report_date_clause('ar.created_at', filters)
+    manual_total = 0.0
+    try:
+        ensure_accountant_revenue_table(cursor)
+        sql = 'SELECT COALESCE(SUM(ar.amount), 0) AS total FROM accountant_revenue ar'
+        if rev_where:
+            sql += ' WHERE ' + ' AND '.join(rev_where)
+        cursor.execute(sql, tuple(rev_params))
+        row = cursor.fetchone()
+        if row:
+            manual_total = float(
+                row.get('total') if isinstance(row, dict) else (row[0] if row else 0) or 0
+            )
+    except Exception as e:
+        print(f"_finance_report_statements_snapshot revenue: {e}")
+
+    total_revenue = float(fees.get('total') or 0) + manual_total
+    exp_rows = _finance_report_expenditure_rows(cursor, filters)
+    total_outflow = sum(float(r.get('amount') or 0) for r in exp_rows)
+    net_position = total_revenue - total_outflow
+    disbursement_pct = 0.0
+    if total_revenue > 0:
+        disbursement_pct = round((total_outflow / total_revenue) * 100, 1)
+
+    return {
+        'accounts': accounts,
+        'revenue_position': {
+            'total_revenue': total_revenue,
+            'total_revenue_display': _format_kes_amount(total_revenue),
+            'total_outflows': total_outflow,
+            'total_outflows_display': _format_kes_amount(total_outflow),
+            'remaining': net_position,
+            'remaining_display': _format_kes_amount(net_position),
+        },
+        'outflows': {'disbursement_pct': disbursement_pct},
+        'total_obligations_display': '—',
+    }
+
+
+def _finance_report_revenue_rows_wrapped(cursor, limit=500, source_filter=None, finance_account_id=None, filters=None):
+    return _finance_report_revenue_rows_for_report(
+        cursor, limit, source_filter, finance_account_id, filters or {},
+    )
+
+
+def _finance_report_data_helpers():
+    return {
+        'fetch_revenue_summary': _finance_report_revenue_summary,
+        'fetch_revenue_rows': _finance_report_revenue_rows_wrapped,
+        'fetch_fee_payment_totals': _finance_report_fee_payment_totals,
+        'fetch_fee_payments': _finance_report_fee_payment_rows,
+        'fetch_expenditure_rows': _finance_report_expenditure_rows,
+        'fetch_expenditure_vote_summary': _finance_report_expenditure_vote_summary,
+        'fetch_expenditure_vote_detail_rows': _finance_report_expenditure_vote_detail_rows,
+        'fetch_all_votes_expenditure_detail_rows': _finance_all_votes_expenditure_detail_rows,
+        'fetch_expenditure_books_ap_lines': _finance_expenditure_books_ap_lines,
+        'fetch_expenditure_books_payroll_lines': _finance_expenditure_books_payroll_lines,
+        'fetch_expenditure_books_cheque_register': _finance_expenditure_books_cheque_register,
+        'fetch_vote_general_ledger_rows': _finance_vote_general_ledger_rows,
+        'fetch_vote_expenditure_ledger_rows': _finance_vote_expenditure_ledger_rows,
+        'fetch_vote_accounts_payable_ledger_rows': _finance_vote_accounts_payable_ledger_rows,
+        'fetch_vote_payroll_ledger_rows': _finance_vote_payroll_ledger_rows,
+        'fetch_vote_cheque_register_rows': _finance_vote_cheque_register_rows,
+        'fetch_dashboard_analytics': _finance_report_statements_snapshot,
+        'fetch_audit_rows': _finance_report_audit_rows,
+        'fetch_periodic_rows': _finance_report_periodic_rows,
+        'fetch_financial_year_context': _financial_year_report_context,
+    }
+
+
 def _finance_overview_has_access():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
@@ -55244,6 +63339,178 @@ def accountant_visual_analytics():
     )
 
 
+@app.route('/dashboard/employee/finance-settings', methods=['GET', 'POST'])
+@login_required
+def accountant_finance_settings():
+    """Accountant finance settings."""
+    redir = _accountant_guard()
+    if redir:
+        if request.method == 'POST':
+            return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+        return redir
+
+    if request.method == 'POST':
+        payload = request.get_json(silent=True) or {}
+        action = (payload.get('action') or 'create').strip().lower()
+        lock_meta = {}
+
+        connection = get_db_connection()
+        if not connection:
+            return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+        try:
+            with connection.cursor() as cursor:
+                if action == 'set_current':
+                    ok, message = _set_current_financial_year(
+                        cursor, payload.get('financial_year_id')
+                    )
+                    if not ok:
+                        return jsonify({'success': False, 'message': message}), 400
+                elif action == 'update':
+                    ok, message, _updated = _update_financial_year(
+                        cursor,
+                        payload.get('financial_year_id'),
+                        payload.get('financial_year_start'),
+                        payload.get('financial_year_end'),
+                        opening_balance_raw=payload.get('opening_balance'),
+                    )
+                    if not ok:
+                        return jsonify({'success': False, 'message': message}), 400
+                elif action == 'delete':
+                    ok, message = _delete_financial_year(
+                        cursor, payload.get('financial_year_id')
+                    )
+                    if not ok:
+                        return jsonify({'success': False, 'message': message}), 400
+                elif action in ('lock', 'unlock'):
+                    ok, message, lock_meta = _set_financial_year_locked(
+                        cursor,
+                        payload.get('financial_year_id'),
+                        locked=(action == 'lock'),
+                    )
+                    if not ok:
+                        return jsonify({'success': False, 'message': message}), 400
+                else:
+                    start_raw = payload.get('financial_year_start')
+                    end_raw = payload.get('financial_year_end')
+                    set_current = payload.get('set_as_current', True)
+                    ok, message, _created = _create_financial_year(
+                        cursor,
+                        start_raw,
+                        end_raw,
+                        set_current=set_current,
+                        opening_balance_raw=payload.get('opening_balance'),
+                    )
+                    if not ok:
+                        return jsonify({'success': False, 'message': message}), 400
+                connection.commit()
+                current = _fetch_current_financial_year(cursor)
+                all_years = _fetch_all_financial_years(cursor)
+                can_create, block_reason, suggested_opening = _financial_year_create_context(cursor)
+            response = {
+                'success': True,
+                'message': message,
+                'finance_settings': current,
+                'financial_years': all_years,
+                'can_create_financial_year': can_create,
+                'create_financial_year_blocked_reason': block_reason,
+                'suggested_opening_balance': suggested_opening,
+            }
+            if action in ('lock', 'unlock'):
+                response.update(lock_meta or {})
+            return jsonify(response)
+        except Exception as e:
+            print(f"accountant_finance_settings save: {e}")
+            connection.rollback()
+            return jsonify({'success': False, 'message': 'Could not save settings.'}), 500
+        finally:
+            connection.close()
+
+    finance_settings = {
+        'id': None,
+        'year_label': '',
+        'financial_year_start': '',
+        'financial_year_end': '',
+        'financial_year_start_display': '',
+        'financial_year_end_display': '',
+        'opening_balance': 0.0,
+        'opening_balance_display': '0.00',
+        'closing_balance': 0.0,
+        'closing_balance_display': '0.00',
+        'is_current': False,
+        'is_locked': False,
+        'is_configured': False,
+        'terms_in_period': [],
+        'terms_count': 0,
+    }
+    financial_years = []
+    can_create_financial_year = True
+    create_financial_year_blocked_reason = ''
+    suggested_opening_balance = 0.0
+    academic_calendar = {
+        'financial_year_start': '',
+        'financial_year_end': '',
+        'financial_year_start_display': '',
+        'financial_year_end_display': '',
+        'academic_year_name': '',
+        'terms': [],
+    }
+    academic_terms_catalog = []
+    academic_years_catalog = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                finance_settings = _fetch_current_financial_year(cursor)
+                financial_years = _fetch_all_financial_years(cursor)
+                can_create_financial_year, create_financial_year_blocked_reason, suggested_opening_balance = (
+                    _financial_year_create_context(cursor)
+                )
+                academic_calendar = _fetch_academic_calendar_reference(cursor)
+                academic_terms_catalog = _fetch_academic_terms_catalog(cursor)
+                academic_years_catalog = _fetch_academic_years_catalog(cursor)
+        except Exception as e:
+            print(f"accountant_finance_settings: {e}")
+        finally:
+            connection.close()
+    else:
+        flash('Could not connect to the database.', 'error')
+
+    return render_template(
+        'dashboards/accountant_finance_settings.html',
+        role=session.get('role', '').lower(),
+        finance_settings=finance_settings,
+        financial_years=financial_years,
+        can_create_financial_year=can_create_financial_year,
+        create_financial_year_blocked_reason=create_financial_year_blocked_reason,
+        suggested_opening_balance=suggested_opening_balance,
+        academic_calendar=academic_calendar,
+        academic_terms_catalog=academic_terms_catalog,
+        academic_years_catalog=academic_years_catalog,
+    )
+
+
+@app.route('/dashboard/employee/finance-settings/balances', methods=['GET'])
+@login_required
+def accountant_finance_settings_balances():
+    """Live closing balances for financial years on the settings page."""
+    redir = _accountant_guard()
+    if redir:
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            years = _fetch_financial_year_balance_snapshots(cursor)
+        return jsonify({'success': True, 'years': years})
+    except Exception as e:
+        print(f"accountant_finance_settings_balances: {e}")
+        return jsonify({'success': False, 'message': 'Could not load balances.'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/dashboard/employee/accounts')
 @login_required
 def accountant_accounts():
@@ -55279,6 +63546,7 @@ def accountant_accounts():
 
     form_open = request.args.get('register') in ('1', 'true', 'yes')
     open_edit_id = request.args.get('edit', type=int)
+    mpesa_account_presets = _get_mpesa_account_presets()
     return render_template(
         'dashboards/accountant_accounts.html',
         role=user_role,
@@ -55294,6 +63562,185 @@ def accountant_accounts():
         open_edit_account_id=open_edit_id if open_edit_id and open_edit_id > 0 else None,
         payment_mode_options=FINANCE_PAYMENT_MODES,
         mpesa_type_options=FINANCE_MPESA_TYPES,
+        mpesa_account_presets=mpesa_account_presets,
+    )
+
+
+@app.route('/dashboard/employee/accounts/petty-cash-book')
+@login_required
+def accountant_petty_cash_book():
+    """Petty cash book — receipts and payments with running balance."""
+    return _render_petty_cash_book_page()
+
+
+@app.route('/dashboard/employee/accounts/petty-cash-book/data')
+@login_required
+def accountant_petty_cash_book_data():
+    """JSON payload for live petty cash book filter updates."""
+    redir = _accountant_guard()
+    if redir:
+        return jsonify(success=False, message='Unauthorized.'), 403
+
+    ctx = _fetch_petty_cash_book_context({
+        'finance_account_id': request.args.get('finance_account_id', type=int),
+        'date_from': request.args.get('date_from'),
+        'date_to': request.args.get('date_to'),
+        'financial_year_id': request.args.get('financial_year_id', type=int),
+    })
+    if ctx.get('error'):
+        return jsonify(success=False, message=ctx['error']), 404
+
+    html = render_template(
+        'dashboards/includes/finance_account_report_body.html',
+        p=ctx['payload'],
+    )
+    account = ctx.get('account') or {}
+    return jsonify(
+        success=True,
+        html=html,
+        report_period_label=ctx.get('report_period_label'),
+        report_generated_at=ctx.get('report_generated_at'),
+        account_name=account.get('account_name') or '',
+        account_balance_display=account.get('current_balance_display') or '',
+    )
+
+
+def _petty_cash_expense_wants_ajax():
+    """True when the petty cash expense modal submits via fetch."""
+    return (
+        request.form.get('ajax') == '1'
+        or request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    )
+
+
+@app.route('/dashboard/employee/accounts/petty-cash-book/record-expense', methods=['POST'])
+@login_required
+def accountant_petty_cash_book_record_expense():
+    """Record a petty cash expense against a vote and debit the petty cash account."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    wants_ajax = _petty_cash_expense_wants_ajax()
+    account_id = request.form.get('finance_account_id', type=int)
+
+    def _back(open_expense=False, account_id=None):
+        url = employee_dashboard_path('accounts/petty-cash-book')
+        params = []
+        if account_id:
+            params.append(f'finance_account_id={int(account_id)}')
+        if open_expense:
+            params.append('expense=1')
+        fy = request.form.get('financial_year_id')
+        df = request.form.get('date_from')
+        dt = request.form.get('date_to')
+        if fy:
+            params.append(f'financial_year_id={fy}')
+        if df:
+            params.append(f'date_from={df}')
+        if dt:
+            params.append(f'date_to={dt}')
+        if params:
+            url += '?' + '&'.join(params)
+        return redirect(url)
+
+    def _fail(message, open_expense=True):
+        if wants_ajax:
+            return jsonify({'success': False, 'message': message}), 400
+        flash(message, 'error')
+        return _back(open_expense=open_expense, account_id=account_id)
+
+    recorded_by = (session.get('full_name') or session.get('username') or '').strip()
+    connection = get_db_connection()
+    if not connection:
+        return _fail('Could not connect to the database.')
+
+    try:
+        with connection.cursor() as cursor:
+            ok, message = _record_petty_cash_expense(cursor, request.form, recorded_by)
+            if not ok:
+                connection.rollback()
+                return _fail(message or 'Could not record expense.')
+
+            connection.commit()
+            flash(message, 'success')
+            if not wants_ajax:
+                return _back(account_id=account_id)
+
+            ctx = _fetch_petty_cash_book_context({
+                'finance_account_id': account_id,
+                'date_from': request.form.get('date_from'),
+                'date_to': request.form.get('date_to'),
+                'financial_year_id': request.form.get('financial_year_id', type=int),
+            })
+            html = render_template(
+                'dashboards/includes/finance_account_report_body.html',
+                p=ctx.get('payload') or {},
+            )
+            account = ctx.get('account') or {}
+            return jsonify(
+                success=True,
+                message=message,
+                html=html,
+                report_period_label=ctx.get('report_period_label'),
+                report_generated_at=ctx.get('report_generated_at'),
+                account_name=account.get('account_name') or '',
+                account_balance_display=account.get('current_balance_display') or '',
+                petty_cash_accounts=_fetch_petty_cash_accounts(cursor),
+                finance_accounts=_fetch_finance_accounts_for_disbursement_picker(cursor),
+                next_expense_reference=_generate_petty_cash_expense_reference(cursor),
+            )
+    except Exception as e:
+        connection.rollback()
+        print(f"accountant_petty_cash_book_record_expense: {e}")
+        return _fail('Could not record petty cash expense.')
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/accounts/<int:account_id>')
+@login_required
+def accountant_account_detail(account_id):
+    """Per-account summary — fees and income recorded to this account."""
+    return _render_finance_account_revenue_page(account_id)
+
+
+@app.route('/dashboard/employee/accounts/<int:account_id>/reports/<report_slug>')
+@login_required
+def accountant_account_finance_report(account_id, report_slug):
+    """Accountant report for one finance account (ledger, trial balance, etc.)."""
+    return _render_finance_account_report_page(account_id, report_slug)
+
+
+@app.route('/dashboard/employee/accounts/<int:account_id>/reports/<report_slug>/data')
+@login_required
+def accountant_account_finance_report_data(account_id, report_slug):
+    """JSON payload for live account report filter updates."""
+    redir = _accountant_guard()
+    if redir:
+        return jsonify(success=False, message='Unauthorized.'), 403
+
+    ctx = _fetch_finance_account_report_context(
+        account_id,
+        report_slug,
+        {
+            'date_from': request.args.get('date_from'),
+            'date_to': request.args.get('date_to'),
+            'financial_year_id': request.args.get('financial_year_id', type=int),
+        },
+    )
+    if ctx.get('error'):
+        return jsonify(success=False, message=ctx['error']), 404
+
+    html = render_template(
+        'dashboards/includes/finance_account_report_body.html',
+        p=ctx['payload'],
+    )
+    return jsonify(
+        success=True,
+        html=html,
+        report_period_label=ctx.get('report_period_label'),
+        report_generated_at=ctx.get('report_generated_at'),
     )
 
 
@@ -55306,6 +63753,12 @@ def register_finance_account():
         return redir
 
     def _accounts_redirect(open_form=False):
+        after = (request.form.get('after_register') or '').strip().lower()
+        if after == 'petty-cash-book':
+            url = employee_dash_url('accounts/petty-cash-book')
+            if open_form:
+                url += '?register=1'
+            return url
         url = employee_dash_url('accounts')
         if open_form:
             url += '?register=1'
@@ -55313,6 +63766,59 @@ def register_finance_account():
 
     redirect_url = _accounts_redirect()
     redirect_url_open = _accounts_redirect(open_form=True)
+
+    after_register = (request.form.get('after_register') or '').strip().lower()
+    existing_account_id = request.form.get('existing_finance_account_id', type=int)
+    category_raw_early = (request.form.get('account_category') or '').strip().lower()
+    if (
+        after_register == 'petty-cash-book'
+        and category_raw_early == 'petty cash'
+        and existing_account_id
+    ):
+        petty_cash_vote_names = _parse_expense_vote_names_from_form(request.form)
+        if not petty_cash_vote_names:
+            flash('Select at least one expense vote for this petty cash account.', 'error')
+            return redirect(redirect_url_open)
+        selected_payment_modes = _parse_finance_account_payment_mode_list(request.form)
+        payment_records, payment_err = _prepare_finance_account_payment_records(
+            request.form, selected_payment_modes
+        )
+        if payment_err:
+            flash(payment_err, 'error')
+            return redirect(redirect_url_open)
+        description = normalize_text(
+            request.form.get('account_description'), allow_empty=True
+        )
+        connection = get_db_connection()
+        if not connection:
+            flash('Could not connect to the database.', 'error')
+            return redirect(redirect_url_open)
+        try:
+            with connection.cursor() as cursor:
+                ok, message = _link_existing_account_to_petty_cash_book(
+                    cursor,
+                    existing_account_id,
+                    description,
+                    petty_cash_vote_names,
+                    payment_records,
+                )
+                if ok:
+                    connection.commit()
+                    flash(message, 'success')
+                    return redirect(
+                        employee_dash_url('accounts/petty-cash-book')
+                        + f'?finance_account_id={int(existing_account_id)}'
+                    )
+                connection.rollback()
+                flash(message or 'Could not link account.', 'error')
+                return redirect(redirect_url_open)
+        except Exception as e:
+            connection.rollback()
+            print(f"register_finance_account link petty cash: {e}")
+            flash('Could not link the account to the petty cash book.', 'error')
+            return redirect(redirect_url_open)
+        finally:
+            connection.close()
 
     fields, field_err = _prepare_finance_account_fields_from_form(request.form)
     if field_err:
@@ -55349,7 +63855,14 @@ def register_finance_account():
     finally:
         connection.close()
 
-    if not level_ids:
+    is_petty_cash = (category or '').strip().lower() == 'petty cash'
+    petty_cash_vote_names = []
+    if is_petty_cash:
+        petty_cash_vote_names = _parse_expense_vote_names_from_form(request.form)
+        if not petty_cash_vote_names:
+            flash('Select at least one expense vote for this petty cash account.', 'error')
+            return redirect(redirect_url_open)
+    elif not level_ids:
         flash('Select at least one academic level to link to this account.', 'error')
         return redirect(redirect_url_open)
 
@@ -55381,15 +63894,21 @@ def register_finance_account():
                 ),
             )
             account_id = cursor.lastrowid
-            _save_finance_account_academic_levels(cursor, account_id, level_ids)
+            if is_petty_cash:
+                _save_finance_account_expense_votes(cursor, account_id, petty_cash_vote_names)
+            elif level_ids:
+                _save_finance_account_academic_levels(cursor, account_id, level_ids)
             _save_finance_account_payment_methods(cursor, account_id, payment_records)
             connection.commit()
-            level_count = len(level_ids)
-            flash(
-                f'Account "{name}" ({category}) registered and linked to '
-                f'{level_count} class{"es" if level_count != 1 else ""}.',
-                'success',
-            )
+            if is_petty_cash:
+                flash(f'Petty cash account "{name}" registered.', 'success')
+            else:
+                level_count = len(level_ids)
+                flash(
+                    f'Account "{name}" ({category}) registered and linked to '
+                    f'{level_count} class{"es" if level_count != 1 else ""}.',
+                    'success',
+                )
     except Exception as e:
         print(f"register_finance_account: {e}")
         flash('Could not save the account. Please try again.', 'error')
@@ -55592,6 +64111,8 @@ def accountant_revenue():
     raw_account = (request.args.get('account') or '').strip()
     if raw_account.isdigit():
         finance_account_id = int(raw_account)
+    if finance_account_id:
+        return _render_finance_account_revenue_page(finance_account_id)
 
     revenue_rows = []
     fee_payment_rows = []
@@ -56689,31 +65210,77 @@ def allocate_requisition_supplier(requisition_id):
     return redirect(employee_dash_url('notifications'))
 
 
-# Integration Settings Route (for technicians)
-@app.route('/dashboard/employee/integration-settings')
-@login_required
-def integration_settings():
-    """Integration settings page for technicians"""
-    user_role = session.get('role', '').lower()
-    employee_id = session.get('employee_id') or session.get('user_id')
-    
-    # Check permission OR role-based access - allow technicians
-    has_access = check_permission_or_role('integration_settings', 
-                                         allowed_roles=['technician'])
-    
+# Integration Settings (technicians)
+def _read_mpesa_daraja_stored_raw(cursor):
+    """UI-only mpesa_daraja JSON from integration_settings (enabled + account presets)."""
+    import daraja_mpesa as daraja
+
+    try:
+        cursor.execute(
+            "SELECT settings_json FROM integration_settings WHERE integration_type = %s LIMIT 1",
+            ('mpesa_daraja',),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return daraja.mpesa_daraja_ui_payload(False)
+        raw = row.get('settings_json') if isinstance(row, dict) else row[0]
+        stored = json.loads(raw) if raw else {}
+        if not isinstance(stored, dict):
+            stored = {}
+        return daraja.mpesa_daraja_ui_payload(
+            enabled=bool(stored.get('enabled')),
+            mpesa_accounts=stored.get('mpesa_accounts'),
+        )
+    except Exception as e:
+        print(f"_read_mpesa_daraja_stored_raw: {e}")
+        return daraja.mpesa_daraja_ui_payload(False)
+
+
+def _write_mpesa_daraja_stored_raw(cursor, stored_payload):
+    import daraja_mpesa as daraja
+
+    payload = daraja.mpesa_daraja_ui_payload(
+        enabled=bool((stored_payload or {}).get('enabled')),
+        mpesa_accounts=(stored_payload or {}).get('mpesa_accounts'),
+    )
+    cursor.execute(
+        """
+        INSERT INTO integration_settings (integration_type, settings_json)
+        VALUES (%s, %s)
+        ON DUPLICATE KEY UPDATE settings_json = VALUES(settings_json)
+        """,
+        ('mpesa_daraja', json.dumps(payload)),
+    )
+
+
+def _get_mpesa_account_presets():
+    """School M-Pesa paybill/till profiles for accountant account registration."""
+    payload = _load_integration_settings_payload()
+    mpesa = payload.get('mpesa_daraja') or {}
+    return mpesa.get('mpesa_accounts') or []
+
+
+def _integration_settings_access_denied():
+    has_access = check_permission_or_role(
+        'integration_settings', allowed_roles=['technician']
+    )
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    
-    # Get integration settings from database if they exist
-    connection = get_db_connection()
-    integration_data = {
+    return None
+
+
+def _default_integration_settings_payload():
+    import daraja_mpesa as daraja
+
+    mpesa_defaults = daraja.mpesa_daraja_ui_payload(False)
+    return {
         'whatsapp': {
             'enabled': False,
             'api_key': '',
             'api_secret': '',
             'phone_number': '',
-            'webhook_url': ''
+            'webhook_url': '',
         },
         'email': {
             'enabled': False,
@@ -56722,7 +65289,7 @@ def integration_settings():
             'smtp_username': '',
             'smtp_password': '',
             'from_email': '',
-            'from_name': ''
+            'from_name': '',
         },
         'sms': {
             'enabled': False,
@@ -56730,43 +65297,232 @@ def integration_settings():
             'api_key': '',
             'api_secret': '',
             'username': '',
-            'sender_id': ''
-        }
+            'sender_id': '',
+        },
+        'mpesa_daraja': mpesa_defaults,
+        'ai': {
+            'enabled': False,
+            'provider': '',
+            'model': '',
+            'api_key': '',
+            'api_base_url': '',
+        },
     }
-    
+
+
+def _load_integration_settings_payload():
+    """Load integration_settings rows merged onto defaults."""
+    integration_data = _default_integration_settings_payload()
+    connection = get_db_connection()
+    if not connection:
+        return integration_data
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT integration_type, settings_json
+                FROM integration_settings
+                """
+            )
+            results = cursor.fetchall() or []
+            for result in results:
+                if isinstance(result, dict):
+                    integration_type = result.get('integration_type', '')
+                    settings_json = result.get('settings_json', '{}')
+                else:
+                    integration_type = result[0] if len(result) > 0 else ''
+                    settings_json = result[1] if len(result) > 1 else '{}'
+                try:
+                    settings = json.loads(settings_json) if settings_json else {}
+                except Exception:
+                    settings = {}
+                if integration_type == 'mpesa_daraja':
+                    import daraja_mpesa as daraja
+                    integration_data['mpesa_daraja'] = daraja.merge_daraja_settings(settings)
+                elif integration_type in integration_data:
+                    integration_data[integration_type].update(settings)
+    except Exception as e:
+        print(f"Integration settings table may not exist: {e}")
+    finally:
+        connection.close()
+    return integration_data
+
+
+def _integration_settings_google_context():
+    backup_settings = {
+        'google_drive_oauth_token': None,
+        'google_drive_connected_email': '',
+    }
+    connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
-                # Check if integration_settings table exists and fetch data
-                cursor.execute("""
-                    SELECT integration_type, settings_json 
-                    FROM integration_settings
-                """)
-                results = cursor.fetchall()
-                if results:
-                    import json
-                    for result in results:
-                        if isinstance(result, dict):
-                            integration_type = result.get('integration_type', '')
-                            settings_json = result.get('settings_json', '{}')
-                        else:
-                            integration_type = result[0] if len(result) > 0 else ''
-                            settings_json = result[1] if len(result) > 1 else '{}'
-                        try:
-                            settings = json.loads(settings_json) if settings_json else {}
-                            if integration_type in integration_data:
-                                integration_data[integration_type].update(settings)
-                        except Exception:
-                            pass
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables
+                    WHERE table_schema = DATABASE()
+                    AND table_name = 'backup_settings'
+                    """
+                )
+                if cursor.fetchone().get('count', 0) > 0:
+                    backup_settings = _load_backup_settings_row(cursor)
         except Exception as e:
-            # Table might not exist yet, that's okay
-            print(f"Integration settings table may not exist: {e}")
+            print(f'_integration_settings_google_context: {e}')
         finally:
             connection.close()
-    
-    return render_template('dashboards/integration_settings.html', 
-                         integration_data=integration_data,
-                         role=user_role)
+
+    user_connected = gdrive_backup.is_user_connected(backup_settings)
+    oauth_ready = gdrive_backup.oauth_client_configured()
+    drive_ok, drive_message = (False, 'Sign in with Google to connect your Drive.')
+    if user_connected or gdrive_backup.service_account_configured():
+        try:
+            drive_ok, drive_message = gdrive_backup.test_connection(backup_settings)
+        except Exception as e:
+            drive_message = str(e)
+
+    return {
+        'google_oauth_ready': oauth_ready,
+        'google_user_connected': user_connected,
+        'google_connected_email': backup_settings.get('google_drive_connected_email') or '',
+        'google_service_account_configured': gdrive_backup.service_account_configured(),
+        'google_drive_message': drive_message if (user_connected or gdrive_backup.service_account_configured()) else (
+            'Configure OAuth in your environment file (.env / .env.local) or connect via Google Drive backup.'
+        ),
+        'google_drive_ok': drive_ok,
+    }
+
+
+@app.route('/dashboard/employee/integration-settings')
+@login_required
+def integration_settings():
+    """Integration settings hub for technicians."""
+    denied = _integration_settings_access_denied()
+    if denied:
+        return denied
+    return render_template(
+        'dashboards/integration_settings.html',
+        role=session.get('role', '').lower(),
+    )
+
+
+@app.route('/dashboard/employee/integration-settings/google')
+@login_required
+def integration_settings_google():
+    """Google integration settings (OAuth, Drive)."""
+    denied = _integration_settings_access_denied()
+    if denied:
+        return denied
+    ctx = _integration_settings_google_context()
+    return render_template(
+        'dashboards/integration_settings_google.html',
+        role=session.get('role', '').lower(),
+        **ctx,
+    )
+
+
+@app.route('/dashboard/employee/integration-settings/communication')
+@login_required
+def integration_settings_communication():
+    """Communication integrations: WhatsApp, email, SMS."""
+    denied = _integration_settings_access_denied()
+    if denied:
+        return denied
+    return render_template(
+        'dashboards/integration_settings_communication.html',
+        integration_data=_load_integration_settings_payload(),
+        role=session.get('role', '').lower(),
+    )
+
+
+@app.route('/dashboard/employee/integration-settings/finance')
+@login_required
+def integration_settings_finance():
+    """Finance integrations: M-Pesa Daraja."""
+    denied = _integration_settings_access_denied()
+    if denied:
+        return denied
+    import daraja_mpesa as daraja
+
+    payload = _load_integration_settings_payload()
+    merged = daraja.merge_daraja_settings(payload.get('mpesa_daraja'))
+    stk_url, stk_err = daraja.resolve_stk_callback_url(
+        merged,
+        fallback_url=url_for('mpesa_stk_callback', _external=True),
+    )
+    mpesa_ui = daraja.merge_daraja_settings(payload.get('mpesa_daraja'))
+    return render_template(
+        'dashboards/integration_settings_finance.html',
+        integration_data=payload,
+        mpesa_account_presets=mpesa_ui.get('mpesa_accounts') or [],
+        daraja_env_status=daraja.daraja_env_status(),
+        daraja_credentials_ready=daraja.credentials_configured(merged),
+        daraja_environment=merged.get('environment') or 'sandbox',
+        stk_callback_url=stk_url or url_for('mpesa_stk_callback', _external=True),
+        stk_callback_valid=bool(stk_url),
+        stk_callback_error=stk_err,
+        is_technician=session.get('role', '').lower() == 'technician',
+        role=session.get('role', '').lower(),
+    )
+
+
+@app.route('/dashboard/employee/integration-settings/finance/save', methods=['POST'])
+@login_required
+def integration_settings_finance_save():
+    """Persist mpesa_daraja integration settings."""
+    if not check_permission_or_role('integration_settings', allowed_roles=['technician']):
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    import daraja_mpesa as daraja
+
+    payload = request.get_json(silent=True) or {}
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            stored = _read_mpesa_daraja_stored_raw(cursor)
+            if 'enabled' in payload:
+                stored['enabled'] = bool(payload.get('enabled'))
+            if 'mpesa_accounts' in payload:
+                stored['mpesa_accounts'] = daraja.normalize_mpesa_account_presets(
+                    payload.get('mpesa_accounts'),
+                )
+            _write_mpesa_daraja_stored_raw(cursor, stored)
+            connection.commit()
+            ui_settings = _read_mpesa_daraja_stored_raw(cursor)
+        msg = 'M-Pesa parent payments enabled.' if ui_settings.get('enabled') else 'M-Pesa parent payments disabled.'
+        if 'mpesa_accounts' in payload:
+            count = len(ui_settings.get('mpesa_accounts') or [])
+            msg = f'Saved {count} school M-Pesa account profile{"s" if count != 1 else ""}.'
+        elif ui_settings.get('enabled') and not daraja.credentials_configured(daraja.merge_daraja_settings(ui_settings)):
+            msg += f' Add Daraja credentials to {env_file_label()} and restart the app.'
+        return jsonify({
+            'success': True,
+            'message': msg,
+            'mpesa_accounts': ui_settings.get('mpesa_accounts') or [],
+        })
+    except Exception as e:
+        print(f"integration_settings_finance_save: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not save settings.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/integration-settings/ai')
+@login_required
+def integration_settings_ai():
+    """AI provider integration settings."""
+    denied = _integration_settings_access_denied()
+    if denied:
+        return denied
+    return render_template(
+        'dashboards/integration_settings_ai.html',
+        integration_data=_load_integration_settings_payload(),
+        role=session.get('role', '').lower(),
+    )
 
 # Database Management Route (for technicians)
 @app.route('/database')
@@ -58948,6 +67704,26 @@ def delete_academic_level(level_id):
     finally:
         connection.close()
 
+def _academic_settings_form_response(success, message, http_status=200, **extra):
+    """Respond to academic year/term create POST; JSON when submitted via AJAX from academic-settings."""
+    wants_json = request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest'
+    if wants_json:
+        payload = {'success': success, 'message': message}
+        payload.update(extra)
+        return jsonify(payload), (http_status if not success else 200)
+
+    flash(message, 'success' if success else 'error')
+    return_to = request.form.get('return_to', '').strip().lower()
+    tab = request.form.get('tab', '').strip()
+    if return_to == 'academic-settings':
+        return redirect(url_for('academic_settings', tab=tab) if tab else url_for('academic_settings'))
+
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+
+
 # Academic Year Routes
 @app.route('/system-settings/academic-year', methods=['POST'])
 @login_required
@@ -58965,8 +67741,9 @@ def create_academic_year():
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_add_academic_year_permission):
-        flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('academic_settings') if user_role == 'accountant' or viewing_as_role == 'accountant' else url_for('system_settings'))
+        return _academic_settings_form_response(
+            False, 'You do not have permission to perform this action.', 403
+        )
     
     year_name = request.form.get('year_name', '').strip()
     start_date = request.form.get('start_date', '').strip()
@@ -58975,13 +67752,11 @@ def create_academic_year():
     is_current = request.form.get('is_current', 'false').lower() == 'true'
     
     if not year_name or not start_date or not end_date:
-        flash('All required fields must be filled.', 'error')
-        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+        return _academic_settings_form_response(False, 'All required fields must be filled.', 400)
     
     connection = get_db_connection()
     if not connection:
-        flash('Database connection error.', 'error')
-        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+        return _academic_settings_form_response(False, 'Database connection error.', 500)
     
     try:
         with connection.cursor() as cursor:
@@ -58994,17 +67769,22 @@ def create_academic_year():
                 INSERT INTO academic_years (year_name, start_date, end_date, status, is_current)
                 VALUES (%s, %s, %s, %s, %s)
             """, (year_name, start_date, end_date, status, is_current))
+            new_year_id = cursor.lastrowid
             
             connection.commit()
-            flash(f'Academic year "{year_name}" created successfully!', 'success')
+            return _academic_settings_form_response(
+                True,
+                f'Academic year "{year_name}" created successfully!',
+                year_id=new_year_id,
+            )
     except Exception as e:
         print(f"Error creating academic year: {e}")
         connection.rollback()
-        flash('An error occurred while creating the academic year.', 'error')
+        return _academic_settings_form_response(
+            False, 'An error occurred while creating the academic year.', 500
+        )
     finally:
         connection.close()
-    
-    return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
 
 @app.route('/system-settings/academic-year/<int:year_id>/update', methods=['POST'])
 @login_required
@@ -59267,8 +68047,9 @@ def create_term():
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_add_term_permission):
-        flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('academic_settings') if user_role == 'accountant' or viewing_as_role == 'accountant' else url_for('system_settings'))
+        return _academic_settings_form_response(
+            False, 'You do not have permission to perform this action.', 403
+        )
     
     term_name = request.form.get('term_name', '').strip()
     academic_year_id = request.form.get('academic_year_id', '').strip()
@@ -59278,13 +68059,11 @@ def create_term():
     status = request.form.get('status', 'draft').strip()
     
     if not term_name or not academic_year_id or not start_date or not end_date:
-        flash('All required fields must be filled.', 'error')
-        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+        return _academic_settings_form_response(False, 'All required fields must be filled.', 400)
     
     connection = get_db_connection()
     if not connection:
-        flash('Database connection error.', 'error')
-        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+        return _academic_settings_form_response(False, 'Database connection error.', 500)
     
     try:
         with connection.cursor() as cursor:
@@ -59295,8 +68074,7 @@ def create_term():
             academic_year = cursor.fetchone()
             
             if not academic_year:
-                flash('Selected academic year not found.', 'error')
-                return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+                return _academic_settings_form_response(False, 'Selected academic year not found.', 404)
             
             year_start = academic_year.get('start_date') if isinstance(academic_year, dict) else academic_year[0]
             year_end = academic_year.get('end_date') if isinstance(academic_year, dict) else academic_year[1]
@@ -59307,16 +68085,23 @@ def create_term():
             term_end = datetime.strptime(end_date, '%Y-%m-%d').date()
             
             if term_start < year_start:
-                flash(f'Term start date ({start_date}) must be on or after academic year start date ({year_start}).', 'error')
-                return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+                return _academic_settings_form_response(
+                    False,
+                    f'Term start date ({start_date}) must be on or after academic year start date ({year_start}).',
+                    400,
+                )
             
             if term_end > year_end:
-                flash(f'Term end date ({end_date}) must be on or before academic year end date ({year_end}).', 'error')
-                return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+                return _academic_settings_form_response(
+                    False,
+                    f'Term end date ({end_date}) must be on or before academic year end date ({year_end}).',
+                    400,
+                )
             
             if term_start > term_end:
-                flash('Term start date must be before or equal to term end date.', 'error')
-                return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+                return _academic_settings_form_response(
+                    False, 'Term start date must be before or equal to term end date.', 400
+                )
             
             # Get is_current from form (default to False)
             is_current = request.form.get('is_current', 'false').lower() == 'true'
@@ -59357,15 +68142,19 @@ def create_term():
                             continue  # Skip invalid IDs
             
             connection.commit()
-            flash(f'Term "{term_name}" created successfully!', 'success')
+            return _academic_settings_form_response(
+                True,
+                f'Term "{term_name}" created successfully!',
+                term_id=term_id,
+            )
     except Exception as e:
         print(f"Error creating term: {e}")
         connection.rollback()
-        flash('An error occurred while creating the term.', 'error')
+        return _academic_settings_form_response(
+            False, 'An error occurred while creating the term.', 500
+        )
     finally:
         connection.close()
-    
-    return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
 
 @app.route('/system-settings/term/<int:term_id>/update', methods=['POST'])
 @login_required

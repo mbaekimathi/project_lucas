@@ -1,0 +1,10 @@
+{% set _fr_slug = report_slug|default('') %}
+<nav class="no-print flex flex-wrap gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 mb-5" aria-label="Accounts report types">
+    {% for item in finance_report_nav|default([]) %}
+    <a href="{{ employee_dash_url('finance-overview/reports/' ~ item.slug) }}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition {% if _fr_slug == item.slug %}bg-teal-700 text-white shadow-sm{% else %}text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700{% endif %}">
+        <i class="fas {{ item.icon }} text-[10px] opacity-90"></i>
+        <span>{{ item.title }}</span>
+    </a>
+    {% endfor %}
+</nav>

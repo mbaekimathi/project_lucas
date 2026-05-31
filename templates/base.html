@@ -939,7 +939,7 @@
     {% endif %}
     {% block extra_head %}{% endblock %}
 </head>
-<body class="text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300 {% if public_site_topnav %}public-site-topnav public-site public-site-body{% else %}app-shell{% endif %}{% if portal_layout_enabled|default(false) %} role-portal-layout {{ portal_theme_class|default('role-theme-default') }}{% endif %} {% block body_class %}{% endblock %}"
+<body class="text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300 {% if public_site_topnav %}public-site-topnav public-site public-site-body{% else %}app-shell{% endif %}{% if portal_layout_enabled|default(false) %} role-portal-layout {{ portal_theme_class|default('role-theme-default') }}{% endif %}{% if show_financial_year_session|default(false) and financial_year_session.read_only|default(false) %} acc-fy-readonly{% endif %} {% block body_class %}{% endblock %}"
       @scroll.window="publicHeaderScrolled = (window.pageYOffset || document.documentElement.scrollTop) > 56">
     
     <!-- Header: app shell (portal) vs marketing site glass/solid -->
@@ -1284,6 +1284,12 @@
             </div>
             {% endif %}
             {% if not public_site_topnav %}<div class="portal-page-content flex flex-col flex-1 w-full min-w-0">{% endif %}
+            {% if show_financial_year_session|default(false) %}
+            <div class="acc-fy-session-corner" aria-label="Current financial year">
+                {% include 'dashboards/includes/accountant_financial_year_badge.html' %}
+            </div>
+            {% include 'dashboards/includes/accountant_financial_year_readonly_banner.html' %}
+            {% endif %}
             {% block content_full_bleed %}{% endblock %}
             <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-full{% if not public_site_topnav %} flex-1{% endif %}{% if public_site_topnav %} public-site-page py-8 sm:py-10 lg:py-12{% else %} py-6 sm:py-8{% endif %}">
                 {% block content %}{% endblock %}

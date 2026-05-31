@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Accounts reports — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+<div class="fr-sidebar-nav fr-sidebar-nav--reports space-y-0.5">
+    {% include 'dashboards/includes/finance_reports_nav_sidebar.html' %}
+</div>
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/finance_reports_ui.html' %}
+
+<div class="fr-report-shell page-content">
+    <div class="fr-inner">
+        {% with report_title='Accounts reports', report_subtitle='Choose a report', report_description='Each report has its own filters and updates automatically as you change them. Open a card below to get started.', report_period_label='All periods', report_generated_at=report_generated_at %}
+        {% include 'dashboards/includes/finance_school_report_masthead.html' %}
+        {% endwith %}
+
+        <div class="fr-reports-hub-grid" role="list">
+            {% for item in finance_report_nav|default([]) %}
+            <a href="{{ employee_dash_url('finance-overview/reports/' ~ item.slug) }}"
+               class="fr-reports-hub-card"
+               role="listitem">
+                <span class="fr-reports-hub-card__icon" aria-hidden="true">
+                    <i class="fas {{ item.icon }}"></i>
+                </span>
+                <span class="fr-reports-hub-card__body">
+                    <span class="fr-reports-hub-card__title">{{ item.title }}</span>
+                    {% if item.description %}
+                    <span class="fr-reports-hub-card__desc">{{ item.description }}</span>
+                    {% endif %}
+                </span>
+                <i class="fas fa-chevron-right fr-reports-hub-card__arrow" aria-hidden="true"></i>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

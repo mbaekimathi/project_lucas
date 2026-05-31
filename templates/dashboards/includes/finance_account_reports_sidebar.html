@@ -1,0 +1,21 @@
+{% set _aid = account_id|default(request.view_args.account_id if request.view_args else none) %}
+{% set _slug = account_report_slug|default('') %}
+{% set _is_summary = request.endpoint == 'accountant_account_detail' and not _slug %}
+
+<p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Account reports</p>
+
+<a href="{{ employee_dash_url('accounts/' ~ _aid) }}"
+   class="sidebar-item {% if _is_summary %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-pie w-5"></i>
+    <span>Summary</span>
+    {% if _is_summary %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+
+{% for item in account_report_nav|default([]) %}
+<a href="{{ employee_dash_url('accounts/' ~ _aid ~ '/reports/' ~ item.slug) }}"
+   class="sidebar-item {% if _slug == item.slug %}sidebar-item-active{% endif %}">
+    <i class="fas {{ item.icon }} w-5"></i>
+    <span>{{ item.title }}</span>
+    {% if _slug == item.slug %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endfor %}

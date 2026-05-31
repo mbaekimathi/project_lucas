@@ -39,8 +39,8 @@
                         <p class="font-medium text-gray-900 dark:text-white">OAuth not configured</p>
                         <p class="text-sm text-gray-600 dark:text-gray-400">
                             Add <code class="text-xs">GOOGLE_OAUTH_CLIENT_ID</code> and
-                            <code class="text-xs">GOOGLE_OAUTH_CLIENT_SECRET</code> to <code class="text-xs">.env.local</code>
-                            (see <code class="text-xs">env.local.example</code>).
+                            <code class="text-xs">GOOGLE_OAUTH_CLIENT_SECRET</code> to <code class="text-xs">.env.local</code> or <code class="text-xs">.env</code>
+                            in <code class="text-xs">.env.local</code> or <code class="text-xs">.env</code>.
                         </p>
                         {% endif %}
                         {% if google_service_account_email and not google_user_connected %}

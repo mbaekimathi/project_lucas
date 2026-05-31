@@ -81,6 +81,10 @@
     return '<div class="text-sm font-semibold text-blue-600 dark:text-blue-400">' + money(-bal) + ' (Overpaid)</div>';
   }
 
+  function joinDashPath(base, segment) {
+    return String(base || '').replace(/\/+$/, '') + '/' + encodeURIComponent(segment || '');
+  }
+
   function actionButtons(s, cfg) {
     var fs = s.fee_structure;
     var html = '<div class="flex items-center justify-end gap-1.5">';
@@ -95,11 +99,8 @@
       'data-student-id="' + esc(s.student_id) + '" data-name="' + esc(s.full_name) + '">' +
       '<i class="fas fa-eye text-sm"></i></button>';
     if (cfg.canGenerateInvoices) {
-      var invPdf =
-        cfg.invoiceBase +
-        encodeURIComponent(s.student_id) +
-        '?format=pdf&download=true';
-      var invView = cfg.invoiceBase + encodeURIComponent(s.student_id);
+      var invPdf = joinDashPath(cfg.invoiceBase, s.student_id) + '?format=pdf&download=true';
+      var invView = joinDashPath(cfg.invoiceBase, s.student_id);
       html +=
         '<a href="' + esc(invPdf) + '" download class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/50 dark:text-violet-300 shadow-sm" title="Download PDF invoice">' +
         '<i class="fas fa-file-pdf text-sm"></i></a>';

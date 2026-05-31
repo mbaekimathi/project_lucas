@@ -1,0 +1,29 @@
+{# Accounts report links — finance overview hub sidebar only #}
+{% set _slug = finance_report_slug|default(report_slug|default('')) %}
+{% set _fy = request.args.get('financial_year_id') or filter_options.default_financial_year_id|default('') %}
+{% set _df = request.args.get('date_from') or filter_options.default_date_from|default('') %}
+{% set _dt = request.args.get('date_to') or filter_options.default_date_to|default('') %}
+
+<p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Accounts reports</p>
+
+<a href="{{ employee_dash_url('finance-overview') }}"
+   class="sidebar-item {% if request.endpoint == 'finance_overview' %}sidebar-item-active{% endif %}"
+   title="Accounts reports hub">
+    <i class="fas fa-th-large w-5"></i>
+    <span>All reports</span>
+    {% if request.endpoint == 'finance_overview' %}<i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>{% endif %}
+</a>
+
+{% for item in finance_report_nav|default([]) %}
+{% set _href = employee_dash_url('finance-overview/reports/' ~ item.slug) %}
+{% if _fy %}{% set _href = _href ~ '?financial_year_id=' ~ _fy %}{% endif %}
+{% if _df %}{% set _href = _href ~ ('&' if _fy else '?') ~ 'date_from=' ~ _df %}{% endif %}
+{% if _dt %}{% set _href = _href ~ ('&' if _fy or _df else '?') ~ 'date_to=' ~ _dt %}{% endif %}
+<a href="{{ _href }}"
+   class="sidebar-item {% if _slug == item.slug %}sidebar-item-active{% endif %}"
+   title="{{ item.description|default(item.title) }}">
+    <i class="fas {{ item.icon }} w-5"></i>
+    <span>{{ item.title }}</span>
+    {% if _slug == item.slug %}<i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>{% endif %}
+</a>
+{% endfor %}

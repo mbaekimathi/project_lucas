@@ -162,7 +162,9 @@ window.feeStructureCreateModal = function() {
             return n + ' level' + (n !== 1 ? 's' : '');
         },
         get validFeeItemsCount() {
-            return (this.feeItems || []).filter(item => item.itemName && item.amount).length;
+            return (this.feeItems || []).filter(item =>
+                item.itemName && (item.itemDescription || '').trim() && item.amount
+            ).length;
         },
         addFirstFeeItem() {
             if (!this.feeItems.length) this.addNewItem();
@@ -428,8 +430,8 @@ window.feeStructureCreateModal = function() {
         },
         addExistingItem(item) {
             this.feeItems.push({
-                itemName: item.item_name,
-                itemDescription: item.item_description || '',
+                itemName: (item.item_name || '').toUpperCase(),
+                itemDescription: (item.item_description || '').toUpperCase(),
                 amount: item.amount,
                 isExisting: true
             });
@@ -524,10 +526,20 @@ window.feeStructureCreateModal = function() {
                 return;
             }
             
-            // Validate that at least one fee item is provided
-            const validItems = this.feeItems.filter(item => item.itemName && item.amount);
+            // Validate that at least one vote is provided
+            const validItems = this.feeItems.filter(item =>
+                item.itemName && (item.itemDescription || '').trim() && item.amount
+            );
             if (validItems.length === 0) {
-                this.error = 'Please add at least one fee item before creating the fee structure.';
+                this.error = 'Please add at least one vote with a name, description, and amount before creating the fee structure.';
+                this.loading = false;
+                return;
+            }
+            const missingDescription = this.feeItems.some(item =>
+                item.itemName && item.amount && !(item.itemDescription || '').trim()
+            );
+            if (missingDescription) {
+                this.error = 'Each vote must have a description.';
                 this.loading = false;
                 return;
             }
@@ -544,7 +556,7 @@ window.feeStructureCreateModal = function() {
                     category: this.category,
                     fee_items: validItems.map(item => ({
                         item_name: item.itemName.toUpperCase().trim(),
-                        item_description: item.itemDescription ? item.itemDescription.trim() : '',
+                        item_description: item.itemDescription.trim(),
                         amount: parseFloat(item.amount) || 0
                     }))
                 })

@@ -1,0 +1,29 @@
+{% set _fa_qs = request.args.get('finance_account_id', '') %}
+{% set _active_id = account_id if account_id else (_fa_qs|int if _fa_qs else none) %}
+{% set _base = employee_dash_url('accounts/petty-cash-book') %}
+{% set _fy = request.args.get('financial_year_id') or default_financial_year_id|default('') %}
+{% set _df = request.args.get('date_from') or date_from|default('') %}
+{% set _dt = request.args.get('date_to') or date_to|default('') %}
+
+{% macro petty_cash_href(aid) -%}
+{%- set href = _base ~ '?finance_account_id=' ~ aid -%}
+{%- if _fy -%}{%- set href = href ~ '&financial_year_id=' ~ _fy -%}{%- endif -%}
+{%- if _df -%}{%- set href = href ~ '&date_from=' ~ _df -%}{%- endif -%}
+{%- if _dt -%}{%- set href = href ~ '&date_to=' ~ _dt -%}{%- endif -%}
+{{- href -}}
+{%- endmacro %}
+
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Petty cash accounts</p>
+{% for acct in petty_cash_accounts|default([]) %}
+<a href="{{ petty_cash_href(acct.id) }}"
+   class="sidebar-item {% if _active_id == acct.id %}sidebar-item-active{% endif %}"
+   title="{{ acct.account_description or acct.account_name }}">
+    <i class="fas fa-wallet w-5"></i>
+    <span class="truncate">{{ acct.account_name }}</span>
+    {% if _active_id == acct.id %}
+    <i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>
+    {% else %}
+    <span class="ml-auto text-[10px] font-semibold text-slate-400 shrink-0">{{ acct.current_balance_display }}</span>
+    {% endif %}
+</a>
+{% endfor %}

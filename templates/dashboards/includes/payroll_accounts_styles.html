@@ -153,4 +153,25 @@
     pointer-events: none;
 }
 .dark .accounts-chart-empty { color: #94a3b8; }
+
+/* Current financial year — top-right on accounts pages */
+.acc-fy-session-corner {
+    position: fixed;
+    top: calc(var(--app-header-offset, 4rem) + 0.65rem);
+    right: max(0.75rem, env(safe-area-inset-right, 0px));
+    z-index: 35;
+    pointer-events: none;
+    max-width: min(18rem, calc(100vw - 1.5rem));
+}
+.acc-fy-session-corner .acc-fy-session-badge {
+    pointer-events: auto;
+}
+@media (min-width: 1024px) {
+    .acc-fy-session-corner {
+        right: max(1rem, env(safe-area-inset-right, 0px));
+    }
+}
+body.sf-accounts-layout .accounts-page {
+    position: relative;
+}
 </style>

@@ -1,0 +1,39 @@
+{# Technician integration-settings navigation (app sidebar drawer) #}
+<div class="sys-settings-sidebar space-y-0.5" role="navigation" aria-label="Integration settings sections">
+    {% set _tech_role = session.get('role', '').lower() %}
+    {% if _tech_role == 'technician' %}
+    <a href="{{ dashboard_home_url() }}"
+       class="sidebar-item dashboard-utility-link {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
+        <i class="fas fa-home w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Dashboard</span>
+    </a>
+
+    <p class="sys-settings-sidebar__section sys-settings-sidebar__section--border">Integration settings</p>
+
+    <a href="{{ employee_dash_url('integration-settings/google') }}"
+       class="sidebar-item {% if request.endpoint == 'integration_settings_google' %}sidebar-item-active{% endif %}">
+        <i class="fab fa-google w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Google Integration</span>
+    </a>
+
+    <a href="{{ employee_dash_url('integration-settings/communication') }}"
+       class="sidebar-item {% if request.endpoint == 'integration_settings_communication' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-comments w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Communication Integration</span>
+    </a>
+
+    <a href="{{ employee_dash_url('integration-settings/finance') }}"
+       class="sidebar-item {% if request.endpoint == 'integration_settings_finance' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-coins w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Finance Integration</span>
+    </a>
+
+    <a href="{{ employee_dash_url('integration-settings/ai') }}"
+       class="sidebar-item {% if request.endpoint == 'integration_settings_ai' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-robot w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">AI Integration</span>
+    </a>
+    {% else %}
+    <p class="sys-settings-sidebar__empty">Integration settings are available for technicians.</p>
+    {% endif %}
+</div>

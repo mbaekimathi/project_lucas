@@ -441,7 +441,7 @@
                 <i class="fas fa-plus-circle text-green-600 mr-2"></i>
                 Create New Academic Year
             </h4>
-            <form action="/system-settings/academic-year" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+            <form id="createAcademicYearForm" action="/system-settings/academic-year" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Academic Year Name <span class="text-red-500">*</span>
@@ -761,7 +761,7 @@
                 <i class="fas fa-plus-circle text-purple-600 mr-2"></i>
                 Create New Term
             </h4>
-            <form action="/system-settings/term" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+            <form id="createTermForm" action="/system-settings/term" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Academic Year <span class="text-red-500">*</span>
@@ -1337,6 +1337,88 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // Create Academic Year (stay on page)
+    const createAcademicYearForm = document.getElementById('createAcademicYearForm');
+    if (createAcademicYearForm) {
+        createAcademicYearForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const formData = new FormData(this);
+            formData.set('year_name', (formData.get('year_name') || '').trim().toUpperCase());
+            formData.set('return_to', 'academic-settings');
+            formData.set('tab', 'academic-year');
+
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating...';
+
+            fetch(_academicSysEmpPrefix + '/system-settings/academic-year', {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = window.location.pathname + '?tab=academic-year';
+                } else {
+                    alert(data.message || 'Failed to create academic year.');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while creating the academic year.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            });
+        });
+    }
+
+    // Create Term (stay on page)
+    const createTermForm = document.getElementById('createTermForm');
+    if (createTermForm) {
+        createTermForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const formData = new FormData(this);
+            formData.set('term_name', (formData.get('term_name') || '').trim().toUpperCase());
+            formData.set('return_to', 'academic-settings');
+            formData.set('tab', 'term-settings');
+
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating...';
+
+            fetch(_academicSysEmpPrefix + '/system-settings/term', {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = window.location.pathname + '?tab=term-settings';
+                } else {
+                    alert(data.message || 'Failed to create term.');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while creating the term.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            });
+        });
+    }
 
     // Edit Academic Year
     const editYearButtons = document.querySelectorAll('.edit-year-btn');

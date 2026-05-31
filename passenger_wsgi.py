@@ -10,7 +10,7 @@ project_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_dir)
 os.chdir(project_dir)
 
-# .env is loaded in app.py via env_loader (same project_dir as this file)
+# .env (hosted) is loaded in app.py via env_loader — do not use .env.local on the server
 
 print("=" * 60)
 print("Passenger WSGI: Starting application load...")

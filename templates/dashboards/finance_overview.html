@@ -13,6 +13,9 @@
 {% elif is_secretary_finance %}
 {% set secretary_nav_scope = 'reports' %}
 {% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role == 'accountant' %}
+{% set accountant_nav_scope = 'insights' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
 {% else %}
 <div class="space-y-2">
     <a href="{{ employee_dash_url('finance-overview') }}" 

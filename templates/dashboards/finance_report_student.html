@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Student-Specific Reports - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set finance_report_slug = report_slug %}
+{% include 'dashboards/includes/finance_reports_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/finance_reports_ui.html' %}
+<script type="application/json" id="fo-page-config">{{ {
+    'studentsApi': employee_dash_url('finance-overview/students'),
+    'summaryApi': employee_dash_url('finance-overview/summary'),
+    'invoiceBase': employee_dash_url('student-fees/generate-invoice/'),
+    'receiptBase': employee_dash_url('student-fees/download-receipt/')
+}|tojson }}</script>
+
+<div class="fr-report-shell page-content">
+    <div class="fr-inner">
+        <div class="fr-toolbar no-print">
+            <nav class="fr-breadcrumb" aria-label="Breadcrumb">
+                <a href="{{ employee_dash_url('finance-overview') }}">Accounts reports</a>
+                <span aria-hidden="true">/</span>
+                <span class="fr-breadcrumb__current">Student reports</span>
+            </nav>
+            <div class="fr-toolbar__actions">
+                <button type="button" class="fr-btn fr-btn--ghost" onclick="window.print()">
+                    <i class="fas fa-print" aria-hidden="true"></i> Print
+                </button>
+            </div>
+        </div>
+
+        {% with report_title='Student-specific reports', report_description='Per-student fee balances, class roll-ups, and printable invoices.', report_period_label='Current enrolment', report_generated_at=report_generated_at %}
+        {% include 'dashboards/includes/finance_school_report_masthead.html' %}
+        {% endwith %}
+
+    <section class="fr-report-panel no-print" aria-label="Report view">
+        <div class="fr-report-panel__head">
+            <h2 class="fr-report-panel__title">What to show <span class="fr-filters-live-hint">· updates automatically</span></h2>
+        </div>
+        <div class="fr-report-filters">
+            <p id="fo-view-hint" class="fr-filter-context">Choose how you want to explore student fee accounts.</p>
+            <div class="fr-report-filters__grid fr-report-filters__grid--active">
+                <div class="fr-filter-group fr-filter-group--wide" data-fr-group="view">
+                    <p class="fr-filter-group__label">Report view</p>
+                    <div class="fr-report-field">
+                        <label for="fo-view-mode" class="sr-only">Report view</label>
+                        <select id="fo-view-mode">
+                            <option value="">— Select —</option>
+                            <option value="all">All students (fee balances)</option>
+                            <option value="by_class">One class only</option>
+                            <option value="class_summary">Totals by class (no names)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="fr-filter-group hidden" id="fo-one-class-wrap" data-fr-group="class-pick">
+                    <p class="fr-filter-group__label">Which class?</p>
+                    <div class="fr-report-field">
+                        <label for="fo-one-class" class="sr-only">Class</label>
+                        <select id="fo-one-class">
+                            <option value="">Select class…</option>
+                            {% for lv in class_filter_options|default([]) %}
+                            <option value="{{ lv|e }}">{{ lv }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <p id="fo-active-filters" class="fr-active-filters hidden" aria-live="polite"></p>
+        </div>
+    </section>
+
+    <div id="fo-empty-state" class="fr-report-state no-print">
+        <i class="fas fa-hand-pointer fr-report-state__icon" aria-hidden="true"></i>
+        <p class="fr-report-state__title">Choose a report view above to load data</p>
+    </div>
+
+    <div id="fo-workspace" class="hidden">
+        <div class="fr-report-kpis" aria-label="Summary">
+            <article class="fr-kpi fr-kpi--sky">
+                <p class="fr-kpi__label" id="fo-card-students-label">Students</p>
+                <p class="fr-kpi__value" id="fo-card-students-count">—</p>
+            </article>
+            <article class="fr-kpi fr-kpi--violet">
+                <p class="fr-kpi__label">Total billed</p>
+                <p class="fr-kpi__value" id="fo-card-billed">—</p>
+            </article>
+            <article class="fr-kpi fr-kpi--emerald">
+                <p class="fr-kpi__label">Total paid</p>
+                <p class="fr-kpi__value" id="fo-card-paid">—</p>
+            </article>
+            <article class="fr-kpi fr-kpi--amber">
+                <p class="fr-kpi__label">Outstanding</p>
+                <p class="fr-kpi__value" id="fo-card-outstanding">—</p>
+            </article>
+        </div>
+
+        <section id="fo-section-student-table" class="hidden mb-4">
+            <h2 class="fr-report-section-title">
+                <i class="fas fa-users" aria-hidden="true"></i>
+                <span id="fo-section-student-title">Student fee accounts</span>
+            </h2>
+
+            <section class="fr-report-panel no-print mb-3">
+                <div class="fr-report-panel__head">
+                    <h3 class="fr-report-panel__title" style="margin:0">Narrow this list</h3>
+                </div>
+                <div class="fr-report-filters">
+                    <p class="fr-filter-context" style="margin-top:0;font-size:0.75rem">Only applies to the student list below — not the class summary view.</p>
+                    <div class="fr-report-filters__grid fr-report-filters__grid--active">
+                        <div class="fr-filter-group fr-filter-group--wide">
+                            <p class="fr-filter-group__label">Find student</p>
+                            <div class="fr-report-field">
+                                <label for="fo-search" class="sr-only">Search</label>
+                                <input type="search" id="fo-search" autocomplete="off" placeholder="Name or admission no." />
+                            </div>
+                        </div>
+                        <div class="fr-filter-group hidden" id="fo-level-wrap">
+                            <p class="fr-filter-group__label">Class filter</p>
+                            <div class="fr-report-field">
+                                <label for="fo-level" class="sr-only">Class</label>
+                                <select id="fo-level">
+                                    <option value="">All levels</option>
+                                    {% for lv in class_filter_options|default([]) %}
+                                    <option value="{{ lv|e }}">{{ lv }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="fr-filter-group">
+                            <p class="fr-filter-group__label">Balance</p>
+                            <div class="fr-report-field">
+                                <label for="fo-balance" class="sr-only">Balance</label>
+                                <select id="fo-balance">
+                                    <option value="all">All</option>
+                                    <option value="outstanding">Owing fees</option>
+                                    <option value="clear">Paid / credit</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="fr-filter-group">
+                            <p class="fr-filter-group__label">Sort</p>
+                            <div class="fr-report-field">
+                                <label for="fo-sort" class="sr-only">Sort</label>
+                                <select id="fo-sort">
+                                    <option value="original">Class, name</option>
+                                    <option value="balance-asc">Balance ↑</option>
+                                    <option value="balance-desc">Balance ↓</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <p id="fo-filter-hint" class="fr-active-filters hidden" aria-live="polite"></p>
+                </div>
+            </section>
+
+            <div id="fo-pagination-bar" class="fr-report-panel__toolbar no-print hidden flex-wrap">
+                <span id="fo-page-hint"></span>
+                <p id="fo-list-error" class="fr-report-alert hidden w-full" style="margin:0"></p>
+                <div id="fo-page-nav" class="fr-report-filters__actions hidden">
+                    <button type="button" id="fo-prev-page" class="fr-btn fr-btn--ghost">Previous</button>
+                    <button type="button" id="fo-next-page" class="fr-btn fr-btn--ghost">Next</button>
+                </div>
+            </div>
+
+            <div id="fo-list-loading" class="fr-report-state fr-report-state--loading no-print hidden" role="status">
+                <i class="fas fa-circle-notch fa-spin fr-report-state__icon"></i>
+                <p class="fr-report-state__title">Loading students…</p>
+            </div>
+
+            <section class="fr-report-panel">
+                <p class="fr-report-scroll-hint no-print">
+                    <i class="fas fa-arrows-left-right"></i> Swipe to see all columns
+                </p>
+                <div class="fr-report-table-scroll fr-report-table-scroll--stack">
+                    <table class="fr-report-table fr-report-table--stack" style="min-width: 52rem;">
+                        <thead>
+                            <tr>
+                                <th>Class</th>
+                                <th>Student</th>
+                                <th class="text-right">Total</th>
+                                <th class="text-right">Paid</th>
+                                <th class="text-right">Balance</th>
+                                <th class="text-center">Invoice</th>
+                                <th class="text-center">Receipt</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fo-student-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+
+        <section id="fo-section-class-summary" class="hidden">
+            <h2 class="fr-report-section-title">
+                <i class="fas fa-layer-group" aria-hidden="true"></i>
+                Summary by class
+            </h2>
+            <section class="fr-report-panel">
+                <p class="fr-report-scroll-hint no-print">
+                    <i class="fas fa-arrows-left-right"></i> Swipe to see all columns
+                </p>
+                <div class="fr-report-table-scroll fr-report-table-scroll--stack">
+                    <table class="fr-report-table fr-report-table--stack" style="min-width: 36rem;">
+                        <thead>
+                            <tr>
+                                <th>Class</th>
+                                <th class="text-right">Students</th>
+                                <th class="text-right">Billed</th>
+                                <th class="text-right">Paid</th>
+                                <th class="text-right">Outstanding</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fo-summary-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+    </div>
+    </div>
+</div>
+
+<script>
+{% include 'dashboards/includes/finance_overview_loader.js' %}
+</script>
+{% endblock %}

@@ -1,0 +1,665 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}Finance settings — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set accountant_nav_scope = 'insights' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+{% set fs = finance_settings|default({}) %}
+{% set acal = academic_calendar|default({}) %}
+{% set years = financial_years|default([]) %}
+
+<script type="application/json" id="finance-settings-init-data">{{ {
+    'academic_calendar': acal,
+    'academic_terms_catalog': academic_terms_catalog|default([]),
+    'academic_years_catalog': academic_years_catalog|default([]),
+    'financial_years': years,
+    'save_url': employee_dash_url('finance-settings'),
+    'balances_url': employee_dash_url('finance-settings') ~ '/balances',
+    'can_create_financial_year': can_create_financial_year|default(true),
+    'create_financial_year_blocked_reason': create_financial_year_blocked_reason|default(''),
+    'suggested_opening_balance': suggested_opening_balance|default(0)
+}|tojson }}</script>
+<script>
+function financeSettingsPage() {
+  var init = {};
+  try {
+    init = JSON.parse(document.getElementById('finance-settings-init-data').textContent || '{}');
+  } catch (e) {
+    init = {};
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderAcademicYearsWithTerms(containerId, academicYears, emptyMessage) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    if (!academicYears || !academicYears.length) {
+      el.innerHTML = '<p class="text-xs text-slate-500 dark:text-slate-400">' + escapeHtml(emptyMessage || 'No academic years in this period.') + '</p>';
+      return;
+    }
+    el.innerHTML = academicYears.map(function (ay) {
+      var terms = ay.terms || [];
+      var termsHtml = terms.length
+        ? terms.map(function (term) {
+            return ''
+              + '<div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-3 py-2 text-sm">'
+              + '  <div class="min-w-0">'
+              + '    <p class="font-semibold text-slate-800 dark:text-slate-100">' + escapeHtml(term.term_name) + '</p>'
+              + '  </div>'
+              + '  <p class="text-xs tabular-nums text-slate-600 dark:text-slate-300 shrink-0">'
+              + escapeHtml(term.start_display || term.start_date || '') + ' — ' + escapeHtml(term.end_display || term.end_date || '')
+              + '  </p>'
+              + '</div>';
+          }).join('')
+        : '<p class="text-xs text-slate-500 dark:text-slate-400 italic">No terms in this academic year yet — add them under Academic settings.</p>';
+      return ''
+        + '<div class="space-y-1.5">'
+        + '  <p class="text-xs font-semibold text-slate-700 dark:text-slate-200">'
+        + escapeHtml(ay.year_name || 'Academic year')
+        + ' <span class="font-normal text-slate-500 dark:text-slate-400 tabular-nums">'
+        + escapeHtml(ay.start_display || ay.start_date || '') + ' — ' + escapeHtml(ay.end_display || ay.end_date || '')
+        + '</span></p>'
+        + '  <div class="space-y-1.5">' + termsHtml + '</div>'
+        + '</div>';
+    }).join('<div class="h-3"></div>');
+  }
+
+  return {
+    formOpen: false,
+    editingId: null,
+    startDate: '',
+    endDate: '',
+    openingBalance: '',
+    setAsCurrent: true,
+    academicRef: init.academic_calendar || {},
+    allTerms: init.academic_terms_catalog || [],
+    academicYears: init.academic_years_catalog || [],
+    financialYears: init.financial_years || [],
+    saveUrl: init.save_url || '',
+    balancesUrl: init.balances_url || '',
+    canCreateFinancialYear: init.can_create_financial_year !== false,
+    createBlockedReason: init.create_financial_year_blocked_reason || '',
+    suggestedOpeningBalance: init.suggested_opening_balance || 0,
+    saving: false,
+    actionYearId: null,
+    saveMessage: '',
+    saveError: false,
+    balancesPollTimer: null,
+    initPage: function () {
+      var self = this;
+      self.$watch('startDate', function () { self.updateMatchedTerms(); });
+      self.$watch('endDate', function () { self.updateMatchedTerms(); });
+      self.refreshBalances();
+      self.balancesPollTimer = setInterval(function () { self.refreshBalances(); }, 30000);
+    },
+    formatKes: function (amount) {
+      var n = parseFloat(amount);
+      if (isNaN(n)) n = 0;
+      return n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+    refreshBalances: function () {
+      var self = this;
+      if (!self.balancesUrl) return;
+      fetch(self.balancesUrl, {
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin',
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data || !data.success || !data.years) return;
+          data.years.forEach(function (snap) {
+            var el = document.querySelector('[data-fy-closing="' + snap.id + '"]');
+            if (el) {
+              el.textContent = 'KES ' + (snap.closing_balance_display || self.formatKes(snap.closing_balance));
+            }
+          });
+        })
+        .catch(function () {});
+    },
+    updateMatchedTerms: function () {
+      if (!this.formOpen) return;
+      if (!this.startDate || !this.endDate) {
+        renderAcademicYearsWithTerms('finance-form-terms-list', [], 'Select start and end dates to see academic terms.');
+        return;
+      }
+      var matchedYears = this.academicYears
+        .filter(function (y) {
+          return y.start_date && y.end_date
+            && y.start_date <= this.endDate
+            && y.end_date >= this.startDate;
+        }, this)
+        .map(function (ay) {
+          var ayId = Number(ay.id);
+          var terms = this.allTerms.filter(function (t) {
+            return Number(t.academic_year_id) === ayId
+              && t.start_date && t.end_date
+              && t.start_date <= this.endDate
+              && t.end_date >= this.startDate;
+          }, this);
+          return {
+            id: ay.id,
+            year_name: ay.year_name,
+            start_date: ay.start_date,
+            end_date: ay.end_date,
+            start_display: ay.start_display,
+            end_display: ay.end_display,
+            terms: terms,
+            terms_count: terms.length,
+          };
+        }, this)
+        .filter(function (ay) { return ay.terms_count > 0; });
+      renderAcademicYearsWithTerms(
+        'finance-form-terms-list',
+        matchedYears,
+        'No academic terms fall within these financial year dates.'
+      );
+    },
+    openForm: function () {
+      if (!this.canCreateFinancialYear) {
+        this.saveError = true;
+        this.saveMessage = this.createBlockedReason || 'Close the current financial year before adding a new one.';
+        return;
+      }
+      this.editingId = null;
+      this.startDate = '';
+      this.endDate = '';
+      this.openingBalance = this.suggestedOpeningBalance != null && this.suggestedOpeningBalance !== ''
+        ? String(this.suggestedOpeningBalance)
+        : '0';
+      this.setAsCurrent = true;
+      this.formOpen = true;
+      this.saveMessage = '';
+      this.saveError = false;
+      var self = this;
+      this.$nextTick(function () { self.updateMatchedTerms(); });
+    },
+    openEditForm: function (year) {
+      if (!year || year.is_locked) return;
+      this.editingId = year.id;
+      this.startDate = year.financial_year_start || '';
+      this.endDate = year.financial_year_end || '';
+      this.openingBalance = year.opening_balance != null ? String(year.opening_balance) : '0';
+      this.setAsCurrent = false;
+      this.formOpen = true;
+      this.saveMessage = '';
+      this.saveError = false;
+      var self = this;
+      this.$nextTick(function () { self.updateMatchedTerms(); });
+    },
+    yearById: function (yearId) {
+      return this.financialYears.find(function (y) { return y.id === yearId; }) || null;
+    },
+    openEditFormById: function (yearId) {
+      this.openEditForm(this.yearById(yearId));
+    },
+    toggleLockById: function (yearId) {
+      this.toggleLock(this.yearById(yearId));
+    },
+    deleteYearById: function (yearId) {
+      this.deleteYear(this.yearById(yearId));
+    },
+    applyAcademicReference: function () {
+      var ref = this.academicRef || {};
+      if (ref.reference_start && ref.reference_end) {
+        this.startDate = ref.reference_start;
+        this.endDate = ref.reference_end;
+      } else if (ref.financial_year_start && ref.financial_year_end) {
+        this.startDate = ref.financial_year_start;
+        this.endDate = ref.financial_year_end;
+      }
+      this.updateMatchedTerms();
+    },
+    closeForm: function () {
+      this.formOpen = false;
+      this.editingId = null;
+      this.saveMessage = '';
+      this.saveError = false;
+    },
+    postAction: function (payload) {
+      var self = this;
+      self.saving = true;
+      self.saveMessage = '';
+      self.saveError = false;
+      return fetch(self.saveUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      })
+        .then(function (r) {
+          return r.json().then(function (data) {
+            return { ok: r.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          var data = result.data || {};
+          self.saveError = !result.ok || !data.success;
+          self.saveMessage = data.message || (data.success ? 'Saved.' : 'Action failed.');
+          if (data.success) {
+            if (typeof data.can_create_financial_year === 'boolean') {
+              self.canCreateFinancialYear = data.can_create_financial_year;
+            }
+            if (data.suggested_opening_balance != null) {
+              self.suggestedOpeningBalance = data.suggested_opening_balance;
+            }
+            if (data.needs_next_year) {
+              self.createBlockedReason = '';
+              self.formOpen = false;
+              self.$nextTick(function () { self.openForm(); });
+              return;
+            }
+            window.location.reload();
+          }
+        })
+        .catch(function () {
+          self.saveError = true;
+          self.saveMessage = 'Could not complete the request.';
+        })
+        .finally(function () {
+          self.saving = false;
+          self.actionYearId = null;
+        });
+    },
+    saveSettings: function () {
+      if (!this.startDate || !this.endDate) {
+        this.saveError = true;
+        this.saveMessage = 'Enter both the financial year start and end dates.';
+        return;
+      }
+      if (this.endDate < this.startDate) {
+        this.saveError = true;
+        this.saveMessage = 'End date must be on or after the start date.';
+        return;
+      }
+      if (this.openingBalance === '' || this.openingBalance == null || isNaN(parseFloat(this.openingBalance))) {
+        this.saveError = true;
+        this.saveMessage = 'Enter a valid opening balance for this financial year.';
+        return;
+      }
+      if (this.editingId) {
+        this.postAction({
+          action: 'update',
+          financial_year_id: this.editingId,
+          financial_year_start: this.startDate,
+          financial_year_end: this.endDate,
+          opening_balance: this.openingBalance,
+        });
+        return;
+      }
+      this.postAction({
+        action: 'create',
+        financial_year_start: this.startDate,
+        financial_year_end: this.endDate,
+        opening_balance: this.openingBalance,
+        set_as_current: !!this.setAsCurrent,
+      });
+    },
+    setCurrentYear: function (yearId) {
+      if (!yearId) return;
+      this.actionYearId = yearId;
+      this.postAction({
+        action: 'set_current',
+        financial_year_id: yearId,
+      });
+    },
+    toggleLock: function (year) {
+      if (!year || !year.id) return;
+      var action = year.is_locked ? 'unlock' : 'lock';
+      var msg = year.is_locked
+        ? 'Reopen ' + (year.year_label || 'this financial year') + '? Dates and opening balance can be edited again, and transactions for this period can be recorded.'
+        : 'Close ' + (year.year_label || 'this financial year') + '?'
+          + (year.is_current
+            ? ' It will no longer be the current year. The next financial year will become active — or you will be asked to create one.'
+            : ' Closed years are view-only until reopened.');
+      if (!window.confirm(msg)) return;
+      this.actionYearId = year.id;
+      this.postAction({
+        action: action,
+        financial_year_id: year.id,
+      });
+    },
+    deleteYear: function (year) {
+      if (!year || !year.id || year.is_locked) return;
+      var msg = 'Delete ' + (year.year_label || 'this financial year') + ' (' +
+        (year.financial_year_start_display || year.financial_year_start) + ' — ' +
+        (year.financial_year_end_display || year.financial_year_end) + ')? This cannot be undone.';
+      if (!window.confirm(msg)) return;
+      this.actionYearId = year.id;
+      this.postAction({
+        action: 'delete',
+        financial_year_id: year.id,
+      });
+    },
+  };
+}
+</script>
+
+<div class="accounts-page min-h-screen bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+     x-data="financeSettingsPage()"
+     x-init="initPage()">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14 space-y-5">
+        <header class="accounts-hero rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+            <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-5">
+                <a href="{{ employee_dash_url() }}"
+                   class="inline-flex items-center gap-2 text-[10px] font-semibold text-teal-200/90 hover:text-white mb-2 transition">
+                    <i class="fas fa-arrow-left"></i> Accountant dashboard
+                </a>
+                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                    <i class="fas fa-cog opacity-80"></i>
+                    <span>Accounts · Settings</span>
+                </div>
+                <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Finance settings</h1>
+                <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
+                    Manage financial years, set opening balances, track live closing balances, and close completed periods.
+                </p>
+            </div>
+        </header>
+
+        <section class="accounts-panel rounded-xl overflow-hidden">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Financial years</h2>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                        Set an opening balance when creating a year. Closing balance updates live from ledger activity.
+                        Close (lock) the current year before starting the next.
+                    </p>
+                </div>
+                <button type="button"
+                        x-show="!formOpen && canCreateFinancialYear"
+                        @click="openForm()"
+                        class="inline-flex items-center gap-2 rounded-lg bg-teal-600 hover:bg-teal-700 px-3 py-2 text-xs font-semibold text-white transition">
+                    <i class="fas fa-plus"></i>
+                    <span>Add financial year</span>
+                </button>
+                <p x-show="!formOpen && !canCreateFinancialYear"
+                   x-cloak
+                   class="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 max-w-md"
+                   x-text="createBlockedReason || 'Close the current financial year before adding a new one.'"></p>
+            </div>
+            <div class="accounts-metrics-band px-4 sm:px-5 py-4 sm:py-5">
+                <div x-show="!formOpen">
+                    {% if years %}
+                    <div class="space-y-4">
+                        {% for year in years %}
+                        <article class="rounded-xl border {% if year.is_current %}border-teal-400 bg-teal-50/40 dark:bg-teal-950/20{% elif year.is_locked %}border-amber-300/80 bg-amber-50/30 dark:bg-amber-950/10{% else %}border-[var(--acc-line)] bg-white/60 dark:bg-slate-900/40{% endif %} overflow-hidden">
+                            <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-3">
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <p class="text-sm font-bold text-slate-800 dark:text-slate-100">{{ year.year_label }}</p>
+                                        {% if year.is_current %}
+                                        <span class="inline-flex items-center rounded-full bg-teal-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Current</span>
+                                        {% endif %}
+                                        {% if year.is_locked %}
+                                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                                            <i class="fas fa-lock text-[9px]"></i> Closed · view only
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                    <p class="text-xs tabular-nums text-slate-600 dark:text-slate-300 mt-0.5">
+                                        {{ year.financial_year_start_display }} — {{ year.financial_year_end_display }}
+                                    </p>
+                                    <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-md">
+                                        <div class="rounded-lg border border-[var(--acc-line)]/80 bg-white/80 dark:bg-slate-900/50 px-3 py-2">
+                                            <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Opening balance</p>
+                                            <p class="text-sm font-bold tabular-nums text-slate-800 dark:text-slate-100 mt-0.5">KES {{ year.opening_balance_display }}</p>
+                                        </div>
+                                        <div class="rounded-lg border border-teal-200/80 dark:border-teal-800/60 bg-teal-50/50 dark:bg-teal-950/20 px-3 py-2">
+                                            <p class="text-[10px] font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-300">
+                                                Closing balance
+                                                <span class="font-normal normal-case text-teal-600/80 dark:text-teal-400/80">· live</span>
+                                            </p>
+                                            <p class="text-sm font-bold tabular-nums text-teal-800 dark:text-teal-100 mt-0.5"
+                                               data-fy-closing="{{ year.id }}">KES {{ year.closing_balance_display }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-1.5 shrink-0">
+                                    {% if not year.is_locked %}
+                                    {% if not year.is_current %}
+                                    <button type="button"
+                                            @click="setCurrentYear({{ year.id }})"
+                                            :disabled="saving && actionYearId === {{ year.id }}"
+                                            class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-semibold text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/30 disabled:opacity-60 transition"
+                                            title="Set as current">
+                                        <i class="fas fa-check-circle"></i>
+                                        <span class="hidden sm:inline">Set current</span>
+                                    </button>
+                                    {% endif %}
+                                    <button type="button"
+                                            @click="openEditFormById({{ year.id }})"
+                                            class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                                            title="Edit dates">
+                                        <i class="fas fa-pen"></i>
+                                        <span class="hidden sm:inline">Edit</span>
+                                    </button>
+                                    <button type="button"
+                                            @click="toggleLockById({{ year.id }})"
+                                            :disabled="saving && actionYearId === {{ year.id }}"
+                                            class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:opacity-60 transition"
+                                            title="Close year">
+                                        <i class="fas fa-lock"></i>
+                                        <span class="hidden sm:inline">Close</span>
+                                    </button>
+                                    <button type="button"
+                                            @click="deleteYearById({{ year.id }})"
+                                            :disabled="saving && actionYearId === {{ year.id }}"
+                                            class="inline-flex items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-900/50 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-60 transition"
+                                            title="Delete">
+                                        <i class="fas fa-trash-alt"></i>
+                                        <span class="hidden sm:inline">Delete</span>
+                                    </button>
+                                    {% else %}
+                                    <button type="button"
+                                            @click="toggleLockById({{ year.id }})"
+                                            :disabled="saving && actionYearId === {{ year.id }}"
+                                            class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 disabled:opacity-60 transition"
+                                            title="Reopen year">
+                                        <i class="fas fa-unlock"></i>
+                                        <span class="hidden sm:inline">Reopen</span>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="border-t border-[var(--acc-line)]/70 px-4 py-3 bg-white/50 dark:bg-slate-900/30">
+                                {% if year.academic_years_in_period %}
+                                <div class="space-y-4">
+                                    {% for ay in year.academic_years_in_period %}
+                                    <div class="rounded-lg border border-[var(--acc-line)]/80 bg-white/80 dark:bg-slate-900/50 overflow-hidden">
+                                        <div class="px-3 py-2.5 bg-slate-50/80 dark:bg-slate-800/50 border-b border-[var(--acc-line)]/70">
+                                            <p class="text-xs font-bold text-slate-800 dark:text-slate-100">{{ ay.year_name }}</p>
+                                            <p class="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums mt-0.5">
+                                                {{ ay.start_display }} — {{ ay.end_display }}
+                                                · {{ ay.terms_count }} term{{ '' if ay.terms_count == 1 else 's' }}
+                                            </p>
+                                        </div>
+                                        <div class="px-3 py-2.5 space-y-1.5">
+                                            {% if ay.terms and ay.terms|length > 0 %}
+                                            {% for term in ay.terms %}
+                                            <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-3 py-2 text-sm">
+                                                <div class="min-w-0">
+                                                    <p class="font-semibold text-slate-800 dark:text-slate-100">{{ term.term_name }}</p>
+                                                </div>
+                                                <p class="text-xs tabular-nums text-slate-600 dark:text-slate-300 shrink-0">
+                                                    {{ term.start_display }} — {{ term.end_display }}
+                                                </p>
+                                            </div>
+                                            {% endfor %}
+                                            {% else %}
+                                            <p class="text-xs text-slate-500 dark:text-slate-400 italic py-1">
+                                                No terms in <strong>{{ ay.year_name }}</strong> yet.
+                                                <a href="{{ employee_dash_url('academic-settings') }}" class="text-teal-700 dark:text-teal-300 font-semibold hover:underline">Add terms in Academic settings</a>.
+                                            </p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <p class="text-xs text-slate-500 dark:text-slate-400 italic">
+                                    No academic terms fall within this financial year period.
+                                </p>
+                                {% endif %}
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <button type="button"
+                            @click="openForm()"
+                            class="w-full text-left rounded-xl border border-dashed border-[var(--acc-line)] bg-white/60 dark:bg-slate-900/40 px-4 py-6 hover:border-teal-400 hover:bg-teal-50/50 dark:hover:bg-teal-950/20 transition group">
+                        <div class="flex items-center gap-3">
+                            <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300">
+                                <i class="fas fa-calendar-alt"></i>
+                            </span>
+                            <div>
+                                <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">No financial years yet</p>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Choose any start and end dates — not tied to the academic year
+                                </p>
+                            </div>
+                            <i class="fas fa-chevron-right ml-auto text-slate-400 group-hover:text-teal-600 transition"></i>
+                        </div>
+                    </button>
+                    {% endif %}
+
+                    <p x-show="saveMessage && !formOpen"
+                       x-text="saveMessage"
+                       :class="saveError ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'"
+                       class="text-sm mt-3"></p>
+                </div>
+
+                <form x-show="formOpen"
+                      x-cloak
+                      @submit.prevent="saveSettings()"
+                      class="space-y-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100"
+                            x-text="editingId ? 'Edit financial year' : 'Add financial year'"></h3>
+                    </div>
+                    <p class="text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 border border-[var(--acc-line)] rounded-lg px-3 py-2">
+                        Enter the financial year start and end freely. Set the opening balance for this period —
+                        when starting a new year after closing the previous one, the prior closing balance is
+                        suggested but you may adjust it.
+                    </p>
+                    {% if acal.academic_year_name %}
+                    <div x-show="!editingId"
+                         class="rounded-lg border border-dashed border-[var(--acc-line)] bg-white/70 dark:bg-slate-900/40 px-3 py-3 flex flex-wrap items-center justify-between gap-3">
+                        <div class="min-w-0 text-xs text-slate-600 dark:text-slate-300">
+                            <p class="font-semibold text-slate-800 dark:text-slate-100">Academic year reference (optional)</p>
+                            <p class="mt-0.5">
+                                {{ acal.academic_year_name }}:
+                                {% if acal.academic_year_start_display and acal.academic_year_end_display %}
+                                {{ acal.academic_year_start_display }} — {{ acal.academic_year_end_display }}
+                                {% else %}
+                                {{ acal.reference_start_display|default(acal.financial_year_start_display) }} — {{ acal.reference_end_display|default(acal.financial_year_end_display) }}
+                                {% endif %}
+                            </p>
+                        </div>
+                        <button type="button"
+                                @click="applyAcademicReference()"
+                                class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/30 transition shrink-0">
+                            <i class="fas fa-copy"></i>
+                            Use as starting point
+                        </button>
+                    </div>
+                    {% endif %}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+                        <div>
+                            <label for="financial-year-start" class="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+                                Start date
+                            </label>
+                            <input id="financial-year-start"
+                                   type="date"
+                                   x-model="startDate"
+                                   @change="updateMatchedTerms()"
+                                   required
+                                   class="w-full rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500/40">
+                        </div>
+                        <div>
+                            <label for="financial-year-end" class="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+                                End date
+                            </label>
+                            <input id="financial-year-end"
+                                   type="date"
+                                   x-model="endDate"
+                                   @change="updateMatchedTerms()"
+                                   :min="startDate"
+                                   required
+                                   class="w-full rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500/40">
+                        </div>
+                    </div>
+
+                    <div class="max-w-xl">
+                        <label for="financial-year-opening-balance" class="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+                            Opening balance (KES)
+                        </label>
+                        <input id="financial-year-opening-balance"
+                               type="number"
+                               step="0.01"
+                               x-model="openingBalance"
+                               required
+                               class="w-full rounded-lg border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-3 py-2.5 text-sm tabular-nums text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500/40">
+                        <p x-show="!editingId && suggestedOpeningBalance > 0"
+                           class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                            Carried forward from the previous year's closing balance — adjust if needed.
+                        </p>
+                    </div>
+
+                    <label x-show="!editingId" class="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200 cursor-pointer">
+                        <input type="checkbox" x-model="setAsCurrent" class="rounded border-slate-300 text-teal-600 focus:ring-teal-500">
+                        <span>Set as current financial year</span>
+                    </label>
+
+                    <div class="flex flex-wrap items-center gap-3 pt-1">
+                        <button type="submit"
+                                :disabled="saving"
+                                class="inline-flex items-center gap-2 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 px-4 py-2.5 text-sm font-semibold text-white transition">
+                            <i class="fas fa-save"></i>
+                            <span x-text="saving ? 'Saving…' : (editingId ? 'Save changes' : 'Add financial year')"></span>
+                        </button>
+                        <button type="button"
+                                @click="closeForm()"
+                                :disabled="saving"
+                                class="inline-flex items-center gap-2 rounded-xl border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-60 transition">
+                            Cancel
+                        </button>
+                        <p x-show="saveMessage"
+                           x-text="saveMessage"
+                           :class="saveError ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'"
+                           class="text-sm"></p>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <section class="accounts-panel rounded-xl overflow-hidden" x-show="formOpen" x-cloak>
+            <div class="accounts-panel-head px-4 sm:px-5 py-3">
+                <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Academic terms preview</h2>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                    Only academic terms whose dates fall within your financial year dates are shown.
+                </p>
+            </div>
+            <div class="accounts-metrics-band px-4 sm:px-5 py-4">
+                <div id="finance-form-terms-list" class="space-y-4"></div>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

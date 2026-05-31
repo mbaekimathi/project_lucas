@@ -1,0 +1,1039 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}Petty cash book{% if account and not petty_cash_empty %} — {{ account.account_name }}{% endif %}{% endblock %}
+
+{% block sidebar_content %}
+{% set accountant_nav_scope = 'accounts' %}
+<a href="{{ dashboard_home_url() }}" class="sidebar-item mb-2 pb-2 border-b border-slate-700/60">
+    <i class="fas fa-gauge w-5"></i><span>Dashboard</span>
+</a>
+{% include 'dashboards/includes/find_student_sidebar_link.html' %}
+{% include 'dashboards/includes/accountant_sidebar.html' %}
+{% include 'dashboards/includes/petty_cash_book_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+{% include 'dashboards/includes/finance_account_reports_ui.html' %}
+<script type="application/json" id="petty-cash-page-config">{{ {
+    'registerModalOpen': register_modal_open|default(false),
+    'expenseModalOpen': expense_modal_open|default(false),
+    'defaultAccountId': account_id|default(''),
+    'pettyCashAccounts': petty_cash_accounts|default([]),
+    'financeAccounts': finance_accounts_picker|default([]),
+    'expenseVotes': expense_votes|default([]),
+    'supplierLookupUrl': employee_dash_url('payments-invoices/supplier-lookup'),
+    'supplierSearchUrl': employee_dash_url('payments-invoices/supplier-search'),
+    'supplierRegisterUrl': employee_dash_url('payments-invoices/register-supplier'),
+    'expensePostUrl': employee_dash_url('accounts/petty-cash-book/record-expense'),
+    'nextReferenceUrl': employee_dash_url('accounts/petty-cash-book/next-reference'),
+    'nextExpenseReference': next_expense_reference|default(''),
+    'financialYearId': financial_year_id|default(''),
+    'dateFrom': date_from|default(''),
+    'dateTo': date_to|default('')
+}|tojson }}</script>
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('pettyCashBookPage', function () {
+    var cfg = {};
+    try {
+      var cfgEl = document.getElementById('petty-cash-page-config');
+      cfg = cfgEl && cfgEl.textContent ? JSON.parse(cfgEl.textContent) : {};
+    } catch (e) {
+      cfg = {};
+    }
+    return {
+      registerModalOpen: !!cfg.registerModalOpen,
+      expenseModalOpen: !!cfg.expenseModalOpen,
+      regFinanceAccountId: '',
+      regDescription: '',
+      pettyCashAccounts: cfg.pettyCashAccounts || [],
+      financeAccounts: cfg.financeAccounts || [],
+      expenseVotes: cfg.expenseVotes || [],
+      expenseAccountId: cfg.defaultAccountId != null && cfg.defaultAccountId !== '' ? String(cfg.defaultAccountId) : '',
+      expenseVote: '',
+      expenseAmount: '',
+      expensePhone: '',
+      expensePayeeName: '',
+      expensePaymentMethod: '',
+      expenseBookReference: cfg.nextExpenseReference || '',
+      expenseExternalReference: '',
+      expenseNotes: '',
+      expenseSubmitting: false,
+      nextReferenceUrl: cfg.nextReferenceUrl || '',
+      paymentModeMap: { 'Cash': 'cash', 'Cheque': 'cheque', 'Mobile Money': 'mpesa' },
+      expensePostUrl: cfg.expensePostUrl || '',
+      expenseFinancialYearId: cfg.financialYearId != null ? String(cfg.financialYearId) : '',
+      expenseDateFrom: cfg.dateFrom || '',
+      expenseDateTo: cfg.dateTo || '',
+      flashMessage: '',
+      flashType: '',
+      supplierLookupUrl: cfg.supplierLookupUrl || '',
+      supplierSearchUrl: cfg.supplierSearchUrl || '',
+      supplierRegisterUrl: cfg.supplierRegisterUrl || '',
+      supplierLookupTimer: null,
+      nameSearchTimer: null,
+      supplierRegisterTimer: null,
+      supplierLookupStatus: '',
+      supplierLookupMessage: '',
+      supplierFound: false,
+      nameSearchResults: [],
+      showNameDropdown: false,
+      selectedFinanceAccount: function () {
+        var id = String(this.expenseAccountId || '');
+        if (!id) return null;
+        return (this.financeAccounts || []).find(function (a) {
+          return String(a.id) === id;
+        }) || (this.pettyCashAccounts || []).find(function (a) {
+          return String(a.id) === id;
+        }) || null;
+      },
+      selectedPettyCashAccount: function () {
+        return this.selectedFinanceAccount();
+      },
+      filteredFinanceAccounts: function () {
+        var mode = this.paymentModeMap[this.expensePaymentMethod] || '';
+        var list = this.financeAccounts || [];
+        if (!mode) return list;
+        return list.filter(function (acc) {
+          var cat = (acc.account_category || '').toLowerCase();
+          if (cat === 'income') return true;
+          var modes = acc.payment_modes || [];
+          return !modes.length || modes.indexOf(mode) >= 0;
+        });
+      },
+      showFlash: function (message, type) {
+        var self = this;
+        this.flashMessage = message || '';
+        this.flashType = type === 'error' ? 'error' : 'success';
+        if (this._flashTimer) clearTimeout(this._flashTimer);
+        if (message) {
+          this._flashTimer = setTimeout(function () {
+            self.flashMessage = '';
+            self.flashType = '';
+          }, 8000);
+        }
+      },
+      postFormAjax: function (url, fields, opts) {
+        opts = opts || {};
+        var self = this;
+        var body = new URLSearchParams();
+        Object.keys(fields || {}).forEach(function (k) {
+          var v = fields[k];
+          if (v != null && v !== '') body.append(k, String(v));
+        });
+        body.append('ajax', '1');
+        return fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'same-origin',
+          body: body.toString(),
+        })
+          .then(function (r) {
+            return r.json().then(function (data) {
+              return { ok: r.ok, data: data };
+            });
+          })
+          .then(function (res) {
+            var data = res.data || {};
+            if (res.ok && data.success) {
+              if (data.petty_cash_accounts) self.pettyCashAccounts = data.petty_cash_accounts;
+              if (data.finance_accounts) self.financeAccounts = data.finance_accounts;
+              if (data.next_expense_reference) self.expenseBookReference = data.next_expense_reference;
+              if (data.html) {
+                var bodyEl = document.getElementById('acr-report-body');
+                if (bodyEl) bodyEl.innerHTML = data.html;
+              }
+              if (data.report_period_label || data.report_generated_at || data.account_name) {
+                var periodEl = document.getElementById('acr-masthead-period');
+                var genEl = document.getElementById('acr-masthead-generated');
+                var acctEl = document.getElementById('acr-masthead-account');
+                if (periodEl && data.report_period_label) periodEl.textContent = data.report_period_label;
+                if (genEl && data.report_generated_at) genEl.textContent = data.report_generated_at;
+                if (acctEl && data.account_name) acctEl.textContent = data.account_name;
+              }
+              self.showFlash(data.message, 'success');
+              if (opts.onSuccess) opts.onSuccess();
+              return true;
+            }
+            self.showFlash((data && data.message) || 'Could not record expense.', 'error');
+            return false;
+          })
+          .catch(function () {
+            self.showFlash('Could not record expense. Try again.', 'error');
+            return false;
+          });
+      },
+      onExpensePaymentMethodChange: function () {
+        var id = String(this.expenseAccountId || '');
+        if (!id) return;
+        var stillValid = (this.filteredFinanceAccounts() || []).some(function (a) {
+          return String(a.id) === id;
+        });
+        if (!stillValid) this.expenseAccountId = '';
+      },
+      init: function () {
+        var self = this;
+        window.addEventListener('pcb-open-register', function () {
+          self.openRegisterModal();
+        });
+        this.$watch('registerModalOpen', function (open) {
+          if (open) self.expenseModalOpen = false;
+          document.body.classList.toggle('overflow-hidden', !!(open || self.expenseModalOpen));
+        });
+        this.$watch('expenseModalOpen', function (open) {
+          if (open) self.registerModalOpen = false;
+          document.body.classList.toggle('overflow-hidden', !!(open || self.registerModalOpen));
+          if (!open) self.resetExpenseForm();
+        });
+        this.$watch('expenseAccountId', function () {
+          var allowed = self.expenseVotesForAccount();
+          var current = String(self.expenseVote || '').toUpperCase();
+          if (!current) return;
+          var ok = allowed.some(function (v) {
+            return String(v.name || '').toUpperCase() === current;
+          });
+          if (!ok) self.expenseVote = '';
+        });
+      },
+      expenseVotesForAccount: function () {
+        var all = this.expenseVotes || [];
+        var acct = this.selectedFinanceAccount();
+        var pc = (this.pettyCashAccounts || []).find(function (a) {
+          return String(a.id) === String(this.expenseAccountId || '');
+        }.bind(this));
+        if (pc) acct = pc;
+        if (!acct || !acct.expense_votes || !acct.expense_votes.length) {
+          return all;
+        }
+        var allowed = {};
+        (acct.expense_votes || []).forEach(function (n) {
+          allowed[String(n || '').toUpperCase()] = true;
+        });
+        return all.filter(function (v) {
+          return allowed[String(v.name || '').toUpperCase()];
+        });
+      },
+      pickExpenseVote: function (vote) {
+        if (!vote) return;
+        this.expenseVote = vote.name || '';
+      },
+      isExpenseVoteSelected: function (vote) {
+        if (!vote) return false;
+        return String(this.expenseVote || '').toUpperCase() === String(vote.name || '').toUpperCase();
+      },
+      openRegisterModal: function () {
+        this.registerModalOpen = true;
+        var self = this;
+        this.$nextTick(function () {
+          var el = document.getElementById('pcb_reg_finance_account');
+          if (el) el.focus();
+        });
+      },
+      closeRegisterModal: function () {
+        this.registerModalOpen = false;
+      },
+      fetchNextExpenseReference: function () {
+        var self = this;
+        if (!this.nextReferenceUrl) return;
+        fetch(this.nextReferenceUrl, {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.ok && data.reference) {
+              self.expenseBookReference = data.reference;
+            }
+          })
+          .catch(function () {});
+      },
+      openExpenseModal: function () {
+        this.resetExpenseForm();
+        if (!this.expenseAccountId && this.pettyCashAccounts.length) {
+          this.expenseAccountId = String(this.pettyCashAccounts[0].id);
+        }
+        this.fetchNextExpenseReference();
+        this.expenseModalOpen = true;
+        this.$nextTick(function () {
+          var el = document.getElementById('pcb_expense_account');
+          if (el) el.focus();
+        });
+      },
+      closeExpenseModal: function () {
+        this.expenseModalOpen = false;
+      },
+      resetExpenseForm: function () {
+        this.expenseVote = '';
+        this.expenseAmount = '';
+        this.expensePhone = '';
+        this.expensePayeeName = '';
+        this.expensePaymentMethod = '';
+        this.expenseExternalReference = '';
+        this.expenseNotes = '';
+        this.expenseSubmitting = false;
+        this.supplierLookupStatus = '';
+        this.supplierLookupMessage = '';
+        this.supplierFound = false;
+        this.nameSearchResults = [];
+        this.showNameDropdown = false;
+        if (this.supplierLookupTimer) clearTimeout(this.supplierLookupTimer);
+        if (this.nameSearchTimer) clearTimeout(this.nameSearchTimer);
+        if (this.supplierRegisterTimer) clearTimeout(this.supplierRegisterTimer);
+      },
+      onExpensePhoneInput: function () {
+        this.supplierFound = false;
+        var phone = (this.expensePhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          this.supplierLookupStatus = digits ? 'typing' : '';
+          this.supplierLookupMessage = digits ? 'Keep typing phone number…' : '';
+          return;
+        }
+        var self = this;
+        if (this.supplierLookupTimer) clearTimeout(this.supplierLookupTimer);
+        this.supplierLookupStatus = 'checking';
+        this.supplierLookupMessage = 'Checking contact…';
+        this.supplierLookupTimer = setTimeout(function () { self.lookupExpensePhone(); }, 450);
+      },
+      lookupExpensePhone: function () {
+        var phone = (this.expensePhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9) return;
+        var self = this;
+        fetch(this.supplierLookupUrl + '?phone=' + encodeURIComponent(phone), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.supplierLookupStatus = 'error';
+              self.supplierLookupMessage = (data && data.message) || 'Could not check contact.';
+              return;
+            }
+            if (data.found) {
+              self.supplierFound = true;
+              self.expensePayeeName = data.company_name || '';
+              if (data.phone) self.expensePhone = data.phone;
+              self.supplierLookupStatus = 'found';
+              self.supplierLookupMessage = data.message || 'Contact found — name filled in.';
+              self.showNameDropdown = false;
+            } else if (data.ready) {
+              self.supplierFound = false;
+              self.supplierLookupStatus = 'new';
+              self.supplierLookupMessage = data.message || 'New contact — enter the payee name.';
+            }
+          })
+          .catch(function () {
+            self.supplierLookupStatus = 'error';
+            self.supplierLookupMessage = 'Could not check contact. Try again.';
+          });
+      },
+      onExpenseNameInput: function () {
+        this.expensePayeeName = (this.expensePayeeName || '').toUpperCase();
+        if (this.supplierFound) return;
+        var q = (this.expensePayeeName || '').trim();
+        if (q.length < 2) {
+          this.nameSearchResults = [];
+          this.showNameDropdown = false;
+          return;
+        }
+        var self = this;
+        if (this.nameSearchTimer) clearTimeout(this.nameSearchTimer);
+        this.nameSearchTimer = setTimeout(function () { self.searchExpenseNames(); }, 350);
+      },
+      searchExpenseNames: function () {
+        var q = (this.expensePayeeName || '').trim();
+        if (q.length < 2) return;
+        var self = this;
+        fetch(this.supplierSearchUrl + '?q=' + encodeURIComponent(q), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.ok && data.results && data.results.length) {
+              self.nameSearchResults = data.results;
+              self.showNameDropdown = true;
+            } else {
+              self.nameSearchResults = [];
+              self.showNameDropdown = false;
+            }
+          })
+          .catch(function () {
+            self.nameSearchResults = [];
+            self.showNameDropdown = false;
+          });
+      },
+      pickExpenseSupplier: function (sup) {
+        if (!sup) return;
+        this.expensePayeeName = sup.company_name || '';
+        if (sup.phone) this.expensePhone = sup.phone;
+        this.supplierFound = true;
+        this.showNameDropdown = false;
+      },
+      tryRegisterSupplierLive: function () {
+        var self = this;
+        var phone = (this.expensePhone || '').trim();
+        var name = (this.expensePayeeName || '').trim();
+        if (this.supplierFound || !phone || name.length < 2) return;
+        var digits = phone.replace(/\D/g, '');
+        if (digits.length < 9) return;
+        if (this.supplierRegisterTimer) clearTimeout(this.supplierRegisterTimer);
+        this.supplierRegisterTimer = setTimeout(function () {
+          fetch(self.supplierRegisterUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ phone: phone, company_name: name }),
+          }).catch(function () {});
+        }, 600);
+      },
+      selectAllRegisterVotes: function (checked) {
+        document.querySelectorAll('.pcb-vote-cb').forEach(function (cb) {
+          cb.checked = !!checked;
+        });
+      },
+      uppercaseField: function (e) {
+        var el = e.target;
+        if (!el || el.value == null) return;
+        var start = el.selectionStart;
+        var end = el.selectionEnd;
+        el.value = String(el.value).toUpperCase();
+        if (typeof start === 'number' && typeof end === 'number') {
+          try { el.setSelectionRange(start, end); } catch (err) {}
+        }
+      },
+      validateRegisterForm: function (e) {
+        if (!this.regFinanceAccountId) {
+          e.preventDefault();
+          alert('Select the account for the petty cash book.');
+          return false;
+        }
+        var modes = document.querySelectorAll('input[name="payment_modes"]:checked');
+        if (!modes.length) {
+          e.preventDefault();
+          alert('Select at least one mode of payment.');
+          return false;
+        }
+        var voteBoxes = document.querySelectorAll('.pcb-vote-cb:checked');
+        if (document.querySelectorAll('.pcb-vote-cb').length && !voteBoxes.length) {
+          e.preventDefault();
+          alert('Select at least one expense vote for this petty cash account.');
+          return false;
+        }
+        return true;
+      },
+      submitExpense: function ($event) {
+        $event.preventDefault();
+        if (this.expenseSubmitting) return;
+        var amt = parseFloat(String(this.expenseAmount || '').replace(/,/g, ''));
+        if (!Number.isFinite(amt) || amt <= 0) {
+          this.showFlash('Enter a valid payment amount greater than zero.', 'error');
+          return;
+        }
+        if (!this.expenseAccountId) {
+          this.showFlash('Select the account name.', 'error');
+          return;
+        }
+        if (!String(this.expenseVote || '').trim()) {
+          this.showFlash('Select the expense vote (category).', 'error');
+          return;
+        }
+        if (!this.expensePaymentMethod) {
+          this.showFlash('Select a payment mode (Cash, Cheque, or Mobile Money).', 'error');
+          return;
+        }
+        if (!(this.expensePayeeName || '').trim()) {
+          this.showFlash('Enter the company or person paid to.', 'error');
+          return;
+        }
+        var digits = (this.expensePhone || '').replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          this.showFlash('Enter a valid contact number (at least 9 digits).', 'error');
+          return;
+        }
+        var acct = this.selectedFinanceAccount();
+        if (acct && amt > parseFloat(acct.current_balance || 0) + 0.005) {
+          this.showFlash(
+            'Insufficient balance in ' + acct.account_name
+            + '. Available: KES ' + (acct.current_balance_display || '0.00'),
+            'error'
+          );
+          return;
+        }
+        if (!this.expensePostUrl) {
+          this.showFlash('Expense posting is not configured.', 'error');
+          return;
+        }
+        var self = this;
+        this.expenseSubmitting = true;
+        var fyEl = document.getElementById('acr-financial-year');
+        var dfEl = document.getElementById('acr-date-from');
+        var dtEl = document.getElementById('acr-date-to');
+        this.postFormAjax(this.expensePostUrl, {
+          finance_account_id: this.expenseAccountId,
+          vote_name: this.expenseVote,
+          amount: this.expenseAmount,
+          paid_to_phone: this.expensePhone,
+          paid_to_name: (this.expensePayeeName || '').trim().toUpperCase(),
+          payment_method: this.expensePaymentMethod,
+          payment_reference: (this.expenseExternalReference || '').trim(),
+          external_payment_reference: (this.expenseExternalReference || '').trim(),
+          notes: (this.expenseNotes || '').trim(),
+          financial_year_id: fyEl && fyEl.value ? fyEl.value : this.expenseFinancialYearId,
+          date_from: dfEl && dfEl.value ? dfEl.value : this.expenseDateFrom,
+          date_to: dtEl && dtEl.value ? dtEl.value : this.expenseDateTo,
+        }, {
+          onSuccess: function () { self.closeExpenseModal(); },
+        }).finally(function () { self.expenseSubmitting = false; });
+      },
+    };
+  });
+});
+</script>
+<style>
+.pcb-modal-head {
+    flex-shrink: 0;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(135deg, #0f766e 0%, #134e4a 55%, #1e293b 100%);
+}
+.pcb-modal-head--register {
+    background: linear-gradient(135deg, #334155 0%, #0f766e 100%);
+}
+.pcb-modal-body {
+    flex: 1; overflow-y: auto;
+    padding: 1.25rem;
+}
+.pcb-form-section {
+    margin-bottom: 1.25rem;
+}
+.pcb-form-section:last-of-type { margin-bottom: 0; }
+.pcb-form-section__title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--acc-muted);
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--acc-line);
+}
+.pcb-field-hint {
+    margin-top: 0.35rem;
+    font-size: 11px;
+    line-height: 1.35;
+}
+.pcb-field-hint--ok { color: #059669; }
+.pcb-field-hint--warn { color: #b45309; }
+.pcb-field-hint--err { color: #dc2626; }
+.pcb-balance-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(20, 184, 166, 0.12);
+    color: #0f766e;
+}
+.dark .pcb-balance-pill { background: rgba(20, 184, 166, 0.18); color: #5eead4; }
+.pcb-name-dropdown {
+    position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+    max-height: 10rem; overflow-y: auto;
+    border-radius: 0.5rem;
+    border: 1px solid var(--acc-line);
+    background: var(--acc-surface, #fff);
+    box-shadow: 0 12px 28px -8px rgba(15, 23, 42, 0.22);
+}
+.pcb-name-dropdown button {
+    display: block; width: 100%; text-align: left;
+    padding: 0.5rem 0.75rem; font-size: 0.8125rem;
+    border: none; background: transparent; cursor: pointer;
+}
+.pcb-name-dropdown button:hover { background: rgba(20, 184, 166, 0.1); }
+.fa-form-grid { display: grid; gap: 0.875rem; grid-template-columns: 1fr; }
+@media (min-width: 640px) {
+    .fa-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fa-form-grid .fa-span-2 { grid-column: span 2; }
+}
+.fa-field-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--acc-muted);
+    margin-bottom: 0.375rem;
+}
+.fa-level-chip {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--acc-line);
+    background: var(--acc-surface);
+    cursor: pointer;
+}
+.fa-level-chip:has(input:checked) {
+    border-color: #14b8a6;
+    background: color-mix(in srgb, #14b8a6 10%, var(--acc-surface));
+}
+.pcb-votes-grid {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: 1fr;
+}
+.pcb-vote-chip {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--acc-line);
+    background: var(--acc-surface);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+}
+.pcb-vote-chip:has(input:checked) {
+    border-color: #14b8a6;
+    background: color-mix(in srgb, #14b8a6 10%, var(--acc-surface));
+    box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.25);
+}
+.pcb-vote-chip__name {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--acc-ink);
+    line-height: 1.25;
+}
+.pcb-vote-chip__desc {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--acc-muted);
+    line-height: 1.35;
+    text-transform: none;
+}
+[x-cloak] { display: none !important; }
+.accounts-dropdown { border: 1px solid var(--acc-line, #e2e8f0); box-shadow: 0 12px 32px -8px rgba(15,23,42,0.18); }
+</style>
+
+{% set p = report_payload %}
+{% set filter_url = employee_dash_url('accounts/petty-cash-book') %}
+{% set filter_data_url = employee_dash_url('accounts/petty-cash-book/data') %}
+
+<div x-data="pettyCashBookPage" x-init="init()">
+<div class="acr-page page-content">
+    <div class="acr-inner">
+        {% include 'dashboards/includes/portal_page_flash.html' %}
+
+        <div x-show="flashMessage" x-cloak
+             class="accounts-flash mb-4 flex items-start gap-3 px-4 py-3 text-sm no-print"
+             :class="flashType === 'error'
+               ? 'border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100'
+               : 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-100'">
+            <i class="fas mt-0.5 shrink-0"
+               :class="flashType === 'error' ? 'fa-circle-exclamation text-red-600' : 'fa-circle-check text-emerald-600'"></i>
+            <span x-text="flashMessage"></span>
+            <button type="button" @click="flashMessage = ''" class="ml-auto text-slate-400 hover:text-slate-600">
+                <i class="fas fa-times text-xs"></i>
+            </button>
+        </div>
+
+        <div class="acr-toolbar no-print">
+            <nav class="acr-breadcrumb" aria-label="Breadcrumb">
+                <a href="{{ employee_dash_url('accounts') }}">Accounts</a>
+                <span aria-hidden="true">/</span>
+                <span class="acr-breadcrumb__current">Petty cash book</span>
+            </nav>
+            <div class="acr-toolbar__actions">
+                {% if not petty_cash_empty %}
+                <button type="button" class="acr-btn acr-btn--primary" @click="openExpenseModal()">
+                    <i class="fas fa-receipt" aria-hidden="true"></i> Record expense
+                </button>
+                <button type="button" class="acr-btn" onclick="window.print()">
+                    <i class="fas fa-print" aria-hidden="true"></i> Print
+                </button>
+                <a href="{{ employee_dash_url('accounts/' ~ account_id) }}" class="acr-btn">
+                    <i class="fas fa-chart-pie" aria-hidden="true"></i> Account summary
+                </a>
+                {% endif %}
+                <button type="button" class="acr-btn" @click="openRegisterModal()">
+                    <i class="fas fa-plus-circle" aria-hidden="true"></i>
+                    {% if petty_cash_empty %}Register petty cash account{% else %}New account{% endif %}
+                </button>
+            </div>
+        </div>
+
+        {% if petty_cash_empty %}
+        <div class="acr-section no-print mb-4">
+            <div class="acr-empty">
+                <i class="fas fa-coins" aria-hidden="true"></i>
+                <p class="acr-empty__title">Set up your petty cash book</p>
+                <p>No petty cash account is registered yet. Create one to track imprest, receipts, and small payments with a running balance.</p>
+                <button type="button" class="acr-btn acr-btn--primary mt-3" @click="openRegisterModal()">
+                    <i class="fas fa-plus-circle" aria-hidden="true"></i> Register petty cash account
+                </button>
+            </div>
+        </div>
+        {% endif %}
+
+        <script type="application/json" id="acr-page-config">{{ {
+            'dataApi': filter_data_url,
+            'defaultFinancialYearId': default_financial_year_id,
+            'skipInitialFetch': petty_cash_empty|default(false),
+            'financeAccountId': account_id
+        }|tojson }}</script>
+
+        {% with report_title='Petty cash book', report_description='Receipts and payments with running balance for petty cash accounts.', show_filters=not petty_cash_empty, filter_action_url=filter_url, live_filters=not petty_cash_empty, is_summary=false %}
+        {% include 'dashboards/includes/finance_account_report_masthead.html' %}
+        {% endwith %}
+
+        <div id="acr-report-loading" class="acr-report-state hidden no-print" role="status" aria-live="polite">
+            <i class="fas fa-circle-notch fa-spin" aria-hidden="true"></i>
+            <span>Updating book…</span>
+        </div>
+        <p id="acr-report-error" class="acr-report-alert hidden no-print" role="alert"></p>
+
+        <div id="acr-report-body" aria-live="polite">
+        {% include 'dashboards/includes/finance_account_report_body.html' %}
+        </div>
+    </div>
+</div>
+
+<template x-teleport="body">
+    {# Register petty cash account modal #}
+    <div x-show="registerModalOpen" x-cloak
+         class="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 no-print"
+         @keydown.escape.window="closeRegisterModal()">
+        <div class="absolute inset-0 z-0 bg-slate-900/70 backdrop-blur-sm" @click="closeRegisterModal()" aria-hidden="true"></div>
+        <div x-ref="registerModalPanel" role="dialog" aria-modal="true" aria-labelledby="pcb-register-title"
+             class="accounts-modal relative z-10 w-full max-w-lg rounded-xl bg-white dark:bg-slate-900 max-h-[92vh] overflow-hidden flex flex-col">
+            <div class="pcb-modal-head pcb-modal-head--register flex items-start justify-between gap-3">
+                <div>
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-200">Accounts · Petty cash</p>
+                    <h2 id="pcb-register-title" class="text-lg font-bold text-white mt-1">Register petty cash account</h2>
+                    <p class="text-xs text-slate-300 mt-1 normal-case">Creates a new imprest account in the petty cash book.</p>
+                </div>
+                <button type="button" @click="closeRegisterModal()"
+                        class="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-white/10" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form method="post" action="{{ employee_dash_url('accounts/register') }}" class="pcb-modal-body fa-form-grid"
+                  @submit="return validateRegisterForm($event)">
+                <input type="hidden" name="account_category" value="Petty cash">
+                <input type="hidden" name="after_register" value="petty-cash-book">
+                <div class="fa-span-2 pcb-form-section">
+                    <p class="pcb-form-section__title">Account details</p>
+                    <div class="mb-3">
+                        <label class="fa-field-label">Category</label>
+                        <input type="text" class="accounts-field w-full opacity-70" value="PETTY CASH" readonly tabindex="-1">
+                    </div>
+                    <div class="mb-3">
+                        <label for="pcb_reg_finance_account" class="fa-field-label">Account name <span class="text-red-500">*</span></label>
+                        <select id="pcb_reg_finance_account" name="existing_finance_account_id" required
+                                x-model="regFinanceAccountId"
+                                class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm normal-case dark:text-white">
+                            <option value="">Select account</option>
+                            {% for acc in finance_accounts_picker|default([]) %}
+                            <option value="{{ acc.id }}">{{ acc.account_name }} ({{ acc.account_category }}) — KES {{ acc.current_balance_display }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="pcb-field-hint text-[var(--acc-muted)] normal-case mt-1">Choose a registered finance account to use in the petty cash book. Its category will be set to petty cash.</p>
+                        {% if not finance_accounts_picker|default([]) %}
+                        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case">No accounts found. Register accounts under Accounts first.</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <label for="pcb_account_description" class="fa-field-label">Description</label>
+                        <textarea id="pcb_account_description" name="account_description" rows="2" maxlength="500"
+                                  placeholder="Purpose or custodian notes…" class="accounts-field w-full min-h-[4.5rem] resize-y normal-case"
+                                  x-model="regDescription" @input="uppercaseField($event)"></textarea>
+                    </div>
+                </div>
+                <div class="fa-span-2 pcb-form-section">
+                    <p class="pcb-form-section__title">Payment modes</p>
+                    <p class="text-[11px] text-[var(--acc-muted)] mb-2 normal-case">Petty cash usually uses cash; select all that apply.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <label class="fa-level-chip">
+                            <input type="checkbox" name="payment_modes" value="cash" checked>
+                            <span class="text-xs font-semibold text-[var(--acc-ink)]">Cash</span>
+                        </label>
+                        <label class="fa-level-chip">
+                            <input type="checkbox" name="payment_modes" value="mpesa">
+                            <span class="text-xs font-semibold text-[var(--acc-ink)]">M-Pesa</span>
+                        </label>
+                        <label class="fa-level-chip">
+                            <input type="checkbox" name="payment_modes" value="cheque">
+                            <span class="text-xs font-semibold text-[var(--acc-ink)]">Cheque</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="fa-span-2 pcb-form-section">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <p class="pcb-form-section__title mb-0 border-0 pb-0">Expense votes <span class="text-red-500">*</span></p>
+                        <div class="flex gap-2 text-xs">
+                            <button type="button" @click="selectAllRegisterVotes(true)" class="text-teal-700 dark:text-teal-400 font-semibold hover:underline">Select all</button>
+                            <span class="text-[var(--acc-muted)]">·</span>
+                            <button type="button" @click="selectAllRegisterVotes(false)" class="text-[var(--acc-muted)] font-semibold hover:underline">Clear</button>
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-[var(--acc-muted)] mb-2 normal-case">Choose fee votes this petty cash account may charge. Name and description are shown for each vote.</p>
+                    {% if expense_votes|default([]) %}
+                    <div class="pcb-votes-grid max-h-52 overflow-y-auto rounded-lg border border-[var(--acc-line)] p-3 bg-slate-50/80 dark:bg-slate-900/40">
+                        {% for vote in expense_votes %}
+                        <label class="pcb-vote-chip">
+                            <input type="checkbox" name="expense_vote_names" value="{{ vote.name }}"
+                                   class="pcb-vote-cb mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 shrink-0">
+                            <span class="min-w-0 flex-1">
+                                <span class="pcb-vote-chip__name">{{ vote.name }}</span>
+                                {% if vote.description %}
+                                <span class="pcb-vote-chip__desc">{{ vote.description }}</span>
+                                {% else %}
+                                <span class="pcb-vote-chip__desc">No description</span>
+                                {% endif %}
+                            </span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-amber-700 dark:text-amber-300 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 normal-case">
+                        No fee votes found. Add fee structure items under Student fees first.
+                    </p>
+                    {% endif %}
+                </div>
+                <div class="fa-span-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1 border-t border-[var(--acc-line)]">
+                    <button type="button" @click="closeRegisterModal()"
+                            class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="accounts-btn-primary inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold text-white">
+                        <i class="fas fa-save"></i> Save account
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+
+<template x-teleport="body">
+    {# Record petty cash expense modal — same flow as Settle payable #}
+    <div x-show="expenseModalOpen" x-cloak
+         class="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 no-print"
+         @keydown.escape.window="closeExpenseModal()">
+        <div class="absolute inset-0 z-0 bg-slate-900/70 backdrop-blur-sm" @click="closeExpenseModal()" aria-hidden="true"></div>
+        <div x-ref="expenseModalPanel" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="pcb-expense-title"
+             class="accounts-modal relative z-10 w-full max-w-lg rounded-xl bg-white dark:bg-slate-900 max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="border-b border-slate-700 px-5 py-4 sm:px-6 flex items-start justify-between gap-3 bg-gradient-to-r from-slate-800 to-teal-900 shrink-0">
+                <div>
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-200">Petty cash book</p>
+                    <template x-if="selectedFinanceAccount()">
+                        <div>
+                            <h3 id="pcb-expense-title" class="mt-1 text-lg font-bold text-white uppercase" x-text="selectedFinanceAccount().account_name"></h3>
+                            <p class="mt-1 text-xs text-slate-300 normal-case tabular-nums">
+                                Available balance
+                                <span class="font-semibold text-amber-300" x-text="'KES ' + selectedFinanceAccount().current_balance_display"></span>
+                            </p>
+                            <p class="mt-1 text-[10px] text-teal-200/80 normal-case">
+                                Expense is debited from imprest and charged to the selected vote.
+                            </p>
+                        </div>
+                    </template>
+                    <template x-if="!selectedFinanceAccount()">
+                        <div>
+                            <h3 id="pcb-expense-title" class="mt-1 text-lg font-bold text-white">Record expense</h3>
+                            <p class="mt-1 text-xs text-slate-300 normal-case">Select a petty cash account to pay from.</p>
+                        </div>
+                    </template>
+                </div>
+                <button type="button" @click="closeExpenseModal()"
+                        class="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-white/10" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form @submit="submitExpense($event)" class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+
+                <div>
+                    <label for="pcb_expense_account" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Account name</label>
+                    <select id="pcb_expense_account" name="finance_account_id" required
+                            x-model="expenseAccountId"
+                            class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
+                        <option value="">Select account</option>
+                        <template x-for="acct in filteredFinanceAccounts()" :key="acct.id">
+                            <option :value="String(acct.id)"
+                                    x-text="acct.account_name + ' (' + acct.account_category + ') — KES ' + acct.current_balance_display"></option>
+                        </template>
+                    </select>
+                    <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedFinanceAccount()">
+                        Available balance:
+                        <span class="font-semibold tabular-nums text-teal-700 dark:text-teal-400"
+                              x-text="'KES ' + (selectedFinanceAccount() ? selectedFinanceAccount().current_balance_display : '0.00')"></span>
+                    </p>
+                    <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
+                       x-show="expensePaymentMethod && !filteredFinanceAccounts().length && financeAccounts.length">
+                        No accounts match this payment mode.
+                    </p>
+                    <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
+                       x-show="!financeAccounts.length">
+                        No accounts available. Add accounts under Accounts first.
+                    </p>
+                </div>
+
+                <div>
+                    <label for="pcb_expense_payment_method" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Payment mode</label>
+                    <select id="pcb_expense_payment_method" name="payment_method" required
+                            x-model="expensePaymentMethod"
+                            @change="onExpensePaymentMethodChange()"
+                            class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
+                        <option value="">Select mode</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="Mobile Money">Mobile Money</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Expense vote (category) <span class="text-red-500">*</span></label>
+                    <input type="hidden" name="vote_name" :value="expenseVote">
+                    <div class="pcb-votes-grid max-h-44 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 p-2 bg-slate-50/80 dark:bg-slate-900/40"
+                         x-show="expenseVotesForAccount().length">
+                        <template x-for="vote in expenseVotesForAccount()" :key="vote.name">
+                            <label class="pcb-vote-chip" :class="isExpenseVoteSelected(vote) ? 'border-teal-500' : ''">
+                                <input type="radio" class="mt-0.5 shrink-0 border-gray-300 text-teal-600 focus:ring-teal-500"
+                                       :value="vote.name" :checked="isExpenseVoteSelected(vote)"
+                                       @change="pickExpenseVote(vote)">
+                                <span class="min-w-0 flex-1">
+                                    <span class="pcb-vote-chip__name" x-text="vote.name"></span>
+                                    <span class="pcb-vote-chip__desc"
+                                          x-text="vote.description ? vote.description : 'No description'"></span>
+                                </span>
+                            </label>
+                        </template>
+                    </div>
+                    <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
+                       x-show="expenseAccountId && !expenseVotesForAccount().length">
+                        No expense votes are linked to this account. Edit the account or register votes when creating it.
+                    </p>
+                    <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
+                       x-show="!expenseVotes.length && !expenseAccountId">
+                        No fee votes found. Add fee structure items under Student fees.
+                    </p>
+                    <p class="mt-1 text-xs text-slate-500 normal-case" x-show="expenseVote">
+                        Selected:
+                        <span class="font-semibold text-teal-700 dark:text-teal-400" x-text="expenseVote"></span>
+                    </p>
+                </div>
+
+                <div>
+                    <label class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Book reference</label>
+                    <div class="flex items-center gap-2 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-950/30 px-3 py-2.5">
+                        <i class="fas fa-hashtag text-teal-600 dark:text-teal-400" aria-hidden="true"></i>
+                        <span class="font-mono text-sm font-bold text-teal-800 dark:text-teal-200 tabular-nums"
+                              x-text="expenseBookReference || '—'"></span>
+                        <span class="ml-auto text-[10px] text-teal-700/80 dark:text-teal-300/80 normal-case">Assigned on save</span>
+                    </div>
+                    <p class="mt-1 text-xs text-slate-500 normal-case">Internal petty cash book number (e.g. PCASH-00001).</p>
+                </div>
+
+                <div>
+                    <label for="pcb_expense_external_ref" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">External payment reference <span class="font-normal text-slate-500">(optional)</span></label>
+                    <input type="text" id="pcb_expense_external_ref" name="external_payment_reference" maxlength="255"
+                           x-model="expenseExternalReference"
+                           placeholder="M-Pesa code, cheque no., receipt no., etc."
+                           class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
+                    <p class="mt-1 text-xs text-slate-500 normal-case">Leave blank to use the book reference only.</p>
+                </div>
+
+                <div>
+                    <label for="pcb_expense_notes" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Notes <span class="font-normal text-slate-500">(optional)</span></label>
+                    <textarea id="pcb_expense_notes" name="notes" rows="3" maxlength="2000"
+                              x-model="expenseNotes"
+                              placeholder="Purpose, items bought, approval details, etc."
+                              class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm normal-case dark:text-white resize-y min-h-[4.5rem]"></textarea>
+                </div>
+
+                <div class="relative">
+                    <label for="pcb_expense_name" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company name paid to</label>
+                    <input type="text" id="pcb_expense_name" name="paid_to_name" required maxlength="255"
+                           x-model="expensePayeeName"
+                           @input="onExpenseNameInput()"
+                           @blur="tryRegisterSupplierLive()"
+                           placeholder="SUPPLIER / PERSON NAME"
+                           autocomplete="off"
+                           class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm uppercase dark:text-white" />
+                    <div x-show="showNameDropdown" x-cloak
+                         class="accounts-dropdown absolute z-20 mt-1 w-full rounded-lg bg-white dark:bg-slate-900 max-h-40 overflow-y-auto">
+                        <template x-for="sup in nameSearchResults" :key="sup.id">
+                            <button type="button" @mousedown.prevent="pickExpenseSupplier(sup)"
+                                    class="block w-full px-4 py-2.5 text-left text-sm uppercase hover:bg-teal-50 dark:hover:bg-teal-950/30 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                                <span class="font-semibold text-slate-900 dark:text-white" x-text="sup.company_name"></span>
+                                <span class="block text-[10px] tabular-nums text-slate-500" x-text="sup.phone"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="pcb_expense_phone" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company number</label>
+                    <input type="tel" id="pcb_expense_phone" name="paid_to_phone" required maxlength="20"
+                           x-model="expensePhone"
+                           @input="onExpensePhoneInput()"
+                           placeholder="e.g. 0712 345 678"
+                           class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
+                    <p class="mt-1 text-xs uppercase"
+                       :class="supplierLookupStatus === 'found' ? 'text-emerald-600' : (supplierLookupStatus === 'error' ? 'text-red-600' : 'text-slate-500')"
+                       x-show="supplierLookupMessage" x-text="supplierLookupMessage"></p>
+                </div>
+
+                <div>
+                    <label for="pcb_expense_amount" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Amount paid (KES)</label>
+                    <input type="number" id="pcb_expense_amount" name="amount" required min="0.01" step="0.01"
+                           x-model="expenseAmount"
+                           class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
+                    <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedFinanceAccount()">
+                        Maximum available:
+                        <span class="font-semibold tabular-nums" x-text="'KES ' + selectedFinanceAccount().current_balance_display"></span>
+                    </p>
+                </div>
+
+                <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                    <button type="button" @click="closeExpenseModal()"
+                            class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                        Cancel
+                    </button>
+                    <button type="submit" :disabled="expenseSubmitting"
+                            class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                        <i class="fas fa-spinner fa-spin" x-show="expenseSubmitting"></i>
+                        <i class="fas fa-check" x-show="!expenseSubmitting"></i>
+                        <span x-text="expenseSubmitting ? 'Processing…' : 'Post to petty cash book'"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+</div>
+
+{% if not petty_cash_empty %}
+<script>
+{% include 'dashboards/includes/petty_cash_book_loader.js' %}
+</script>
+{% endif %}
+{% endblock %}

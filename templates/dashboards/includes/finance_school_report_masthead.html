@@ -1,0 +1,24 @@
+{# report_title, report_description, report_period_label, report_generated_at, report_icon (optional) #}
+<div class="fr-masthead">
+    <div class="fr-masthead__band">
+        <div class="fr-masthead__inner">
+            <div class="fr-masthead__lead min-w-0 flex-1">
+                <p class="fr-masthead__school">{{ school_settings.school_name or 'School' }}</p>
+                <h1 class="fr-masthead__title">{{ report_title }}</h1>
+                {% if report_subtitle %}
+                <p class="fr-masthead__subtitle">{{ report_subtitle }}</p>
+                {% endif %}
+            </div>
+            <div class="fr-masthead__meta">
+                <div><strong>Period:</strong> <span id="fr-masthead-period">{{ report_period_label|default('—') }}</span></div>
+                <div><strong>Generated:</strong> {{ report_generated_at|default('—') }}</div>
+                <div class="fr-masthead__doc-type">Official accounts report</div>
+            </div>
+        </div>
+    </div>
+    {% if report_description %}
+    <div class="fr-masthead__body">
+        <p class="fr-masthead__desc">{{ report_description }}</p>
+    </div>
+    {% endif %}
+</div>

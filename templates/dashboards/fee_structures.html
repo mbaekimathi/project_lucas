@@ -12,6 +12,7 @@
 {% include 'dashboards/includes/student_fees_accounts_styles.html' %}
 {% include 'dashboards/includes/fee_structure_modal_styles.html' %}
 {% include 'dashboards/includes/fee_structures_page_styles.html' %}
+{% include 'dashboards/includes/fee_structure_view_modal_styles.html' %}
 <script>
 // Store structures globally for modal access
 window.feeStructuresData = {{ fee_structures|tojson|safe }};
@@ -93,6 +94,9 @@ document.addEventListener('alpine:init', () => {
                 status: first.status,
                 year_is_current: first.year_is_current,
                 items: first.items || first['items'] || [],
+                enrolled_student_count: rows.reduce(
+                    (sum, r) => sum + (parseInt(r.enrolled_student_count, 10) || 0), 0
+                ),
                 created_at: first.created_at,
             };
         }).filter(Boolean);
@@ -288,8 +292,9 @@ document.addEventListener('alpine:init', () => {
         <div class="fs-toolbar-row">
             <div class="fs-search-wrap">
                 <i class="fas fa-search fs-search-icon" aria-hidden="true"></i>
-                <input type="search" x-model="searchQuery" placeholder="Search name, level, year…"
-                       class="fs-search-input" autocomplete="off">
+                <input type="search" x-model="searchQuery" placeholder="SEARCH NAME, LEVEL, YEAR…"
+                       @input="searchQuery = ($event.target.value || '').toUpperCase()"
+                       class="fs-search-input uppercase" autocomplete="off">
             </div>
             <div class="fs-filters">
                 <div class="fs-filter-field">
@@ -370,7 +375,8 @@ document.addEventListener('alpine:init', () => {
                             <td class="fs-td-fee">
                                 <div class="fs-fee-name fs-truncate" :title="group.fee_name" x-text="group.fee_name"></div>
                                 <div class="fs-fee-meta">
-                                    <span x-text="(group.items || []).length + ' line items'"></span>
+                                    <span x-text="(group.items || []).length + ' vote' + ((group.items || []).length === 1 ? '' : 's')"></span>
+                                    <span x-show="group.enrolled_student_count"> · <span x-text="group.enrolled_student_count + ' student' + (group.enrolled_student_count === 1 ? '' : 's')"></span></span>
                                     <span x-show="group.term_name"> · <span x-text="group.term_name"></span></span>
                                 </div>
                             </td>
@@ -437,7 +443,8 @@ document.addEventListener('alpine:init', () => {
                         <div class="min-w-0 flex-1">
                             <h3 class="fs-fee-name fs-line-clamp-2" :title="group.fee_name" x-text="group.fee_name"></h3>
                             <p class="fs-fee-meta">
-                                <span x-text="(group.items || []).length + ' line items'"></span>
+                                <span x-text="(group.items || []).length + ' vote' + ((group.items || []).length === 1 ? '' : 's')"></span>
+                                <span x-show="group.enrolled_student_count"> · <span x-text="group.enrolled_student_count + ' student' + (group.enrolled_student_count === 1 ? '' : 's')"></span></span>
                                 <span x-show="group.term_name"> · <span x-text="group.term_name"></span></span>
                             </p>
                         </div>
@@ -512,7 +519,7 @@ document.addEventListener('alpine:init', () => {
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                             <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-medium text-gray-900 dark:text-white">{{ structure.fee_name }}</div>
-                                <div class="text-xs text-gray-500 dark:text-gray-400">{{ structure['items']|length }} item(s)</div>
+                                <div class="text-xs text-gray-500 dark:text-gray-400">{{ structure['items']|length }} vote{{ '' if structure['items']|length == 1 else 's' }}</div>
                             </td>
                             <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
                                 <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
@@ -611,178 +618,420 @@ document.addEventListener('alpine:init', () => {
 </div>
 
 <!-- View Fee Structure Details Modal -->
-<div x-data="{ 
-    viewModalOpen: false,
-    structure: null,
-    getItemName(item) {
-        if (!item) return 'N/A';
-        return item.item_name || item['item_name'] || 'N/A';
-    },
-    getItemDescription(item) {
-        if (!item) return 'No description';
-        const desc = item.item_description || item['item_description'] || '';
-        return desc || 'No description';
-    },
-    getItemAmount(item) {
-        if (!item) return 0;
-        return item.amount || item['amount'] || 0;
-    },
-    formatAmount(amount) {
-        return parseFloat(amount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    },
-    openViewModal(structureData) {
-        this.structure = structureData;
-        this.viewModalOpen = true;
-    },
-    init() {
-        // Wait for store to be available
-        if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')) {
-            Alpine.store('feeModals').viewModal = this;
-        } else {
-            // Fallback: try again after a short delay
-            setTimeout(() => {
-                if (Alpine.store && Alpine.store('feeModals')) {
-                    Alpine.store('feeModals').viewModal = this;
-                }
-            }, 100);
-        }
-    }
-}"
+<div x-data="feeStructureViewModal()"
+     class="fsv-root fixed inset-0 z-50"
      x-show="viewModalOpen"
      x-cloak
-     @keydown.escape.window="viewModalOpen = false"
-     class="fixed inset-0 z-50 overflow-y-auto"
+     @keydown.escape.window="closeViewModal()"
      style="display: none;">
-    <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" 
-         @click="viewModalOpen = false"></div>
-    
-    <!-- Modal -->
-    <div class="flex min-h-full items-center justify-center p-4">
-        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
-             @click.stop>
-            <!-- Header -->
-            <div class="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
-                <div class="flex items-center space-x-3">
-                    <i class="fas fa-eye text-white text-2xl"></i>
-                    <h2 class="text-xl font-bold text-white">Fee Structure Details</h2>
+    <div class="fsv-backdrop" @click="closeViewModal()" aria-hidden="true"></div>
+    <div class="fsv-wrap">
+        <div class="fsv-dialog" @click.stop role="dialog" aria-labelledby="fsv-title" aria-modal="true">
+            <header class="fsv-header">
+                <div class="fsv-header__glow" aria-hidden="true"></div>
+                <div class="fsv-header__row">
+                    <div class="fsv-header__main">
+                        <span class="fsv-header__icon" aria-hidden="true"><i class="fas fa-file-invoice-dollar"></i></span>
+                        <div class="min-w-0">
+                            <p class="fsv-eyebrow">Fee structure details</p>
+                            <h2 id="fsv-title" class="fsv-title" x-text="structure?.fee_name || 'Fee structure'"></h2>
+                            <div class="fsv-chips" x-show="structure">
+                                <span class="fsv-chip fsv-chip--live" x-show="structure?.status === 'active'">
+                                    <i class="fas fa-circle" style="font-size:0.4rem"></i> Active
+                                </span>
+                                <span class="fsv-chip" x-show="structure?.academic_year_name">
+                                    <i class="fas fa-calendar"></i>
+                                    <span x-text="structure.academic_year_name"></span>
+                                </span>
+                                <span class="fsv-chip" x-show="structure?.term_name">
+                                    <i class="fas fa-clock"></i>
+                                    <span x-text="structure.term_name"></span>
+                                </span>
+                                <span class="fsv-chip" x-show="structure?.category">
+                                    <span x-text="formatCategory(structure.category)"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="fsv-close" @click="closeViewModal()" aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
-                <button @click="viewModalOpen = false" 
-                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
+            </header>
+
+            <div class="fsv-summary" x-show="structure">
+                <div class="fsv-stat">
+                    <p class="fsv-stat__label">Per student</p>
+                    <p class="fsv-stat__value fsv-stat__value--teal" x-text="'KES ' + formatAmount(perStudentTotal)"></p>
+                    <p class="fsv-stat__hint">Sum of all votes</p>
+                </div>
+                <div class="fsv-stat">
+                    <p class="fsv-stat__label">Votes</p>
+                    <p class="fsv-stat__value" x-text="voteCount"></p>
+                    <p class="fsv-stat__hint">Line items per student</p>
+                </div>
+                <div class="fsv-stat">
+                    <p class="fsv-stat__label">Students</p>
+                    <p class="fsv-stat__value" x-text="studentRows.length || structure?.enrolled_student_count || 0"></p>
+                    <p class="fsv-stat__hint">Enrolled in class(es)</p>
+                </div>
+                <div class="fsv-stat">
+                    <p class="fsv-stat__label">Class potential</p>
+                    <p class="fsv-stat__value fsv-stat__value--teal" x-text="'KES ' + formatAmount(aggregateTotal)"></p>
+                    <p class="fsv-stat__hint">Per student × students</p>
+                </div>
             </div>
-            
-            <!-- Content -->
-            <div class="p-6 space-y-6" x-show="structure">
-                <!-- Basic Information -->
-                <div class="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700/50 dark:to-gray-800/50 p-5 rounded-xl border border-gray-200 dark:border-gray-600">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                        <i class="fas fa-info-circle text-green-600 mr-2"></i>
-                        Basic Information
-                    </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Fee Name</label>
-                            <p class="text-base font-semibold text-gray-900 dark:text-white" x-text="structure?.fee_name || 'N/A'"></p>
-                        </div>
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Academic Year</label>
-                            <p class="text-base font-semibold text-gray-900 dark:text-white" x-text="structure?.academic_year_name || 'Unassigned'"></p>
-                        </div>
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Academic Level</label>
-                            <p class="text-base font-semibold text-gray-900 dark:text-white" x-text="structure?.level_name || 'N/A'"></p>
-                        </div>
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Finance account</label>
-                            <p class="text-base font-semibold text-gray-900 dark:text-white"
-                               x-text="structure?.finance_account_name || (structure?.finance_account_id ? ('Account #' + structure.finance_account_id) : 'Not assigned')"></p>
-                        </div>
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Status</label>
-                            <span class="inline-block px-3 py-1 text-sm font-semibold rounded-full"
-                                  :class="structure?.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'"
-                                  x-text="(structure?.status || 'N/A').charAt(0).toUpperCase() + (structure?.status || 'N/A').slice(1)"></span>
-                        </div>
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Amount</label>
-                            <p class="text-base font-semibold text-green-600 dark:text-green-400" 
-                               x-text="'KES ' + (structure?.total_amount ? parseFloat(structure.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00')"></p>
-                        </div>
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Category</label>
-                            <p class="text-base font-semibold text-gray-900 dark:text-white capitalize" 
-                               x-text="structure?.category ? (structure.category.charAt(0).toUpperCase() + structure.category.slice(1)) : 'Both'"></p>
-                        </div>
+
+            <nav class="fsv-tabs" x-show="structure" aria-label="Fee structure sections">
+                <button type="button" class="fsv-tab" :class="{ 'is-active': viewTab === 'overview' }" @click="viewTab = 'overview'">
+                    <i class="fas fa-info-circle"></i> Overview
+                </button>
+                <button type="button" class="fsv-tab" :class="{ 'is-active': viewTab === 'votes' }" @click="viewTab = 'votes'">
+                    <i class="fas fa-receipt"></i> Vote template
+                    <span class="fsv-tab__count" x-text="voteCount"></span>
+                </button>
+                <button type="button" class="fsv-tab" :class="{ 'is-active': viewTab === 'students' }" @click="viewTab = 'students'">
+                    <i class="fas fa-user-graduate"></i> Students
+                    <span class="fsv-tab__count" x-text="studentRows.length"></span>
+                </button>
+            </nav>
+
+            <div class="fsv-body" x-show="structure">
+                <!-- Overview -->
+                <div x-show="viewTab === 'overview'" x-cloak>
+                    <div class="fsv-panel">
+                        <div class="fsv-panel__head">Structure details</div>
+                        <dl class="fsv-dl">
+                            <div class="fsv-dl__item">
+                                <dt class="fsv-dl__label">Finance account</dt>
+                                <dd class="fsv-dl__value" x-text="structure?.finance_account_name || (structure?.finance_account_id ? ('Account #' + structure.finance_account_id) : 'Not assigned')"></dd>
+                            </div>
+                            <div class="fsv-dl__item">
+                                <dt class="fsv-dl__label">Category</dt>
+                                <dd class="fsv-dl__value" x-text="formatCategory(structure?.category)"></dd>
+                            </div>
+                            <div class="fsv-dl__item fsv-dl__item--full" style="grid-column: 1 / -1;">
+                                <dt class="fsv-dl__label">Class / level(s)</dt>
+                                <dd class="fsv-dl__value">
+                                    <div class="fsv-levels">
+                                        <template x-for="ln in levelNames" :key="ln">
+                                            <span class="fsv-level-pill" x-text="ln"></span>
+                                        </template>
+                                        <span x-show="!levelNames.length" x-text="structure?.level_name || '—'"></span>
+                                    </div>
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <div class="fsv-panel">
+                        <div class="fsv-panel__head">Billing period</div>
+                        <dl class="fsv-dl">
+                            <div class="fsv-dl__item">
+                                <dt class="fsv-dl__label">Start date</dt>
+                                <dd class="fsv-dl__value" x-text="formatDate(structure?.start_date)"></dd>
+                            </div>
+                            <div class="fsv-dl__item">
+                                <dt class="fsv-dl__label">End date</dt>
+                                <dd class="fsv-dl__value" x-text="formatDate(structure?.end_date)"></dd>
+                            </div>
+                            <div class="fsv-dl__item" style="grid-column: 1 / -1;">
+                                <dt class="fsv-dl__label">Payment deadline</dt>
+                                <dd class="fsv-dl__value fsv-dl__value--warn" x-text="formatDate(structure?.payment_deadline)"></dd>
+                            </div>
+                        </dl>
                     </div>
                 </div>
-                
-                <!-- Date Information -->
-                <div class="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-5 rounded-xl border border-blue-200 dark:border-blue-700">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                        <i class="fas fa-calendar-alt text-blue-600 mr-2"></i>
-                        Date Information
-                    </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Start Date</label>
-                            <p class="text-base font-semibold text-gray-900 dark:text-white" 
-                               x-text="structure?.start_date ? new Date(structure.start_date).toLocaleDateString('en-GB') : 'N/A'"></p>
-                        </div>
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">End Date</label>
-                            <p class="text-base font-semibold text-gray-900 dark:text-white" 
-                               x-text="structure?.end_date ? new Date(structure.end_date).toLocaleDateString('en-GB') : 'N/A'"></p>
-                        </div>
-                        <div>
-                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Payment Deadline</label>
-                            <p class="text-base font-semibold text-red-600 dark:text-red-400" 
-                               x-text="structure?.payment_deadline ? new Date(structure.payment_deadline).toLocaleDateString('en-GB') : 'N/A'"></p>
+
+                <!-- Vote template -->
+                <div x-show="viewTab === 'votes'" x-cloak>
+                    <p class="text-xs text-[var(--fsv-muted,#64748b)] mb-3 leading-relaxed">
+                        Each vote amount below is charged <strong>per student</strong>. Every enrolled student in the matching class(es) and category receives the full set of votes.
+                    </p>
+                    <div class="fsv-panel" x-show="voteCount > 0">
+                        <div class="fsv-table-wrap">
+                            <table class="fsv-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Vote</th>
+                                        <th>Amount (per student)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="(item, index) in voteItems" :key="index">
+                                        <tr>
+                                            <td x-text="index + 1"></td>
+                                            <td>
+                                                <div class="fsv-vote-name" x-text="getItemName(item)"></div>
+                                                <div class="fsv-vote-desc" x-text="getItemDescription(item)"></div>
+                                            </td>
+                                            <td x-text="'KES ' + formatAmount(getItemAmount(item))"></td>
+                                        </tr>
+                                    </template>
+                                    <tr class="fsv-table__total">
+                                        <td colspan="2">Total per student</td>
+                                        <td x-text="'KES ' + formatAmount(perStudentTotal)"></td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
+                    <div class="fsv-empty" x-show="voteCount === 0">
+                        <i class="fas fa-inbox"></i>
+                        <p>No votes defined for this structure.</p>
+                    </div>
                 </div>
-                
-                <!-- Fee Items -->
-                <div class="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 p-5 rounded-xl border border-purple-200 dark:border-purple-700">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                        <i class="fas fa-list-ul text-purple-600 mr-2"></i>
-                        Fee Items (<span x-text="(structure?.items || structure?.['items'] || []).length"></span>)
-                    </h3>
-                    <div class="space-y-3" x-show="(structure?.items || structure?.['items'] || []).length > 0">
-                        <template x-for="(item, index) in (structure?.items || structure?.['items'] || [])" :key="index">
-                            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
-                                <div class="flex items-start justify-between">
-                                    <div class="flex-1">
-                                        <div class="flex items-center space-x-2 mb-2">
-                                            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">#<span x-text="index + 1"></span></span>
-                                            <h4 class="text-base font-bold text-gray-900 dark:text-white" x-text="getItemName(item)"></h4>
-                                        </div>
-                                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2" x-text="getItemDescription(item)"></p>
-                                        <p class="text-lg font-bold text-purple-600 dark:text-purple-400" x-text="'KES ' + formatAmount(getItemAmount(item))"></p>
+
+                <!-- Students -->
+                <div x-show="viewTab === 'students'" x-cloak>
+                    <div class="fsv-toolbar">
+                        <div class="fsv-search">
+                            <i class="fas fa-search"></i>
+                            <input type="search" x-model="studentSearch" placeholder="Search student name or ID…" autocomplete="off"
+                                   @input="studentSearch = ($event.target.value || '').toUpperCase()" />
+                        </div>
+                        <p class="text-xs font-semibold text-[var(--fsv-muted,#64748b)]" x-show="filteredStudentRows.length">
+                            <span x-text="filteredStudentRows.length"></span> student<span x-show="filteredStudentRows.length !== 1">s</span>
+                        </p>
+                    </div>
+                    <div x-show="studentVotesError && !studentVotesLoading" class="fsv-alert">
+                        <i class="fas fa-exclamation-circle shrink-0 mt-0.5"></i>
+                        <span x-text="studentVotesError"></span>
+                    </div>
+                    <div x-show="studentVotesLoading" class="fsv-loading">
+                        <i class="fas fa-spinner fa-spin text-xl mb-2 block"></i>
+                        Loading student votes…
+                    </div>
+                    <div x-show="!studentVotesLoading && !filteredStudentRows.length && !studentVotesError" class="fsv-empty">
+                        <i class="fas fa-users-slash"></i>
+                        <p x-text="studentSearch ? 'No students match your search.' : 'No active students match this fee structure yet.'"></p>
+                    </div>
+                    <div class="fsv-student-list" x-show="!studentVotesLoading && filteredStudentRows.length">
+                        <template x-for="(student, sIndex) in filteredStudentRows" :key="student.student_id || sIndex">
+                            <div class="fsv-student" :class="{ 'is-open': isStudentExpanded(student.student_id) }">
+                                <button type="button" class="fsv-student__head" @click="toggleStudent(student.student_id)">
+                                    <div class="min-w-0">
+                                        <p class="fsv-student__name" x-text="student.full_name || student.student_id"></p>
+                                        <p class="fsv-student__meta">
+                                            <span x-text="student.student_id"></span>
+                                            <span x-show="student.current_grade"> · <span x-text="student.current_grade"></span></span>
+                                            <span x-show="student.student_category"> · <span x-text="formatCategory(student.student_category)"></span></span>
+                                        </p>
+                                    </div>
+                                    <div class="fsv-student__right">
+                                        <span class="fsv-student__total" x-text="'KES ' + formatAmount(student.total_amount)"></span>
+                                        <i class="fas fa-chevron-down fsv-student__chev"></i>
+                                    </div>
+                                </button>
+                                <div class="fsv-student__body" x-show="isStudentExpanded(student.student_id)" x-cloak>
+                                    <div class="fsv-table-wrap">
+                                        <table class="fsv-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Vote</th>
+                                                    <th>Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template x-for="(vote, vIndex) in (student.votes || [])" :key="vIndex">
+                                                    <tr>
+                                                        <td>
+                                                            <div class="fsv-vote-name" x-text="vote.item_name"></div>
+                                                            <div class="fsv-vote-desc" x-text="vote.item_description || '—'"></div>
+                                                        </td>
+                                                        <td x-text="'KES ' + formatAmount(vote.amount)"></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
                         </template>
                     </div>
-                    <div x-show="(structure?.items || structure?.['items'] || []).length === 0" 
-                         class="text-center py-8 text-gray-500 dark:text-gray-400">
-                        <i class="fas fa-inbox text-4xl mb-2 opacity-50"></i>
-                        <p>No fee items found</p>
-                    </div>
-                </div>
-                
-                <!-- Actions -->
-                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button type="button" @click="viewModalOpen = false"
-                            class="px-6 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-300 font-medium">
-                        Close
-                    </button>
                 </div>
             </div>
+
+            <footer class="fsv-footer">
+                <button type="button" class="fsv-btn fsv-btn--ghost" @click="closeViewModal()">Close</button>
+                <button type="button" class="fsv-btn fsv-btn--edit" @click="editFromView()" x-show="structure">
+                    <i class="fas fa-pen"></i> Edit structure
+                </button>
+            </footer>
         </div>
     </div>
 </div>
+
+<script>
+function feeStructureViewModal() {
+    return {
+        viewModalOpen: false,
+        viewTab: 'overview',
+        structure: null,
+        studentRows: [],
+        studentSearch: '',
+        expandedStudentId: null,
+        studentVotesLoading: false,
+        studentVotesError: '',
+        get voteItems() {
+            return (this.structure?.items || this.structure?.['items'] || []);
+        },
+        get voteCount() {
+            return this.voteItems.length;
+        },
+        get perStudentTotal() {
+            return this.voteItems.reduce((sum, item) => sum + (parseFloat(this.getItemAmount(item)) || 0), 0);
+        },
+        get aggregateTotal() {
+            const count = this.studentRows.length || parseInt(this.structure?.enrolled_student_count, 10) || 0;
+            return this.perStudentTotal * count;
+        },
+        get levelNames() {
+            if (this.structure?.level_names && this.structure.level_names.length) {
+                return this.structure.level_names;
+            }
+            const ln = (this.structure?.level_name || '').trim();
+            return ln ? [ln] : [];
+        },
+        get filteredStudentRows() {
+            const q = (this.studentSearch || '').trim().toUpperCase();
+            if (!q) return this.studentRows;
+            return this.studentRows.filter(s => {
+                const name = (s.full_name || '').toUpperCase();
+                const id = (s.student_id || '').toUpperCase();
+                const grade = (s.current_grade || '').toUpperCase();
+                return name.includes(q) || id.includes(q) || grade.includes(q);
+            });
+        },
+        getItemName(item) {
+            if (!item) return 'N/A';
+            return item.item_name || item['item_name'] || 'N/A';
+        },
+        getItemDescription(item) {
+            if (!item) return '—';
+            const desc = item.item_description || item['item_description'] || '';
+            return desc || '—';
+        },
+        getItemAmount(item) {
+            if (!item) return 0;
+            return item.amount || item['amount'] || 0;
+        },
+        formatAmount(amount) {
+            return parseFloat(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+        formatDate(value) {
+            if (!value) return '—';
+            try {
+                return new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            } catch (e) {
+                return String(value);
+            }
+        },
+        formatCategory(cat) {
+            const c = (cat || 'both').toString().trim().toLowerCase();
+            if (c === 'self sponsored') return 'Self sponsored';
+            if (c === 'sponsored') return 'Sponsored';
+            return 'Both';
+        },
+        findBatchSiblings(structure) {
+            const all = window.feeStructuresData || [];
+            if (!structure) return [];
+            const fa = structure.finance_account_id;
+            return all.filter(s =>
+                s.status === 'active' &&
+                s.fee_name === structure.fee_name &&
+                String(s.academic_year_id) === String(structure.academic_year_id) &&
+                String(s.term_id) === String(structure.term_id) &&
+                (s.category || 'both') === (structure.category || 'both') &&
+                (fa == null || fa === '' ? !s.finance_account_id : String(s.finance_account_id) === String(fa))
+            );
+        },
+        enrichStructure(structureData) {
+            const siblings = this.findBatchSiblings(structureData);
+            const levelNames = [];
+            let enrolled = 0;
+            siblings.forEach(s => {
+                const ln = String(s.level_name || '').trim();
+                if (ln && !levelNames.some(n => n.toLowerCase() === ln.toLowerCase())) {
+                    levelNames.push(ln);
+                }
+                enrolled += parseInt(s.enrolled_student_count, 10) || 0;
+            });
+            levelNames.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+            return {
+                ...structureData,
+                level_names: levelNames.length ? levelNames : [(structureData.level_name || '').trim()].filter(Boolean),
+                levels_label: levelNames.join(', ') || structureData.level_name || '',
+                enrolled_student_count: enrolled || structureData.enrolled_student_count || 0,
+            };
+        },
+        async loadStudentVotes(structureId) {
+            if (!structureId) {
+                this.studentRows = [];
+                return;
+            }
+            this.studentVotesLoading = true;
+            this.studentVotesError = '';
+            try {
+                const url = {{ employee_dash_url('student-fees/fee-structure')|tojson }} + '/' + structureId + '/student-votes';
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.success) {
+                    this.studentRows = data.students || [];
+                } else {
+                    this.studentRows = [];
+                    this.studentVotesError = data.message || 'Could not load student votes.';
+                }
+            } catch (e) {
+                this.studentRows = [];
+                this.studentVotesError = 'Could not load student votes.';
+            } finally {
+                this.studentVotesLoading = false;
+            }
+        },
+        openViewModal(structureData) {
+            this.structure = this.enrichStructure(structureData);
+            this.studentRows = [];
+            this.studentSearch = '';
+            this.expandedStudentId = null;
+            this.studentVotesError = '';
+            this.viewTab = 'overview';
+            this.viewModalOpen = true;
+            document.body.classList.add('overflow-hidden');
+            this.loadStudentVotes(structureData && structureData.id);
+        },
+        closeViewModal() {
+            this.viewModalOpen = false;
+            document.body.classList.remove('overflow-hidden');
+        },
+        editFromView() {
+            if (!this.structure?.id) return;
+            const raw = window.feeStructuresData.find(s => s.id === this.structure.id) || this.structure;
+            this.closeViewModal();
+            if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')?.editModal) {
+                Alpine.store('feeModals').editModal.openEditModal(raw);
+            }
+        },
+        toggleStudent(studentId) {
+            this.expandedStudentId = this.expandedStudentId === studentId ? null : studentId;
+        },
+        isStudentExpanded(studentId) {
+            return this.expandedStudentId === studentId;
+        },
+        init() {
+            if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')) {
+                Alpine.store('feeModals').viewModal = this;
+            } else {
+                setTimeout(() => {
+                    if (Alpine.store && Alpine.store('feeModals')) {
+                        Alpine.store('feeModals').viewModal = this;
+                    }
+                }, 100);
+            }
+        },
+    };
+}
+</script>
 
 <!-- Edit Fee Structure Modal -->
 <script>
@@ -1141,6 +1390,22 @@ function editModalData() {
                 this.loading = false;
                 return;
             }
+            const validItems = this.feeItems.filter(item =>
+                item.itemName && (item.itemDescription || '').trim() && item.amount
+            );
+            if (validItems.length === 0) {
+                this.error = 'Please add at least one vote with a name, description, and amount.';
+                this.loading = false;
+                return;
+            }
+            const missingDescription = this.feeItems.some(item =>
+                item.itemName && item.amount && !(item.itemDescription || '').trim()
+            );
+            if (missingDescription) {
+                this.error = 'Each vote must have a description.';
+                this.loading = false;
+                return;
+            }
             this._submitEditRequest(selectedIds);
         },
         _submitEditRequest(selectedIds) {
@@ -1159,10 +1424,10 @@ function editModalData() {
                     end_date: this.endDate,
                     payment_deadline: this.paymentDeadline,
                     fee_items: this.feeItems
-                        .filter(item => item.itemName && item.amount)
+                        .filter(item => item.itemName && (item.itemDescription || '').trim() && item.amount)
                         .map(item => ({
                             item_name: item.itemName.toUpperCase().trim(),
-                            item_description: item.itemDescription ? item.itemDescription.trim() : '',
+                            item_description: item.itemDescription.trim(),
                             amount: parseFloat(item.amount) || 0
                         }))
                 })
@@ -1243,8 +1508,8 @@ function editModalData() {
             const items = structure.items || structure['items'] || [];
             this.feeItems = items.length > 0
                 ? items.map(item => ({
-                    itemName: item.item_name || '',
-                    itemDescription: item.item_description || '',
+                    itemName: (item.item_name || '').toUpperCase(),
+                    itemDescription: (item.item_description || '').toUpperCase(),
                     amount: item.amount != null ? item.amount : ''
                 }))
                 : [{ itemName: '', itemDescription: '', amount: '' }];
@@ -1418,16 +1683,20 @@ function editModalData() {
 
                     <section class="fsm-panel">
                         <div class="fsm-panel__head">
-                            <h3 class="fsm-panel__title"><i class="fas fa-receipt"></i> Line items <span class="req">*</span></h3>
+                            <h3 class="fsm-panel__title"><i class="fas fa-receipt"></i> Votes <span class="req">*</span></h3>
                         </div>
+                        <p class="fsm-hint mb-3">Vote amounts are per student. Saving updates votes for each active student in the selected class(es) and category.</p>
                         <div class="fsm-items-actions">
-                            <button type="button" class="fsm-btn-add" @click="addNewItem()"><i class="fas fa-plus"></i> Add</button>
+                            <button type="button" class="fsm-btn-add" @click="addNewItem()"><i class="fas fa-plus"></i> Add vote</button>
                         </div>
                         <div class="fsm-items">
                             <template x-for="(item, index) in feeItems" :key="index">
                                 <div class="fsm-item-row">
-                                    <input type="text" class="fsm-input uppercase" x-model="item.itemName"
-                                           @input="item.itemName = item.itemName.toUpperCase()" placeholder="Item name" required>
+                                    <input type="text" class="fsm-input uppercase fsm-item-name" x-model="item.itemName"
+                                           @input="item.itemName = item.itemName.toUpperCase()" placeholder="VOTE NAME" required>
+                                    <textarea class="fsm-textarea fsm-item-desc uppercase" x-model="item.itemDescription" rows="2"
+                                              placeholder="VOTE DESCRIPTION" required
+                                              @input="item.itemDescription = ($event.target.value || '').toUpperCase()"></textarea>
                                     <div class="fsm-item-amount">
                                         <span>KES</span>
                                         <input type="number" class="fsm-input" x-model="item.amount" @input="calculateTotal()"
@@ -1550,7 +1819,7 @@ function feeStructureDeleteModal() {
 
                 <p class="text-gray-700 dark:text-gray-300 mb-4">
                     Are you sure you want to delete the fee structure <strong x-text="structureName"></strong>?
-                    This action cannot be undone and will also delete all associated fee items.
+                    This action cannot be undone and will also delete all associated votes.
                 </p>
 
                 <div class="flex items-center justify-end space-x-3">

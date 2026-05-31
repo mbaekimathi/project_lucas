@@ -76,10 +76,17 @@
   var nextBtn = document.getElementById('fo-next-page');
 
   var HINTS = {
-    '': 'Pick a view to load fee account data.',
-    all: 'School-wide list: 50 students per page. Summary cards use all in-session students.',
-    by_class: 'Pick a class, then browse students in pages of 50.',
-    class_summary: 'One row per class — totals for all in-session students (loads once).',
+    '': 'Choose how you want to explore student fee accounts.',
+    all: 'Every in-session student with current-term fees. Use search or balance to find who owes fees.',
+    by_class: 'One class at a time — pick the level below, then search or filter balances in the list.',
+    class_summary: 'One row per class with total billed, paid, and outstanding (no student names).',
+  };
+
+  var VIEW_LABELS = {
+    '': 'Report view',
+    all: 'All students',
+    by_class: 'One class',
+    class_summary: 'By class totals',
   };
 
   function setCards(totals, label) {
@@ -136,6 +143,10 @@
     return p.toString();
   }
 
+  function joinDashPath(base, segment) {
+    return String(base || '').replace(/\/+$/, '') + '/' + encodeURIComponent(segment || '');
+  }
+
   function renderStudentRow(s, idx) {
     var bal = s.balance;
     var balClass =
@@ -144,15 +155,11 @@
         : bal != null
           ? 'text-green-700 dark:text-green-400'
           : '';
-    var inv =
-      cfg.invoiceBase +
-      encodeURIComponent(s.student_id) +
-      '?format=pdf&download=true';
+    var inv = joinDashPath(cfg.invoiceBase, s.student_id) + '?format=pdf&download=true';
     var rec = '';
     if (s.latest_payment_id) {
       rec =
-        cfg.receiptBase +
-        encodeURIComponent(s.student_id) +
+        joinDashPath(cfg.receiptBase, s.student_id) +
         '/' +
         encodeURIComponent(s.latest_payment_id) +
         '?format=pdf&download=true';
@@ -171,29 +178,29 @@
       '" data-paid="' +
       (s.paid_amount == null ? '' : s.paid_amount) +
       '">' +
-      '<td class="py-3 px-3 whitespace-nowrap text-gray-700 dark:text-gray-300">' +
+      '<td data-label="Class">' +
       esc(s.class_name) +
       '</td>' +
-      '<td class="py-3 px-3"><div class="font-medium text-gray-900 dark:text-white">' +
+      '<td data-label="Student"><span class="font-semibold">' +
       esc(s.full_name) +
-      '</div><div class="text-gray-500 font-mono text-xs mt-0.5">' +
+      '</span><span class="fr-mono block" style="color:var(--fr-muted)">' +
       esc(s.student_id) +
-      '</div></td>' +
-      '<td class="text-right py-3 px-3 tabular-nums">' +
+      '</span></td>' +
+      '<td class="text-right tabular-nums" data-label="Total">' +
       fmtKesCell(s.total_amount) +
       '</td>' +
-      '<td class="text-right py-3 px-3 tabular-nums text-green-700 dark:text-green-400">' +
+      '<td class="text-right tabular-nums" data-label="Paid" style="color:#047857">' +
       fmtKesCell(s.paid_amount) +
       '</td>' +
-      '<td class="text-right py-3 px-3 tabular-nums font-semibold ' +
+      '<td class="text-right tabular-nums font-semibold ' +
       balClass +
-      '">' +
+      '" data-label="Balance">' +
       fmtKesCell(s.balance) +
       '</td>' +
-      '<td class="text-center py-3 px-3"><a href="' +
+      '<td class="text-center" data-label="Invoice"><a href="' +
       esc(inv) +
       '" download class="inline-flex w-10 h-10 items-center justify-center rounded-lg border text-brand-primary" title="Download PDF invoice"><i class="fas fa-file-pdf"></i></a></td>' +
-      '<td class="text-center py-3 px-3">' +
+      '<td class="text-center" data-label="Receipt">' +
       (rec
         ? '<a href="' +
           esc(rec) +
@@ -374,20 +381,20 @@
     var html = '';
     summaries.forEach(function (c) {
       html +=
-        '<tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">' +
-        '<td class="py-3 px-3 font-medium">' +
+        '<tr>' +
+        '<td data-label="Class" class="font-semibold">' +
         esc(c.class_name) +
         '</td>' +
-        '<td class="text-right py-3 px-3 tabular-nums">' +
+        '<td class="text-right tabular-nums" data-label="Students">' +
         c.student_count +
         '</td>' +
-        '<td class="text-right py-3 px-3 tabular-nums">' +
+        '<td class="text-right tabular-nums" data-label="Billed">' +
         fmtKes(c.sum_total_amount) +
         '</td>' +
-        '<td class="text-right py-3 px-3 tabular-nums text-green-700">' +
+        '<td class="text-right tabular-nums" data-label="Paid" style="color:#047857">' +
         fmtKes(c.sum_paid_amount) +
         '</td>' +
-        '<td class="text-right py-3 px-3 tabular-nums font-semibold text-amber-700">' +
+        '<td class="text-right tabular-nums font-semibold" data-label="Outstanding" style="color:#b45309">' +
         fmtKes(c.total_outstanding) +
         '</td></tr>';
     });
@@ -420,9 +427,42 @@
       });
   }
 
+  function updateStudentViewChips() {
+    var mode = modeEl ? modeEl.value : '';
+    var chips = qs('fo-active-filters');
+    if (!chips) return;
+    if (!mode) {
+      chips.classList.add('hidden');
+      chips.innerHTML = '';
+      return;
+    }
+    var parts = [VIEW_LABELS[mode] || mode];
+    if (mode === 'by_class' && oneClassEl && oneClassEl.value) {
+      parts.push(oneClassEl.value);
+    }
+    if (searchEl && searchEl.value.trim() && (mode === 'all' || mode === 'by_class')) {
+      parts.push('Search: “' + searchEl.value.trim() + '”');
+    }
+    if (balanceEl && balanceEl.value && balanceEl.value !== 'all') {
+      var bo = balanceEl.options[balanceEl.selectedIndex];
+      if (bo) parts.push(bo.text);
+    }
+    chips.classList.remove('hidden');
+    chips.innerHTML =
+      '<span class="text-[0.6875rem] font-semibold uppercase text-slate-500 mr-1">Showing:</span>' +
+      parts
+        .map(function (p) {
+          return '<span class="fr-active-filters__chip">' + esc(p) + '</span>';
+        })
+        .join('');
+  }
+
   function applyViewMode() {
     var mode = modeEl ? modeEl.value : '';
-    if (viewHint) viewHint.textContent = HINTS[mode] || HINTS[''];
+    if (viewHint) {
+      viewHint.textContent = HINTS[mode] || HINTS[''];
+    }
+    updateStudentViewChips();
 
     if (!mode) {
       emptyState.classList.remove('hidden');
@@ -433,7 +473,7 @@
     workspace.classList.remove('hidden');
 
     if (mode === 'class_summary') {
-      oneClassWrap.classList.add('hidden');
+      if (oneClassWrap) oneClassWrap.classList.add('hidden');
       sectionStudent.classList.add('hidden');
       sectionSummary.classList.remove('hidden');
       if (paginationBar) paginationBar.classList.add('hidden');
@@ -452,7 +492,7 @@
     });
 
     if (mode === 'by_class') {
-      oneClassWrap.classList.remove('hidden');
+      if (oneClassWrap) oneClassWrap.classList.remove('hidden');
       if (levelWrap) levelWrap.classList.add('hidden');
       var cls = oneClassEl ? oneClassEl.value : '';
       if (levelEl) levelEl.value = cls;
@@ -471,7 +511,7 @@
         return;
       }
     } else {
-      oneClassWrap.classList.add('hidden');
+      if (oneClassWrap) oneClassWrap.classList.add('hidden');
       if (levelWrap) levelWrap.classList.remove('hidden');
       if (levelEl) levelEl.value = '';
       if (titleStudent) titleStudent.textContent = 'Student fee accounts';
@@ -488,22 +528,40 @@
     }, 350);
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
+  function bindStudentReportFilters() {
     if (modeEl) modeEl.addEventListener('change', applyViewMode);
-    if (oneClassEl) oneClassEl.addEventListener('change', applyViewMode);
+    if (oneClassEl) {
+      oneClassEl.addEventListener('change', function () {
+        updateStudentViewChips();
+        applyViewMode();
+      });
+    }
     if (searchEl) {
       searchEl.addEventListener('input', function () {
         var mode = modeEl ? modeEl.value : '';
+        updateStudentViewChips();
         if (mode === 'all' || mode === 'by_class') debouncedFetch();
-        else refreshClientFilters();
+        else if (mode) refreshClientFilters();
+      });
+      searchEl.addEventListener('search', function () {
+        var mode = modeEl ? modeEl.value : '';
+        updateStudentViewChips();
+        if (mode === 'all' || mode === 'by_class') debouncedFetch();
+        else if (mode) refreshClientFilters();
       });
     }
     if (levelEl) {
       levelEl.addEventListener('change', function () {
-        fetchStudents(1);
+        updateStudentViewChips();
+        if (modeEl && modeEl.value) fetchStudents(1);
       });
     }
-    if (balanceEl) balanceEl.addEventListener('change', refreshClientFilters);
+    if (balanceEl) {
+      balanceEl.addEventListener('change', function () {
+        refreshClientFilters();
+        updateStudentViewChips();
+      });
+    }
     if (sortEl) sortEl.addEventListener('change', refreshClientFilters);
     if (prevBtn) {
       prevBtn.addEventListener('click', function () {
@@ -515,5 +573,11 @@
         if (state.page < state.pages) fetchStudents(state.page + 1);
       });
     }
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindStudentReportFilters);
+  } else {
+    bindStudentReportFilters();
+  }
 })();

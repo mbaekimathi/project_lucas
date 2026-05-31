@@ -2,11 +2,22 @@
 
 {% if _acct_nav in ('all', 'accounts') %}
 <p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Accounts</p>
+{% set _petty_cash_book = request.endpoint == 'accountant_petty_cash_book' %}
+{% set _accounts_active = not _petty_cash_book and (
+    request.endpoint in ('accountant_accounts', 'register_finance_account', 'accountant_account_detail', 'accountant_account_finance_report')
+    or ('/accounts' in request.path and '/petty-cash-book' not in request.path)
+) %}
 <a href="{{ employee_dash_url('accounts') }}"
-   class="sidebar-item {% if request.endpoint in ('accountant_accounts', 'register_finance_account') or '/accounts' in request.path %}sidebar-item-active{% endif %}">
+   class="sidebar-item {% if _accounts_active %}sidebar-item-active{% endif %}">
     <i class="fas fa-book w-5"></i>
     <span>Accounts</span>
-    {% if request.endpoint in ('accountant_accounts', 'register_finance_account') or '/accounts' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if _accounts_active %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('accounts/petty-cash-book') }}"
+   class="sidebar-item {% if _petty_cash_book %}sidebar-item-active{% endif %}">
+    <i class="fas fa-coins w-5"></i>
+    <span>Petty cash book</span>
+    {% if _petty_cash_book %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}
 
@@ -123,6 +134,12 @@
     <span>Visual analytics</span>
     {% if request.endpoint == 'accountant_visual_analytics' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('finance-overview') }}"
+   class="sidebar-item {% if request.endpoint == 'finance_overview' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-bar w-5"></i>
+    <span>Accounts reports</span>
+    {% if request.endpoint == 'finance_overview' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 <a href="{{ employee_dash_url('notifications') }}"
    class="sidebar-item {% if request.endpoint in ('notifications', 'accountant_notifications') %}sidebar-item-active{% endif %}">
     <i class="fas fa-bell w-5"></i>
@@ -136,5 +153,11 @@
     {% elif pending_count is defined and pending_count > 0 %}
     <span class="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{{ pending_count }}</span>
     {% endif %}
+</a>
+<a href="{{ employee_dash_url('finance-settings') }}"
+   class="sidebar-item {% if request.endpoint == 'accountant_finance_settings' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-cog w-5"></i>
+    <span>Finance settings</span>
+    {% if request.endpoint == 'accountant_finance_settings' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}

@@ -1,0 +1,13 @@
+<header class="fr-report-header">
+    <div class="fr-report-header__icon" aria-hidden="true">
+        <i class="fas {{ fr_header_icon|default(report_meta.icon|default('fa-chart-bar')) }}"></i>
+    </div>
+    <div class="fr-report-header__body">
+        <p class="fr-report-header__eyebrow">{{ fr_header_eyebrow|default('Accounts reports') }}</p>
+        <h1 class="fr-report-header__title">{{ fr_header_title|default(report_meta.title) }}</h1>
+        {% set _desc = fr_header_desc|default(report_meta.description|default('')) %}
+        {% if _desc %}
+        <p class="fr-report-header__desc">{{ _desc }}</p>
+        {% endif %}
+    </div>
+</header>

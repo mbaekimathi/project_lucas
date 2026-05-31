@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Google Integration - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/system_settings_sidebar_styles.html' %}
+{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/integration_settings_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set role_hero_title = 'Google Integration' %}
+{% set role_hero_subtitle = 'OAuth credentials, Drive backup, and Google Cloud connectivity' %}
+{% set role_hero_icon_class = 'fa-brands fa-google' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }} space-y-6">
+
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5 sm:p-6">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <i class="fab fa-google-drive text-green-600"></i>
+            Connection status
+        </h2>
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                <dt class="text-gray-500 dark:text-gray-400 mb-1">OAuth client</dt>
+                <dd class="font-medium text-gray-900 dark:text-white">
+                    {% if google_oauth_ready %}
+                    <span class="text-green-600"><i class="fas fa-check-circle mr-1"></i>Configured</span>
+                    {% else %}
+                    <span class="text-amber-600"><i class="fas fa-exclamation-circle mr-1"></i>Not configured</span>
+                    {% endif %}
+                </dd>
+            </div>
+            <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                <dt class="text-gray-500 dark:text-gray-400 mb-1">Google Drive sign-in</dt>
+                <dd class="font-medium text-gray-900 dark:text-white">
+                    {% if google_user_connected %}
+                    <span class="text-green-600"><i class="fas fa-check-circle mr-1"></i>{{ google_connected_email }}</span>
+                    {% else %}
+                    <span class="text-gray-500">Not connected</span>
+                    {% endif %}
+                </dd>
+            </div>
+            <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                <dt class="text-gray-500 dark:text-gray-400 mb-1">Service account</dt>
+                <dd class="font-medium text-gray-900 dark:text-white">
+                    {% if google_service_account_configured %}
+                    <span class="text-green-600"><i class="fas fa-check-circle mr-1"></i>Available</span>
+                    {% else %}
+                    <span class="text-gray-500">Not configured</span>
+                    {% endif %}
+                </dd>
+            </div>
+            <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                <dt class="text-gray-500 dark:text-gray-400 mb-1">Drive API test</dt>
+                <dd class="font-medium text-gray-900 dark:text-white">{{ google_drive_message }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5 sm:p-6">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Environment variables</h2>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Google OAuth credentials are loaded from <code class="text-xs">.env.local</code> (local) or <code class="text-xs">.env</code> (hosted).
+        </p>
+        <ul class="text-sm text-gray-700 dark:text-gray-300 space-y-2 font-mono">
+            <li><code>GOOGLE_OAUTH_CLIENT_ID</code></li>
+            <li><code>GOOGLE_OAUTH_CLIENT_SECRET</code></li>
+            <li><code>GOOGLE_OAUTH_REDIRECT_URI</code></li>
+            <li><code>GOOGLE_DRIVE_CREDENTIALS_FILE</code> <span class="text-gray-500 font-sans">(optional service account)</span></li>
+        </ul>
+    </div>
+
+    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-5 sm:p-6">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Google Drive backup</h2>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Connect Google Drive, create your school folder tree, and run categorized backups by year and term.
+        </p>
+        <a href="{{ employee_dash_url('database/backup-restore') }}"
+           class="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold">
+            <i class="fas fa-cloud-arrow-up"></i>
+            Open Google Drive backup
+        </a>
+    </div>
+</div>
+{% endblock %}

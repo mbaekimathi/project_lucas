@@ -733,6 +733,7 @@ function accountsPage() {
         accountCategoryOptions: {{ account_categories|tojson }},
         categoryAddMarker: {{ account_category_add_value|default('__add_new__')|tojson }},
         accountsBaseUrl: {{ employee_dash_url('accounts')|tojson }},
+        schoolMpesaPresets: {{ mpesa_account_presets|default([])|tojson }},
         editModalOpen: false,
         editAccount: null,
         editLevelIds: [],
@@ -750,12 +751,16 @@ function accountsPage() {
         regMpesaType: 'paybill',
         regMpesaBusinessName: '',
         regMpesaAccountNumber: '',
+        regMpesaPaybill: '',
+        regMpesaPresetId: '',
         regBankName: '',
         regBankAccountNumber: '',
         editPaymentModes: { mpesa: false, cash: false, cheque: false, bank: false },
         editMpesaType: 'paybill',
         editMpesaBusinessName: '',
         editMpesaAccountNumber: '',
+        editMpesaPaybill: '',
+        editMpesaPresetId: '',
         editBankName: '',
         editBankAccountNumber: '',
         init: function () {
@@ -1046,13 +1051,15 @@ function accountsPage() {
             var mpesaAcct = (mpesa && mpesa.account_number) || '';
             if (mpesa && (mpesa.mpesa_type || '').toLowerCase() === 'paybill'
                 && this.isPaybillAdmissionRef(mpesaAcct)) {
-                mpesaAcct = '';
+                mpesaAcct = 'STUDENT_ADMISSION_NUMBER';
             }
             if (scope === 'reg') {
                 this.patchPaymentModes(this.regPaymentModes, modes);
                 this.regMpesaType = (mpesa && mpesa.mpesa_type) || 'paybill';
                 this.regMpesaBusinessName = (mpesa && mpesa.business_name) || '';
                 this.regMpesaAccountNumber = mpesaAcct;
+                this.regMpesaPaybill = (mpesa && mpesa.mpesa_shortcode) || '';
+                this.regMpesaPresetId = this.findMatchingMpesaPreset(mpesa);
                 this.regBankName = bankName;
                 this.regBankAccountNumber = bankAcct;
             } else {
@@ -1060,27 +1067,129 @@ function accountsPage() {
                 this.editMpesaType = (mpesa && mpesa.mpesa_type) || 'paybill';
                 this.editMpesaBusinessName = (mpesa && mpesa.business_name) || '';
                 this.editMpesaAccountNumber = mpesaAcct;
+                this.editMpesaPaybill = (mpesa && mpesa.mpesa_shortcode) || '';
+                this.editMpesaPresetId = this.findMatchingMpesaPreset(mpesa);
                 this.editBankName = bankName;
                 this.editBankAccountNumber = bankAcct;
+            }
+        },
+        findMatchingMpesaPreset: function (mpesa) {
+            if (!mpesa) return '';
+            var mt = (mpesa.mpesa_type || 'paybill').toLowerCase();
+            var presets = this.schoolMpesaPresets || [];
+            for (var i = 0; i < presets.length; i++) {
+                var p = presets[i];
+                if ((p.mpesa_type || 'paybill').toLowerCase() !== mt) continue;
+                if (mt === 'paybill' && String(p.paybill_number || '') === String(mpesa.mpesa_shortcode || '')) {
+                    var refMode = (p.paybill_ref_mode || 'admission').toLowerCase();
+                    var storedNum = String(mpesa.account_number || '');
+                    if (refMode === 'account_number') {
+                        if (String(p.paybill_account_number || '') === storedNum) return String(p.id);
+                    } else if (this.isPaybillAdmissionRef(storedNum)) {
+                        return String(p.id);
+                    }
+                }
+                if (mt === 'till' && String(p.till_number || '') === String(mpesa.account_number || '')) {
+                    return String(p.id);
+                }
+            }
+            return '';
+        },
+        mpesaPaybillRefLabel: function (scope) {
+            var acct = scope === 'reg' ? this.regMpesaAccountNumber : this.editMpesaAccountNumber;
+            if (this.isPaybillAdmissionRef(acct)) {
+                return 'Student admission number (each student uses their own)';
+            }
+            var n = String(acct || '').trim();
+            return n ? ('Fixed account number: ' + n) : '—';
+        },
+        paybillAccountFromPreset: function (preset) {
+            if (!preset || (preset.mpesa_type || 'paybill').toLowerCase() !== 'paybill') return '';
+            var refMode = (preset.paybill_ref_mode || 'admission').toLowerCase();
+            if (refMode === 'account_number' && String(preset.paybill_account_number || '').trim()) {
+                return String(preset.paybill_account_number).toUpperCase();
+            }
+            return 'STUDENT_ADMISSION_NUMBER';
+        },
+        selectedMpesaPreset: function (scope) {
+            var id = scope === 'reg' ? this.regMpesaPresetId : this.editMpesaPresetId;
+            if (!id) return null;
+            return (this.schoolMpesaPresets || []).find(function (p) { return String(p.id) === String(id); }) || null;
+        },
+        clearMpesaPreset: function (scope) {
+            if (scope === 'reg') {
+                this.regMpesaPresetId = '';
+                this.regMpesaType = 'paybill';
+                this.regMpesaBusinessName = '';
+                this.regMpesaAccountNumber = '';
+                this.regMpesaPaybill = '';
+            } else {
+                this.editMpesaPresetId = '';
+                this.editMpesaType = 'paybill';
+                this.editMpesaBusinessName = '';
+                this.editMpesaAccountNumber = '';
+                this.editMpesaPaybill = '';
             }
         },
         resetPaymentFields: function (scope) {
             var emptyModes = { mpesa: false, cash: false, cheque: false, bank: false };
             if (scope === 'reg') {
                 this.patchPaymentModes(this.regPaymentModes, emptyModes);
+                this.regMpesaPresetId = '';
                 this.regMpesaType = 'paybill';
                 this.regMpesaBusinessName = '';
                 this.regMpesaAccountNumber = '';
+                this.regMpesaPaybill = '';
                 this.regBankName = '';
                 this.regBankAccountNumber = '';
             } else {
                 this.patchPaymentModes(this.editPaymentModes, emptyModes);
+                this.editMpesaPresetId = '';
                 this.editMpesaType = 'paybill';
                 this.editMpesaBusinessName = '';
                 this.editMpesaAccountNumber = '';
+                this.editMpesaPaybill = '';
                 this.editBankName = '';
                 this.editBankAccountNumber = '';
             }
+        },
+        mpesaPresetLabel: function (p) {
+            if (!p) return '';
+            var type = (p.mpesa_type || '').toLowerCase() === 'till' ? 'Till' : 'Paybill';
+            var num = (p.mpesa_type || '').toLowerCase() === 'till' ? p.till_number : p.paybill_number;
+            var bits = [p.label || 'M-Pesa', type];
+            if (num) bits.push(String(num));
+            return bits.join(' · ');
+        },
+        applyMpesaPreset: function (scope, presetId) {
+            if (!presetId) {
+                this.clearMpesaPreset(scope);
+                this.syncPaymentModeCheckboxes(scope);
+                return;
+            }
+            var preset = (this.schoolMpesaPresets || []).find(function (p) { return String(p.id) === String(presetId); });
+            if (!preset) return;
+            var mt = (preset.mpesa_type || 'paybill').toLowerCase();
+            if (scope === 'reg') {
+                this.regPaymentModes.mpesa = true;
+                this.regMpesaPresetId = String(preset.id);
+                this.regMpesaType = mt;
+                this.regMpesaBusinessName = String(preset.business_name || '').toUpperCase();
+                this.regMpesaPaybill = mt === 'paybill' ? String(preset.paybill_number || '') : '';
+                this.regMpesaAccountNumber = mt === 'till'
+                    ? String(preset.till_number || '')
+                    : this.paybillAccountFromPreset(preset);
+            } else {
+                this.editPaymentModes.mpesa = true;
+                this.editMpesaPresetId = String(preset.id);
+                this.editMpesaType = mt;
+                this.editMpesaBusinessName = String(preset.business_name || '').toUpperCase();
+                this.editMpesaPaybill = mt === 'paybill' ? String(preset.paybill_number || '') : '';
+                this.editMpesaAccountNumber = mt === 'till'
+                    ? String(preset.till_number || '')
+                    : this.paybillAccountFromPreset(preset);
+            }
+            this.syncPaymentModeCheckboxes(scope);
         },
         syncPaymentModeCheckboxes: function (scope) {
             var form = scope === 'reg'
@@ -1102,22 +1211,45 @@ function accountsPage() {
                 return false;
             }
             if (modes.mpesa) {
+                var presets = this.schoolMpesaPresets || [];
+                var presetId = scope === 'reg' ? this.regMpesaPresetId : this.editMpesaPresetId;
+                if (!presets.length) {
+                    if (e) e.preventDefault();
+                    alert('No school M-Pesa profiles configured. Ask your technician to add them under Integration → Finance.');
+                    return false;
+                }
+                if (!String(presetId || '').trim()) {
+                    if (e) e.preventDefault();
+                    alert('Select a school M-Pesa profile from the list.');
+                    return false;
+                }
                 var mt = scope === 'reg' ? this.regMpesaType : this.editMpesaType;
                 var biz = scope === 'reg' ? this.regMpesaBusinessName : this.editMpesaBusinessName;
                 var macct = scope === 'reg' ? this.regMpesaAccountNumber : this.editMpesaAccountNumber;
+                var mpaybill = scope === 'reg' ? this.regMpesaPaybill : this.editMpesaPaybill;
                 if (mt !== 'paybill' && mt !== 'till') {
                     if (e) e.preventDefault();
-                    alert('For M-Pesa, select Paybill or Till.');
+                    alert('The selected M-Pesa profile is invalid. Choose another profile.');
                     return false;
                 }
                 if (!String(biz || '').trim()) {
                     if (e) e.preventDefault();
-                    alert('Enter the M-Pesa business name.');
+                    alert('The selected M-Pesa profile is missing a business name. Update it under Integration → Finance.');
+                    return false;
+                }
+                if (mt === 'paybill' && !String(mpaybill || '').trim()) {
+                    if (e) e.preventDefault();
+                    alert('The selected M-Pesa profile is missing a paybill number. Update it under Integration → Finance.');
+                    return false;
+                }
+                if (mt === 'paybill' && !this.isPaybillAdmissionRef(macct) && !String(macct || '').trim()) {
+                    if (e) e.preventDefault();
+                    alert('The selected M-Pesa profile is missing a paybill account number. Update it under Integration → Finance.');
                     return false;
                 }
                 if (mt === 'till' && !String(macct || '').trim()) {
                     if (e) e.preventDefault();
-                    alert('Enter the Till number.');
+                    alert('The selected M-Pesa profile is missing a till number. Update it under Integration → Finance.');
                     return false;
                 }
             }

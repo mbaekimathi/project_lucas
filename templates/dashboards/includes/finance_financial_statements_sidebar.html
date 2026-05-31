@@ -1,0 +1,47 @@
+{# School-wide financial statements — sidebar on financial-statements report page #}
+{% set _statement = financial_statement|default(request.args.get('statement', '')|lower) %}
+{% set _fo = filter_options|default({}) %}
+{% set _base = employee_dash_url('finance-overview/reports/financial-statements') %}
+{% set _fy = request.args.get('financial_year_id') or _fo.default_financial_year_id|default('') %}
+{% set _df = request.args.get('date_from') or _fo.default_date_from|default('') %}
+{% set _dt = request.args.get('date_to') or _fo.default_date_to|default('') %}
+
+{% macro statement_href(slug='') -%}
+{%- set href = _base -%}
+{%- if slug -%}
+{%- set href = href ~ '?statement=' ~ slug -%}
+{%- elif _fy -%}
+{%- set href = href ~ '?financial_year_id=' ~ _fy -%}
+{%- endif -%}
+{%- if _fy and slug -%}
+{%- set href = href ~ '&financial_year_id=' ~ _fy -%}
+{%- endif -%}
+{%- if _df -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'date_from=' ~ _df -%}
+{%- endif -%}
+{%- if _dt -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'date_to=' ~ _dt -%}
+{%- endif -%}
+{{- href -}}
+{%- endmacro %}
+
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Financial statements</p>
+
+<a href="{{ statement_href() }}"
+   class="sidebar-item {% if not _statement %}sidebar-item-active{% endif %}"
+   title="Financial statements overview">
+    <i class="fas fa-balance-scale w-5"></i>
+    <span>Overview</span>
+    {% if not _statement %}<i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>{% endif %}
+</a>
+
+{% for item in financial_statements_nav|default([]) %}
+<a href="{{ statement_href(item.slug) }}"
+   data-fr-financial-statement="{{ item.slug }}"
+   class="sidebar-item {% if _statement == item.slug %}sidebar-item-active{% endif %}"
+   title="{{ item.description|default(item.title) }}">
+    <i class="fas {{ item.icon }} w-5"></i>
+    <span>{{ item.title }}</span>
+    {% if _statement == item.slug %}<i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>{% endif %}
+</a>
+{% endfor %}

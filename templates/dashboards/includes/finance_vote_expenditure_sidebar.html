@@ -1,0 +1,34 @@
+{# Vote expenditure ledgers — sidebar when viewing a single vote #}
+{% set _vote = expenditure_vote|default('') %}
+{% set _ledger = expenditure_ledger|default(request.args.get('ledger', '')|lower) %}
+{% set _base = employee_dash_url('finance-overview/reports/expenditure') %}
+{% set _fy = request.args.get('financial_year_id') or filter_options.default_financial_year_id|default('') %}
+{% set _df = request.args.get('date_from') or filter_options.default_date_from|default('') %}
+{% set _dt = request.args.get('date_to') or filter_options.default_date_to|default('') %}
+
+{% if _vote %}
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Vote ledgers</p>
+
+<a href="{{ _base }}?vote={{ _vote|urlencode }}{% if _fy %}&financial_year_id={{ _fy }}{% endif %}{% if _df %}&date_from={{ _df }}{% endif %}{% if _dt %}&date_to={{ _dt }}{% endif %}"
+   class="sidebar-item {% if not _ledger %}sidebar-item-active{% endif %}"
+   title="Vote overview and transactions">
+    <i class="fas fa-chart-pie w-5"></i>
+    <span>Vote Overview</span>
+    {% if not _ledger %}<i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>{% endif %}
+</a>
+
+{% for item in vote_ledger_nav|default([]) %}
+{% set _href = _base ~ '?vote=' ~ (_vote|urlencode) ~ '&ledger=' ~ item.slug %}
+{% if _fy %}{% set _href = _href ~ '&financial_year_id=' ~ _fy %}{% endif %}
+{% if _df %}{% set _href = _href ~ '&date_from=' ~ _df %}{% endif %}
+{% if _dt %}{% set _href = _href ~ '&date_to=' ~ _dt %}{% endif %}
+<a href="{{ _href }}"
+   data-fr-vote-ledger="{{ item.slug }}"
+   class="sidebar-item {% if _ledger == item.slug %}sidebar-item-active{% endif %}"
+   title="{{ item.description|default(item.title) }}">
+    <i class="fas {{ item.icon }} w-5"></i>
+    <span>{{ item.title }}</span>
+    {% if _ledger == item.slug %}<i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>{% endif %}
+</a>
+{% endfor %}
+{% endif %}

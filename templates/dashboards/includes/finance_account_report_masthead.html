@@ -1,0 +1,148 @@
+{# Expects: account, report_title, report_description, report_icon, account_id, date_from, date_to, report_period_label, show_filters, filter_action_url, is_summary #}
+<div class="acr-masthead">
+    <div class="acr-masthead__band">
+        <div class="acr-masthead__inner">
+            <div class="min-w-0 flex-1">
+                <p class="acr-masthead__school">{{ school_settings.school_name or 'School' }}</p>
+                <h1 class="acr-masthead__title">{{ report_title }}</h1>
+                <p class="acr-masthead__account" id="acr-masthead-account">{{ account.account_name }}</p>
+            </div>
+            <div class="acr-masthead__meta">
+                <div><strong>Period:</strong> <span id="acr-masthead-period">{{ report_period_label|default('All dates') }}</span></div>
+                <div><strong>Generated:</strong> <span id="acr-masthead-generated">{{ report_generated_at|default('—') }}</span></div>
+                {% if account.account_category %}
+                <div><strong>Category:</strong> {{ account.account_category }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="acr-masthead__body">
+        {% if report_description %}
+        <p class="acr-masthead__desc">{{ report_description }}</p>
+        {% endif %}
+        <div class="acr-masthead__tags">
+            <span class="acr-tag {% if account.account_status != 'suspended' %}acr-tag--ok{% else %}acr-tag--warn{% endif %}">
+                <i class="fas fa-circle text-[6px]" aria-hidden="true"></i>
+                {{ 'Active' if account.account_status != 'suspended' else 'Suspended' }}
+            </span>
+            {% if account.levels_label and account.levels_label != '—' and p.report_type|default('') != 'petty-cash-book' %}
+            <span class="acr-tag"><i class="fas fa-layer-group" aria-hidden="true"></i> {{ account.levels_label }}</span>
+            {% endif %}
+            {% if is_summary %}
+            <span class="acr-tag"><i class="fas fa-chart-pie" aria-hidden="true"></i> Account summary</span>
+            {% endif %}
+        </div>
+        {% if show_filters|default(true) and filter_action_url %}
+        {% if live_filters|default(false) %}
+        <div class="acr-filters-panel no-print" aria-label="Report filters">
+            <div class="acr-filters-panel__head">
+                <span class="acr-filters-panel__title">
+                    Report filters
+                    <span class="acr-filters-live-hint">· updates automatically</span>
+                </span>
+                <button type="button" id="acr-reset-filters" class="acr-btn acr-btn--ghost">Reset</button>
+            </div>
+            <form method="get" action="{{ filter_action_url }}" class="acr-filters" id="acr-report-filters">
+                {% if financial_years|default([])|length > 0 %}
+                <div class="acr-field">
+                    <label for="acr-financial-year">Financial year</label>
+                    <select id="acr-financial-year" name="financial_year_id">
+                        {% for fy in financial_years %}
+                        <option value="{{ fy.id }}"
+                                data-start="{{ fy.start }}"
+                                data-end="{{ fy.end }}"
+                                data-is-current="{{ '1' if fy.is_current else '0' }}"
+                                {% if (financial_year_id|default(default_financial_year_id)) == fy.id %}selected{% endif %}>
+                            {{ fy.label }}{% if fy.is_current %} (current){% endif %}{% if fy.is_locked %} · closed{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="acr-field">
+                    <label for="acr-date-from">From</label>
+                    <input type="date" id="acr-date-from" name="date_from" value="{{ date_from|default('') }}" />
+                </div>
+                <div class="acr-field">
+                    <label for="acr-date-to">To</label>
+                    <input type="date" id="acr-date-to" name="date_to" value="{{ date_to|default('') }}" />
+                </div>
+            </form>
+            <p id="acr-fy-range-hint" class="acr-filter-fy-hint" aria-live="polite"></p>
+            <div id="acr-active-filters" class="acr-active-filters hidden" aria-live="polite"></div>
+        </div>
+        {% else %}
+        <form method="get" action="{{ filter_action_url }}" class="acr-filters no-print" id="acr-report-filters">
+            {% if financial_years|default([])|length > 0 %}
+            <div class="acr-field">
+                <label for="acr-financial-year">Financial year</label>
+                <select id="acr-financial-year" name="financial_year_id">
+                    {% for fy in financial_years %}
+                    <option value="{{ fy.id }}"
+                            data-start="{{ fy.start }}"
+                            data-end="{{ fy.end }}"
+                            data-is-current="{{ '1' if fy.is_current else '0' }}"
+                            {% if (financial_year_id|default(default_financial_year_id)) == fy.id %}selected{% endif %}>
+                        {{ fy.label }}{% if fy.is_current %} (current){% endif %}{% if fy.is_locked %} · closed{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="acr-field">
+                <label for="acr-date-from">From</label>
+                <input type="date" id="acr-date-from" name="date_from" value="{{ date_from|default('') }}" />
+            </div>
+            <div class="acr-field">
+                <label for="acr-date-to">To</label>
+                <input type="date" id="acr-date-to" name="date_to" value="{{ date_to|default('') }}" />
+            </div>
+            <button type="submit" class="acr-btn acr-btn--primary">Update report</button>
+            <a href="{{ filter_action_url }}" class="acr-btn acr-btn--ghost">Reset dates</a>
+        </form>
+        <script>
+        (function () {
+          var form = document.getElementById('acr-report-filters');
+          if (!form) return;
+          var fySel = document.getElementById('acr-financial-year');
+          var df = document.getElementById('acr-date-from');
+          var dt = document.getElementById('acr-date-to');
+          function yrBounds() {
+            if (!fySel || !fySel.value) return null;
+            var opt = fySel.options[fySel.selectedIndex];
+            if (!opt) return null;
+            return { start: opt.getAttribute('data-start'), end: opt.getAttribute('data-end') };
+          }
+          function applyBounds(reset) {
+            var b = yrBounds();
+            if (!b || !b.start || !b.end) return;
+            if (df) { df.min = b.start; df.max = b.end; }
+            if (dt) { dt.min = b.start; dt.max = b.end; }
+            if (reset) {
+              if (df) df.value = b.start;
+              if (dt) dt.value = b.end;
+            } else {
+              if (df && df.value) {
+                if (df.value < b.start) df.value = b.start;
+                if (df.value > b.end) df.value = b.end;
+              }
+              if (dt && dt.value) {
+                if (dt.value > b.end) dt.value = b.end;
+                if (dt.value < b.start) dt.value = b.start;
+              }
+            }
+          }
+          applyBounds(false);
+          if (fySel) {
+            fySel.addEventListener('change', function () { applyBounds(true); });
+          }
+          ['acr-date-from', 'acr-date-to'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', function () { applyBounds(false); });
+          });
+        })();
+        </script>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>

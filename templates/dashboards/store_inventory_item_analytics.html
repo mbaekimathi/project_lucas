@@ -1,0 +1,659 @@
+{% extends "base.html" %}
+
+{% block title %}{{ item.item_name }} — Usage analytics{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/store_inventory_page_styles.html' %}
+{% include 'dashboards/includes/store_stock_page_styles.html' %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/store_manager_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('storeItemAnalyticsPage', function () {
+    return {
+      item: {{ item|tojson }},
+      itemId: {{ item_id|tojson }},
+      analyticsApiUrl: {{ (employee_dash_url('store-inventory') + '/' + item_id|string + '/analytics/data')|tojson }},
+      printUrlBase: {{ employee_dash_url('store-stock/print')|tojson }},
+      loading: true,
+      viewTab: 'visual',
+      period: 'all',
+      filterDate: '',
+      rangeFrom: '',
+      rangeTo: '',
+      periodLabel: 'All time',
+      summary: {},
+      purposes: [],
+      movements: [],
+      trend: [],
+      trendGrain: 'month',
+      charts: {},
+      _chartTimer: null,
+      init: function () {
+        var today = new Date();
+        var y = today.getFullYear();
+        var m = String(today.getMonth() + 1).padStart(2, '0');
+        var d = String(today.getDate()).padStart(2, '0');
+        this.filterDate = y + '-' + m + '-' + d;
+        this.rangeFrom = y + '-' + m + '-01';
+        this.rangeTo = y + '-' + m + '-' + d;
+        this.fetchAnalytics();
+      },
+      setPeriod: function (mode) {
+        this.period = mode;
+        this.fetchAnalytics();
+      },
+      setViewTab: function (tab) {
+        this.viewTab = tab;
+        this.destroyCharts();
+        if (tab === 'visual') this.scheduleChartBuild();
+      },
+      onFilterChange: function () {
+        this.fetchAnalytics();
+      },
+      buildQuery: function () {
+        var p = new URLSearchParams();
+        p.set('period', this.period || 'all');
+        if (this.period === 'day' || this.period === 'month') {
+          if (this.filterDate) p.set('date', this.filterDate);
+        } else if (this.period === 'year') {
+          var y = (this.filterDate || '').slice(0, 4);
+          if (y) p.set('date', y);
+        } else if (this.period === 'range') {
+          if (this.rangeFrom) p.set('from', this.rangeFrom);
+          if (this.rangeTo) p.set('to', this.rangeTo);
+        }
+        return p.toString();
+      },
+      fetchAnalytics: function () {
+        var self = this;
+        self.loading = true;
+        self.destroyCharts();
+        fetch(self.analyticsApiUrl + '?' + self.buildQuery(), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.success) return;
+            self.periodLabel = data.period_label || 'All time';
+            self.summary = data.summary || {};
+            self.purposes = data.purposes || [];
+            self.movements = data.movements || [];
+            self.trend = data.trend || [];
+            self.trendGrain = data.trend_grain || 'month';
+            if (data.item) self.item = data.item;
+          })
+          .catch(function () { /* keep prior */ })
+          .finally(function () {
+            self.loading = false;
+            if (self.viewTab === 'visual') self.scheduleChartBuild();
+          });
+      },
+      scheduleChartBuild: function () {
+        var self = this;
+        if (self._chartTimer) clearTimeout(self._chartTimer);
+        self._chartTimer = setTimeout(function () {
+          self._chartTimer = null;
+          self.buildCharts();
+        }, 80);
+      },
+      destroyChart: function (key) {
+        if (!this.charts[key]) return;
+        try { this.charts[key].destroy(); } catch (e) { /* noop */ }
+        delete this.charts[key];
+      },
+      destroyCharts: function () {
+        this.destroyChart('trend');
+        this.destroyChart('inOut');
+        this.destroyChart('purpose');
+      },
+      chartTheme: function () {
+        var isDark = document.documentElement.classList.contains('dark');
+        return {
+          tick: isDark ? '#94a3b8' : '#64748b',
+          lbl: isDark ? '#cbd5e1' : '#334155',
+          grid: isDark ? 'rgba(148,163,184,0.12)' : 'rgba(100,116,139,0.08)',
+          tipBg: isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.96)',
+          tipTitle: isDark ? '#f8fafc' : '#0f172a',
+          tipBody: isDark ? '#e2e8f0' : '#334155',
+          tipBorder: isDark ? 'rgba(148,163,184,0.25)' : 'rgba(148,163,184,0.35)',
+        };
+      },
+      buildCharts: function () {
+        var ChartCtor = typeof Chart !== 'undefined' ? Chart : null;
+        if (!ChartCtor || this.viewTab !== 'visual') return;
+        this.buildTrendChart(ChartCtor);
+        this.buildInOutChart(ChartCtor);
+        this.buildPurposeChart(ChartCtor);
+      },
+      trendGrainLabel: function () {
+        var g = (this.trendGrain || '').toLowerCase();
+        if (g === 'hour') return 'by hour';
+        if (g === 'day') return 'by day';
+        if (g === 'month') return 'by month';
+        return '';
+      },
+      hasTrendData: function () {
+        return Array.isArray(this.trend) && this.trend.length > 0;
+      },
+      buildTrendChart: function (ChartCtor) {
+        this.destroyChart('trend');
+        var el = document.getElementById('sinvChartTrend');
+        if (!el || !this.hasTrendData()) return;
+        var theme = this.chartTheme();
+        var measure = (this.item && this.item.measure) ? (' ' + this.item.measure) : '';
+        var labels = this.trend.map(function (t) { return t.label; });
+        var inData = this.trend.map(function (t) { return t.stock_in_qty || 0; });
+        var outData = this.trend.map(function (t) { return t.stock_out_qty || 0; });
+        var balanceData = this.trend.map(function (t) {
+          return t.balance === null || t.balance === undefined ? null : t.balance;
+        });
+        var hasBalance = balanceData.some(function (b) { return b !== null; });
+        var datasets = [
+          {
+            type: 'bar',
+            label: 'Stock in',
+            data: inData,
+            backgroundColor: 'rgba(5, 150, 105, 0.78)',
+            borderRadius: 4,
+            order: 2,
+          },
+          {
+            type: 'bar',
+            label: 'Stock out',
+            data: outData,
+            backgroundColor: 'rgba(234, 88, 12, 0.78)',
+            borderRadius: 4,
+            order: 2,
+          },
+        ];
+        if (hasBalance) {
+          datasets.push({
+            type: 'line',
+            label: 'On hand',
+            data: balanceData,
+            borderColor: 'rgba(20, 184, 166, 1)',
+            backgroundColor: 'rgba(20, 184, 166, 0.08)',
+            fill: true,
+            tension: 0.35,
+            yAxisID: 'yBalance',
+            order: 1,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            spanGaps: true,
+          });
+        }
+        var scales = {
+          x: {
+            ticks: { color: theme.tick, maxRotation: 45, font: { size: 10 } },
+            grid: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            position: 'left',
+            ticks: { color: theme.tick, precision: 0 },
+            grid: { color: theme.grid },
+            title: {
+              display: true,
+              text: 'In / out' + measure,
+              color: theme.tick,
+              font: { size: 10, weight: '600' },
+            },
+          },
+        };
+        if (hasBalance) {
+          scales.yBalance = {
+            beginAtZero: true,
+            position: 'right',
+            ticks: { color: theme.tick, precision: 0 },
+            grid: { drawOnChartArea: false },
+            title: {
+              display: true,
+              text: 'On hand' + measure,
+              color: theme.tick,
+              font: { size: 10, weight: '600' },
+            },
+          };
+        }
+        this.charts.trend = new ChartCtor(el.getContext('2d'), {
+          type: 'bar',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: {
+                labels: { color: theme.lbl, boxWidth: 10, padding: 12, font: { size: 11 } },
+              },
+              tooltip: {
+                backgroundColor: theme.tipBg,
+                titleColor: theme.tipTitle,
+                bodyColor: theme.tipBody,
+                borderColor: theme.tipBorder,
+                borderWidth: 1,
+                callbacks: {
+                  label: function (ctx) {
+                    var v = ctx.parsed.y;
+                    if (v === null || v === undefined) return ctx.dataset.label + ': —';
+                    return ctx.dataset.label + ': ' + v + measure;
+                  },
+                },
+              },
+            },
+            scales: scales,
+          },
+        });
+      },
+      buildInOutChart: function (ChartCtor) {
+        this.destroyChart('inOut');
+        var el = document.getElementById('sinvChartInOut');
+        if (!el) return;
+        var inQty = parseInt(this.summary.stock_in_qty, 10) || 0;
+        var outQty = parseInt(this.summary.stock_out_qty, 10) || 0;
+        if (inQty === 0 && outQty === 0) return;
+        var theme = this.chartTheme();
+        var measure = (this.item && this.item.measure) ? (' ' + this.item.measure) : '';
+        this.charts.inOut = new ChartCtor(el.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: ['Stock in', 'Stock out'],
+            datasets: [{
+              label: 'Quantity' + measure,
+              data: [inQty, outQty],
+              backgroundColor: ['rgba(5, 150, 105, 0.78)', 'rgba(234, 88, 12, 0.78)'],
+              borderRadius: 6,
+              barThickness: 42,
+              maxBarThickness: 56,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: theme.tipBg,
+                titleColor: theme.tipTitle,
+                bodyColor: theme.tipBody,
+                borderColor: theme.tipBorder,
+                borderWidth: 1,
+              },
+            },
+            scales: {
+              x: {
+                ticks: { color: theme.tick, font: { weight: '600', size: 11 } },
+                grid: { display: false },
+              },
+              y: {
+                beginAtZero: true,
+                ticks: { color: theme.tick, precision: 0 },
+                grid: { color: theme.grid },
+              },
+            },
+          },
+        });
+      },
+      buildPurposeChart: function (ChartCtor) {
+        this.destroyChart('purpose');
+        var el = document.getElementById('sinvChartPurpose');
+        if (!el || !this.purposes.length) return;
+        var labels = this.purposes.map(function (p) { return p.purpose; });
+        var values = this.purposes.map(function (p) { return p.quantity; });
+        var palette = [
+          'rgba(234, 88, 12, 0.82)', 'rgba(249, 115, 22, 0.82)', 'rgba(251, 146, 60, 0.82)',
+          'rgba(217, 119, 6, 0.82)', 'rgba(180, 83, 9, 0.82)', 'rgba(154, 52, 18, 0.82)',
+          'rgba(124, 45, 18, 0.82)', 'rgba(194, 65, 12, 0.82)',
+        ];
+        var colors = values.map(function (_, i) { return palette[i % palette.length]; });
+        var theme = this.chartTheme();
+        var measure = (this.item && this.item.measure) ? (' ' + this.item.measure) : '';
+        this.charts.purpose = new ChartCtor(el.getContext('2d'), {
+          type: 'doughnut',
+          data: {
+            labels: labels,
+            datasets: [{
+              data: values,
+              backgroundColor: colors,
+              borderWidth: 0,
+              hoverOffset: 6,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '58%',
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { color: theme.lbl, boxWidth: 10, padding: 10, font: { size: 10 } },
+              },
+              tooltip: {
+                backgroundColor: theme.tipBg,
+                titleColor: theme.tipTitle,
+                bodyColor: theme.tipBody,
+                borderColor: theme.tipBorder,
+                borderWidth: 1,
+                callbacks: {
+                  label: function (ctx) {
+                    var v = ctx.parsed || 0;
+                    return v + measure;
+                  },
+                },
+              },
+            },
+          },
+        });
+      },
+      maxPurposeQty: function () {
+        if (!this.purposes.length) return 1;
+        return Math.max.apply(null, this.purposes.map(function (p) { return p.quantity || 0; }).concat([1]));
+      },
+      purposeBarWidth: function (qty) {
+        var max = this.maxPurposeQty();
+        var pct = Math.round(((parseInt(qty, 10) || 0) / max) * 100);
+        return Math.max(pct, 4) + '%';
+      },
+      formatKes: function (v) {
+        if (v === null || v === undefined || v === '') return '—';
+        var n = parseFloat(v);
+        return Number.isFinite(n) ? ('KES ' + n.toFixed(2)) : '—';
+      },
+      paymentBadgeClass: function (status) {
+        var s = (status || '').toLowerCase();
+        if (s === 'paid') return 'ss-pay-badge--paid';
+        if (s === 'partial') return 'ss-pay-badge--partial';
+        if (s === 'pending') return 'ss-pay-badge--pending';
+        return '';
+      },
+      printUrl: function (id) {
+        return this.printUrlBase + '/' + id;
+      },
+    };
+  });
+});
+</script>
+
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root si-page sinv-page ss-page">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14" x-data="storeItemAnalyticsPage">
+
+        <header class="sinv-hero sinv-hero--analytics">
+            <div class="sinv-hero__inner">
+                <div class="sinv-hero__top">
+                    <div class="min-w-0 flex gap-3.5">
+                        <div class="sinv-hero__icon" aria-hidden="true"><i class="fas fa-chart-line"></i></div>
+                        <div class="min-w-0">
+                            <a href="{{ employee_dash_url('store-inventory') }}" class="sinv-hero__back">
+                                <i class="fas fa-chevron-left text-[0.5rem]"></i> Item catalog
+                            </a>
+                            <h1 class="sinv-hero__title" x-text="item.item_name"></h1>
+                            <p class="sinv-hero__sub si-normal">
+                                <span class="si-ref" x-text="item.reference_code"></span>
+                                <span class="opacity-70"> · </span>
+                                <span x-text="item.department_station"></span>
+                                <span class="opacity-70"> · </span>
+                                <span x-text="item.item_category"></span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        {# Period filters #}
+        <section class="si-panel mt-5">
+            <div class="si-panel-head">
+                <div class="min-w-0">
+                    <h2 class="si-title">Usage period</h2>
+                    <p class="si-subtitle si-normal">Filter analytics by day, month, year, or custom range — updates live.</p>
+                    <span class="sinv-results-badge mt-2">
+                        <i class="fas fa-calendar-days"></i>
+                        <span x-text="periodLabel"></span>
+                    </span>
+                </div>
+            </div>
+            <div class="si-panel-body sinv-analytics-filters si-normal">
+                <div class="sinv-period-tabs">
+                    <button type="button" @click="setPeriod('all')" class="sinv-period-tab" :class="period === 'all' ? 'is-active' : ''">All time</button>
+                    <button type="button" @click="setPeriod('day')" class="sinv-period-tab" :class="period === 'day' ? 'is-active' : ''">Day</button>
+                    <button type="button" @click="setPeriod('month')" class="sinv-period-tab" :class="period === 'month' ? 'is-active' : ''">Month</button>
+                    <button type="button" @click="setPeriod('year')" class="sinv-period-tab" :class="period === 'year' ? 'is-active' : ''">Year</button>
+                    <button type="button" @click="setPeriod('range')" class="sinv-period-tab" :class="period === 'range' ? 'is-active' : ''">Period</button>
+                </div>
+                <div class="sinv-period-inputs mt-3">
+                    <template x-if="period === 'day'">
+                        <div>
+                            <label class="si-label">Select day</label>
+                            <input type="date" x-model="filterDate" @change="onFilterChange()" class="si-input sinv-date-input" />
+                        </div>
+                    </template>
+                    <template x-if="period === 'month'">
+                        <div>
+                            <label class="si-label">Select month</label>
+                            <input type="month" x-model="filterDate" @change="onFilterChange()" class="si-input sinv-date-input" />
+                        </div>
+                    </template>
+                    <template x-if="period === 'year'">
+                        <div>
+                            <label class="si-label">Select year</label>
+                            <input type="number" min="2000" max="2100" step="1"
+                                   :value="(filterDate || '').slice(0, 4)"
+                                   @input="filterDate = ($event.target.value || '') + '-01-01'; onFilterChange()"
+                                   class="si-input sinv-date-input" />
+                        </div>
+                    </template>
+                    <template x-if="period === 'range'">
+                        <div class="sinv-range-grid">
+                            <div>
+                                <label class="si-label">From</label>
+                                <input type="date" x-model="rangeFrom" @change="onFilterChange()" class="si-input sinv-date-input" />
+                            </div>
+                            <div>
+                                <label class="si-label">To</label>
+                                <input type="date" x-model="rangeTo" @change="onFilterChange()" class="si-input sinv-date-input" />
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <p x-show="loading" class="mt-2 text-xs text-[var(--si-muted)]"><i class="fas fa-circle-notch fa-spin mr-1"></i> Updating…</p>
+            </div>
+        </section>
+
+        {# View tabs: Visual analytics (default) | Raw data #}
+        <section class="si-panel mt-5">
+            <div class="si-panel-head">
+                <div class="min-w-0">
+                    <h2 class="si-title">Analytics view</h2>
+                    <p class="si-subtitle si-normal">Charts and breakdowns, or full movement records for <span x-text="periodLabel"></span>.</p>
+                </div>
+            </div>
+            <div class="si-panel-body">
+                <div class="sinv-view-tabs" role="tablist">
+                    <button type="button" role="tab" @click="setViewTab('visual')"
+                            class="sinv-view-tab" :class="viewTab === 'visual' ? 'is-active' : ''"
+                            :aria-selected="viewTab === 'visual'">
+                        <i class="fas fa-chart-pie"></i> Visual analytics
+                    </button>
+                    <button type="button" role="tab" @click="setViewTab('raw')"
+                            class="sinv-view-tab" :class="viewTab === 'raw' ? 'is-active' : ''"
+                            :aria-selected="viewTab === 'raw'">
+                        <i class="fas fa-table"></i> Raw data
+                    </button>
+                </div>
+
+                {# —— Visual analytics —— #}
+                <div x-show="viewTab === 'visual'" x-cloak class="sinv-analytics-stack">
+                    {# Usage trend — full width #}
+                    <div class="sinv-chart-card sinv-chart-card--wide">
+                        <h3 class="sinv-chart-card__title">
+                            Usage trend
+                            <span class="sinv-trend-grain" x-show="trendGrainLabel()" x-text="'(' + trendGrainLabel() + ')'"></span>
+                        </h3>
+                        <div x-show="!loading && hasTrendData()" class="sinv-chart-wrap sinv-chart-wrap--trend">
+                            <canvas id="sinvChartTrend" aria-label="Stock usage trend over time"></canvas>
+                        </div>
+                        <div x-show="!loading && !hasTrendData()" class="sinv-chart-empty sinv-chart-wrap--trend">
+                            No stock movement in this period — trend will appear once there is activity.
+                        </div>
+                        <div x-show="loading" class="sinv-chart-empty sinv-chart-wrap--trend"><i class="fas fa-circle-notch fa-spin mr-1"></i> Loading…</div>
+                    </div>
+
+                    {# Charts #}
+                    <div class="sinv-chart-grid">
+                        <div class="sinv-chart-card">
+                            <h3 class="sinv-chart-card__title">Stock in vs stock out</h3>
+                            <div x-show="!loading && (summary.stock_in_qty || summary.stock_out_qty)" class="sinv-chart-wrap">
+                                <canvas id="sinvChartInOut" aria-label="Stock in vs stock out chart"></canvas>
+                            </div>
+                            <div x-show="!loading && !(summary.stock_in_qty || summary.stock_out_qty)" class="sinv-chart-empty">
+                                No stock movement in this period.
+                            </div>
+                            <div x-show="loading" class="sinv-chart-empty"><i class="fas fa-circle-notch fa-spin mr-1"></i> Loading…</div>
+                        </div>
+                        <div class="sinv-chart-card">
+                            <h3 class="sinv-chart-card__title">Stock out by purpose</h3>
+                            <div x-show="!loading && purposes.length > 0" class="sinv-chart-wrap">
+                                <canvas id="sinvChartPurpose" aria-label="Stock out by purpose chart"></canvas>
+                            </div>
+                            <div x-show="!loading && purposes.length === 0" class="sinv-chart-empty">
+                                No stock out in this period.
+                            </div>
+                            <div x-show="loading" class="sinv-chart-empty"><i class="fas fa-circle-notch fa-spin mr-1"></i> Loading…</div>
+                        </div>
+                    </div>
+
+                    {# Purpose breakdown table with bars #}
+                    <div x-show="purposes.length > 0">
+                        <h3 class="sinv-chart-card__title mb-3">Purpose breakdown</h3>
+                        <div class="sinv-list-table">
+                            <div class="si-table-wrap">
+                                <table class="si-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Purpose</th>
+                                            <th>Share</th>
+                                            <th class="text-right">Quantity</th>
+                                            <th class="text-right">Movements</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="p in purposes" :key="p.purpose">
+                                            <tr>
+                                                <td class="font-semibold" x-text="p.purpose"></td>
+                                                <td class="min-w-[8rem]">
+                                                    <div class="sinv-purpose-bar">
+                                                        <div class="sinv-purpose-bar__track">
+                                                            <div class="sinv-purpose-bar__fill" :style="'width:' + purposeBarWidth(p.quantity)"></div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td class="text-right tabular-nums font-semibold" x-text="p.quantity + ' ' + item.measure"></td>
+                                                <td class="text-right tabular-nums text-[var(--si-muted)]" x-text="p.count"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# —— Raw data —— #}
+                <div x-show="viewTab === 'raw'" x-cloak>
+                    <div x-show="!loading && movements.length === 0" class="si-empty py-8">
+                        <p class="si-normal text-sm">No movements in this period.</p>
+                    </div>
+                    <div x-show="movements.length > 0" class="sinv-list-table">
+                        <div class="si-table-wrap ss-audit-table-wrap">
+                            <table class="si-table ss-table--audit sinv-analytics-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date &amp; time</th>
+                                        <th>Reference</th>
+                                        <th>Type</th>
+                                        <th class="text-right">Qty</th>
+                                        <th class="text-right">Before</th>
+                                        <th class="text-right">After</th>
+                                        <th class="text-right">Unit price</th>
+                                        <th class="text-right">Total</th>
+                                        <th>Payment</th>
+                                        <th>Supplier / purpose</th>
+                                        <th>Recorded by</th>
+                                        <th>Notes</th>
+                                        <th class="text-center">Print</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="m in movements" :key="m.id">
+                                        <tr :class="m.movement_type === 'in' ? 'ss-row--in' : 'ss-row--out'">
+                                            <td class="whitespace-nowrap text-[0.6875rem] si-normal" x-text="m.created_at_display"></td>
+                                            <td><span class="si-ref" x-text="m.reference_number"></span></td>
+                                            <td>
+                                                <span class="ss-type-badge"
+                                                      :class="m.movement_type === 'in' ? 'ss-type-badge--in' : 'ss-type-badge--out'">
+                                                    <i class="fas" :class="m.movement_type === 'in' ? 'fa-arrow-down' : 'fa-arrow-up'"></i>
+                                                    <span x-text="m.movement_type === 'in' ? 'In' : 'Out'"></span>
+                                                </span>
+                                            </td>
+                                            <td class="text-right tabular-nums font-semibold" x-text="m.quantity"></td>
+                                            <td class="text-right tabular-nums text-[var(--si-muted)]" x-text="m.quantity_before"></td>
+                                            <td class="text-right tabular-nums font-medium" x-text="m.quantity_after"></td>
+                                            <td class="text-right tabular-nums whitespace-nowrap">
+                                                <span x-show="m.movement_type === 'in'" x-text="formatKes(m.buying_price_display)"></span>
+                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                            </td>
+                                            <td class="text-right tabular-nums font-semibold whitespace-nowrap">
+                                                <span x-show="m.movement_type === 'in'" x-text="formatKes(m.total_amount_display)"></span>
+                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                            </td>
+                                            <td>
+                                                <template x-if="m.movement_type === 'in'">
+                                                    <div>
+                                                        <span class="ss-pay-badge" :class="paymentBadgeClass(m.payment_status)" x-text="m.payment_status || '—'"></span>
+                                                        <span class="block text-[0.625rem] text-[var(--si-muted)] mt-0.5 tabular-nums si-normal"
+                                                              x-show="m.amount_paid_display && m.amount_paid_display !== '—'"
+                                                              x-text="'Paid: KES ' + m.amount_paid_display"></span>
+                                                    </div>
+                                                </template>
+                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                            </td>
+                                            <td class="max-w-[10rem]">
+                                                <template x-if="m.movement_type === 'in'">
+                                                    <div class="truncate" :title="m.supplier_name || ''">
+                                                        <span class="block truncate" x-text="m.supplier_name || '—'"></span>
+                                                        <span class="text-[0.625rem] text-[var(--si-muted)] si-normal block truncate"
+                                                              x-show="m.supplier_phone" x-text="m.supplier_phone"></span>
+                                                    </div>
+                                                </template>
+                                                <template x-if="m.movement_type === 'out'">
+                                                    <span class="block truncate" :title="m.stock_out_purpose || ''" x-text="m.stock_out_purpose || '—'"></span>
+                                                </template>
+                                            </td>
+                                            <td class="max-w-[8rem] truncate si-normal" :title="m.performed_by_name || ''" x-text="m.performed_by_name || '—'"></td>
+                                            <td class="max-w-[10rem] truncate si-normal" :title="m.notes || ''" x-text="m.notes || '—'"></td>
+                                            <td class="text-center">
+                                                <a :href="printUrl(m.id)" target="_blank" rel="noopener"
+                                                   class="si-btn si-btn--icon" title="Print receipt"><i class="fas fa-print"></i></a>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="mt-3 text-xs text-[var(--si-muted)] si-normal">
+                            Showing <span x-text="movements.length"></span> record(s) in selected period (most recent first).
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
