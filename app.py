@@ -17841,6 +17841,69 @@ def student_fees_students():
         connection.close()
 
 
+@app.route('/dashboard/employee/student-fees/supplier-lookup', methods=['GET'])
+@login_required
+def student_fees_supplier_lookup():
+    """Live lookup: registered supplier + school payables by phone."""
+    if not _student_fees_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    if not _employee_can_process_payments():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    phone_raw = (request.args.get('phone') or '').strip()
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            info = _fetch_supplier_payable_by_phone(cursor, phone_raw)
+            phone = (info.get('supplier_phone') or '').strip()
+            if info.get('is_supplier') and phone:
+                info['expenses_url'] = (
+                    employee_dashboard_path('expenses/expense-records')
+                    + '?phone=' + quote(phone, safe='')
+                )
+            return jsonify({'success': True, 'supplier': info})
+    except Exception as e:
+        print(f"student_fees_supplier_lookup: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not look up supplier.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/student-fees/parent-supplier-info/<student_id>', methods=['GET'])
+@login_required
+def student_fees_parent_supplier_info(student_id):
+    """Supplier payables linked to a student's parent/guardian (by phone match)."""
+    if not _student_fees_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    if not _employee_can_process_payments():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            info = _fetch_parent_supplier_info_for_student(cursor, student_id)
+            phone = (info.get('supplier_phone') or '').strip()
+            if info.get('is_supplier') and phone:
+                info['expenses_url'] = (
+                    employee_dashboard_path('expenses/expense-records')
+                    + '?phone=' + quote(phone, safe='')
+                )
+            return jsonify({'success': True, 'supplier': info})
+    except Exception as e:
+        print(f"student_fees_parent_supplier_info: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not load supplier information'}), 500
+    finally:
+        connection.close()
+
+
 
 def _invoice_has_access():
     """Who may generate or view student fee invoices."""
@@ -19924,9 +19987,16 @@ def record_payment():
         transaction_id = request.form.get('transaction_id', '').strip()
         payment_date = request.form.get('payment_date')
         notes = request.form.get('notes', '').strip()
+        supplier_phone_raw = request.form.get('supplier_phone', '').strip()
         
+        is_supplier_offset = payment_method == 'Supplier Offset'
+        if is_supplier_offset:
+            payment_date = payment_date or datetime.now().strftime('%Y-%m-%d')
+
         # Validate required fields
-        if not student_id or not fee_structure_id or not amount_paid or not payment_method or not payment_date:
+        if not student_id or not fee_structure_id or not amount_paid or not payment_method:
+            return jsonify({'success': False, 'message': 'Please fill in all required fields.'}), 400
+        if not payment_date and not is_supplier_offset:
             return jsonify({'success': False, 'message': 'Please fill in all required fields.'}), 400
         
         if amount_paid <= 0:
@@ -19958,6 +20028,33 @@ def record_payment():
         
         try:
             with connection.cursor() as cursor:
+                if is_supplier_offset:
+                    if not supplier_phone_raw:
+                        return jsonify({
+                            'success': False,
+                            'message': 'Enter the supplier phone number to trade from their account.',
+                        }), 400
+                    supplier_info = _fetch_supplier_payable_by_phone(cursor, supplier_phone_raw)
+                    if not supplier_info.get('is_supplier'):
+                        return jsonify({
+                            'success': False,
+                            'message': supplier_info.get('message')
+                            or 'This phone number is not registered as a supplier.',
+                        }), 400
+                    supplier_credit = float(supplier_info.get('balance_due') or 0)
+                    if supplier_credit <= 0:
+                        return jsonify({
+                            'success': False,
+                            'message': 'This supplier has no outstanding balance to trade against.',
+                        }), 400
+                    if amount_paid > supplier_credit + 0.005:
+                        return jsonify({
+                            'success': False,
+                            'message': (
+                                f'Trade amount cannot exceed supplier credit of KES {supplier_credit:,.2f}.'
+                            ),
+                        }), 400
+
                 # Get employee database ID (not employee_id code)
                 received_by_id = None
                 employee_identifier = session.get('employee_id') or session.get('user_id')
@@ -19998,6 +20095,25 @@ def record_payment():
                         'success': False,
                         'message': credit_err or 'Could not update finance account balance.',
                     }), 400
+
+                if is_supplier_offset:
+                    paid_by_name = (
+                        session.get('full_name') or session.get('username') or ''
+                    ).strip()
+                    ok_offset, offset_err = _apply_supplier_offset_for_fee_payment(
+                        cursor,
+                        supplier_phone_raw,
+                        amount_paid,
+                        paid_by_name,
+                        payment_id,
+                        student_id=student_id,
+                    )
+                    if not ok_offset:
+                        connection.rollback()
+                        return jsonify({
+                            'success': False,
+                            'message': offset_err or 'Could not apply supplier offset.',
+                        }), 400
                 
                 # Log audit entry for payment creation
                 payment_details = f"Amount: KES {amount_paid:,.2f}, Method: {payment_method}, Date: {payment_date}"
@@ -20018,9 +20134,14 @@ def record_payment():
                 
                 connection.commit()
                 
+                success_message = (
+                    'Payment recorded via supplier trade.'
+                    if is_supplier_offset
+                    else 'Payment recorded successfully.'
+                )
                 return jsonify({
                     'success': True,
-                    'message': 'Payment recorded successfully.'
+                    'message': success_message,
                 })
         except Exception as e:
             connection.rollback()
@@ -44584,6 +44705,164 @@ def _fetch_outstanding_stock_in_for_phone(cursor, phone_norm):
         ),
     )
     return out
+
+
+def _fetch_supplier_payable_by_phone(cursor, phone_raw):
+    """Look up a registered store supplier by phone and return school payables (JSON-safe)."""
+    phone_norm = _normalize_store_supplier_phone(phone_raw)
+    if not phone_norm:
+        return {
+            'is_supplier': False,
+            'ready': False,
+            'message': 'Enter a valid phone number (at least 9 digits).',
+        }
+
+    ensure_store_suppliers_table(cursor)
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+
+    supplier = _store_lookup_supplier_by_phone(cursor, phone_norm)
+    if not supplier:
+        return {
+            'is_supplier': False,
+            'ready': True,
+            'supplier_phone': phone_norm,
+            'message': 'This phone number is not registered as a supplier.',
+        }
+
+    stock_records = _fetch_store_stock_in_list(cursor, payment_filter='all', limit=2000)
+    aggregated = _aggregate_supplier_payables_by_phone(stock_records, status_filter='all')
+    payable = next((row for row in aggregated if row.get('phone_key') == phone_norm), None) or {}
+    balance_due = float(payable.get('balance_due') or 0)
+
+    return {
+        'is_supplier': True,
+        'ready': True,
+        'supplier_id': supplier.get('id'),
+        'supplier_name': supplier.get('company_name') or '',
+        'supplier_phone': supplier.get('phone') or phone_norm,
+        'balance_due': balance_due,
+        'balance_due_display': f'{balance_due:,.2f}',
+        'invoice_count': int(payable.get('invoice_count') or 0),
+        'payment_status': payable.get('payment_status') or 'paid',
+        'payment_status_label': payable.get('payment_status_label') or 'Paid',
+        'total_invoiced': float(payable.get('total_invoiced') or 0),
+        'total_paid': float(payable.get('total_paid') or 0),
+        'message': 'Registered supplier — school payable balance loaded.',
+    }
+
+
+def _fetch_parent_supplier_info_for_student(cursor, student_id):
+    """
+    If a student's parent/guardian phone matches a registered store supplier,
+    return supplier payables owed by the school (JSON-safe dict).
+    """
+    sid = (student_id or '').strip()
+    if not sid:
+        return {'is_supplier': False}
+
+    ensure_store_suppliers_table(cursor)
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+
+    cursor.execute(
+        """
+        SELECT full_name, phone FROM parents
+        WHERE student_id = %s
+        ORDER BY id ASC
+        """,
+        (sid,),
+    )
+    parents = cursor.fetchall() or []
+    if not parents:
+        return {'is_supplier': False}
+
+    for parent_row in parents:
+        if isinstance(parent_row, dict):
+            parent_name = (parent_row.get('full_name') or '').strip()
+            parent_phone = (parent_row.get('phone') or '').strip()
+        else:
+            parent_name = (parent_row[0] or '').strip() if len(parent_row) > 0 else ''
+            parent_phone = (parent_row[1] or '').strip() if len(parent_row) > 1 else ''
+
+        info = _fetch_supplier_payable_by_phone(cursor, parent_phone)
+        if info.get('is_supplier'):
+            info['parent_name'] = parent_name
+            info['parent_phone'] = parent_phone
+            return info
+
+    return {'is_supplier': False}
+
+
+def _apply_supplier_offset_for_fee_payment(
+    cursor, supplier_phone, offset_amount, paid_by_name, student_payment_id, student_id=None,
+):
+    """Apply fee payment against outstanding supplier stock-in payables (no cash out)."""
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        offset_dec = Decimal(str(offset_amount)).quantize(Decimal('0.01'))
+    except (InvalidOperation, ValueError, TypeError):
+        return False, 'Invalid supplier offset amount.'
+
+    if offset_dec <= 0:
+        return False, 'Supplier offset amount must be greater than zero.'
+
+    info = _fetch_supplier_payable_by_phone(cursor, supplier_phone)
+    if not info.get('is_supplier'):
+        return False, 'Enter a registered supplier phone number to trade from their account.'
+
+    available = Decimal(str(info.get('balance_due') or 0)).quantize(Decimal('0.01'))
+    if available <= 0:
+        return False, 'This supplier has no outstanding balance for the school to trade against.'
+    if offset_dec > available:
+        return False, (
+            f'Supplier credit available is only KES {float(available):,.2f}.'
+        )
+
+    phone_norm = info.get('supplier_phone') or ''
+    company_name = (info.get('supplier_name') or 'SUPPLIER').strip().upper()
+    if not phone_norm:
+        return False, 'Supplier phone could not be resolved for offset.'
+
+    movements = _fetch_outstanding_stock_in_for_phone(cursor, phone_norm)
+    if not movements:
+        return False, 'No outstanding supplier invoices to offset against.'
+
+    remaining = offset_dec
+    student_ref = (student_id or '').strip()
+    ref = f'Fee offset #{student_payment_id}'
+    if student_ref:
+        ref = f'Fee offset {student_ref} #{student_payment_id}'
+    for mov in movements:
+        if remaining <= Decimal('0'):
+            break
+        try:
+            mov_balance = Decimal(str(mov.get('balance_due') or 0)).quantize(Decimal('0.01'))
+        except (InvalidOperation, ValueError):
+            mov_balance = Decimal('0')
+        if mov_balance <= 0:
+            continue
+        apply_amt = min(remaining, mov_balance)
+        ok, msg = _apply_stock_in_payment(
+            cursor,
+            mov['id'],
+            apply_amt,
+            company_name,
+            phone_norm,
+            paid_by_name,
+            payment_method='Supplier Offset (School fees)',
+            finance_account_id=None,
+            payment_reference=ref,
+            skip_account_debit=True,
+        )
+        if not ok:
+            return False, msg or 'Could not apply supplier offset.'
+        remaining = (remaining - apply_amt).quantize(Decimal('0.01'))
+
+    if remaining > Decimal('0.01'):
+        return False, 'Could not apply the full supplier offset amount.'
+    return True, None
 
 
 def _apply_stock_in_payment(

@@ -8,7 +8,13 @@
 
 {% block extra_head %}
 {% include 'dashboards/includes/student_fees_accounts_styles.html' %}
-<style>select{appearance:none}.sf-table tbody tr.student-row:hover{box-shadow:inset 3px 0 0 0 #0d9488}
+<style>select{appearance:none}
+.sf-table tbody tr.student-row:hover{box-shadow:inset 3px 0 0 0 #0d9488}
+.sf-table tbody tr.student-row td{vertical-align:middle}
+.sf-table .sf-col-balance{min-width:7rem;text-align:right}
+.sf-table thead .sf-col-balance{text-align:right}
+.sf-balance-cell{font-size:.875rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.3}
+.sf-balance-sub{font-size:.6875rem;color:var(--acc-muted);margin-top:.125rem;font-weight:500}
 .sf-pay-modal input[type=number]::-webkit-outer-spin-button,.sf-pay-modal input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .sf-pay-modal input[type=number]{-moz-appearance:textfield}
 .sf-pay-field{width:100%;padding:.625rem .875rem;font-size:.875rem;line-height:1.25rem;border-radius:.75rem;border:1px solid rgb(226 232 240);background:#fff;color:rgb(15 23 42);transition:box-shadow .15s,border-color .15s}
@@ -199,29 +205,29 @@
         <p class="text-sm font-medium">Loading students…</p>
     </div>
 
-    <!-- Desktop: full table -->
-    <div class="sf-panel hidden lg:block rounded-xl overflow-hidden dark:border-emerald-900/40 bg-white dark:bg-gray-800 overflow-hidden w-full min-w-0 ring-1 ring-black/5 dark:ring-white/5">
-        <div class="overflow-x-auto">
-            <table class="sf-table finance-table min-w-full w-full divide-y divide-emerald-100/80 dark:divide-emerald-900/30">
+    <!-- Student register: simple list (desktop table + mobile rows, no cards) -->
+    <div class="sf-panel rounded-xl overflow-hidden w-full min-w-0 ring-1 ring-black/5 dark:ring-white/5">
+        <div class="sf-panel-head px-4 sm:px-5 pt-4 sm:pt-5 pb-0 mb-0 border-b-0">
+            <h2 class="sf-panel-title">
+                <span class="sf-panel-icon"><i class="fas fa-users"></i></span>
+                Student register
+            </h2>
+        </div>
+        <div class="overflow-x-auto border-t border-[var(--acc-line)]">
+            <table class="sf-table finance-table min-w-full w-full">
                 <thead class="sf-table-hero bg-gradient-to-r from-slate-800 via-slate-800 to-teal-900">
                     <tr>
-                        <th class="px-4 sm:px-6 py-3.5 text-left text-xs font-semibold text-white/95 uppercase tracking-wider">Student</th>
-                        <th class="px-4 sm:px-6 py-3.5 text-left text-xs font-semibold text-white/95 uppercase tracking-wider">Parent / guardian</th>
-                        <th class="px-4 sm:px-6 py-3.5 text-left text-xs font-semibold text-white/95 uppercase tracking-wider">Fee amount</th>
-                        <th class="px-4 sm:px-6 py-3.5 text-left text-xs font-semibold text-white/95 uppercase tracking-wider">Paid</th>
-                        <th class="px-4 sm:px-6 py-3.5 text-left text-xs font-semibold text-white/95 uppercase tracking-wider">Balance</th>
-                        <th class="px-4 sm:px-6 py-3.5 text-center text-xs font-semibold text-white/95 uppercase tracking-wider">Status</th>
-                        <th class="px-4 sm:px-6 py-3.5 text-right text-xs font-semibold text-white/95 uppercase tracking-wider">Actions</th>
+                        <th class="px-3 sm:px-4 lg:px-5 py-3 text-left text-[10px] font-semibold text-white/95 uppercase tracking-wider">Student</th>
+                        <th class="hidden sm:table-cell px-3 sm:px-4 lg:px-5 py-3 text-left text-[10px] font-semibold text-white/95 uppercase tracking-wider">Grade</th>
+                        <th class="sf-col-balance px-3 sm:px-4 lg:px-5 py-3 text-[10px] font-semibold text-white/95 uppercase tracking-wider">Fee balance</th>
+                        <th class="hidden sm:table-cell px-3 sm:px-4 lg:px-5 py-3 text-center text-[10px] font-semibold text-white/95 uppercase tracking-wider">Status</th>
+                        <th class="px-3 sm:px-4 lg:px-5 py-3 text-right text-[10px] font-semibold text-white/95 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-emerald-50 dark:divide-emerald-950/40" id="studentsTableBody">
+                <tbody class="divide-y divide-[var(--acc-line)]" id="studentsTableBody">
                 </tbody>
             </table>
         </div>
-    </div>
-
-    <!-- Mobile / tablet: compact list (no horizontal scroll) -->
-    <div class="lg:hidden rounded-2xl border border-emerald-100 dark:border-emerald-900/40 bg-gradient-to-b from-white via-emerald-50/30 to-slate-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-900 shadow-lg ring-1 ring-black/5 dark:ring-white/5 overflow-hidden" id="studentsMobileList">
     </div>
 
 <script>
@@ -408,8 +414,62 @@ document.addEventListener('DOMContentLoaded', function() {
                             <option value="Bank Transfer">Bank transfer</option>
                             <option value="Cheque">Cheque</option>
                             <option value="Credit/Debit Card">Credit / debit card</option>
+                            <option value="Supplier Offset">Supplier trade (from supplier account)</option>
                         </select>
                         <i class="fas fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400"></i>
+                    </div>
+                </div>
+
+                <!-- Supplier trade: phone lookup -->
+                <div x-show="paymentMethod === 'Supplier Offset'" x-cloak class="space-y-3 rounded-xl border border-amber-200/90 bg-amber-50/60 dark:border-amber-800/50 dark:bg-amber-950/20 px-3.5 py-3">
+                    <div>
+                        <label class="sf-pay-label" for="sf-supplier-phone">Supplier phone number</label>
+                        <input id="sf-supplier-phone" type="tel" x-model="supplierPhone" @input="onSupplierPhoneInput()"
+                               placeholder="e.g. 0712345678" class="sf-pay-field" autocomplete="off">
+                        <p class="mt-1.5 text-xs flex items-center gap-1.5"
+                           :class="supplierLookupStatus === 'found' ? 'text-emerald-700 dark:text-emerald-300'
+                             : (supplierLookupStatus === 'error' ? 'text-red-600 dark:text-red-400'
+                             : (supplierLookupStatus === 'checking' ? 'text-teal-700 dark:text-teal-300' : 'text-slate-500 dark:text-slate-400'))">
+                            <i class="fas fa-spinner fa-spin" x-show="supplierLookupStatus === 'checking'"></i>
+                            <i class="fas fa-check-circle" x-show="supplierLookupStatus === 'found'"></i>
+                            <i class="fas fa-times-circle" x-show="supplierLookupStatus === 'not_found' || supplierLookupStatus === 'error'"></i>
+                            <span x-text="supplierLookupMessage || 'Enter the supplier\'s registered phone to check their account.'"></span>
+                        </p>
+                    </div>
+                    <div x-show="supplierAccount && supplierAccount.is_supplier" x-cloak
+                         class="rounded-lg border border-amber-200/80 dark:border-amber-800/40 bg-white/80 dark:bg-slate-900/50 px-3 py-2.5 space-y-2">
+                        <div class="flex items-start gap-2.5">
+                            <span class="shrink-0 w-8 h-8 rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 flex items-center justify-center text-sm">
+                                <i class="fas fa-truck-loading"></i>
+                            </span>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-semibold text-slate-900 dark:text-white truncate" x-text="supplierAccount.supplier_name || 'Supplier'"></p>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5" x-text="supplierAccount.supplier_phone || supplierPhone"></p>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-end justify-between gap-2 pt-2 border-t border-amber-100 dark:border-amber-900/40">
+                            <div>
+                                <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">School owes supplier</p>
+                                <p class="text-lg font-bold tabular-nums"
+                                   :class="(supplierAccount.balance_due || 0) > 0 ? 'text-amber-800 dark:text-amber-200' : 'text-emerald-700 dark:text-emerald-300'">
+                                    KES <span x-text="(supplierAccount.balance_due || 0).toLocaleString('en-KE', {minimumFractionDigits: 2})"></span>
+                                </p>
+                                <p x-show="(supplierAccount.invoice_count || 0) > 0" class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                    <span x-text="supplierAccount.invoice_count"></span> stock-in invoice(s)
+                                    · <span x-text="supplierAccount.payment_status_label || ''"></span>
+                                </p>
+                            </div>
+                            <a x-show="supplierAccount.expenses_url" :href="supplierAccount.expenses_url" target="_blank" rel="noopener"
+                               class="text-[11px] font-semibold text-teal-700 dark:text-teal-300 hover:underline shrink-0">
+                                View records
+                            </a>
+                        </div>
+                        <p x-show="(supplierAccount.balance_due || 0) > 0" class="text-[11px] text-amber-900/80 dark:text-amber-200/80 leading-relaxed">
+                            Trade up to the lower of the fee balance and this supplier credit.
+                        </p>
+                        <p x-show="supplierAccount.is_supplier && (supplierAccount.balance_due || 0) <= 0" class="text-[11px] text-slate-600 dark:text-slate-400">
+                            This supplier is registered but has no outstanding balance to trade against.
+                        </p>
                     </div>
                 </div>
 
@@ -433,7 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
 
                 <!-- 3. Payment date -->
-                <div x-show="paymentMethod && paymentMethod !== 'M-Pesa'" x-cloak>
+                <div x-show="paymentMethod && paymentMethod !== 'M-Pesa' && paymentMethod !== 'Supplier Offset'" x-cloak>
                     <label class="sf-pay-label" for="sf-pay-date">Payment date</label>
                     <input id="sf-pay-date" type="date" x-model="paymentDate" class="sf-pay-field">
                 </div>
@@ -455,6 +515,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 <!-- 5. Amount -->
                 <div>
                     <label class="sf-pay-label" for="sf-pay-amount">Amount</label>
+                    <p x-show="paymentMethod === 'Supplier Offset' && maxSupplierOffset() > 0" x-cloak
+                       class="text-[11px] text-amber-800 dark:text-amber-200 mb-1.5">
+                        Maximum trade: KES <span x-text="maxSupplierOffset().toLocaleString('en-KE', {minimumFractionDigits: 2})"></span>
+                        <button type="button" @click="amountPaid = String(maxSupplierOffset())"
+                                class="ml-1 font-semibold text-teal-700 dark:text-teal-300 hover:underline">Use max</button>
+                    </p>
                     <div class="relative">
                         <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">KES</span>
                         <input id="sf-pay-amount" type="number" x-model="amountPaid" step="0.01" min="0.01" required placeholder="0"
@@ -464,7 +530,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
 
                 <!-- Optional extras -->
-                <div x-show="paymentMethod && paymentMethod !== 'M-Pesa'" x-cloak>
+                <div x-show="paymentMethod && paymentMethod !== 'M-Pesa' && paymentMethod !== 'Supplier Offset'" x-cloak>
                     <button type="button" @click="showMore = !showMore"
                             class="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 flex items-center gap-1.5">
                         <i class="fas fa-chevron-right text-[10px] transition-transform duration-200" :class="showMore && 'rotate-90'"></i>
@@ -485,7 +551,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <button type="submit" :disabled="loading || !paymentMethod"
                             class="flex-[1.35] py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-semibold shadow-md shadow-teal-600/25 transition-all flex items-center justify-center gap-2">
                         <i class="fas fa-spinner fa-spin text-xs" x-show="loading"></i>
-                        <span x-text="loading ? (paymentMethod === 'M-Pesa' ? 'Sending STK…' : 'Saving…') : (paymentMethod === 'M-Pesa' ? 'Send STK push' : 'Record payment')"></span>
+                        <span x-text="loading ? (paymentMethod === 'M-Pesa' ? 'Sending STK…' : 'Saving…') : (paymentMethod === 'M-Pesa' ? 'Send STK push' : (paymentMethod === 'Supplier Offset' ? 'Apply supplier trade' : 'Record payment'))"></span>
                     </button>
                 </div>
             </form>
@@ -838,6 +904,7 @@ var SF_MPESA_CFG = {
     stkUrl: {{ employee_dash_url('student-fees/mpesa/stk-push')|tojson }},
     statusUrlBase: {{ (employee_dash_url('student-fees/mpesa/status') + '/')|tojson }},
     confirmUrl: {{ employee_dash_url('student-fees/mpesa/confirm-payment')|tojson }},
+    supplierLookupUrl: {{ employee_dash_url('student-fees/supplier-lookup')|tojson }},
 };
 
 function paymentModal() {
@@ -868,6 +935,93 @@ function paymentModal() {
         loading: false,
         error: '',
         success: '',
+        supplierPhone: '',
+        supplierAccount: null,
+        supplierLookupStatus: '',
+        supplierLookupMessage: '',
+        supplierLookupTimer: null,
+        maxSupplierOffset() {
+            var feeBal = Number(this.balance) || 0;
+            if (feeBal < 0) feeBal = 0;
+            var supBal = (this.supplierAccount && Number(this.supplierAccount.balance_due)) || 0;
+            if (supBal <= 0) return 0;
+            return Math.min(feeBal, supBal);
+        },
+        resetSupplierLookup() {
+            this.supplierAccount = null;
+            this.supplierLookupStatus = '';
+            this.supplierLookupMessage = '';
+            if (this.supplierLookupTimer) {
+                clearTimeout(this.supplierLookupTimer);
+                this.supplierLookupTimer = null;
+            }
+        },
+        onSupplierPhoneInput() {
+            this.resetSupplierLookup();
+            var phone = (this.supplierPhone || '').trim();
+            var digits = phone.replace(/\D/g, '');
+            if (!digits) {
+                this.supplierLookupMessage = 'Enter the supplier\'s registered phone to check their account.';
+                return;
+            }
+            if (digits.length < 9) {
+                this.supplierLookupStatus = 'typing';
+                this.supplierLookupMessage = 'Keep typing phone number…';
+                return;
+            }
+            var self = this;
+            this.supplierLookupStatus = 'checking';
+            this.supplierLookupMessage = 'Checking supplier registration…';
+            if (this.supplierLookupTimer) clearTimeout(this.supplierLookupTimer);
+            this.supplierLookupTimer = setTimeout(function () { self.lookupSupplierPhone(); }, 450);
+        },
+        async lookupSupplierPhone() {
+            var phone = (this.supplierPhone || '').trim();
+            var digits = phone.replace(/\D/g, '');
+            if (!digits || digits.length < 9) return;
+            var url = String(SF_MPESA_CFG.supplierLookupUrl || '');
+            if (!url) {
+                this.supplierLookupStatus = 'error';
+                this.supplierLookupMessage = 'Supplier lookup is not configured.';
+                return;
+            }
+            try {
+                var res = await fetch(url + '?phone=' + encodeURIComponent(phone), {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json' },
+                });
+                var data = await res.json();
+                if (!data || !data.success) {
+                    this.supplierLookupStatus = 'error';
+                    this.supplierLookupMessage = (data && data.message) || 'Could not check supplier.';
+                    return;
+                }
+                var sup = data.supplier || {};
+                if (sup.is_supplier) {
+                    this.supplierAccount = sup;
+                    if (sup.supplier_phone) this.supplierPhone = sup.supplier_phone;
+                    this.supplierLookupStatus = 'found';
+                    this.supplierLookupMessage = sup.message || 'Registered supplier — balance loaded.';
+                    if (this.paymentMethod === 'Supplier Offset') {
+                        var maxOff = this.maxSupplierOffset();
+                        if (maxOff > 0 && (!this.amountPaid || parseFloat(this.amountPaid) <= 0)) {
+                            this.amountPaid = String(maxOff);
+                        }
+                    }
+                } else if (sup.ready) {
+                    this.supplierAccount = null;
+                    this.supplierLookupStatus = 'not_found';
+                    this.supplierLookupMessage = sup.message || 'Phone number is not registered as a supplier.';
+                } else {
+                    this.supplierAccount = null;
+                    this.supplierLookupStatus = 'typing';
+                    this.supplierLookupMessage = sup.message || 'Enter a valid phone number.';
+                }
+            } catch (e) {
+                this.supplierLookupStatus = 'error';
+                this.supplierLookupMessage = 'Could not check supplier. Try again.';
+            }
+        },
         stopMpesaPolling() {
             if (this.mpesaPollId) { clearInterval(this.mpesaPollId); this.mpesaPollId = null; }
             this.mpesaPollCount = 0;
@@ -980,12 +1134,16 @@ function paymentModal() {
             this.showMore = false;
             this.error = '';
             this.success = '';
+            this.supplierPhone = '';
+            this.resetSupplierLookup();
             this.isOpen = true;
         },
         close() {
             this.stopMpesaPolling();
             this.isOpen = false;
             this.showMore = false;
+            this.supplierPhone = '';
+            this.resetSupplierLookup();
             setTimeout(() => { this.error = ''; this.success = ''; }, 300);
         },
         updatePaymentFields() {
@@ -996,6 +1154,24 @@ function paymentModal() {
             this.stopMpesaPolling();
             this.mpesaCheckoutId = null;
             this.mpesaAccountRef = '';
+            if (this.paymentMethod === 'Supplier Offset') {
+                var digits = String(this.supplierPhone || '').replace(/\D/g, '');
+                if (digits.length >= 9) {
+                    if (!this.supplierAccount || !this.supplierAccount.is_supplier) {
+                        this.onSupplierPhoneInput();
+                    } else {
+                        var maxOff = this.maxSupplierOffset();
+                        if (maxOff > 0 && (!this.amountPaid || parseFloat(this.amountPaid) <= 0)) {
+                            this.amountPaid = String(maxOff);
+                        }
+                    }
+                } else {
+                    this.supplierLookupMessage = 'Enter the supplier\'s registered phone to check their account.';
+                }
+            } else {
+                this.supplierPhone = '';
+                this.resetSupplierLookup();
+            }
         },
         handleFileSelect(event) { this.proofOfPayment = event.target.files[0]; },
         async submitPayment() {
@@ -1009,7 +1185,23 @@ function paymentModal() {
                 this.error = 'Please select a payment method.'; this.loading = false; return;
             }
             if (this.paymentMethod === 'M-Pesa') { await this.submitMpesaStk(); return; }
-            if (!this.paymentDate) {
+            if (this.paymentMethod === 'Supplier Offset') {
+                if (!this.supplierPhone || String(this.supplierPhone).replace(/\D/g, '').length < 9) {
+                    this.error = 'Enter the supplier phone number.'; this.loading = false; return;
+                }
+                if (!this.supplierAccount || !this.supplierAccount.is_supplier) {
+                    this.error = 'Wait for a registered supplier to be confirmed, or check the phone number.'; this.loading = false; return;
+                }
+                var maxOff = this.maxSupplierOffset();
+                if (maxOff <= 0) {
+                    this.error = 'This supplier has no credit available to trade against.'; this.loading = false; return;
+                }
+                if (parseFloat(this.amountPaid) > maxOff + 0.005) {
+                    this.error = 'Trade amount cannot exceed KES ' + maxOff.toLocaleString('en-KE', { minimumFractionDigits: 2 }) + '.';
+                    this.loading = false; return;
+                }
+                this.paymentDate = this.paymentDate || new Date().toISOString().split('T')[0];
+            } else if (!this.paymentDate) {
                 this.error = 'Please select a payment date.'; this.loading = false; return;
             }
             if (this.paymentMethod === 'Bank Transfer' && !this.referenceNumber) {
@@ -1032,6 +1224,9 @@ function paymentModal() {
             if (this.transactionId) formData.append('transaction_id', this.transactionId);
             if (this.notes) formData.append('notes', this.notes);
             if (this.proofOfPayment) formData.append('proof_of_payment', this.proofOfPayment);
+            if (this.paymentMethod === 'Supplier Offset' && this.supplierPhone) {
+                formData.append('supplier_phone', this.supplierPhone);
+            }
             try {
                 const response = await fetch('{{ employee_dash_url('student-fees/record-payment') }}', { method: 'POST', body: formData });
                 const data = await response.json();
