@@ -164,7 +164,11 @@ document.addEventListener('alpine:init', function () {
               if (opts.onSuccess) opts.onSuccess();
               return true;
             }
-            self.showFlash((data && data.message) || 'Could not record expense.', 'error');
+            var errMsg = (data && data.message) || 'Could not record expense.';
+            if (/insufficient/i.test(errMsg)) {
+              errMsg = errMsg.replace(/Insufficient balance/gi, 'Insufficient funds');
+            }
+            self.showFlash(errMsg, 'error');
             return false;
           })
           .catch(function () {
@@ -465,7 +469,7 @@ document.addEventListener('alpine:init', function () {
         var acct = this.selectedFinanceAccount();
         if (acct && amt > parseFloat(acct.current_balance || 0) + 0.005) {
           this.showFlash(
-            'Insufficient balance in ' + acct.account_name
+            'Insufficient funds in ' + acct.account_name
             + '. Available: KES ' + (acct.current_balance_display || '0.00'),
             'error'
           );

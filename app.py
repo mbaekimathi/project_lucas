@@ -21841,8 +21841,10 @@ def _accountant_outflows_snapshot(payroll, payments):
     payroll_disbursed = float(payroll.get('paid_current_period') or 0)
     payroll_outstanding = float(payroll.get('outstanding') or 0)
 
-    payables_due = float(payments.get('stock_in_invoiced') or 0) + float(payments.get('misc_total') or 0)
-    payables_disbursed = float(payments.get('total_disbursed') or 0)
+    payables_due = float(payments.get('stock_in_invoiced') or 0)
+    payables_disbursed = float(
+        payments.get('ledger_disbursed') or payments.get('total_disbursed') or 0
+    )
     payables_outstanding = float(payments.get('stock_in_outstanding') or 0)
 
     total_due = payroll_due + payables_due
@@ -21887,7 +21889,9 @@ def _fetch_accountant_dashboard_analytics(cursor):
 
     total_income = float(revenue.get('total_amount') or 0)
     payroll_out = float(payroll.get('total_disbursed') or 0)
-    payables_out = float(payments.get('total_disbursed') or 0)
+    payables_out = float(
+        payments.get('ledger_disbursed') or payments.get('total_disbursed') or 0
+    )
     total_outflow = payroll_out + payables_out
     net_position = total_income - total_outflow
 
@@ -38099,6 +38103,19 @@ def _fetch_finance_accounts_for_disbursement_picker(cursor):
     return rows
 
 
+def _insufficient_funds_message(account_name, balance):
+    """User-facing message when a disbursement exceeds available balance."""
+    try:
+        bal = float(balance or 0)
+    except (TypeError, ValueError):
+        bal = 0.0
+    name = (account_name or 'account').strip() or 'account'
+    return (
+        f'Insufficient funds in {name}. '
+        f'Available: KES {bal:,.2f}.'
+    )
+
+
 def _validate_disbursement_finance_account(cursor, finance_account_id, payment_method, amount):
     """Ensure source account exists, is active, supports mode, and has funds."""
     from decimal import Decimal, InvalidOperation
@@ -38156,10 +38173,7 @@ def _validate_disbursement_finance_account(cursor, finance_account_id, payment_m
                 'Choose another account or payment mode.'
             )
     if balance < amt:
-        return False, None, (
-            f'Insufficient balance in {name}. '
-            f'Available: KES {balance:,.2f}.'
-        )
+        return False, None, _insufficient_funds_message(name, balance)
     return True, {'id': fid, 'account_name': name, 'current_balance': float(balance)}, None
 
 
@@ -38184,6 +38198,21 @@ def _debit_finance_account(
     except (InvalidOperation, ValueError, TypeError):
         return False, 'Invalid payment amount.'
     ensure_finance_account_transactions_table(cursor)
+    if related_type and related_id is not None:
+        if _finance_ledger_exists(
+            cursor, related_type, related_id, 'debit',
+            finance_account_id=int(finance_account_id),
+        ):
+            cursor.execute(
+                "SELECT account_name FROM finance_accounts WHERE id = %s LIMIT 1",
+                (int(finance_account_id),),
+            )
+            name_row = cursor.fetchone()
+            if isinstance(name_row, dict):
+                acct_name = (name_row.get('account_name') or '').strip()
+            else:
+                acct_name = (name_row[0] or '').strip() if name_row else ''
+            return True, acct_name
     cursor.execute(
         """
         UPDATE finance_accounts
@@ -38194,7 +38223,24 @@ def _debit_finance_account(
         (amt, int(finance_account_id), amt),
     )
     if cursor.rowcount != 1:
-        return False, 'Could not debit account — insufficient balance or account missing.'
+        cursor.execute(
+            """
+            SELECT account_name, COALESCE(current_balance, 0) AS current_balance
+            FROM finance_accounts WHERE id = %s LIMIT 1
+            """,
+            (int(finance_account_id),),
+        )
+        bal_row = cursor.fetchone()
+        if isinstance(bal_row, dict):
+            acct_name = (bal_row.get('account_name') or '').strip()
+            available = bal_row.get('current_balance', 0)
+        elif bal_row:
+            acct_name = (bal_row[0] or '').strip() if len(bal_row) > 0 else ''
+            available = bal_row[1] if len(bal_row) > 1 else 0
+        else:
+            acct_name = acct.get('account_name') if acct else ''
+            available = acct.get('current_balance', 0) if acct else 0
+        return False, _insufficient_funds_message(acct_name, available)
     cursor.execute(
         """
         SELECT COALESCE(current_balance, 0) FROM finance_accounts WHERE id = %s
@@ -38206,6 +38252,10 @@ def _debit_finance_account(
         balance_after = float(next(iter(bal_row.values()), 0) or 0)
     else:
         balance_after = float(bal_row[0] if bal_row else 0)
+    if balance_after < -0.005:
+        return False, _insufficient_funds_message(
+            acct.get('account_name') if acct else '', max(0.0, balance_after),
+        )
     cursor.execute(
         """
         INSERT INTO finance_account_transactions
@@ -38355,7 +38405,7 @@ def _refresh_finance_account_balances_from_ledger(cursor):
             FROM finance_account_transactions
             GROUP BY finance_account_id
         ) ledger ON ledger.finance_account_id = fa.id
-        SET fa.current_balance = COALESCE(ledger.computed_balance, 0)
+        SET fa.current_balance = GREATEST(0, COALESCE(ledger.computed_balance, 0))
         """
     )
 
@@ -38373,7 +38423,7 @@ def _refresh_finance_account_balance_from_ledger(cursor, account_id):
     cursor.execute(
         """
         UPDATE finance_accounts fa
-        SET fa.current_balance = COALESCE((
+        SET fa.current_balance = GREATEST(0, COALESCE((
             SELECT ROUND(
                 SUM(
                     CASE
@@ -38385,7 +38435,7 @@ def _refresh_finance_account_balance_from_ledger(cursor, account_id):
             )
             FROM finance_account_transactions
             WHERE finance_account_id = %s
-        ), 0)
+        ), 0))
         WHERE fa.id = %s
         """,
         (account_id, account_id),
@@ -38542,29 +38592,95 @@ def _sync_finance_account_balances(cursor):
             paid_by_name = row[6] if len(row) > 6 else None
         if _finance_ledger_exists(cursor, 'stock_in_payment_line', line_id, 'debit'):
             continue
+        if movement_id and _finance_ledger_exists(
+            cursor, 'stock_in_payment', movement_id, 'debit',
+            finance_account_id=finance_account_id,
+        ):
+            continue
+        pay_ref = (payment_reference or '').strip()
+        if pay_ref and finance_account_id:
+            cursor.execute(
+                """
+                SELECT id FROM finance_account_transactions
+                WHERE related_type = 'supplier_pay_all' AND direction = 'debit'
+                  AND finance_account_id = %s AND reference_code = %s
+                LIMIT 1
+                """,
+                (int(finance_account_id), pay_ref),
+            )
+            if cursor.fetchone():
+                continue
         try:
             amt = Decimal(str(amount)).quantize(Decimal('0.01'))
         except (InvalidOperation, ValueError, TypeError):
             continue
         if amt <= 0:
             continue
-        cursor.execute(
-            """
-            INSERT INTO finance_account_transactions
-                (finance_account_id, direction, amount, payment_method, reference_code,
-                 description, related_type, related_id, recorded_by_name)
-            VALUES (%s, 'debit', %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                int(finance_account_id), amt,
-                (payment_method or '').strip() or None,
-                (payment_reference or '').strip() or None,
-                f'Stock-in payment #{movement_id}',
-                'stock_in_payment_line', int(line_id),
-                (paid_by_name or '').strip() or None,
-            ),
+        ok, _ = _debit_finance_account(
+            cursor,
+            int(finance_account_id),
+            amt,
+            payment_method,
+            payment_reference,
+            f'Stock-in payment #{movement_id}',
+            related_type='stock_in_payment_line',
+            related_id=int(line_id),
+            recorded_by_name=paid_by_name,
         )
-        changed = True
+        if ok:
+            changed = True
+
+    ensure_petty_cash_expenses_table(cursor)
+    cursor.execute(
+        """
+        SELECT id, finance_account_id, amount, payment_method, payment_reference,
+               paid_to_name, recorded_by_name
+        FROM petty_cash_expenses
+        WHERE finance_account_id IS NOT NULL AND amount > 0
+        ORDER BY id ASC
+        """
+    )
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            expense_id = row.get('id')
+            finance_account_id = row.get('finance_account_id')
+            amount = row.get('amount')
+            payment_method = row.get('payment_method')
+            payment_reference = row.get('payment_reference')
+            paid_to_name = row.get('paid_to_name')
+            recorded_by = row.get('recorded_by_name')
+        else:
+            expense_id = row[0]
+            finance_account_id = row[1]
+            amount = row[2]
+            payment_method = row[3] if len(row) > 3 else None
+            payment_reference = row[4] if len(row) > 4 else None
+            paid_to_name = row[5] if len(row) > 5 else None
+            recorded_by = row[6] if len(row) > 6 else None
+        if _finance_ledger_exists(
+            cursor, 'petty_cash_expense', expense_id, 'debit',
+            finance_account_id=finance_account_id,
+        ):
+            continue
+        try:
+            amt = Decimal(str(amount)).quantize(Decimal('0.01'))
+        except (InvalidOperation, ValueError, TypeError):
+            continue
+        if amt <= 0:
+            continue
+        ok, _ = _debit_finance_account(
+            cursor,
+            int(finance_account_id),
+            amt,
+            payment_method,
+            payment_reference,
+            f'Petty cash — {paid_to_name or "expense"}',
+            related_type='petty_cash_expense',
+            related_id=int(expense_id),
+            recorded_by_name=recorded_by,
+        )
+        if ok:
+            changed = True
 
     _refresh_finance_account_balances_from_ledger(cursor)
     if changed:
@@ -44067,8 +44183,29 @@ def _fetch_accountant_payment_analytics(cursor):
         print(f"_fetch_accountant_payment_analytics: {e}")
 
     outstanding_count = pending_count + partial_count
-    paid_this_month = stock_payments_month + misc_month
-    total_disbursed = stock_in_paid + misc_total
+    paid_this_month = stock_payments_month
+    # Cash disbursed via stock-in settlement (ledger-backed). Misc register is off-ledger.
+    total_disbursed = stock_in_paid
+    ledger_disbursed = 0.0
+    try:
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0) AS total
+            FROM finance_account_transactions
+            WHERE LOWER(direction) = 'debit'
+              AND related_type IN (
+                  'stock_in_payment_line', 'stock_in_payment',
+                  'supplier_pay_all', 'petty_cash_expense'
+              )
+            """
+        )
+        ld_row = cursor.fetchone()
+        if isinstance(ld_row, dict):
+            ledger_disbursed = float(ld_row.get('total') or 0)
+        elif ld_row:
+            ledger_disbursed = float(ld_row[0] or 0)
+    except Exception as e:
+        print(f"_fetch_accountant_payment_analytics ledger: {e}")
 
     return {
         'stock_in_count': stock_in_count,
@@ -44086,6 +44223,10 @@ def _fetch_accountant_payment_analytics(cursor):
         'paid_this_month': paid_this_month,
         'payment_lines_month_count': payment_lines_month_count,
         'total_disbursed': total_disbursed,
+        'ledger_disbursed': ledger_disbursed,
+        'ledger_disbursed_display': _format_kes_amount(ledger_disbursed),
+        'misc_off_ledger': misc_total,
+        'misc_off_ledger_display': _format_kes_amount(misc_total),
         'stock_in_invoiced_display': _format_kes_amount(stock_in_invoiced),
         'stock_in_paid_display': _format_kes_amount(stock_in_paid),
         'stock_in_outstanding_display': _format_kes_amount(stock_in_outstanding),
@@ -44696,7 +44837,14 @@ def _aggregate_supplier_payables_by_phone(records, status_filter='all'):
             'total_paid': bucket['total_paid'],
             'invoice_count': bucket['invoice_count'],
             'payable_invoice_count': len(payable_movements),
-            'can_pay': pay_record is not None and balance > 0.005,
+            'can_pay': (
+                pay_record is not None
+                and balance > 0.005
+                and (
+                    not str(bucket['phone_key']).startswith('__no_phone_')
+                    or bucket['invoice_count'] == 1
+                )
+            ),
             'print_record': _slim_payable_movement(print_record),
         })
 
@@ -44709,6 +44857,198 @@ def _aggregate_supplier_payables_by_phone(records, status_filter='all'):
 
     aggregated.sort(key=lambda r: (r['supplier_name'], r['supplier_phone']))
     return aggregated
+
+
+def _stock_in_payment_line_row_to_dict(row):
+    """JSON/print-safe payment line with invoice context."""
+    if isinstance(row, dict):
+        data = {
+            'id': row.get('id'),
+            'movement_id': row.get('movement_id'),
+            'amount_paid': row.get('amount_paid'),
+            'paid_to_company_name': row.get('paid_to_company_name'),
+            'paid_to_company_phone': row.get('paid_to_company_phone'),
+            'paid_by_name': row.get('paid_by_name'),
+            'payment_method': row.get('payment_method'),
+            'payment_reference': row.get('payment_reference'),
+            'created_at': row.get('created_at'),
+            'reference_number': row.get('reference_number'),
+            'movement_total': row.get('movement_total'),
+            'movement_status': row.get('movement_status'),
+            'item_name': row.get('item_name'),
+            'item_category': row.get('item_category'),
+            'finance_account_name': row.get('finance_account_name'),
+        }
+    else:
+        data = {
+            'id': row[0] if len(row) > 0 else None,
+            'movement_id': row[1] if len(row) > 1 else None,
+            'amount_paid': row[2] if len(row) > 2 else 0,
+            'paid_to_company_name': row[3] if len(row) > 3 else '',
+            'paid_to_company_phone': row[4] if len(row) > 4 else '',
+            'paid_by_name': row[5] if len(row) > 5 else '',
+            'payment_method': row[6] if len(row) > 6 else '',
+            'payment_reference': row[7] if len(row) > 7 else '',
+            'created_at': row[8] if len(row) > 8 else None,
+            'reference_number': row[9] if len(row) > 9 else '',
+            'movement_total': row[10] if len(row) > 10 else None,
+            'movement_status': row[11] if len(row) > 11 else '',
+            'item_name': row[12] if len(row) > 12 else '',
+            'item_category': row[13] if len(row) > 13 else '',
+            'finance_account_name': row[14] if len(row) > 14 else '',
+        }
+    try:
+        amt = float(data.get('amount_paid') or 0)
+    except (TypeError, ValueError):
+        amt = 0.0
+    data['amount_display'] = f'{amt:,.2f}'
+    ca = data.get('created_at')
+    if ca and hasattr(ca, 'strftime'):
+        data['created_at_display'] = ca.strftime('%d %b %Y, %H:%M')
+    elif ca:
+        data['created_at_display'] = str(ca)
+    else:
+        data['created_at_display'] = '—'
+    data['reference_number'] = (data.get('reference_number') or '').strip()
+    data['payment_reference'] = (data.get('payment_reference') or '').strip() or '—'
+    data['payment_method'] = (data.get('payment_method') or '').strip() or '—'
+    data['paid_by_name'] = (data.get('paid_by_name') or '').strip() or '—'
+    data['finance_account_name'] = (data.get('finance_account_name') or '').strip() or '—'
+    data['item_name'] = (data.get('item_name') or '').strip()
+    data['item_category'] = (data.get('item_category') or '').strip()
+    return data
+
+
+def _fetch_stock_in_payment_lines_for_movements(cursor, movement_ids):
+    """Payment lines for stock-in movements (oldest first)."""
+    ids = [int(i) for i in (movement_ids or []) if i]
+    if not ids:
+        return []
+    ensure_store_stock_in_payment_lines_table(cursor)
+    ensure_store_stock_movements_table(cursor)
+    placeholders = ','.join(['%s'] * len(ids))
+    rows = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT pl.id, pl.movement_id, pl.amount_paid, pl.paid_to_company_name,
+                   pl.paid_to_company_phone, pl.paid_by_name, pl.payment_method,
+                   pl.payment_reference, pl.created_at,
+                   m.reference_number, m.total_amount, m.payment_status,
+                   si.item_name, si.item_category,
+                   fa.account_name AS finance_account_name
+            FROM store_stock_in_payment_lines pl
+            INNER JOIN store_stock_movements m ON m.id = pl.movement_id
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN finance_accounts fa ON fa.id = pl.finance_account_id
+            WHERE pl.movement_id IN ({placeholders})
+            ORDER BY pl.created_at ASC, pl.id ASC
+            """,
+            tuple(ids),
+        )
+        for row in cursor.fetchall() or []:
+            rows.append(_stock_in_payment_line_row_to_dict(row))
+    except Exception as e:
+        print(f"_fetch_stock_in_payment_lines_for_movements: {e}")
+    return rows
+
+
+def _fetch_supplier_payment_statement_pack(cursor, phone_key):
+    """Invoices, payment lines, and misc rows for one supplier grouping key."""
+    phone_key = (phone_key or '').strip()
+    if not phone_key:
+        return None
+
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+    ensure_accountant_misc_payments_table(cursor)
+
+    all_movements = _fetch_store_stock_in_list(cursor, payment_filter='all', limit=5000)
+    invoices = [
+        m for m in all_movements
+        if _supplier_payable_phone_key(m) == phone_key
+    ]
+    invoices.sort(
+        key=lambda m: (
+            m.get('created_at').timestamp()
+            if m.get('created_at') and hasattr(m.get('created_at'), 'timestamp')
+            else 0
+        ),
+    )
+
+    movement_ids = [int(m.get('id') or 0) for m in invoices if m.get('id')]
+    payment_lines = _fetch_stock_in_payment_lines_for_movements(cursor, movement_ids)
+
+    phone_norm = ''
+    if not phone_key.startswith('__no_phone_'):
+        phone_norm = _normalize_store_supplier_phone(phone_key)
+
+    misc_payments = []
+    for misc_row in _fetch_accountant_misc_payments(cursor, limit=2000):
+        misc_phone = _normalize_store_supplier_phone(
+            misc_row.get('paid_to_company_phone') or '',
+        )
+        if phone_norm and misc_phone == phone_norm:
+            misc_payments.append(misc_row)
+
+    supplier_name = '—'
+    supplier_phone = '—'
+    for inv in invoices:
+        reg = (inv.get('supplier_name') or '').strip()
+        paid_name = (inv.get('paid_to_company_name') or '').strip()
+        if reg:
+            supplier_name = reg.upper()
+        elif paid_name and supplier_name == '—':
+            supplier_name = paid_name.upper()
+        ph = (inv.get('supplier_phone') or inv.get('paid_to_company_phone') or '').strip()
+        if ph:
+            supplier_phone = ph
+    if misc_payments and supplier_name == '—':
+        supplier_name = (misc_payments[0].get('paid_to_company_name') or '—').upper()
+    if misc_payments and (supplier_phone == '—' or not supplier_phone):
+        supplier_phone = misc_payments[0].get('paid_to_company_phone') or '—'
+
+    total_invoiced = sum(float(m.get('total_amount') or 0) for m in invoices)
+    total_paid_on_invoices = sum(float(m.get('amount_paid') or 0) for m in invoices)
+    balance_due = sum(
+        float(m.get('balance_due') if m.get('balance_due') is not None else 0)
+        for m in invoices
+    )
+    payments_total = sum(float(p.get('amount_paid') or 0) for p in payment_lines)
+    misc_total = sum(float(m.get('amount') or 0) for m in misc_payments)
+
+    return {
+        'phone_key': phone_key,
+        'supplier_name': supplier_name,
+        'supplier_phone': supplier_phone,
+        'invoices': invoices,
+        'payment_lines': payment_lines,
+        'misc_payments': misc_payments,
+        'invoice_count': len(invoices),
+        'payment_line_count': len(payment_lines),
+        'misc_count': len(misc_payments),
+        'total_invoiced': total_invoiced,
+        'total_invoiced_display': _format_kes_amount(total_invoiced),
+        'total_paid_display': _format_kes_amount(total_paid_on_invoices),
+        'payments_total_display': _format_kes_amount(payments_total),
+        'balance_due_display': _format_kes_amount(balance_due),
+        'misc_total_display': _format_kes_amount(misc_total),
+    }
+
+
+def _fetch_payments_invoices_statement_packs(cursor, payment_filter='outstanding'):
+    """Statement packs for each supplier row on the payments / invoices page."""
+    payment_filter = (payment_filter or 'outstanding').strip().lower()
+    movements = _fetch_store_stock_in_list(cursor, payment_filter='all', limit=5000)
+    suppliers = _aggregate_supplier_payables_by_phone(
+        movements, status_filter=payment_filter,
+    )
+    packs = []
+    for sup in suppliers:
+        pack = _fetch_supplier_payment_statement_pack(cursor, sup.get('phone_key'))
+        if pack:
+            packs.append(pack)
+    return packs, payment_filter
 
 
 def _fetch_outstanding_stock_in_for_phone(cursor, phone_norm):
@@ -44903,21 +45243,6 @@ def _apply_stock_in_payment(
     if pay_dec <= 0:
         return False, 'Enter a valid payment amount greater than zero.'
 
-    if not skip_account_debit and finance_account_id and payment_method:
-        ok, err = _debit_finance_account(
-            cursor,
-            finance_account_id,
-            pay_dec,
-            payment_method,
-            payment_reference,
-            f'Stock-in payment {movement_id}',
-            related_type='stock_in_payment',
-            related_id=movement_id,
-            recorded_by_name=paid_by_name,
-        )
-        if not ok:
-            return False, err
-
     cursor.execute(
         """
         SELECT id, reference_number, movement_type, total_amount, amount_paid
@@ -44969,6 +45294,21 @@ def _apply_stock_in_payment(
             payment_method, finance_account_id, payment_reference,
         ),
     )
+    line_id = cursor.lastrowid
+    if not skip_account_debit and finance_account_id and payment_method and line_id:
+        ok, err = _debit_finance_account(
+            cursor,
+            finance_account_id,
+            pay_dec,
+            payment_method,
+            payment_reference,
+            f'Stock-in payment {ref_no}',
+            related_type='stock_in_payment_line',
+            related_id=int(line_id),
+            recorded_by_name=paid_by_name,
+        )
+        if not ok:
+            return False, err
     cursor.execute(
         """
         UPDATE store_stock_movements
@@ -45014,19 +45354,11 @@ def _record_supplier_pay_all(
         )
 
     if finance_account_id and payment_method:
-        ok, err = _debit_finance_account(
-            cursor,
-            finance_account_id,
-            pay_total,
-            payment_method,
-            payment_reference,
-            f'Supplier payment {company_name} ({phone_norm})',
-            related_type='supplier_pay_all',
-            related_id=None,
-            recorded_by_name=paid_by_name,
+        ok_funds, _, fund_err = _validate_disbursement_finance_account(
+            cursor, finance_account_id, payment_method, pay_total,
         )
-        if not ok:
-            return False, err
+        if not ok_funds:
+            return False, fund_err or 'Insufficient funds in the selected account.'
 
     remaining = pay_total
     applied = 0
@@ -45046,7 +45378,7 @@ def _record_supplier_pay_all(
             payment_method=payment_method,
             finance_account_id=finance_account_id,
             payment_reference=payment_reference,
-            skip_account_debit=True,
+            skip_account_debit=False,
         )
         if not ok:
             return False, msg
@@ -64772,6 +65104,57 @@ def accountant_payments_live_data():
         connection.close()
 
 
+@app.route('/dashboard/employee/payments-invoices/print/supplier')
+@login_required
+def payments_invoices_print_supplier():
+    """Print supplier payment statement(s) — all invoices and payment lines."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    payment_filter = (request.args.get('payment') or 'outstanding').strip().lower()
+    if payment_filter not in ('all', 'pending', 'partial', 'paid', 'outstanding'):
+        payment_filter = 'outstanding'
+    scope = (request.args.get('scope') or '').strip().lower()
+    phone_key = (request.args.get('phone') or '').strip()
+
+    connection = get_db_connection()
+    packs = []
+    filter_label = payment_filter.replace('_', ' ').title()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                if scope == 'all' or not phone_key:
+                    packs, payment_filter = _fetch_payments_invoices_statement_packs(
+                        cursor, payment_filter=payment_filter,
+                    )
+                    filter_label = payment_filter.replace('_', ' ').title()
+                else:
+                    pack = _fetch_supplier_payment_statement_pack(cursor, phone_key)
+                    if pack:
+                        packs.append(pack)
+        finally:
+            connection.close()
+    else:
+        flash('Could not connect to the database.', 'error')
+
+    if not packs:
+        flash('No supplier payment records found for this print.', 'error')
+        return redirect(
+            employee_dash_url('payments-invoices') + f'?payment={payment_filter}'
+        )
+
+    return render_template(
+        'dashboards/accountant_payments_statement_print.html',
+        packs=packs,
+        payment_filter=payment_filter,
+        filter_label=filter_label,
+        print_all=(scope == 'all' or not phone_key),
+        school_settings=get_school_settings(),
+        generated_at=datetime.now().strftime('%d %b %Y, %H:%M'),
+    )
+
+
 @app.route('/dashboard/employee/payments-invoices')
 @login_required
 def accountant_payments_invoices():
@@ -64990,15 +65373,14 @@ def record_supplier_pay_all():
 
     raw_amount = (request.form.get('amount_paid') or '').strip().replace(',', '')
     company_name = (request.form.get('paid_to_company_name') or '').strip().upper()
-    company_phone_raw = (
-        request.form.get('supplier_phone')
-        or request.form.get('paid_to_company_phone')
-        or ''
-    ).strip()
+    supplier_phone_raw = (request.form.get('supplier_phone') or '').strip()
+    paid_to_phone_raw = (request.form.get('paid_to_company_phone') or '').strip()
+    if supplier_phone_raw.startswith('__no_phone_'):
+        company_phone_raw = paid_to_phone_raw
+    else:
+        company_phone_raw = supplier_phone_raw or paid_to_phone_raw
     phone_norm = _normalize_store_supplier_phone(company_phone_raw)
-    company_phone = phone_norm or _normalize_store_supplier_phone(
-        (request.form.get('paid_to_company_phone') or '').strip()
-    )
+    company_phone = phone_norm or _normalize_store_supplier_phone(paid_to_phone_raw)
 
     try:
         pay_amount = Decimal(raw_amount).quantize(Decimal('0.01'))

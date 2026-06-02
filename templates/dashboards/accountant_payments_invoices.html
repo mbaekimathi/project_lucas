@@ -34,6 +34,7 @@ document.addEventListener('alpine:init', function () {
       payAllPostUrl: {{ (employee_dash_url('payments-invoices/supplier/pay-all') ~ '?payment=' ~ payment_filter)|tojson }},
       registerPostUrl: {{ (employee_dash_url('payments-invoices/register-payment') ~ '?payment=' ~ payment_filter)|tojson }},
       printUrlBase: {{ url_for('store_stock_print', movement_id=0)|tojson }},
+      printStatementBase: {{ employee_dash_url('payments-invoices/print/supplier')|tojson }},
       supplierLookupUrl: {{ employee_dash_url('payments-invoices/supplier-lookup')|tojson }},
       supplierSearchUrl: {{ employee_dash_url('payments-invoices/supplier-search')|tojson }},
       supplierRegisterUrl: {{ employee_dash_url('payments-invoices/register-supplier')|tojson }},
@@ -60,8 +61,12 @@ document.addEventListener('alpine:init', function () {
       analyticsUrl: {{ employee_dash_url('payments-invoices/analytics')|tojson }},
       liveDataUrl: {{ (employee_dash_url('payments-invoices/live-data') ~ '?payment=' ~ payment_filter)|tojson }},
       expenseRecordsUrl: {{ employee_dash_url('expenses/expense-records')|tojson }},
-      flashMessage: '',
-      flashType: '',
+      expenseAuditsUrl: {{ employee_dash_url('expenses/expense-audits')|tojson }},
+      supplierSearch: '',
+      resultModalOpen: false,
+      resultModalType: 'success',
+      resultModalTitle: '',
+      resultModalMessage: '',
       paySubmitting: false,
       registerSubmitting: false,
       recordCount: {{ record_count|default(0) }},
@@ -91,6 +96,18 @@ document.addEventListener('alpine:init', function () {
           this.financeAccounts = [];
         }
         this.refreshAnalytics();
+        var flashEl = document.getElementById('payment-page-flash');
+        if (flashEl && flashEl.textContent) {
+          try {
+            var msgs = JSON.parse(flashEl.textContent);
+            if (msgs && msgs.length) {
+              var last = msgs[msgs.length - 1];
+              var cat = last[0];
+              var msg = last[1];
+              if (msg) this.showFlash(msg, cat === 'error' ? 'error' : 'success');
+            }
+          } catch (e) { /* ignore */ }
+        }
         var self = this;
         this.$watch('payModalOpen', function (open) {
           if (open) self.registerModalOpen = false;
@@ -113,18 +130,22 @@ document.addEventListener('alpine:init', function () {
       },
       refreshAnalytics: function () {
         var self = this;
-        if (!this.analyticsUrl) return;
         this.analyticsLoading = true;
-        fetch(this.analyticsUrl, {
-          headers: { Accept: 'application/json' },
-          credentials: 'same-origin',
-        })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data && data.ok && data.analytics) {
-              self.analytics = data.analytics;
-            }
-          })
+        var jobs = [];
+        if (this.analyticsUrl) {
+          jobs.push(
+            fetch(this.analyticsUrl, {
+              headers: { Accept: 'application/json' },
+              credentials: 'same-origin',
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                if (data && data.ok && data.analytics) self.analytics = data.analytics;
+              })
+          );
+        }
+        jobs.push(this.refreshLiveData());
+        return Promise.all(jobs)
           .catch(function () { /* keep server-rendered values */ })
           .finally(function () { self.analyticsLoading = false; });
       },
@@ -137,16 +158,27 @@ document.addEventListener('alpine:init', function () {
       },
       showFlash: function (message, type) {
         var self = this;
-        this.flashMessage = message || '';
         var isError = type === 'error';
-        this.flashType = isError ? 'error' : 'success';
-        if (this._flashTimer) clearTimeout(this._flashTimer);
-        // Success auto-dismiss after 2s; failures stay until user clicks close.
-        if (message && !isError) {
-          this._flashTimer = setTimeout(function () {
-            self.flashMessage = '';
-            self.flashType = '';
-          }, 2000);
+        this.resultModalOpen = true;
+        this.resultModalType = isError ? 'error' : 'success';
+        this.resultModalTitle = isError ? 'Payment failed' : 'Payment successful';
+        this.resultModalMessage = message || (
+          isError ? 'Could not record payment.' : 'Payment recorded successfully.'
+        );
+        if (this._resultModalTimer) clearTimeout(this._resultModalTimer);
+        if (!isError) {
+          this._resultModalTimer = setTimeout(function () {
+            self.closeResultModal();
+          }, 2500);
+        }
+      },
+      closeResultModal: function () {
+        this.resultModalOpen = false;
+        this.resultModalMessage = '';
+        this.resultModalTitle = '';
+        if (this._resultModalTimer) {
+          clearTimeout(this._resultModalTimer);
+          this._resultModalTimer = null;
         }
       },
       refreshLiveData: function () {
@@ -190,11 +222,15 @@ document.addEventListener('alpine:init', function () {
             var data = res.data || {};
             if (res.ok && data.success) {
               self.applyLivePayload(data);
-              self.showFlash(data.message, 'success');
               if (opts.onSuccess) opts.onSuccess();
+              self.showFlash(data.message, 'success');
               return true;
             }
-            self.showFlash((data && data.message) || 'Could not record payment.', 'error');
+            var errMsg = (data && data.message) || 'Could not record payment.';
+            if (/insufficient/i.test(errMsg)) {
+              errMsg = errMsg.replace(/Insufficient balance/gi, 'Insufficient funds');
+            }
+            self.showFlash(errMsg, 'error');
             return false;
           })
           .catch(function () {
@@ -226,6 +262,40 @@ document.addEventListener('alpine:init', function () {
           return String(a.id) === id;
         }) || null;
       },
+      get parsedPayAmount() {
+        var n = parseFloat(String(this.amountPaid || '').replace(/,/g, ''));
+        return Number.isFinite(n) ? n : 0;
+      },
+      get payAmountExceedsBalance() {
+        var acct = this.selectedFinanceAccount;
+        if (!acct || this.parsedPayAmount <= 0) return false;
+        return this.parsedPayAmount > parseFloat(acct.current_balance || 0) + 0.005;
+      },
+      supplierStatementPrintUrl: function (supplier) {
+        if (!supplier || !supplier.phone_key) return '#';
+        var q = '?phone=' + encodeURIComponent(supplier.phone_key)
+          + '&payment=' + encodeURIComponent(this.paymentFilter || 'outstanding');
+        return this.printStatementBase + q;
+      },
+      allStatementsPrintUrl: function () {
+        return this.printStatementBase
+          + '?scope=all&payment=' + encodeURIComponent(this.paymentFilter || 'outstanding');
+      },
+      get filteredSupplierPayables() {
+        var q = (this.supplierSearch || '').trim().toLowerCase();
+        if (!q) return this.supplierPayables || [];
+        return (this.supplierPayables || []).filter(function (s) {
+          var hay = [
+            s.supplier_name, s.supplier_phone, s.phone_key,
+            s.payment_status_label, s.balance_due_display,
+            String(s.invoice_count || ''), String(s.payable_invoice_count || ''),
+          ].join(' ').toLowerCase();
+          return hay.indexOf(q) !== -1;
+        });
+      },
+      get filteredSupplierCount() {
+        return this.filteredSupplierPayables.length;
+      },
       onPaymentMethodChange: function () {
         var id = String(this.financeAccountId || '');
         if (!id) return;
@@ -236,11 +306,28 @@ document.addEventListener('alpine:init', function () {
       },
       openPaySupplier: function (supplier) {
         if (!supplier) return;
+        var phoneKey = String(supplier.phone_key || '');
+        if (phoneKey.startsWith('__no_phone_') && supplier.print_record && supplier.print_record.id) {
+          var rid = supplier.print_record.id;
+          var rec = (this.stockInRecords || []).find(function (r) {
+            return String(r.id) === String(rid);
+          });
+          if (rec) {
+            this.openPay(rec);
+            return;
+          }
+        }
         this.selectedSupplier = supplier;
         this.selectedRecord = null;
         this.amountPaid = supplier.balance_due != null ? String(supplier.balance_due) : '';
         this.paidToCompanyName = supplier.supplier_name || '';
-        this.paidToCompanyPhone = supplier.supplier_phone || supplier.phone_key || '';
+        var displayPhone = supplier.supplier_phone || '';
+        if (!displayPhone || displayPhone === '—' || phoneKey.startsWith('__no_phone_')) {
+          displayPhone = '';
+        } else {
+          displayPhone = displayPhone || phoneKey;
+        }
+        this.paidToCompanyPhone = displayPhone;
         this.payModalOpen = true;
         this.$nextTick(function () {
           var panel = this.$refs.payModalPanel;
@@ -602,7 +689,7 @@ document.addEventListener('alpine:init', function () {
         var selAcct = this.selectedFinanceAccount;
         if (selAcct && amt > parseFloat(selAcct.current_balance || 0) + 0.005) {
           this.showFlash(
-            'Insufficient balance in ' + selAcct.account_name
+            'Insufficient funds in ' + selAcct.account_name
             + '. Available: KES ' + (selAcct.current_balance_display || '0.00'),
             'error'
           );
@@ -671,6 +758,76 @@ document.addEventListener('alpine:init', function () {
 .dark .accounts-badge-pending { background: rgba(251,191,36,0.15); color: #fcd34d; }
 .dark .accounts-badge-partial { background: rgba(251,146,60,0.15); color: #fdba74; }
 .dark .accounts-badge-paid { background: rgba(52,211,153,0.15); color: #6ee7b7; }
+.pay-result-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(4px);
+}
+.pay-result-dialog {
+    width: 100%;
+    max-width: 22rem;
+    border-radius: 1.25rem;
+    padding: 1.75rem 1.5rem 1.5rem;
+    text-align: center;
+    box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.35);
+    animation: pay-result-pop 0.22s ease-out;
+}
+@keyframes pay-result-pop {
+    from { opacity: 0; transform: scale(0.94) translateY(6px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.pay-result-dialog--success {
+    background: #fff;
+    border: 1px solid #a7f3d0;
+    color: #064e3b;
+}
+.dark .pay-result-dialog--success {
+    background: #0f172a;
+    border-color: #065f46;
+    color: #d1fae5;
+}
+.pay-result-dialog--error {
+    background: #fff;
+    border: 1px solid #fecaca;
+    color: #7f1d1d;
+}
+.dark .pay-result-dialog--error {
+    background: #0f172a;
+    border-color: #991b1b;
+    color: #fecaca;
+}
+.pay-result-dialog__icon {
+    width: 3.5rem;
+    height: 3.5rem;
+    margin: 0 auto 1rem;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+.pay-result-dialog--success .pay-result-dialog__icon {
+    background: #d1fae5;
+    color: #059669;
+}
+.dark .pay-result-dialog--success .pay-result-dialog__icon {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+}
+.pay-result-dialog--error .pay-result-dialog__icon {
+    background: #fee2e2;
+    color: #dc2626;
+}
+.dark .pay-result-dialog--error .pay-result-dialog__icon {
+    background: rgba(220, 38, 38, 0.2);
+    color: #f87171;
+}
 </style>
 
 <div class="accounts-page portal-page-root role-page role-page--{{ portal_page_variant|default('accountant') }} min-h-screen bg-[#eef2f6] dark:bg-[#0b1120]">
@@ -678,30 +835,8 @@ document.addEventListener('alpine:init', function () {
          x-data="accountantPaymentsPage">
 
         {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <div class="mb-5 space-y-2">
-            {% for category, message in messages %}
-            <div class="accounts-flash flex items-start gap-3 px-4 py-3 text-sm {% if category == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100{% else %}border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200{% endif %}">
-                <i class="fas mt-0.5 shrink-0 {% if category == 'success' %}fa-circle-check text-emerald-600{% elif category == 'error' %}fa-circle-exclamation text-red-600{% else %}fa-circle-info text-slate-500{% endif %}"></i>
-                <span>{{ message }}</span>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
+        <script type="application/json" id="payment-page-flash">{{ messages|tojson }}</script>
         {% endwith %}
-
-        <div x-show="flashMessage" x-cloak
-             class="accounts-flash mb-5 flex items-start gap-3 px-4 py-3 text-sm"
-             :class="flashType === 'error'
-               ? 'border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100'
-               : 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-100'">
-            <i class="fas mt-0.5 shrink-0"
-               :class="flashType === 'error' ? 'fa-circle-exclamation text-red-600' : 'fa-circle-check text-emerald-600'"></i>
-            <span x-text="flashMessage"></span>
-            <button type="button" @click="flashMessage = ''" class="ml-auto text-slate-400 hover:text-slate-600">
-                <i class="fas fa-times text-xs"></i>
-            </button>
-        </div>
 
         <script type="application/json" id="supplier-payables-json">{{ supplier_payables|default([])|tojson }}</script>
         <script type="application/json" id="finance-accounts-json">{{ finance_accounts_picker|default([])|tojson }}</script>
@@ -717,14 +852,28 @@ document.addEventListener('alpine:init', function () {
                     </div>
                     <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Payments &amp; invoices</h1>
                     <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
-                        Supplier payables — balance, status, and settlement actions.
+                        Settle supplier payables, print full payment statements, and track ledger disbursements.
                     </p>
                 </div>
-                <button type="button" @click="openRegister()"
-                        class="accounts-btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shrink-0 transition">
-                    <i class="fas fa-file-invoice"></i>
-                    Register payment
-                </button>
+                <div class="flex flex-wrap gap-2 shrink-0">
+                    <a :href="allStatementsPrintUrl()"
+                       target="_blank"
+                       rel="noopener"
+                       class="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold border border-white/25 text-white hover:bg-white/10 transition">
+                        <i class="fas fa-print"></i>
+                        <span class="hidden sm:inline">Print statements</span>
+                    </a>
+                    <a href="{{ employee_dash_url('expenses/expense-audits') }}"
+                       class="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold border border-white/25 text-white hover:bg-white/10 transition">
+                        <i class="fas fa-list-check"></i>
+                        <span class="hidden sm:inline">Audit trail</span>
+                    </a>
+                    <button type="button" @click="openRegister()"
+                            class="accounts-btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition">
+                        <i class="fas fa-plus-circle"></i>
+                        Register payment
+                    </button>
+                </div>
             </div>
 
             <div class="px-4 sm:px-6 pb-4 sm:pb-5 border-t border-white/10 bg-black/15">
@@ -746,8 +895,8 @@ document.addEventListener('alpine:init', function () {
                         <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('stock_in_paid_display')"></p>
                     </div>
                     <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="text-[9px] font-medium uppercase tracking-wide text-violet-200/90">Other</p>
-                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('misc_total_display')"></p>
+                        <p class="text-[9px] font-medium uppercase tracking-wide text-violet-200/90">Other (off-ledger)</p>
+                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('misc_off_ledger_display') || kes('misc_total_display')"></p>
                     </div>
                     <div class="accounts-stat rounded-lg px-2.5 py-2">
                         <p class="text-[9px] font-medium uppercase tracking-wide text-sky-200/90">Invoiced</p>
@@ -758,29 +907,39 @@ document.addEventListener('alpine:init', function () {
                         <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('paid_this_month_display')"></p>
                     </div>
                     <div class="accounts-stat rounded-lg px-2.5 py-2">
-                        <p class="text-[9px] font-medium uppercase tracking-wide text-slate-200/90">Disbursed</p>
-                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('total_disbursed_display')"></p>
+                        <p class="text-[9px] font-medium uppercase tracking-wide text-slate-200/90">Disbursed (ledger)</p>
+                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('ledger_disbursed_display') || kes('total_disbursed_display')"></p>
                     </div>
                 </div>
-                {% if payment_filter != 'all' %}
                 <p class="mt-2 text-[10px] text-teal-100/70">
-                    Ledger filter: <strong class="text-white uppercase">{{ payment_filter }}</strong>
-                    · <span x-text="recordCount"></span> rows
+                    Viewing: <strong class="text-white uppercase">{{ payment_filter }}</strong>
+                    · <span x-text="recordCount"></span> supplier(s)
                 </p>
-                {% endif %}
             </div>
         </header>
 
         <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
-            <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-col gap-3">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div class="flex items-center gap-3 min-w-0">
                     <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
                         <i class="fas fa-truck-field text-sm"></i>
                     </span>
                     <div>
-                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Suppliers</h2>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Outstanding balances and payment status</p>
+                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Supplier payables</h2>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                            <span x-text="filteredSupplierCount"></span> shown
+                            <span x-show="supplierSearch"> (filtered)</span>
+                        </p>
                     </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+                <div class="relative min-w-[12rem] flex-1 sm:flex-none sm:w-56">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="search"
+                           x-model="supplierSearch"
+                           placeholder="Search supplier, phone…"
+                           class="accounts-field w-full rounded-lg border py-2 pl-8 pr-3 text-sm dark:text-white" />
                 </div>
                 <nav class="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800/80" aria-label="Filter payment status">
                     {% set filters = [
@@ -798,30 +957,42 @@ document.addEventListener('alpine:init', function () {
                     </a>
                     {% endfor %}
                 </nav>
+                </div>
+                </div>
+                <p class="text-[10px] text-slate-500 dark:text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+                    <span><i class="fas fa-eye text-slate-400"></i> Expense history</span>
+                    <span><i class="fas fa-money-bill-wave text-teal-600"></i> Settle payable</span>
+                    <span><i class="fas fa-print text-teal-600"></i> All payment lines</span>
+                    <span><i class="fas fa-file-invoice text-slate-500"></i> Goods received note</span>
+                </p>
             </div>
 
             <div class="overflow-x-auto">
-                <template x-if="supplierPayables.length">
-                    <table class="finance-table min-w-[640px] w-full border-collapse text-left text-sm">
+                <template x-if="filteredSupplierPayables.length">
+                    <table class="finance-table min-w-[720px] w-full border-collapse text-left text-sm">
                         <thead>
                             <tr class="border-b border-slate-200 dark:border-slate-700">
                                 <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Supplier name</th>
                                 <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Phone number</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-center">Invoices</th>
                                 <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Status</th>
-                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Balance</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Balance due</th>
                                 <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                            <template x-for="s in supplierPayables" :key="s.phone_key">
+                            <template x-for="s in filteredSupplierPayables" :key="s.phone_key">
                                 <tr>
                                     <td class="px-4 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-200 uppercase max-w-[14rem]">
                                         <span class="block truncate" x-text="s.supplier_name"></span>
-                                        <span class="block text-[10px] font-normal normal-case text-slate-400 tabular-nums"
-                                              x-show="s.invoice_count > 1"
-                                              x-text="s.invoice_count + ' invoices'"></span>
                                     </td>
                                     <td class="px-4 py-2.5 text-sm tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap" x-text="s.supplier_phone"></td>
+                                    <td class="px-4 py-2.5 text-center text-xs tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                        <span class="font-semibold" x-text="s.payable_invoice_count != null ? s.payable_invoice_count : s.invoice_count"></span>
+                                        <span class="text-slate-400"> / </span>
+                                        <span x-text="s.invoice_count"></span>
+                                        <span class="block text-[9px] font-normal text-slate-400 normal-case">open / total</span>
+                                    </td>
                                     <td class="px-4 py-2.5 whitespace-nowrap">
                                         <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full"
                                               :class="s.payment_status === 'pending' ? 'accounts-badge-pending' : (s.payment_status === 'partial' ? 'accounts-badge-partial' : 'accounts-badge-paid')"
@@ -839,13 +1010,20 @@ document.addEventListener('alpine:init', function () {
                                         </a>
                                         <button type="button" x-show="s.can_pay" @click="openPaySupplier(s)"
                                                 class="accounts-btn-primary inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-semibold uppercase text-white ml-1"
-                                                title="Pay total outstanding balance across all invoices">
+                                                :title="String(s.phone_key || '').startsWith('__no_phone_') ? 'Settle this invoice' : 'Pay total outstanding balance across all invoices'">
                                             <i class="fas fa-money-bill-wave"></i> Pay
                                         </button>
+                                        <a :href="supplierStatementPrintUrl(s)"
+                                           target="_blank"
+                                           rel="noopener"
+                                           class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-teal-200 text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-300 dark:hover:bg-teal-950/40 ml-1"
+                                           title="Print all payment statements">
+                                            <i class="fas fa-print text-xs"></i>
+                                        </a>
                                         <template x-if="s.print_record && s.print_record.id">
                                             <a :href="printUrlBase.replace('/0', '/' + s.print_record.id)" target="_blank" rel="noopener"
                                                class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 ml-1"
-                                               title="Print invoice"><i class="fas fa-print text-xs"></i></a>
+                                               title="Print goods received note"><i class="fas fa-file-invoice text-xs"></i></a>
                                         </template>
                                     </td>
                                 </tr>
@@ -853,12 +1031,17 @@ document.addEventListener('alpine:init', function () {
                         </tbody>
                     </table>
                 </template>
-                <div x-show="!supplierPayables.length" class="accounts-empty px-4 py-14 text-center">
+                <div x-show="!filteredSupplierPayables.length" class="accounts-empty px-4 py-14 text-center" x-cloak>
                     <span class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300 mb-3">
                         <i class="fas fa-file-invoice text-lg"></i>
                     </span>
-                    <p class="text-sm font-medium text-slate-700 dark:text-slate-300">No suppliers in this view</p>
-                    <p class="mt-1 text-xs text-slate-500">Try another filter or register a payment.</p>
+                    <p class="text-sm font-medium text-slate-700 dark:text-slate-300"
+                       x-text="supplierSearch ? 'No suppliers match your search' : 'No suppliers in this view'"></p>
+                    <p class="mt-1 text-xs text-slate-500">
+                        <button type="button" x-show="supplierSearch" @click="supplierSearch = ''"
+                                class="text-teal-600 font-semibold hover:underline">Clear search</button>
+                        <span x-show="!supplierSearch">Try another filter, settle a payable, or register a payment.</span>
+                    </p>
                 </div>
             </div>
         </section>
@@ -1007,7 +1190,7 @@ document.addEventListener('alpine:init', function () {
 
                 <form method="post" :action="payPostUrl" @submit="submitPay($event)" class="p-5 sm:p-6 space-y-4">
                     <input type="hidden" name="supplier_phone"
-                           :value="selectedSupplier ? selectedSupplier.phone_key : ''" />
+                           :value="selectedSupplier && !String(selectedSupplier.phone_key || '').startsWith('__no_phone_') ? selectedSupplier.phone_key : ''" />
 
                     <div>
                         <label for="pay_finance_account" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Pay from account</label>
@@ -1078,6 +1261,10 @@ document.addEventListener('alpine:init', function () {
                         <input type="number" name="amount_paid" id="pay_amount" min="0.01" step="0.01" required
                                x-model="amountPaid"
                                class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
+                        <p class="mt-1 text-xs text-red-600 dark:text-red-400 font-semibold normal-case"
+                           x-show="payAmountExceedsBalance" x-cloak>
+                            Insufficient funds in the selected account. Reduce the amount or choose another account.
+                        </p>
                         <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedSupplier">
                             Total outstanding:
                             <span class="font-semibold tabular-nums" x-text="'KES ' + selectedSupplier.balance_due_display"></span>
@@ -1094,7 +1281,7 @@ document.addEventListener('alpine:init', function () {
                                 class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
                             Cancel
                         </button>
-                        <button type="submit" :disabled="paySubmitting"
+                        <button type="submit" :disabled="paySubmitting || payAmountExceedsBalance"
                                 class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
                             <i class="fas fa-spinner fa-spin" x-show="paySubmitting"></i>
                             <i class="fas fa-check" x-show="!paySubmitting"></i>
@@ -1102,6 +1289,39 @@ document.addEventListener('alpine:init', function () {
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        {# Centered payment result popup — success auto-dismisses; failure stays until closed #}
+        <div x-show="resultModalOpen"
+             x-cloak
+             class="pay-result-overlay"
+             role="alertdialog"
+             :aria-labelledby="resultModalType === 'error' ? 'pay-result-title-err' : 'pay-result-title-ok'"
+             aria-modal="true"
+             @keydown.escape.window="resultModalType === 'error' && closeResultModal()">
+            <div class="pay-result-dialog"
+                 :class="resultModalType === 'error' ? 'pay-result-dialog--error' : 'pay-result-dialog--success'"
+                 @click.stop>
+                <div class="pay-result-dialog__icon" aria-hidden="true">
+                    <i class="fas"
+                       :class="resultModalType === 'error' ? 'fa-circle-exclamation' : 'fa-circle-check'"></i>
+                </div>
+                <h2 class="text-lg font-bold tracking-tight"
+                    :id="resultModalType === 'error' ? 'pay-result-title-err' : 'pay-result-title-ok'"
+                    x-text="resultModalTitle"></h2>
+                <p class="mt-2 text-sm leading-relaxed opacity-90" x-text="resultModalMessage"></p>
+                <p x-show="resultModalType === 'success'"
+                   class="mt-3 text-xs opacity-70"
+                   x-cloak>Closing automatically…</p>
+                <button type="button"
+                        x-show="resultModalType === 'error'"
+                        x-cloak
+                        @click="closeResultModal()"
+                        class="mt-5 w-full inline-flex justify-center items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 transition">
+                    <i class="fas fa-times" aria-hidden="true"></i>
+                    Close
+                </button>
             </div>
         </div>
     </div>

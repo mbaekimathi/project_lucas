@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supplier payment statement{% if print_all %}s{% endif %} — {{ school_settings.school_name or 'School' }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    {% set brand = school_settings.primary_color or '#0d9488' %}
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px 16px 48px;
+            background: #f1f5f9;
+            color: #0f172a;
+            font-size: 11px;
+        }
+        .wrap { max-width: 900px; margin: 0 auto; }
+        .actions {
+            margin-bottom: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+        .actions button, .actions a {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-print { background: {{ brand }}; color: #fff; }
+        .btn-back { background: #fff; color: #475569; border: 1px solid #e2e8f0; }
+        .doc {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            margin-bottom: 24px;
+            overflow: hidden;
+            box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+        }
+        .doc__head {
+            padding: 20px 24px 16px;
+            text-align: center;
+            border-bottom: 3px double {{ brand }};
+        }
+        .doc__school {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: {{ brand }};
+            text-transform: uppercase;
+        }
+        .doc__meta { margin-top: 4px; font-size: 0.7rem; color: #64748b; }
+        .doc__title {
+            margin-top: 12px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #334155;
+        }
+        .doc__supplier {
+            margin-top: 10px;
+            font-size: 1rem;
+            font-weight: 800;
+            color: #0f172a;
+        }
+        .doc__sub { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .summary__cell label {
+            display: block;
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+        }
+        .summary__cell span {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #0f172a;
+            font-variant-numeric: tabular-nums;
+        }
+        .section { padding: 12px 16px 16px; }
+        .section h3 {
+            margin: 0 0 8px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: {{ brand }};
+        }
+        table.data {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.7rem;
+        }
+        table.data th {
+            text-align: left;
+            padding: 6px 5px;
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #64748b;
+            border-bottom: 2px solid #e2e8f0;
+            background: #fafafa;
+        }
+        table.data td {
+            padding: 7px 5px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: top;
+        }
+        table.data .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        table.data .mono { font-family: ui-monospace, monospace; font-size: 0.65rem; }
+        .status {
+            display: inline-block;
+            font-size: 0.55rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 2px 6px;
+            border-radius: 999px;
+        }
+        .status--pending { background: #fef3c7; color: #92400e; }
+        .status--partial { background: #ffedd5; color: #9a3412; }
+        .status--paid { background: #d1fae5; color: #065f46; }
+        .empty { padding: 12px; text-align: center; color: #94a3b8; font-style: italic; }
+        .doc__footer {
+            padding: 10px 16px;
+            font-size: 0.6rem;
+            color: #94a3b8;
+            text-align: center;
+            border-top: 1px dashed #e2e8f0;
+            background: #fafafa;
+        }
+        .page-cover {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 24px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .page-cover h1 { font-size: 1.25rem; margin: 0 0 8px; color: {{ brand }}; }
+        .page-cover p { margin: 4px 0; color: #64748b; font-size: 0.8rem; }
+        @media print {
+            body { background: #fff; padding: 0; font-size: 10px; }
+            .actions { display: none !important; }
+            .doc, .page-cover { box-shadow: none; border: none; page-break-inside: avoid; }
+            .doc { page-break-after: always; margin-bottom: 0; }
+            .doc:last-child { page-break-after: auto; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="actions no-print">
+            <button type="button" class="btn-print" onclick="window.print()">
+                <i class="fas fa-print"></i> Print payment statement{% if print_all %}s{% endif %}
+            </button>
+            <a href="{{ employee_dash_url('payments-invoices') }}?payment={{ payment_filter }}" class="btn-back">
+                <i class="fas fa-arrow-left"></i> Back to payments
+            </a>
+        </div>
+
+        {% if print_all %}
+        <div class="page-cover">
+            <h1>{{ school_settings.school_name or 'School' }}</h1>
+            <p><strong>Supplier payment statements</strong></p>
+            <p>Filter: {{ filter_label }} · {{ packs|length }} supplier(s)</p>
+            <p>Generated {{ generated_at }}</p>
+        </div>
+        {% endif %}
+
+        {% for pack in packs %}
+        <article class="doc">
+            <header class="doc__head">
+                <div class="doc__school">{{ school_settings.school_name or 'School' }}</div>
+                <div class="doc__meta">
+                    {% if school_settings.school_location %}{{ school_settings.school_location }} · {% endif %}
+                    Payment statement
+                </div>
+                <div class="doc__title">Supplier account statement</div>
+                <div class="doc__supplier">{{ pack.supplier_name }}</div>
+                <div class="doc__sub">
+                    Phone: {{ pack.supplier_phone or '—' }}
+                    · {{ pack.invoice_count }} invoice(s)
+                    · {{ pack.payment_line_count }} payment(s)
+                </div>
+            </header>
+
+            <div class="summary">
+                <div class="summary__cell">
+                    <label>Total invoiced</label>
+                    <span>KES {{ pack.total_invoiced_display }}</span>
+                </div>
+                <div class="summary__cell">
+                    <label>Amount paid</label>
+                    <span>KES {{ pack.total_paid_display }}</span>
+                </div>
+                <div class="summary__cell">
+                    <label>Balance due</label>
+                    <span>KES {{ pack.balance_due_display }}</span>
+                </div>
+                <div class="summary__cell">
+                    <label>Off-ledger misc</label>
+                    <span>KES {{ pack.misc_total_display }}</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3><i class="fas fa-file-invoice"></i> Stock-in invoices</h3>
+                {% if pack.invoices %}
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Reference</th>
+                            <th>Date</th>
+                            <th>Item</th>
+                            <th class="num">Invoiced</th>
+                            <th class="num">Paid</th>
+                            <th class="num">Balance</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for inv in pack.invoices %}
+                        <tr>
+                            <td class="mono">{{ inv.reference_number }}</td>
+                            <td>{{ inv.created_at_display }}</td>
+                            <td>{{ inv.item_name or '—' }}{% if inv.item_category %}<br><span style="color:#94a3b8">{{ inv.item_category }}</span>{% endif %}</td>
+                            <td class="num">{{ inv.total_amount_display }}</td>
+                            <td class="num">{{ inv.amount_paid_display }}</td>
+                            <td class="num">{{ inv.balance_due_display }}</td>
+                            <td>
+                                {% set ps = (inv.payment_status or 'pending')|lower %}
+                                <span class="status status--{{ ps if ps in ('pending','partial','paid') else 'pending' }}">{{ inv.payment_status_label or ps }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="empty">No stock-in invoices for this supplier.</p>
+                {% endif %}
+            </div>
+
+            <div class="section">
+                <h3><i class="fas fa-money-check-dollar"></i> Payment statements (all disbursements)</h3>
+                {% if pack.payment_lines %}
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Date</th>
+                            <th>Invoice</th>
+                            <th class="num">Amount</th>
+                            <th>Mode</th>
+                            <th>Reference</th>
+                            <th>Paid from</th>
+                            <th>Recorded by</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in pack.payment_lines %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ line.created_at_display }}</td>
+                            <td class="mono">{{ line.reference_number }}</td>
+                            <td class="num">KES {{ line.amount_display }}</td>
+                            <td>{{ line.payment_method }}</td>
+                            <td class="mono">{{ line.payment_reference }}</td>
+                            <td>{{ line.finance_account_name }}</td>
+                            <td>{{ line.paid_by_name }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" class="num" style="font-weight:700;text-align:right">Total payments</td>
+                            <td class="num" style="font-weight:700">KES {{ pack.payments_total_display }}</td>
+                            <td colspan="4"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% else %}
+                <p class="empty">No payments recorded yet for these invoices.</p>
+                {% endif %}
+            </div>
+
+            {% if pack.misc_payments %}
+            <div class="section">
+                <h3><i class="fas fa-receipt"></i> Other registered payments (off-ledger)</h3>
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Reference</th>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th class="num">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for misc in pack.misc_payments %}
+                        <tr>
+                            <td class="mono">{{ misc.reference_number }}</td>
+                            <td>{{ misc.created_at_display }}</td>
+                            <td>{{ misc.description or '—' }}</td>
+                            <td class="num">KES {{ misc.amount_display }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            <footer class="doc__footer">
+                Statement for {{ pack.supplier_name }} · Printed {{ generated_at }}
+            </footer>
+        </article>
+        {% endfor %}
+    </div>
+    <script>
+        if (window.location.search.indexOf('auto=1') !== -1) {
+            window.addEventListener('load', function () { window.print(); });
+        }
+    </script>
+</body>
+</html>
