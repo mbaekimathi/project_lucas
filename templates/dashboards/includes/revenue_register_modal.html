@@ -28,6 +28,7 @@ window.revenueRegisterModal = function () {
         lineItems: [],
         loading: false,
         error: '',
+        success: '',
         registerUrl: {{ (employee_dash_url('revenue/register') ~ ('?source=' ~ source_filter if source_filter != 'all' else ''))|tojson }},
         get selectedAccountDescription() {
             var id = String(this.financeAccountId || '');
@@ -164,10 +165,12 @@ window.revenueRegisterModal = function () {
             this.description = '';
             this.lineItems = [];
             this.error = '';
+            this.success = '';
             this.loading = false;
         },
         submitForm() {
             this.error = '';
+            this.success = '';
             if (!this.financeAccountId) {
                 this.error = 'Select an Income category finance account.';
                 return;
@@ -213,15 +216,21 @@ window.revenueRegisterModal = function () {
             fetch(this.registerUrl, {
                 method: 'POST',
                 body: fd,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    Accept: 'application/json',
+                },
             })
                 .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
                 .then(function (res) {
                     if (res.ok && res.data && res.data.success) {
-                        if (Alpine.store('revenueRegister')) {
-                            Alpine.store('revenueRegister').close();
-                        }
-                        window.location.reload();
+                        this.success = (res.data && res.data.message)
+                            || 'Revenue successfully created.';
+                        this.loading = false;
+                        window.setTimeout(function () {
+                            window.location.reload();
+                        }, 500);
                     } else {
                         this.error = (res.data && res.data.message) || 'Could not save revenue.';
                         this.loading = false;

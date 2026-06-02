@@ -989,6 +989,29 @@ def inject_financial_year_session():
     }
 
 
+@app.context_processor
+def inject_accountant_accounts_sidebar():
+    """Active finance accounts list for the accountant accounts sidebar."""
+    if not _is_accountant_accounts_portal_page():
+        return {'accountant_active_accounts': []}
+    connection = get_db_connection()
+    if not connection:
+        return {'accountant_active_accounts': []}
+    try:
+        with connection.cursor() as cursor:
+            breakdown = _fetch_accountant_accounts_breakdown_light(cursor) or {}
+            active = [
+                a for a in (breakdown.get('all_accounts') or [])
+                if (a.get('account_status') or '').strip().lower() == 'active'
+            ]
+            return {'accountant_active_accounts': active}
+    except Exception as e:
+        print(f"inject_accountant_accounts_sidebar: {e}")
+        return {'accountant_active_accounts': []}
+    finally:
+        connection.close()
+
+
 # Function to detect if running on hosted server
 def is_hosted():
     """Check if the application is running on the hosted server"""
@@ -50250,6 +50273,23 @@ def _is_accountant_accounts_portal_page():
     return any(marker in path for marker in ACCOUNTANT_ACCOUNTS_PORTAL_PATH_MARKERS)
 
 
+def _show_accountant_account_subnav():
+    """True only on the accounts list page (per-account sidebar links)."""
+    if _accountant_effective_role() != 'accountant':
+        return False
+    if not has_request_context():
+        return False
+    path = (request.path or '').replace('\\', '/').lower().rstrip('/') or '/'
+    # Accountant home (/accountant) must not show per-account sidebar links.
+    if path in ('/accountant', '/dashboard/employee'):
+        return False
+    if request.endpoint == 'dashboard_employee':
+        return False
+    if request.endpoint == 'accountant_accounts':
+        return True
+    return path in ('/accountant/accounts', '/dashboard/employee/accounts')
+
+
 def _financial_year_session_snapshot(cursor):
     """Compact current financial year for page chrome."""
     fy = _fetch_current_financial_year(cursor)
@@ -64056,7 +64096,7 @@ def register_finance_account():
     ):
         petty_cash_vote_names = _parse_expense_vote_names_from_form(request.form)
         if not petty_cash_vote_names:
-            flash('Select at least one expense vote for this petty cash account.', 'error')
+            flash('Please select at least one expense vote for this petty cash account.', 'error')
             return redirect(redirect_url_open)
         selected_payment_modes = _parse_finance_account_payment_mode_list(request.form)
         payment_records, payment_err = _prepare_finance_account_payment_records(
@@ -64137,9 +64177,16 @@ def register_finance_account():
     is_petty_cash = (category or '').strip().lower() == 'petty cash'
     petty_cash_vote_names = []
     if is_petty_cash:
+        # Petty cash accounts are managed from the Petty cash book page (votes are chosen there).
+        # Prevent registering them from the general accounts page where the UI does not show votes.
+        if after_register != 'petty-cash-book':
+            flash('Petty cash accounts must be registered from the Petty cash book page.', 'error')
+            return redirect(
+                employee_dash_url('accounts/petty-cash-book') + '?register=1'
+            )
         petty_cash_vote_names = _parse_expense_vote_names_from_form(request.form)
         if not petty_cash_vote_names:
-            flash('Select at least one expense vote for this petty cash account.', 'error')
+            flash('Please select at least one expense vote for this petty cash account.', 'error')
             return redirect(redirect_url_open)
     elif not level_ids:
         flash('Select at least one academic level to link to this account.', 'error')
@@ -64633,7 +64680,7 @@ def register_accountant_revenue():
                 'Government' if source_type == 'government' else 'Private'
             )
             return _ok(
-                f'Revenue {ref_no} — {label}: KES {amount:,.2f} recorded.',
+                f'Revenue successfully created. {ref_no} — {label}: KES {amount:,.2f}.',
             )
     except Exception as e:
         print(f"register_accountant_revenue: {e}")

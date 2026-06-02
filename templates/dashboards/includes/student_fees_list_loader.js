@@ -26,11 +26,6 @@
     return 'KES ' + x.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  function moneyShort(n) {
-    var x = Number(n) || 0;
-    return 'KES ' + x.toLocaleString('en-KE', { maximumFractionDigits: 0 });
-  }
-
   function statusBadge(st) {
     if (st === 'overdue') {
       return '<span class="inline-flex px-2 py-0.5 text-[11px] font-semibold rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-200">Overdue</span>';
@@ -44,6 +39,20 @@
     return '<span class="inline-flex px-2 py-0.5 text-[11px] font-semibold rounded-md bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-slate-300">No structure</span>';
   }
 
+  function dueText(s) {
+    var fs = s.fee_structure;
+    if (!fs) return { main: '—', cls: 'text-slate-400 dark:text-slate-500' };
+    var due = Number(s.total_amount_due || fs.total_amount) || 0;
+    return { main: money(due), cls: 'sf-money-cell' };
+  }
+
+  function paidText(s) {
+    var fs = s.fee_structure;
+    if (!fs) return { main: '—', cls: 'text-slate-400 dark:text-slate-500' };
+    var paid = Number(s.total_paid) || 0;
+    return { main: money(paid), cls: 'sf-money-cell sf-money-cell--paid' };
+  }
+
   function balanceText(s) {
     var fs = s.fee_structure;
     if (!fs) return { main: '—', cls: 'text-slate-400 dark:text-slate-500' };
@@ -51,14 +60,6 @@
     if (bal > 0) return { main: money(bal), cls: 'text-red-600 dark:text-red-400' };
     if (bal === 0) return { main: 'KES 0.00', cls: 'text-emerald-600 dark:text-emerald-400' };
     return { main: money(-bal) + ' cr.', cls: 'text-blue-600 dark:text-blue-400' };
-  }
-
-  function paidSubtext(s) {
-    var fs = s.fee_structure;
-    if (!fs) return '';
-    var due = Number(s.total_amount_due || fs.total_amount) || 0;
-    var paid = Number(s.total_paid) || 0;
-    return 'Paid ' + moneyShort(paid) + ' / ' + moneyShort(due);
   }
 
   function joinDashPath(base, segment) {
@@ -94,9 +95,13 @@
 
   function tableRow(s, cfg) {
     var level = (s.academic_level && s.academic_level.level_name) || s.current_grade || '—';
+    var due = dueText(s);
+    var paid = paidText(s);
     var bal = balanceText(s);
-    var paidLine = paidSubtext(s);
     var statusMob = '<div class="sm:hidden mt-1.5">' + statusBadge(s.payment_status) + '</div>';
+    var dueMob = s.fee_structure
+      ? '<div class="md:hidden text-[11px] text-[var(--acc-muted)] mt-1">Due ' + esc(due.main) + ' · Paid ' + esc(paid.main) + '</div>'
+      : '';
 
     return (
       '<tr class="student-row hover:bg-teal-50/50 dark:hover:bg-teal-950/10 transition-colors" ' +
@@ -104,13 +109,16 @@
       '<td class="px-3 sm:px-4 lg:px-5 py-3 min-w-[9rem]">' +
       '<div class="text-sm font-semibold text-[var(--acc-ink)]">' + esc(s.full_name) + '</div>' +
       '<div class="text-xs text-[var(--acc-muted)] mt-0.5">' + esc(s.student_id) + '</div>' +
+      dueMob +
       statusMob +
       '</td>' +
       '<td class="hidden sm:table-cell px-3 sm:px-4 lg:px-5 py-3 text-sm text-[var(--acc-ink)] whitespace-nowrap">' + esc(level) + '</td>' +
+      '<td class="hidden md:table-cell sf-col-money px-3 sm:px-4 lg:px-5 py-3 whitespace-nowrap">' +
+      '<div class="' + due.cls + '">' + esc(due.main) + '</div></td>' +
+      '<td class="hidden md:table-cell sf-col-money px-3 sm:px-4 lg:px-5 py-3 whitespace-nowrap">' +
+      '<div class="' + paid.cls + '">' + esc(paid.main) + '</div></td>' +
       '<td class="sf-col-balance px-3 sm:px-4 lg:px-5 py-3 whitespace-nowrap">' +
-      '<div class="sf-balance-cell ' + bal.cls + '">' + esc(bal.main) + '</div>' +
-      (paidLine ? '<div class="sf-balance-sub">' + esc(paidLine) + '</div>' : '') +
-      '</td>' +
+      '<div class="sf-balance-cell ' + bal.cls + '">' + esc(bal.main) + '</div></td>' +
       '<td class="hidden sm:table-cell px-3 sm:px-4 lg:px-5 py-3 text-center">' + statusBadge(s.payment_status) + '</td>' +
       '<td class="px-3 sm:px-4 lg:px-5 py-3 text-right">' + actionButtons(s, cfg) + '</td></tr>'
     );
@@ -190,7 +198,7 @@
         state.total === 0
           ? 'Students will appear here once they are registered.'
           : 'Try different search words or filters.';
-      tbody.innerHTML = emptyRow(5, title, sub);
+      tbody.innerHTML = emptyRow(7, title, sub);
       return;
     }
     var html = '';

@@ -11,10 +11,13 @@
 <style>select{appearance:none}
 .sf-table tbody tr.student-row:hover{box-shadow:inset 3px 0 0 0 #0d9488}
 .sf-table tbody tr.student-row td{vertical-align:middle}
-.sf-table .sf-col-balance{min-width:7rem;text-align:right}
-.sf-table thead .sf-col-balance{text-align:right}
+.sf-table .sf-col-balance{min-width:6.5rem;text-align:right}
+.sf-table .sf-col-money{min-width:5.5rem;text-align:right}
+.sf-table thead .sf-col-balance,.sf-table thead .sf-col-money{text-align:right}
 .sf-balance-cell{font-size:.875rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.3}
-.sf-balance-sub{font-size:.6875rem;color:var(--acc-muted);margin-top:.125rem;font-weight:500}
+.sf-money-cell{font-size:.8125rem;font-weight:600;font-variant-numeric:tabular-nums;color:var(--acc-ink)}
+.sf-money-cell--paid{color:#059669}
+.dark .sf-money-cell--paid{color:#34d399}
 .sf-pay-modal input[type=number]::-webkit-outer-spin-button,.sf-pay-modal input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .sf-pay-modal input[type=number]{-moz-appearance:textfield}
 .sf-pay-field{width:100%;padding:.625rem .875rem;font-size:.875rem;line-height:1.25rem;border-radius:.75rem;border:1px solid rgb(226 232 240);background:#fff;color:rgb(15 23 42);transition:box-shadow .15s,border-color .15s}
@@ -219,6 +222,8 @@
                     <tr>
                         <th class="px-3 sm:px-4 lg:px-5 py-3 text-left text-[10px] font-semibold text-white/95 uppercase tracking-wider">Student</th>
                         <th class="hidden sm:table-cell px-3 sm:px-4 lg:px-5 py-3 text-left text-[10px] font-semibold text-white/95 uppercase tracking-wider">Grade</th>
+                        <th class="hidden md:table-cell sf-col-money px-3 sm:px-4 lg:px-5 py-3 text-[10px] font-semibold text-white/95 uppercase tracking-wider">Fee due</th>
+                        <th class="hidden md:table-cell sf-col-money px-3 sm:px-4 lg:px-5 py-3 text-[10px] font-semibold text-white/95 uppercase tracking-wider">Paid</th>
                         <th class="sf-col-balance px-3 sm:px-4 lg:px-5 py-3 text-[10px] font-semibold text-white/95 uppercase tracking-wider">Fee balance</th>
                         <th class="hidden sm:table-cell px-3 sm:px-4 lg:px-5 py-3 text-center text-[10px] font-semibold text-white/95 uppercase tracking-wider">Status</th>
                         <th class="px-3 sm:px-4 lg:px-5 py-3 text-right text-[10px] font-semibold text-white/95 uppercase tracking-wider">Actions</th>

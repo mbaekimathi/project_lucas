@@ -107,13 +107,15 @@ document.addEventListener('alpine:init', function () {
       showFlash: function (message, type) {
         var self = this;
         this.flashMessage = message || '';
-        this.flashType = type === 'error' ? 'error' : 'success';
+        var isError = type === 'error';
+        this.flashType = isError ? 'error' : 'success';
         if (this._flashTimer) clearTimeout(this._flashTimer);
-        if (message) {
+        // Success auto-dismiss after 2s; failures stay until user clicks the close button.
+        if (message && !isError) {
           this._flashTimer = setTimeout(function () {
             self.flashMessage = '';
             self.flashType = '';
-          }, 8000);
+          }, 2000);
         }
       },
       postFormAjax: function (url, fields, opts) {
