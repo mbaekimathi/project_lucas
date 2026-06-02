@@ -64560,13 +64560,15 @@ def register_accountant_revenue():
         source_filter = 'all'
     wants_ajax = _revenue_register_wants_ajax()
 
-    def _revenue_register_redirect(open_form=False):
+    def _revenue_register_redirect(open_form=False, registered=False):
         url = employee_dash_url('revenue')
         q = {}
         if source_filter != 'all':
             q['source'] = source_filter
         if open_form:
             q['register'] = '1'
+        elif registered:
+            q['registered'] = '1'
         if q:
             url += '?' + urlencode(q)
         return url
@@ -64579,9 +64581,14 @@ def register_accountant_revenue():
 
     def _ok(message):
         flash(message, 'success')
+        redirect_url = _revenue_register_redirect(registered=True)
         if wants_ajax:
-            return jsonify({'success': True, 'message': message})
-        return redirect(_revenue_register_redirect())
+            return jsonify({
+                'success': True,
+                'message': message,
+                'redirect_url': redirect_url,
+            })
+        return redirect(redirect_url)
 
     source_type = _normalize_revenue_source_type(request.form.get('source_type'))
     if source_type == 'fees':

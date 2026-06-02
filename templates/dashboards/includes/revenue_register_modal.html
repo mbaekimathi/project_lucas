@@ -30,6 +30,7 @@ window.revenueRegisterModal = function () {
         error: '',
         success: '',
         registerUrl: {{ (employee_dash_url('revenue/register') ~ ('?source=' ~ source_filter if source_filter != 'all' else ''))|tojson }},
+        successRedirectUrl: {{ (employee_dash_url('revenue') ~ ('?source=' ~ source_filter ~ '&' if source_filter != 'all' else '?') ~ 'registered=1')|tojson }},
         get selectedAccountDescription() {
             var id = String(this.financeAccountId || '');
             var acct = this.incomeAccounts.find(function (a) {
@@ -225,12 +226,10 @@ window.revenueRegisterModal = function () {
                 .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
                 .then(function (res) {
                     if (res.ok && res.data && res.data.success) {
-                        this.success = (res.data && res.data.message)
-                            || 'Revenue successfully created.';
                         this.loading = false;
-                        window.setTimeout(function () {
-                            window.location.reload();
-                        }, 500);
+                        var target = (res.data && res.data.redirect_url) || this.successRedirectUrl;
+                        window.location.assign(target);
+                        return;
                     } else {
                         this.error = (res.data && res.data.message) || 'Could not save revenue.';
                         this.loading = false;

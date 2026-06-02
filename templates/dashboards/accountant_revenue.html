@@ -168,7 +168,30 @@
      x-data="revenuePage()" x-init="init()">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14">
 
+        {% if request.args.get('registered') == '1' %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% set ns_flash = namespace(msg='Income registered successfully.') %}
+        {% for category, message in messages %}
+        {% if category == 'success' %}{% set ns_flash.msg = message %}{% endif %}
+        {% endfor %}
+        <div class="mb-4 rounded-2xl border border-emerald-200/90 bg-emerald-50 px-4 py-4 text-sm shadow-md ring-1 ring-emerald-900/5 dark:border-emerald-800 dark:bg-emerald-950/40 dark:ring-emerald-500/20"
+             role="status"
+             data-revenue-registered-banner>
+            <div class="flex items-start gap-3">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400">
+                    <i class="fas fa-circle-check text-lg" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                    <p class="font-semibold text-emerald-950 dark:text-emerald-100">Income registration successful</p>
+                    <p class="mt-1 leading-relaxed text-emerald-800 dark:text-emerald-200/90">{{ ns_flash.msg }}</p>
+                    <p class="mt-1.5 text-xs text-emerald-700/90 dark:text-emerald-300/80">The new entry appears in the income list below.</p>
+                </div>
+            </div>
+        </div>
+        {% endwith %}
+        {% else %}
         {% include 'dashboards/includes/portal_page_flash.html' %}
+        {% endif %}
 
         <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
             <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -656,10 +679,26 @@ function revenuePage() {
       manualSearch: '',
       init: function () {
         var params = new URLSearchParams(window.location.search);
+        if (params.get('registered') === '1') {
+          if (window.history && window.history.replaceState) {
+            var clean = new URL(window.location.href);
+            clean.searchParams.delete('registered');
+            clean.searchParams.delete('register');
+            var qs = clean.searchParams.toString();
+            window.history.replaceState({}, '', clean.pathname + (qs ? '?' + qs : ''));
+          }
+          return;
+        }
         if (params.get('register') !== '1') return;
         var openModal = function () {
           if (typeof Alpine !== 'undefined' && Alpine.store('revenueRegister')) {
             Alpine.store('revenueRegister').open();
+            if (window.history && window.history.replaceState) {
+              var u = new URL(window.location.href);
+              u.searchParams.delete('register');
+              var q = u.searchParams.toString();
+              window.history.replaceState({}, '', u.pathname + (q ? '?' + q : ''));
+            }
             return true;
           }
           return false;
