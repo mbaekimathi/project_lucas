@@ -30733,6 +30733,11 @@ def academic_settings():
         'view_academic_levels',
         ['curriculum coordinator'],
     )
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+    has_secretary_academic_access = check_permission_or_role(
+        'view_academic_levels',
+        ['secretary'],
+    )
     
     # Permission check handles role fallback if no permissions are assigned
     if not (
@@ -30740,6 +30745,8 @@ def academic_settings():
         or has_view_fees_permission
         or has_manage_fees_permission
         or has_coordinator_academic_access
+        or is_secretary
+        or has_secretary_academic_access
     ):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -30763,14 +30770,14 @@ def academic_settings():
             with connection.cursor() as cursor:
                 # Get academic levels
                 cursor.execute("""
-                    SELECT id, level_category, level_name, level_description, level_status
+                    SELECT id, level_category, level_name, level_code, level_description, level_status
                     FROM academic_levels
                     ORDER BY level_category, level_name ASC
                 """)
                 academic_levels_results = cursor.fetchall()
                 
                 for row in academic_levels_results:
-                    raw_ls = row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
+                    raw_ls = row.get('level_status', 'active') if isinstance(row, dict) else (row[5] if len(row) > 5 else 'active')
                     if isinstance(raw_ls, bytes):
                         raw_ls = raw_ls.decode('utf-8', errors='ignore')
                     ls = (str(raw_ls or 'active')).strip().lower()
@@ -30779,7 +30786,8 @@ def academic_settings():
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'level_category': row.get('level_category', '') if isinstance(row, dict) else row[1],
                         'level_name': row.get('level_name', '') if isinstance(row, dict) else row[2],
-                        'level_description': row.get('level_description', '') if isinstance(row, dict) else row[3],
+                        'level_code': (row.get('level_code', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else '')) or '',
+                        'level_description': row.get('level_description', '') if isinstance(row, dict) else row[4],
                         'level_status': level_status_norm,
                     })
                 
@@ -68280,13 +68288,14 @@ def add_academic_level():
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_add_academic_level_permission = check_permission_or_role('add_academic_level', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
-    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+    has_add_academic_level_permission = check_permission_or_role('add_academic_level', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant', 'secretary'])
+    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'secretary'])
     
     # Permission check handles role fallback if no permissions are assigned
-    if not (is_technician or has_add_academic_level_permission or has_manage_academic_levels_permission):
+    if not (is_technician or is_secretary or has_add_academic_level_permission or has_manage_academic_levels_permission):
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('academic_settings') if user_role == 'accountant' or viewing_as_role == 'accountant' else url_for('system_settings'))
+        return redirect(url_for('academic_settings') if user_role == 'accountant' or viewing_as_role == 'accountant' or is_secretary else url_for('system_settings'))
     
     # Get form data and convert to uppercase
     level_category = request.form.get('level_category', '').strip().upper()
@@ -68342,16 +68351,18 @@ def toggle_academic_level_status(level_id):
     
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     has_edit_academic_level_permission = check_permission_or_role(
         'edit_academic_level',
-        ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'],
+        ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant', 'secretary'],
     )
     has_manage_academic_levels_permission = check_permission_or_role(
         'manage_academic_levels',
-        ['head of institution', 'deputy head of institution', 'curriculum coordinator'],
+        ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'secretary'],
     )
     if not (
         is_technician
+        or is_secretary
         or has_edit_academic_level_permission
         or has_manage_academic_levels_permission
     ):
@@ -68412,11 +68423,12 @@ def update_academic_level(level_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_edit_academic_level_permission = check_permission_or_role('edit_academic_level', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
-    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+    has_edit_academic_level_permission = check_permission_or_role('edit_academic_level', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant', 'secretary'])
+    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'secretary'])
     
     # Permission check handles role fallback if no permissions are assigned
-    if not (is_technician or has_edit_academic_level_permission or has_manage_academic_levels_permission):
+    if not (is_technician or is_secretary or has_edit_academic_level_permission or has_manage_academic_levels_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to perform this action.'}), 403
     
     # Get JSON data
@@ -68426,13 +68438,9 @@ def update_academic_level(level_id):
     
     level_category = data.get('level_category', '').strip().upper()
     level_name = data.get('level_name', '').strip().upper()
-    level_code = data.get('level_code', '').strip().upper()
+    level_code = (data.get('level_code') or '').strip().upper()
     level_description = data.get('level_description', '').strip()
     level_status = data.get('level_status', 'active').strip().lower()
-    
-    # Validate required fields
-    if not level_category or not level_name or not level_code:
-        return jsonify({'success': False, 'message': 'Level Category, Level Name and Level Code are required.'}), 400
     
     # Validate status
     if level_status not in ['active', 'inactive']:
@@ -68445,10 +68453,22 @@ def update_academic_level(level_id):
     
     try:
         with connection.cursor() as cursor:
-            # Check if level exists
-            cursor.execute("SELECT id FROM academic_levels WHERE id = %s", (level_id,))
-            if not cursor.fetchone():
+            cursor.execute(
+                "SELECT id, level_code FROM academic_levels WHERE id = %s",
+                (level_id,),
+            )
+            existing = cursor.fetchone()
+            if not existing:
                 return jsonify({'success': False, 'message': 'Academic level not found.'}), 404
+            if not level_code:
+                raw_code = existing.get('level_code') if isinstance(existing, dict) else (existing[1] if len(existing) > 1 else '')
+                level_code = (str(raw_code or '').strip().upper())
+            if not level_code and level_name:
+                level_code = level_name.replace(' ', '_')[:32]
+            
+            # Validate required fields
+            if not level_category or not level_name or not level_code:
+                return jsonify({'success': False, 'message': 'Level Category, Level Name and Level Code are required.'}), 400
             
             # Update the level
             cursor.execute("""
@@ -68483,11 +68503,12 @@ def delete_academic_level(level_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_delete_academic_level_permission = check_permission_or_role('delete_academic_level', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
-    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+    has_delete_academic_level_permission = check_permission_or_role('delete_academic_level', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant', 'secretary'])
+    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'secretary'])
     
     # Permission check handles role fallback if no permissions are assigned
-    if not (is_technician or has_delete_academic_level_permission or has_manage_academic_levels_permission):
+    if not (is_technician or is_secretary or has_delete_academic_level_permission or has_manage_academic_levels_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to perform this action.'}), 403
     
     # Delete from database
