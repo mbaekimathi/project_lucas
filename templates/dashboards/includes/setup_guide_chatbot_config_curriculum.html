@@ -1,0 +1,249 @@
+<script type="application/json" id="setup-guide-chatbot-config">
+{
+  "assistantTitle": "Setup Assistant",
+  "roleLabel": "Curriculum coordinator",
+  "theme": "coordinator",
+  "welcome": "Hi! Follow the checklist on each step — tick the boxes as you complete tasks. Progress is saved on this device. Open a step link to get a page-specific checklist.",
+  "currentPath": {{ request.path|tojson }},
+  "steps": [
+    {
+      "id": 1,
+      "checklistId": "step-1",
+      "title": "Academic foundation",
+      "message": "Start in Academic settings: create class levels (e.g. Grade 1), add the academic year and terms, then mark the current year and term. Everything else filters by these.",
+      "link": {{ employee_dash_url('academic-settings')|tojson }},
+      "linkLabel": "Open Academic settings",
+      "checklist": [
+        { "id": "levels", "label": "Register academic levels (classes)" },
+        { "id": "year", "label": "Add academic year and mark current" },
+        { "id": "terms", "label": "Add terms and mark current term" }
+      ]
+    },
+    {
+      "id": 2,
+      "checklistId": "step-2",
+      "title": "Class schedule profile",
+      "message": "Set study days and lesson time slots. Create one profile per level category (e.g. Primary) so class timetables know which days and times to use.",
+      "links": [
+        { "href": {{ employee_staff_settings_url('curriculum coordinator')|tojson }}, "label": "Timetable settings" },
+        { "href": {{ employee_dash_url('academic-schedule-management')|tojson }}, "label": "Schedule management" }
+      ],
+      "checklist": [
+        { "id": "profile", "label": "Create a schedule profile per level category" },
+        { "id": "days", "label": "Set study days (e.g. Mon–Fri)" },
+        { "id": "slots", "label": "Add class time slots" },
+        { "id": "save", "label": "Save the profile" }
+      ]
+    },
+    {
+      "id": 3,
+      "checklistId": "step-3",
+      "title": "Register subjects",
+      "message": "Add all subjects your school teaches (Math, English, etc.) under Register subjects before you assign teachers.",
+      "link": {{ employee_dash_url('academic-subject-registration')|tojson }},
+      "linkLabel": "Open Register subjects",
+      "checklist": [
+        { "id": "add", "label": "Register all subjects with name and code" },
+        { "id": "category", "label": "Set the correct category per subject" }
+      ]
+    },
+    {
+      "id": 4,
+      "checklistId": "step-4",
+      "title": "Subject allocation",
+      "message": "For each class, assign which teacher teaches which subject. Each pick auto-saves. Without this, Manage timetable cannot offer the right teachers.",
+      "link": {{ employee_dash_url('subject-class-allocation')|tojson }},
+      "linkLabel": "Open Subject allocation",
+      "checklist": [
+        { "id": "level", "label": "Select each class level" },
+        { "id": "assign", "label": "Assign a teacher to every subject in that class" }
+      ]
+    },
+    {
+      "id": 5,
+      "checklistId": "step-5",
+      "title": "Class timetable",
+      "message": "Build the weekly class timetable: choose year, term, and class, then click cells to assign teacher + subject. Changes auto-save when there is no scheduling conflict.",
+      "link": {{ employee_dash_url('timetable-management/manage-timetable')|tojson }},
+      "linkLabel": "Open Manage timetable",
+      "checklist": [
+        { "id": "filters", "label": "Select year and term" },
+        { "id": "class", "label": "Open each class timetable" },
+        { "id": "fill", "label": "Assign all lesson slots (no conflicts)" }
+      ]
+    },
+    {
+      "id": 6,
+      "checklistId": "step-6",
+      "title": "Exam sessions & subjects",
+      "message": "For exams: set session times first, then exam subject rules (marks totals and combined subjects) before teachers enter marks.",
+      "links": [
+        { "href": {{ employee_dash_url('timetable-sessions')|tojson }}, "label": "Timetable sessions" },
+        { "href": {{ employee_dash_url('exam-subject-settings')|tojson }}, "label": "Exam subject settings" }
+      ],
+      "checklist": [
+        { "id": "sessions", "label": "Configure exam timetable sessions" },
+        { "id": "exam-subjects", "label": "Set exam subject totals and order" }
+      ]
+    },
+    {
+      "id": 7,
+      "checklistId": "step-7",
+      "title": "Grades & optional groups",
+      "message": "Align grade names in Grade settings. Use Combined academic levels only if you need grouped classes for reports or fees.",
+      "links": [
+        { "href": {{ employee_dash_url('grades-registration')|tojson }}, "label": "Grade settings" },
+        { "href": {{ employee_dash_url('combined-academic-levels')|tojson }}, "label": "Combined academic levels" }
+      ],
+      "checklist": [
+        { "id": "grades", "label": "Configure grade names" },
+        { "id": "combined", "label": "Combined levels (optional)" }
+      ]
+    }
+  ],
+  "pageGuides": [
+    {
+      "pathKeys": ["academic-settings"],
+      "checklistId": "page-academic-settings",
+      "stepIndex": 0,
+      "pageTitle": "Academic settings",
+      "message": "You are on Academic settings — the foundation for everything else. Work through the three tabs in order.",
+      "checklist": [
+        { "id": "levels-tab", "label": "Levels tab: register each class with a category (e.g. PRIMARY)" },
+        { "id": "years-tab", "label": "Years tab: add school year and mark as current" },
+        { "id": "terms-tab", "label": "Terms tab: add terms and mark current term" },
+        { "id": "review", "label": "Confirm current year and term are set" }
+      ]
+    },
+    {
+      "pathKeys": ["curriculum-timetable-settings"],
+      "checklistId": "page-timetable-settings",
+      "stepIndex": 1,
+      "pageTitle": "Timetable settings",
+      "message": "You are on Timetable settings. Define when classes run for each level category.",
+      "checklist": [
+        { "id": "profile", "label": "Register a profile per level category (e.g. PRIMARY)" },
+        { "id": "days", "label": "Tick study days (usually Monday–Friday)" },
+        { "id": "slots", "label": "Add class time slots with start and end times" },
+        { "id": "save", "label": "Save profile for Manage timetable" }
+      ]
+    },
+    {
+      "pathKeys": ["academic-schedule-management"],
+      "checklistId": "page-schedule-management",
+      "stepIndex": 1,
+      "pageTitle": "Schedule management",
+      "message": "You are on Schedule management — same schedule profiles as Timetable settings.",
+      "checklist": [
+        { "id": "profile", "label": "Pick or create a schedule profile" },
+        { "id": "days-slots", "label": "Set study days and lesson slots" },
+        { "id": "category", "label": "Link profile to the correct level category" },
+        { "id": "activities", "label": "Add breaks/activities if needed" },
+        { "id": "save", "label": "Save and open Manage timetable when ready" }
+      ]
+    },
+    {
+      "pathKeys": ["academic-subject-registration"],
+      "checklistId": "page-register-subjects",
+      "stepIndex": 2,
+      "pageTitle": "Register subjects",
+      "message": "You are on Register subjects. Add every subject taught before allocating teachers.",
+      "checklist": [
+        { "id": "name-code", "label": "Enter subject name and code" },
+        { "id": "category", "label": "Choose the correct subject category" },
+        { "id": "all-subjects", "label": "Register every subject the school teaches" },
+        { "id": "next", "label": "Ready for Subject allocation" }
+      ]
+    },
+    {
+      "pathKeys": ["subject-class-allocation"],
+      "checklistId": "page-subject-allocation",
+      "stepIndex": 3,
+      "pageTitle": "Subject allocation",
+      "message": "You are on Subject allocation. Match teachers to subjects for each class.",
+      "checklist": [
+        { "id": "pick-class", "label": "Select the academic level (class)" },
+        { "id": "each-subject", "label": "Assign a teacher to each subject card" },
+        { "id": "all-classes", "label": "Repeat for every class level" },
+        { "id": "verify", "label": "Teachers ready for Manage timetable" }
+      ]
+    },
+    {
+      "pathKeys": ["manage-timetable"],
+      "checklistId": "page-manage-timetable",
+      "stepIndex": 4,
+      "pageTitle": "Manage timetable",
+      "message": "You are on Manage timetable. Build the weekly grid for one class at a time.",
+      "checklist": [
+        { "id": "year-term", "label": "Select academic year and term" },
+        { "id": "open-class", "label": "Click each class to load its grid" },
+        { "id": "assign-cells", "label": "Assign teacher + subject in each cell" },
+        { "id": "no-conflict", "label": "Resolve any busy (red) teacher conflicts" }
+      ]
+    },
+    {
+      "pathKeys": ["register-timetable"],
+      "checklistId": "page-register-timetable",
+      "stepIndex": 4,
+      "pageTitle": "Manual timetable allocation",
+      "message": "You are on Manual allocation — bulk or auto-generate timetables.",
+      "checklist": [
+        { "id": "select", "label": "Select year, term, and class" },
+        { "id": "grid", "label": "Fill grid with teacher + subject per period" },
+        { "id": "save", "label": "Save timetable (or use auto-generate)" }
+      ]
+    },
+    {
+      "pathKeys": ["timetable-sessions"],
+      "checklistId": "page-timetable-sessions",
+      "stepIndex": 5,
+      "pageTitle": "Timetable sessions",
+      "message": "You are on Timetable sessions — exam time blocks (not the daily class timetable).",
+      "checklist": [
+        { "id": "morning", "label": "Set Morning session time and duration" },
+        { "id": "midday", "label": "Set Midday session time and duration" },
+        { "id": "afternoon", "label": "Set Afternoon session time and duration" },
+        { "id": "evening", "label": "Set Evening session time and duration" },
+        { "id": "save", "label": "Save session settings" }
+      ]
+    },
+    {
+      "pathKeys": ["exam-subject-settings"],
+      "checklistId": "page-exam-subject-settings",
+      "stepIndex": 5,
+      "pageTitle": "Exam subject settings",
+      "message": "You are on Exam subject settings. Control how marks sheets and reports show subjects.",
+      "checklist": [
+        { "id": "order", "label": "Set column order on marks sheets" },
+        { "id": "totals", "label": "Set exam totals per subject" },
+        { "id": "combine", "label": "Combine subjects if needed" },
+        { "id": "save", "label": "Save all exam subject settings" }
+      ]
+    },
+    {
+      "pathKeys": ["grades-registration"],
+      "checklistId": "page-grades-registration",
+      "stepIndex": 6,
+      "pageTitle": "Grade settings",
+      "message": "You are on Grade settings. Define grade names used for students and reports.",
+      "checklist": [
+        { "id": "names", "label": "Add or edit grade names (PP1, Grade 1, etc.)" },
+        { "id": "match", "label": "Match grades to academic levels where possible" },
+        { "id": "save", "label": "Save grade settings" }
+      ]
+    },
+    {
+      "pathKeys": ["combined-academic-levels"],
+      "checklistId": "page-combined-levels",
+      "stepIndex": 6,
+      "pageTitle": "Combined academic levels",
+      "message": "You are on Combined academic levels — optional groups for reports and fees.",
+      "checklist": [
+        { "id": "create", "label": "Create a combined group (if needed)" },
+        { "id": "levels", "label": "Add academic levels to the group" },
+        { "id": "save", "label": "Save combined level group" }
+      ]
+    }
+  ]
+}
+</script>

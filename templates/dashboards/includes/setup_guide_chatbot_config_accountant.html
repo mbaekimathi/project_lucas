@@ -1,0 +1,307 @@
+<script type="application/json" id="setup-guide-chatbot-config">
+{
+  "assistantTitle": "Finance Setup Assistant",
+  "roleLabel": "Accountant / Finance",
+  "theme": "accountant",
+  "welcome": "Hi! Set up school finance in order. Tick each checkbox when done — progress saves on this device. Open a step link for a detailed checklist on that page.",
+  "currentPath": {{ request.path|tojson }},
+  "steps": [
+    {
+      "id": 1,
+      "checklistId": "fin-step-1",
+      "title": "Financial year",
+      "message": "Open Finance settings first. Create or open the active financial year and link it to the academic calendar so all accounts and reports use the correct period.",
+      "link": {{ employee_dash_url('finance-settings')|tojson }},
+      "linkLabel": "Open Finance settings",
+      "checklist": [
+        { "id": "fy-create", "label": "Create financial year with start and end dates" },
+        { "id": "fy-open", "label": "Mark the year as open for posting" },
+        { "id": "fy-calendar", "label": "Confirm academic years/terms appear in the period" }
+      ]
+    },
+    {
+      "id": 2,
+      "checklistId": "fin-step-2",
+      "title": "Ledger accounts",
+      "message": "Register your chart of accounts (bank, fees income, expenses, petty cash, etc.) before recording transactions.",
+      "link": {{ employee_dash_url('accounts')|tojson }},
+      "linkLabel": "Open Accounts",
+      "checklist": [
+        { "id": "accounts", "label": "Register main ledger accounts" },
+        { "id": "categories", "label": "Set account type/category correctly" },
+        { "id": "petty", "label": "Link petty cash account if used" }
+      ]
+    },
+    {
+      "id": 3,
+      "checklistId": "fin-step-3",
+      "title": "Fee structures",
+      "message": "Define fee structures (votes/amounts per class or term) before billing students.",
+      "link": {{ employee_dash_url('student-fees/fee-structures')|tojson }},
+      "linkLabel": "Open Fee structures",
+      "checklist": [
+        { "id": "structure", "label": "Create fee structure for each class/term" },
+        { "id": "votes", "label": "Add fee items and amounts" },
+        { "id": "finance-acct", "label": "Link to correct finance account" }
+      ]
+    },
+    {
+      "id": 4,
+      "checklistId": "fin-step-4",
+      "title": "Student fees",
+      "message": "Use Student fees to register pupils on structures, record payments, and print invoices or receipts.",
+      "link": {{ employee_dash_url('student-fees')|tojson }},
+      "linkLabel": "Open Student fees",
+      "checklist": [
+        { "id": "register", "label": "Register students on fee structures" },
+        { "id": "collect", "label": "Record fee payments" },
+        { "id": "audit", "label": "Review Payments audit when needed" }
+      ]
+    },
+    {
+      "id": 5,
+      "checklistId": "fin-step-5",
+      "title": "Income & payments",
+      "message": "Record other school income and supplier payments through Revenue and Payments / invoices.",
+      "links": [
+        { "href": {{ employee_dash_url('revenue')|tojson }}, "label": "Revenue" },
+        { "href": {{ employee_dash_url('payments-invoices')|tojson }}, "label": "Payments / invoices" }
+      ],
+      "checklist": [
+        { "id": "revenue", "label": "Register non-fee income in Revenue" },
+        { "id": "payments", "label": "Record supplier payments / invoices" }
+      ]
+    },
+    {
+      "id": 6,
+      "checklistId": "fin-step-6",
+      "title": "Expenses & payroll",
+      "message": "Track expenses and staff salaries. Configure staff salaries, register payments, and review audits.",
+      "links": [
+        { "href": {{ employee_dash_url('expenses/expense-records')|tojson }}, "label": "Expense records" },
+        { "href": {{ employee_dash_url('staff-and-salaries')|tojson }}, "label": "Staff & salaries" }
+      ],
+      "checklist": [
+        { "id": "expenses", "label": "Enter expense records" },
+        { "id": "salaries", "label": "Set up staff salary amounts" },
+        { "id": "payroll", "label": "Pay salaries and check salary audits" }
+      ]
+    },
+    {
+      "id": 7,
+      "checklistId": "fin-step-7",
+      "title": "Reports & analytics",
+      "message": "Use Accounts reports and Visual analytics once data is flowing. Check Finance settings if reports show the wrong year.",
+      "links": [
+        { "href": {{ employee_dash_url('finance-overview')|tojson }}, "label": "Accounts reports" },
+        { "href": {{ employee_dash_url('visual-analytics')|tojson }}, "label": "Visual analytics" }
+      ],
+      "checklist": [
+        { "id": "reports", "label": "Run key finance reports for open year" },
+        { "id": "analytics", "label": "Review visual analytics dashboard" }
+      ]
+    }
+  ],
+  "pageGuides": [
+    {
+      "pathKeys": ["finance-settings"],
+      "checklistId": "page-finance-settings",
+      "stepIndex": 0,
+      "pageTitle": "Finance settings",
+      "message": "You are on Finance settings. This controls the open financial year and opening balances.",
+      "checklist": [
+        { "id": "view-years", "label": "Review existing financial years" },
+        { "id": "create-open", "label": "Create or open the current financial year" },
+        { "id": "opening", "label": "Set opening balances if required" },
+        { "id": "save", "label": "Save changes before posting transactions" }
+      ]
+    },
+    {
+      "pathKeys": ["petty-cash-book"],
+      "checklistId": "page-petty-cash",
+      "stepIndex": 1,
+      "pageTitle": "Petty cash book",
+      "message": "You are on Petty cash book — day-to-day small cash movements.",
+      "checklist": [
+        { "id": "account", "label": "Confirm petty cash ledger account exists" },
+        { "id": "entries", "label": "Record receipts and payments" },
+        { "id": "balance", "label": "Reconcile balance with physical cash" }
+      ]
+    },
+    {
+      "pathKeys": ["accounts"],
+      "checklistId": "page-accounts",
+      "stepIndex": 1,
+      "pageTitle": "Accounts",
+      "message": "You are on Accounts — your chart of accounts for all finance activity.",
+      "checklist": [
+        { "id": "register", "label": "Register each ledger account (bank, income, expense)" },
+        { "id": "type", "label": "Choose correct account category" },
+        { "id": "active", "label": "Keep only accounts you use marked active" },
+        { "id": "open-detail", "label": "Open an account to view its ledger" }
+      ]
+    },
+    {
+      "pathKeys": ["fee-structures"],
+      "checklistId": "page-fee-structures",
+      "stepIndex": 2,
+      "pageTitle": "Fee structures",
+      "message": "You are on Fee structures. Define what each class pays per term.",
+      "checklist": [
+        { "id": "add", "label": "Add fee structure for class and term" },
+        { "id": "items", "label": "Add fee votes/line items and amounts" },
+        { "id": "account-link", "label": "Link structure to finance account" },
+        { "id": "activate", "label": "Activate structure when ready for billing" }
+      ]
+    },
+    {
+      "pathKeys": ["student-fees"],
+      "checklistId": "page-student-fees",
+      "stepIndex": 3,
+      "pageTitle": "Student fees",
+      "message": "You are on Student fees — billing and collections.",
+      "checklist": [
+        { "id": "filter", "label": "Filter by class, term, or payment status" },
+        { "id": "assign", "label": "Ensure students are on the right fee structure" },
+        { "id": "pay", "label": "Record a payment or generate invoice" },
+        { "id": "receipt", "label": "Print/download receipt after payment" }
+      ]
+    },
+    {
+      "pathKeys": ["payments-audit"],
+      "checklistId": "page-payments-audit",
+      "stepIndex": 3,
+      "pageTitle": "Payments audit",
+      "message": "You are on Payments audit — review fee payment history.",
+      "checklist": [
+        { "id": "filters", "label": "Set date range and filters" },
+        { "id": "review", "label": "Review payments for errors or duplicates" },
+        { "id": "export", "label": "Export or print if needed for auditors" }
+      ]
+    },
+    {
+      "pathKeys": ["pocket-money"],
+      "checklistId": "page-pocket-money",
+      "stepIndex": 3,
+      "pageTitle": "Students pocket money",
+      "message": "You are on Students pocket money — optional student wallet balances.",
+      "checklist": [
+        { "id": "setup", "label": "Confirm pocket money rules with school policy" },
+        { "id": "deposit", "label": "Record deposits or withdrawals" },
+        { "id": "balance", "label": "Check student balances" }
+      ]
+    },
+    {
+      "pathKeys": ["payments-invoices"],
+      "checklistId": "page-payments-invoices",
+      "stepIndex": 4,
+      "pageTitle": "Payments / invoices",
+      "message": "You are on Payments / invoices — pay suppliers and track invoices.",
+      "checklist": [
+        { "id": "supplier", "label": "Select or add supplier details" },
+        { "id": "invoice", "label": "Enter invoice amount and reference" },
+        { "id": "account", "label": "Post to correct expense account" },
+        { "id": "save", "label": "Save and file supporting document" }
+      ]
+    },
+    {
+      "pathKeys": ["revenue"],
+      "checklistId": "page-revenue",
+      "stepIndex": 4,
+      "pageTitle": "Revenue",
+      "message": "You are on Revenue — register income that is not student fees.",
+      "checklist": [
+        { "id": "register", "label": "Use Register income for new entries" },
+        { "id": "account", "label": "Choose income ledger account" },
+        { "id": "amount", "label": "Enter amount, date, and description" },
+        { "id": "verify", "label": "Confirm entry appears on account report" }
+      ]
+    },
+    {
+      "pathKeys": ["expense-records"],
+      "checklistId": "page-expense-records",
+      "stepIndex": 5,
+      "pageTitle": "Expense records",
+      "message": "You are on Expense records — school operating expenses.",
+      "checklist": [
+        { "id": "new", "label": "Add new expense with date and amount" },
+        { "id": "vote", "label": "Assign expense category/vote" },
+        { "id": "attach", "label": "Attach reference or notes" },
+        { "id": "audit", "label": "Check Expense audits periodically" }
+      ]
+    },
+    {
+      "pathKeys": ["expense-audits"],
+      "checklistId": "page-expense-audits",
+      "stepIndex": 5,
+      "pageTitle": "Expense audits",
+      "message": "You are on Expense audits — review posted expenses.",
+      "checklist": [
+        { "id": "period", "label": "Select financial year or date range" },
+        { "id": "review", "label": "Review entries for accuracy" }
+      ]
+    },
+    {
+      "pathKeys": ["staff-and-salaries"],
+      "checklistId": "page-staff-salaries",
+      "stepIndex": 5,
+      "pageTitle": "Staff & salaries",
+      "message": "You are on Staff & salaries — payroll setup and payments.",
+      "checklist": [
+        { "id": "staff", "label": "Confirm staff list is complete" },
+        { "id": "salary", "label": "Set salary amount per staff member" },
+        { "id": "pay", "label": "Use Pay salary when disbursing" },
+        { "id": "records", "label": "Review Salary records and audits" }
+      ]
+    },
+    {
+      "pathKeys": ["salary-records"],
+      "checklistId": "page-salary-records",
+      "stepIndex": 5,
+      "pageTitle": "Salary records",
+      "message": "You are on Salary records — history of salary payments.",
+      "checklist": [
+        { "id": "filter", "label": "Filter by month or staff" },
+        { "id": "verify", "label": "Verify amounts match payroll" }
+      ]
+    },
+    {
+      "pathKeys": ["finance-overview"],
+      "checklistId": "page-finance-overview",
+      "stepIndex": 6,
+      "pageTitle": "Accounts reports",
+      "message": "You are on Accounts reports — financial statements and vote reports.",
+      "checklist": [
+        { "id": "year", "label": "Select correct financial year" },
+        { "id": "report", "label": "Open the report you need (income, expenditure, etc.)" },
+        { "id": "filters", "label": "Apply date or account filters" },
+        { "id": "export", "label": "Print or export for management" }
+      ]
+    },
+    {
+      "pathKeys": ["visual-analytics"],
+      "checklistId": "page-visual-analytics",
+      "stepIndex": 6,
+      "pageTitle": "Visual analytics",
+      "message": "You are on Visual analytics — charts for income, expenses, and fees.",
+      "checklist": [
+        { "id": "year", "label": "Confirm financial year filter" },
+        { "id": "tabs", "label": "Explore income, expense, and fee tabs" },
+        { "id": "share", "label": "Use insights for management meetings" }
+      ]
+    },
+    {
+      "pathKeys": ["integration-settings/finance"],
+      "checklistId": "page-integration-finance",
+      "stepIndex": 0,
+      "pageTitle": "Finance integrations",
+      "message": "You are on Finance integration settings (e.g. M-Pesa). Configure before online payments.",
+      "checklist": [
+        { "id": "credentials", "label": "Enter API/credentials from provider" },
+        { "id": "test", "label": "Run test connection if available" },
+        { "id": "save", "label": "Save settings" }
+      ]
+    }
+  ]
+}
+</script>

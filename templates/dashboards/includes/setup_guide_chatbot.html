@@ -1,0 +1,71 @@
+{# Floating setup assistant — curriculum coordinator & accountant / finance #}
+{% set _sgc_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% set _sgc_enabled = session.get('user_id') and _sgc_role in ('curriculum coordinator', 'accountant') %}
+{% if _sgc_enabled %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/setup-guide-chatbot.css') }}">
+{% if _sgc_role == 'curriculum coordinator' %}
+{% include 'dashboards/includes/setup_guide_chatbot_config_curriculum.html' %}
+{% elif _sgc_role == 'accountant' %}
+{% include 'dashboards/includes/setup_guide_chatbot_config_accountant.html' %}
+{% endif %}
+<div id="setup-guide-chatbot"
+     class="setup-guide-chatbot setup-guide-chatbot--{{ 'accountant' if _sgc_role == 'accountant' else 'coordinator' }}"
+     role="complementary"
+     aria-label="Setup guide assistant">
+    <div id="setup-guide-chatbot-panel" class="setup-guide-chatbot__panel" data-sgc-panel>
+        <header class="setup-guide-chatbot__header">
+            <div class="setup-guide-chatbot__header-inner">
+                <div class="setup-guide-chatbot__avatar" aria-hidden="true">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div>
+                    <div class="setup-guide-chatbot__title" data-sgc-title>Setup Assistant</div>
+                    <div class="setup-guide-chatbot__subtitle" data-sgc-subtitle>Setup guide</div>
+                    <div class="setup-guide-chatbot__live">
+                        <span class="setup-guide-chatbot__live-dot" aria-hidden="true"></span>
+                        <span data-sgc-live-label>Live guide</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <div class="setup-guide-chatbot__messages" data-sgc-messages role="log" aria-live="polite" aria-relevant="additions"></div>
+        <footer class="setup-guide-chatbot__footer">
+            <div class="setup-guide-chatbot__progress" data-sgc-progress hidden>
+                <div class="setup-guide-chatbot__progress-track" aria-hidden="true">
+                    <span class="setup-guide-chatbot__progress-fill" data-sgc-progress-fill style="width:0%"></span>
+                </div>
+                <p class="setup-guide-chatbot__progress-text" data-sgc-progress-text>0 of 0 done</p>
+                <button type="button" class="setup-guide-chatbot__progress-reset" data-sgc-reset-checklist hidden>
+                    Uncheck all on this list
+                </button>
+            </div>
+            <div class="setup-guide-chatbot__cta-wrap" data-sgc-cta-wrap hidden>
+                <p class="setup-guide-chatbot__cta-label" data-sgc-cta-label>Go to this step</p>
+                <div class="setup-guide-chatbot__cta-links" data-sgc-cta-links></div>
+            </div>
+            <button type="button" class="setup-guide-chatbot__page-help-btn" data-sgc-page-help hidden>
+                <i class="fas fa-map-signs" aria-hidden="true"></i> Explain this page again
+            </button>
+            <div class="setup-guide-chatbot__chips" data-sgc-chips aria-label="Setup steps"></div>
+            <div class="setup-guide-chatbot__nav">
+                <button type="button" class="setup-guide-chatbot__nav-btn setup-guide-chatbot__nav-btn--ghost" data-sgc-prev disabled>Previous</button>
+                <button type="button" class="setup-guide-chatbot__nav-btn setup-guide-chatbot__nav-btn--primary" data-sgc-next>Next step</button>
+            </div>
+            <button type="button" class="setup-guide-chatbot__nav-btn setup-guide-chatbot__nav-btn--ghost w-full mt-2" data-sgc-restart style="width:100%;margin-top:0.4rem;">
+                Full setup guide
+            </button>
+        </footer>
+    </div>
+    <button type="button"
+            class="setup-guide-chatbot__fab"
+            data-sgc-fab
+            aria-expanded="false"
+            aria-controls="setup-guide-chatbot-panel"
+            title="Open setup guide">
+        <span class="setup-guide-chatbot__fab-badge" aria-hidden="true"></span>
+        <i class="fas fa-comments" aria-hidden="true"></i>
+        <span class="sr-only">Open setup guide chat</span>
+    </button>
+</div>
+<script defer src="{{ url_for('static', filename='js/setup-guide-chatbot.js') }}"></script>
+{% endif %}
