@@ -35,6 +35,21 @@
 .dark .sf-cat-badge--both{background:rgba(139,92,246,.22);color:#c4b5fd}
 .sf-cat-badge--neutral{background:rgba(100,116,139,.12);color:#475569}
 .dark .sf-cat-badge--neutral{background:rgba(100,116,139,.25);color:#cbd5e1}
+.sf-pagination{display:flex;flex-direction:column;align-items:stretch;gap:.5rem;padding:.75rem 1rem;background:#fff;border:1px solid rgb(226 232 240);border-radius:.75rem;box-shadow:0 1px 3px rgb(15 23 42 / .06)}
+.dark .sf-pagination{background:rgb(30 41 59);border-color:rgb(51 65 85)}
+.sf-pagination.sf-pagination--hidden{display:none!important}
+.sf-pagination--page-bottom{margin-top:1.25rem;margin-bottom:2.5rem}
+@media(min-width:640px){.sf-pagination{flex-direction:row;align-items:center;justify-content:space-between}}
+.sf-pagination__label{font-size:.8125rem;font-weight:500;color:#475569;text-align:center}
+.dark .sf-pagination__label{color:#94a3b8}
+@media(min-width:640px){.sf-pagination__label{text-align:left}}
+.sf-pagination__actions{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;width:100%}
+@media(min-width:640px){.sf-pagination__actions{display:flex;width:auto;gap:.5rem}}
+.sf-page-btn{min-height:2.75rem;display:inline-flex;align-items:center;justify-content:center;gap:.35rem;padding:.5rem 1rem;font-size:.875rem;font-weight:600;border-radius:.75rem;border:1px solid rgb(13 148 136);background:rgb(13 148 136);color:#fff;cursor:pointer;transition:background .15s,opacity .15s,transform .1s}
+.sf-page-btn:hover:not(:disabled){background:rgb(15 118 110)}
+.sf-page-btn:active:not(:disabled){transform:scale(.98)}
+.sf-page-btn:disabled{opacity:.45;cursor:not-allowed;background:rgb(148 163 184);border-color:rgb(148 163 184);color:#fff}
+.dark .sf-page-btn:disabled{background:rgb(71 85 105);border-color:rgb(71 85 105)}
 </style>
 {% endblock %}
 
@@ -205,14 +220,18 @@
         </div>
     </div>
 
-    <div id="sfPaginationBar" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 px-1 hidden">
-        <p id="sfPageHint" class="text-xs sm:text-sm text-slate-600 dark:text-slate-400"></p>
-        <p id="sfListError" class="text-xs text-rose-600 dark:text-rose-400 hidden"></p>
-        <div id="sfPageNav" class="flex items-center gap-2 hidden">
-            <button type="button" id="sfPrevPage" class="min-h-[40px] px-3 py-2 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-40">Previous</button>
-            <button type="button" id="sfNextPage" class="min-h-[40px] px-3 py-2 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-40">Next</button>
+    <p id="sfListError" class="text-xs text-rose-600 dark:text-rose-400 mb-3 hidden"></p>
+    <nav class="sf-pagination sf-pagination--hidden mb-4" data-sf-pagination aria-label="Student register pages">
+        <span class="sf-pagination__label sf-page-hint tabular-nums"></span>
+        <div class="sf-pagination__actions">
+            <button type="button" class="sf-page-btn sf-prev-page touch-btn" aria-label="Previous page">
+                <i class="fas fa-chevron-left" aria-hidden="true"></i><span>Previous</span>
+            </button>
+            <button type="button" class="sf-page-btn sf-next-page touch-btn" aria-label="Next page">
+                <span>Next</span><i class="fas fa-chevron-right" aria-hidden="true"></i>
+            </button>
         </div>
-    </div>
+    </nav>
     <div id="sfListLoading" class="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-white dark:bg-gray-800 px-4 py-12 text-center text-slate-500 mb-4 hidden">
         <i class="fas fa-spinner fa-spin text-2xl text-emerald-600 mb-2"></i>
         <p class="text-sm font-medium">Loading students…</p>
@@ -244,6 +263,18 @@
             </table>
         </div>
     </div>
+
+    <nav class="sf-pagination sf-pagination--page-bottom sf-pagination--hidden" data-sf-pagination aria-label="Student register pages at bottom of page">
+        <span class="sf-pagination__label sf-page-hint tabular-nums"></span>
+        <div class="sf-pagination__actions">
+            <button type="button" class="sf-page-btn sf-prev-page touch-btn" aria-label="Previous page">
+                <i class="fas fa-chevron-left" aria-hidden="true"></i><span>Previous</span>
+            </button>
+            <button type="button" class="sf-page-btn sf-next-page touch-btn" aria-label="Next page">
+                <span>Next</span><i class="fas fa-chevron-right" aria-hidden="true"></i>
+            </button>
+        </div>
+    </nav>
 
 <script>
 {% include 'dashboards/includes/student_fees_list_loader.js' %}

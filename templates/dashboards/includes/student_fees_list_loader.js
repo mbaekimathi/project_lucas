@@ -173,29 +173,40 @@
     state.loading = on;
     var ld = qs('sfListLoading');
     if (ld) ld.classList.toggle('hidden', !on);
+    if (state.pages > 1) updatePagination();
+  }
+
+  function scrollToRegister() {
+    var anchor =
+      document.querySelector('.sf-pagination--page-bottom:not(.sf-pagination--hidden)') ||
+      document.querySelector('.sf-panel .sf-table');
+    if (anchor && anchor.scrollIntoView) {
+      anchor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
   function updatePagination() {
-    var bar = qs('sfPaginationBar');
-    var hint = qs('sfPageHint');
-    var nav = qs('sfPageNav');
-    var prev = qs('sfPrevPage');
-    var next = qs('sfNextPage');
-    if (!bar) return;
-    if (state.total > 0 || state.loading) {
-      bar.classList.remove('hidden');
-    } else {
-      bar.classList.add('hidden');
-    }
-    if (hint) {
-      hint.textContent =
-        state.total > 0
-          ? 'Page ' + state.page + ' of ' + state.pages + ' · ' + state.total + ' student(s) in session'
-          : '';
-    }
-    if (nav) nav.classList.toggle('hidden', state.pages <= 1);
-    if (prev) prev.disabled = state.page <= 1 || state.loading;
-    if (next) next.disabled = state.page >= state.pages || state.loading;
+    var bars = document.querySelectorAll('[data-sf-pagination]');
+    var hints = document.querySelectorAll('.sf-page-hint');
+    var prevs = document.querySelectorAll('.sf-prev-page');
+    var nexts = document.querySelectorAll('.sf-next-page');
+    var show = state.pages > 1 && state.total > 0;
+    var hintText =
+      state.total > 0
+        ? 'Page ' + state.page + ' of ' + state.pages + ' · ' + state.total + ' student(s) in session'
+        : '';
+    bars.forEach(function (bar) {
+      bar.classList.toggle('sf-pagination--hidden', !show);
+    });
+    hints.forEach(function (hint) {
+      hint.textContent = hintText;
+    });
+    prevs.forEach(function (btn) {
+      btn.disabled = state.page <= 1 || state.loading;
+    });
+    nexts.forEach(function (btn) {
+      btn.disabled = state.page >= state.pages || state.loading;
+    });
   }
 
   function buildQuery(page) {
@@ -231,7 +242,7 @@
     tbody.innerHTML = html;
   }
 
-  function fetchStudents(page) {
+  function fetchStudents(page, scrollAfter) {
     if (!state.cfg.studentsApi) return;
     setLoading(true);
     qs('sfListError') && qs('sfListError').classList.add('hidden');
@@ -250,6 +261,7 @@
             qs('sfListError').classList.remove('hidden');
           }
           renderStudents([]);
+          updatePagination();
           return;
         }
         var meta = data.meta || {};
@@ -258,6 +270,7 @@
         state.total = meta.total || 0;
         renderStudents(data.students || []);
         updatePagination();
+        if (scrollAfter) scrollToRegister();
       })
       .catch(function () {
         setLoading(false);
@@ -266,12 +279,27 @@
           qs('sfListError').classList.remove('hidden');
         }
         renderStudents([]);
+        updatePagination();
       });
   }
 
   window.sfReloadList = function (page) {
     fetchStudents(page != null ? page : state.page);
   };
+
+  function bindPagination() {
+    document.body.addEventListener('click', function (e) {
+      var prevBtn = e.target.closest('.sf-prev-page');
+      if (prevBtn && !prevBtn.disabled && state.page > 1) {
+        fetchStudents(state.page - 1, true);
+        return;
+      }
+      var nextBtn = e.target.closest('.sf-next-page');
+      if (nextBtn && !nextBtn.disabled && state.page < state.pages) {
+        fetchStudents(state.page + 1, true);
+      }
+    });
+  }
 
   function bindActions() {
     document.body.addEventListener('click', function (e) {
@@ -302,11 +330,10 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     bindActions();
+    bindPagination();
     var searchInput = qs('searchStudents');
     var filterGrade = qs('filterGrade');
     var filterCategory = qs('filterCategory');
-    var prev = qs('sfPrevPage');
-    var next = qs('sfNextPage');
 
     if (searchInput) {
       searchInput.addEventListener('input', function () {
@@ -326,13 +353,6 @@
         fetchStudents(1);
       });
     }
-    if (prev) prev.addEventListener('click', function () {
-      if (state.page > 1) fetchStudents(state.page - 1);
-    });
-    if (next) next.addEventListener('click', function () {
-      if (state.page < state.pages) fetchStudents(state.page + 1);
-    });
-
     fetchStudents(1);
   });
 })();
