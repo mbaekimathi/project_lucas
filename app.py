@@ -1073,7 +1073,12 @@ def is_hosted():
     """Check if the application is running on the hosted server"""
     # Check if we're in the production path
     current_path = os.path.abspath(os.getcwd())
-    if any(p in current_path.replace('\\', '/') for p in ['/home1/projectl/elimu_centric', '/home1/projectl/project_lucas']):
+    if any(p in current_path.replace('\\', '/') for p in [
+        '/home1/projectl/elimu_centric',
+        '/home1/projectl/project_lucas',
+        '/home1/projectl/PROJECT_LUCAS_SCHOOL',
+        '/home1/projectl/project_lucas_git',
+    ]):
         return True
     
     # Check for environment variable that indicates hosting
@@ -69327,31 +69332,55 @@ def toggle_term_lock(term_id):
         connection.close()
 
 
+def _safe_startup_log(message):
+    """Log startup messages without crashing Passenger (stdout may be closed)."""
+    try:
+        print(message, flush=True)
+    except (BrokenPipeError, OSError):
+        pass
+
+
 def _ensure_db_schema():
     """Check DB health and auto-create missing tables. Runs on every app load (local + hosted)."""
     try:
         from db_health import check_and_heal
         ok, msg = check_and_heal()
         if ok:
-            print(f"[DB] {msg}")
+            _safe_startup_log(f"[DB] {msg}")
         else:
-            print(f"[DB] Warning: {msg} - run: python update_db.py")
+            _safe_startup_log(f"[DB] Warning: {msg} - run: python update_db.py")
     except Exception as e:
-        print(f"[DB] Check failed: {e}")
+        _safe_startup_log(f"[DB] Check failed: {e}")
         try:
             if init_db():
-                print("[DB] Tables created/verified (fallback)")
+                _safe_startup_log("[DB] Tables created/verified (fallback)")
             from migrations.migration_manager import run_all_migrations
             run_all_migrations()
         except Exception as e2:
-            print(f"[DB] Fallback failed: {e2}")
+            _safe_startup_log(f"[DB] Fallback failed: {e2}")
+
+
+_db_schema_initialized = False
+
+
+def _ensure_db_schema_once():
+    global _db_schema_initialized
+    if _db_schema_initialized:
+        return
+    _db_schema_initialized = True
+    _ensure_db_schema()
 
 
 # /<role>/… → /dashboard/… ; /dashboard/<role-slug>/… → /dashboard/employee/…
 app.wsgi_app = RootRolePathRewriteMiddleware(DashboardRolePathRewriteMiddleware(app.wsgi_app))
 
-# Apply schema and migrations when app is loaded (so git pull + restart updates DB)
-_ensure_db_schema()
+# Hosted: defer heavy DB init to first request (avoids Passenger broken-pipe/timeouts on import).
+if is_hosted():
+    @app.before_request
+    def _hosted_deferred_db_schema():
+        _ensure_db_schema_once()
+else:
+    _ensure_db_schema_once()
 
 
 @app.cli.command('update-db')
