@@ -51992,12 +51992,6 @@ def save_timetable():
             'message': f'Missing or invalid required fields: academic_year_id={academic_year_id}, term_id={term_id}, academic_level_id={academic_level_id}'
         }), 400
     
-    if not slots or len(slots) == 0:
-        return jsonify({
-            'success': False, 
-            'message': 'No time slots selected. Please select at least one time slot with a teacher and subject assigned.'
-        }), 400
-    
     connection = get_db_connection()
     if not connection:
         return jsonify({'success': False, 'message': 'Database connection failed'}), 500

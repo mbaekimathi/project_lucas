@@ -163,7 +163,7 @@
                 <h1 class="text-lg font-bold text-gray-900 dark:text-white">
                     <i class="fas fa-edit text-blue-600 mr-2"></i>Manage Timetable
         </h1>
-                <p class="text-sm text-gray-500">Select a class and click on cells to edit (one session = one teacher + one subject)</p>
+                <p class="text-sm text-gray-500">Select a class and click cells to assign — changes auto-save when there is no conflict</p>
     </div>
             <div class="flex flex-col sm:items-end gap-2">
                 <div class="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -258,7 +258,7 @@
                     <div>
                         <h2 class="font-bold text-white text-lg" x-text="selectedClassName"></h2>
                         <p class="text-blue-100 text-xs">
-                            Click on any cell to assign or change teacher and subject
+                            Click a cell to assign — changes auto-save when there is no scheduling conflict
                             <span x-show="settingsProfileName">· Schedule: <span class="font-semibold" x-text="settingsProfileName"></span></span>
                         </p>
                     </div>
@@ -341,7 +341,7 @@
                 <span><span class="inline-block w-3 h-3 bg-green-100 border border-green-300 rounded mr-1"></span> Assigned</span>
                 <span><span class="inline-block w-3 h-3 bg-white border border-gray-300 rounded mr-1"></span> Empty</span>
                 <span><span class="inline-block w-3 h-3 bg-red-100 border-l-2 border-red-500 rounded mr-1"></span> Teacher busy</span>
-                <span class="ml-auto">Click cell to edit • Hover to remove</span>
+                <span class="ml-auto">Auto-saves when no conflict · Hover cell to remove</span>
             </div>
         </div>
     </div>
@@ -399,7 +399,7 @@
                 <!-- Teachers -->
                 <div class="space-y-1">
                     <template x-for="teacher in filteredTeachers" :key="teacher.id">
-                        <button @click="onTeacherSelected(teacher.id)"
+                        <button @click="onTeacherSelected(teacher.id, true)"
                                 class="w-full text-left px-3 py-2 rounded-lg transition flex items-center gap-3"
                                 :class="{ 
                                     'bg-blue-100 dark:bg-blue-900/50': modalTeacherId == teacher.id,
@@ -436,7 +436,7 @@
 
                 <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Subject</label>
-                    <select x-model="modalSubjectId" :disabled="!modalTeacherId" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50">
+                    <select x-model="modalSubjectId" @change="scheduleAutoSaveFromModal()" :disabled="!modalTeacherId" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50">
                         <option value="">Choose subject...</option>
                         <template x-for="subject in modalSubjects" :key="subject.id">
                             <option :value="subject.id" x-text="subject.label"></option>
@@ -446,20 +446,21 @@
             </div>
 
             <!-- Modal Footer -->
-            <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between">
-                <button @click="removeSlot(modalDay, modalTime); closeModal()"
-                        x-show="getSlot(modalDay, modalTime)"
-                        class="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg">
-                    <i class="fas fa-trash mr-1"></i>Remove
-                </button>
-                <button @click="closeModal()" class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 ml-auto">
-                    Cancel
-                </button>
-                <button @click="assignTeacherSubject()"
-                        :disabled="!modalTeacherId || !modalSubjectId"
-                        class="ml-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                    Save Slot
-                </button>
+            <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-xs text-gray-500 dark:text-gray-400 order-2 sm:order-1">
+                    <span x-show="autoSaving || saveStatus === 'saving'"><i class="fas fa-spinner fa-spin mr-1"></i>Saving…</span>
+                    <span x-show="!autoSaving && saveStatus !== 'saving'">Select teacher and subject — auto-saves when there is no conflict</span>
+                </p>
+                <div class="flex items-center gap-2 order-1 sm:order-2 sm:ml-auto">
+                    <button @click="removeSlot(modalDay, modalTime); closeModal()"
+                            x-show="getSlot(modalDay, modalTime)"
+                            class="px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg">
+                        <i class="fas fa-trash mr-1"></i>Remove
+                    </button>
+                    <button @click="closeModal()" class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+                        Close
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -588,6 +589,8 @@ function manageApp() {
         modalSubjectId: '',
         teacherSearch: '',
         saveStatus: '',
+        autoSaving: false,
+        autoSaveTimer: null,
         loadingConflicts: false,
         settingsProfileName: '',
         conflicts: {},  // { teacher_id: class_name }
@@ -737,13 +740,77 @@ function manageApp() {
                 .sort((a, b) => a.label.localeCompare(b.label));
         },
 
-        onTeacherSelected(teacherId) {
+        onTeacherSelected(teacherId, triggerAutoSave = false) {
+            if (this.conflicts[teacherId]) {
+                const teacher = this.teachers.find(t => t.id == teacherId);
+                const teacherName = teacher ? teacher.full_name : 'This teacher';
+                this.showToast(
+                    'warning',
+                    'Teacher Already Assigned',
+                    `${teacherName} is teaching ${this.conflicts[teacherId]} at this time`,
+                    0
+                );
+                return;
+            }
             this.modalTeacherId = teacherId;
             const subjects = this.levelPairs
                 .filter(p => p.teacher_id == teacherId)
                 .map(p => ({ id: p.subject_id }))
                 .filter((v, i, arr) => arr.findIndex(x => x.id == v.id) === i);
             this.modalSubjectId = subjects.length > 0 ? subjects[0].id : '';
+            if (triggerAutoSave && subjects.length === 1) {
+                this.scheduleAutoSaveFromModal();
+            }
+        },
+
+        scheduleAutoSaveFromModal() {
+            clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = setTimeout(() => this.tryAutoSaveFromModal(), 280);
+        },
+
+        canAutoSaveFromModal() {
+            return !!(this.modalTeacherId && this.modalSubjectId && !this.conflicts[this.modalTeacherId]);
+        },
+
+        applyModalToSlot() {
+            const teacherId = this.modalTeacherId;
+            const subjectId = this.modalSubjectId;
+            if (!teacherId || !subjectId) return false;
+
+            const key = `${this.modalDay}|${this.modalTime}`;
+            const subject = this.modalSubjects.find(s => s.id == subjectId);
+            const pair = this.levelPairs.find(p => String(p.teacher_id) === String(teacherId) && String(p.subject_id) === String(subjectId));
+            const teacher = this.teachers.find(t => t.id == teacherId);
+            const refId = pair
+                ? String(pair.staff_employee_number != null ? pair.staff_employee_number : (pair.portal_employee_number || '')).trim()
+                : String(teacher?.staff_employee_number || teacher?.portal_employee_number || '').trim();
+            const portalId = pair
+                ? String(pair.portal_employee_number || '').trim()
+                : String(teacher?.portal_employee_number || '').trim();
+            this.slots[key] = {
+                teacher_id: teacherId,
+                subject_id: subjectId,
+                subject_name: subject ? subject.subject_name : '',
+                subject_code: subject ? subject.subject_code : '',
+                teacher_name: pair ? (pair.teacher_name || '') : (teacher ? teacher.full_name : ''),
+                staff_employee_number: refId,
+                portal_employee_id: portalId
+            };
+            return true;
+        },
+
+        async tryAutoSaveFromModal() {
+            if (!this.canAutoSaveFromModal() || this.autoSaving) return;
+            if (!this.applyModalToSlot()) return;
+
+            this.autoSaving = true;
+            const saved = await this.saveChanges({ silent: true, skipReload: true });
+            this.autoSaving = false;
+
+            if (saved) {
+                this.closeModal();
+                this.showToast('success', 'Saved', 'Timetable slot saved automatically', 2000);
+            }
         },
 
         isEligibleTeacher(teacherId) {
@@ -752,6 +819,7 @@ function manageApp() {
         
         showToast(type, title, message, duration = 4000) {
             this.toast = { show: true, hiding: false, type, title, message };
+            if (duration == null || duration <= 0) return;
             setTimeout(() => {
                 this.toast.hiding = true;
                 setTimeout(() => {
@@ -878,56 +946,19 @@ function manageApp() {
         },
         
         closeModal() {
+            clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = null;
             this.modalOpen = false;
             this.conflicts = {};
-        },
-        
-        async assignTeacherSubject() {
-            const teacherId = this.modalTeacherId;
-            const subjectId = this.modalSubjectId;
-            if (!teacherId || !subjectId) return;
-            if (this.conflicts[teacherId]) {
-                const className = this.conflicts[teacherId];
-                const teacher = this.teachers.find(t => t.id == teacherId);
-                const teacherName = teacher ? teacher.full_name : 'This teacher';
-                
-                this.showToast(
-                    'warning',
-                    'Teacher Already Assigned',
-                    `${teacherName} is teaching ${className} at this time`
-                );
-                return; // Prevent assignment
-            }
-            
-            const key = `${this.modalDay}|${this.modalTime}`;
-            const subject = this.modalSubjects.find(s => s.id == subjectId);
-            const pair = this.levelPairs.find(p => String(p.teacher_id) === String(teacherId) && String(p.subject_id) === String(subjectId));
-            const teacher = this.teachers.find(t => t.id == teacherId);
-            const refId = pair
-                ? String(pair.staff_employee_number != null ? pair.staff_employee_number : (pair.portal_employee_number || '')).trim()
-                : String(teacher?.staff_employee_number || teacher?.portal_employee_number || '').trim();
-            const portalId = pair
-                ? String(pair.portal_employee_number || '').trim()
-                : String(teacher?.portal_employee_number || '').trim();
-            this.slots[key] = {
-                teacher_id: teacherId,
-                subject_id: subjectId,
-                subject_name: subject ? subject.subject_name : '',
-                subject_code: subject ? subject.subject_code : '',
-                teacher_name: pair ? (pair.teacher_name || '') : (teacher ? teacher.full_name : ''),
-                staff_employee_number: refId,
-                portal_employee_id: portalId
-            };
-            this.closeModal();
-            await this.saveChanges();
-
-            this.showToast('success', 'Teacher Assigned', `${teacher?.full_name || 'Teacher'} assigned successfully`);
         },
         
         async removeSlot(day, time) {
             const key = `${day}|${time}`;
             delete this.slots[key];
-            await this.saveChanges();
+            const saved = await this.saveChanges({ silent: true, skipReload: true });
+            if (saved) {
+                this.showToast('success', 'Removed', 'Slot cleared and saved', 2000);
+            }
         },
 
         openResetConfirmModal() {
@@ -1032,14 +1063,22 @@ function manageApp() {
             }
         },
         
-        async saveChanges() {
+        async saveChanges(options = {}) {
+            const { silent = false, skipReload = false } = options;
+
             if (!this.yearId || !this.termId) {
-                this.showToast('warning', 'Missing Selection', 'Please select Academic Year and Term first');
-                return;
+                if (!silent) {
+                    this.showToast('warning', 'Missing Selection', 'Please select Academic Year and Term first');
+                }
+                return false;
             }
-            
+
+            if (!this.selectedClassId) {
+                return false;
+            }
+
             this.saveStatus = 'saving';
-            
+
             const slotsArray = [];
             for (const key in this.slots) {
                 if (this.slots[key] && this.slots[key].teacher_id && this.slots[key].subject_id) {
@@ -1052,7 +1091,7 @@ function manageApp() {
                     });
                 }
             }
-            
+
             try {
                 const res = await fetch('{{ employee_dash_url('timetable-management/register-timetable/save') }}', {
                     method: 'POST',
@@ -1065,20 +1104,25 @@ function manageApp() {
                     })
                 });
                 const result = await res.json();
-                
+
                 if (result.success) {
                     this.saveStatus = 'saved';
-                    await this.selectClass(this.selectedClassId, this.selectedClassName, true);
+                    if (!skipReload) {
+                        await this.selectClass(this.selectedClassId, this.selectedClassName, true);
+                    }
                     setTimeout(() => { this.saveStatus = ''; }, 2000);
-                } else {
-                    this.saveStatus = 'error';
-                    this.showToast('warning', 'Save Failed', result.message || 'Error saving timetable');
-                    console.error('Save failed:', result.message);
+                    return true;
                 }
+
+                this.saveStatus = 'error';
+                this.showToast('warning', 'Save Failed', result.message || 'Error saving timetable', 0);
+                console.error('Save failed:', result.message);
+                return false;
             } catch (e) {
                 console.error('Save error:', e);
                 this.saveStatus = 'error';
-                this.showToast('warning', 'Save Error', 'Network error occurred');
+                this.showToast('warning', 'Save Error', 'Network error occurred', 0);
+                return false;
             }
         }
     };
