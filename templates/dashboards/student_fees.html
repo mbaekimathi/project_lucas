@@ -25,6 +25,16 @@
 .sf-pay-field:focus{outline:none;border-color:rgb(20 184 166);box-shadow:0 0 0 3px rgb(20 184 166 / .15)}
 .sf-pay-label{display:block;font-size:.6875rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:rgb(100 116 139);margin-bottom:.375rem}
 .dark .sf-pay-label{color:rgb(148 163 184)}
+.sf-student-meta{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .5rem;margin-top:.25rem}
+.sf-cat-badge{display:inline-flex;align-items:center;padding:.125rem .5rem;border-radius:9999px;font-size:.625rem;font-weight:600;line-height:1.35;letter-spacing:.02em;text-transform:capitalize;white-space:nowrap}
+.sf-cat-badge--self{background:rgba(16,185,129,.14);color:#047857}
+.dark .sf-cat-badge--self{background:rgba(16,185,129,.22);color:#6ee7b7}
+.sf-cat-badge--sponsored{background:rgba(249,115,22,.14);color:#c2410c}
+.dark .sf-cat-badge--sponsored{background:rgba(249,115,22,.22);color:#fdba74}
+.sf-cat-badge--both{background:rgba(139,92,246,.14);color:#6d28d9}
+.dark .sf-cat-badge--both{background:rgba(139,92,246,.22);color:#c4b5fd}
+.sf-cat-badge--neutral{background:rgba(100,116,139,.12);color:#475569}
+.dark .sf-cat-badge--neutral{background:rgba(100,116,139,.25);color:#cbd5e1}
 </style>
 {% endblock %}
 
@@ -220,7 +230,7 @@
             <table class="sf-table finance-table min-w-full w-full">
                 <thead class="sf-table-hero bg-gradient-to-r from-slate-800 via-slate-800 to-teal-900">
                     <tr>
-                        <th class="px-3 sm:px-4 lg:px-5 py-3 text-left text-[10px] font-semibold text-white/95 uppercase tracking-wider">Student</th>
+                        <th class="px-3 sm:px-4 lg:px-5 py-3 text-left text-[10px] font-semibold text-white/95 uppercase tracking-wider">Student &amp; category</th>
                         <th class="hidden sm:table-cell px-3 sm:px-4 lg:px-5 py-3 text-left text-[10px] font-semibold text-white/95 uppercase tracking-wider">Grade</th>
                         <th class="hidden md:table-cell sf-col-money px-3 sm:px-4 lg:px-5 py-3 text-[10px] font-semibold text-white/95 uppercase tracking-wider">Fee due</th>
                         <th class="hidden md:table-cell sf-col-money px-3 sm:px-4 lg:px-5 py-3 text-[10px] font-semibold text-white/95 uppercase tracking-wider">Paid</th>

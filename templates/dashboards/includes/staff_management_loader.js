@@ -116,14 +116,45 @@
     if (next) next.disabled = st.loading || st.page >= st.pages;
   }
 
-  function renderRow(emp) {
+  function buildActions(emp, mobile) {
     var st = (emp.status || '').toLowerCase();
     var isSelf = currentPk != null && emp.id === currentPk;
-    var roles = emp.allocated_roles && emp.allocated_roles.length ? emp.allocated_roles : emp.role ? [emp.role] : [];
-    var img = emp.profile_picture
-      ? '<img src="/static/' + esc(emp.profile_picture) + '" alt="" class="w-full h-full object-cover">'
-      : '<i class="fas fa-user text-white text-sm"></i>';
     var actions = '';
+    if (mobile) {
+      if (canEdit) {
+        actions +=
+          '<button type="button" onclick="window.staffOpenEdit(' +
+          emp.id +
+          ')" class="staff-mobile-action staff-mobile-action--edit" title="Edit" aria-label="Edit"><i class="fas fa-pen text-base"></i><span>Edit</span></button>';
+      }
+      if (canDelete && !isSelf) {
+        actions +=
+          '<button type="button" onclick="window.staffOpenDelete(' +
+          emp.id +
+          ', ' +
+          JSON.stringify(emp.full_name || '') +
+          ')" class="staff-mobile-action staff-mobile-action--delete" title="Delete" aria-label="Delete"><i class="fas fa-trash-alt text-base"></i><span>Delete</span></button>';
+      } else if (canDelete && isSelf) {
+        actions +=
+          '<span class="staff-mobile-action staff-mobile-action--disabled" title="Cannot delete own account"><i class="fas fa-trash-alt text-base"></i><span>Delete</span></span>';
+      }
+      if (st !== 'fired' && st !== 'retired' && canEdit) {
+        var suspendLabel = st === 'suspended' ? 'Unsuspend' : 'Suspend';
+        actions +=
+          '<button type="button" onclick="window.staffToggleSuspend(' +
+          emp.id +
+          ')" class="staff-mobile-action staff-mobile-action--suspend' +
+          (st === 'suspended' ? ' staff-mobile-action--suspend-active' : '') +
+          '" title="' +
+          suspendLabel +
+          '" aria-label="' +
+          suspendLabel +
+          '"><i class="fas fa-pause-circle text-base"></i><span>' +
+          suspendLabel +
+          '</span></button>';
+      }
+      return actions;
+    }
     if (canEdit) {
       actions +=
         '<button type="button" onclick="window.staffOpenEdit(' +
@@ -152,6 +183,16 @@
         emp.id +
         ')"><i class="fas fa-pause-circle"></i></label>';
     }
+    return actions;
+  }
+
+  function renderRow(emp) {
+    var st = (emp.status || '').toLowerCase();
+    var roles = emp.allocated_roles && emp.allocated_roles.length ? emp.allocated_roles : emp.role ? [emp.role] : [];
+    var img = emp.profile_picture
+      ? '<img src="/static/' + esc(emp.profile_picture) + '" alt="" class="w-full h-full object-cover">'
+      : '<i class="fas fa-user text-white text-sm"></i>';
+    var actions = buildActions(emp, false);
     return (
       '<tr id="employee-row-' +
       emp.id +
@@ -160,18 +201,18 @@
       '">' +
       '<td><div class="flex items-center gap-3 min-w-0"><div class="staff-avatar">' +
       img +
-      '</div><div class="min-w-0"><p class="font-semibold text-gray-900 dark:text-white truncate max-w-[200px]">' +
+      '</div><div class="min-w-0"><p class="font-semibold text-gray-900 dark:text-white truncate max-w-[12rem] lg:max-w-[200px]">' +
       esc(emp.full_name) +
-      '</p><p class="text-xs text-gray-500 truncate max-w-[200px]">' +
+      '</p><p class="text-xs text-gray-500 truncate max-w-[12rem] lg:max-w-[200px]">' +
       esc(emp.email) +
       '</p></div></div></td>' +
-      '<td><span class="font-mono text-sm">' +
+      '<td><span class="font-mono text-xs sm:text-sm">' +
       esc(emp.staff_employee_number) +
       '</span></td>' +
-      '<td><span class="font-mono text-sm text-gray-600">' +
+      '<td><span class="font-mono text-xs sm:text-sm text-gray-600 dark:text-gray-400">' +
       esc(emp.employee_id || '—') +
       '</span></td>' +
-      '<td><span class="text-sm text-gray-600">' +
+      '<td><span class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">' +
       esc(emp.phone || '—') +
       '</span></td>' +
       '<td>' +
@@ -180,10 +221,10 @@
       '<td>' +
       statusPill(st) +
       '</td>' +
-      '<td class="text-sm text-gray-600 whitespace-nowrap">' +
+      '<td class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">' +
       formatJoined(emp.created_at) +
       '</td>' +
-      '<td><div class="flex items-center justify-end gap-0.5">' +
+      '<td><div class="flex items-center justify-end gap-0.5 flex-wrap">' +
       actions +
       '</div></td></tr>'
     );
@@ -195,21 +236,61 @@
     var roleBadges = '';
     roles.forEach(function (r) {
       roleBadges +=
-        '<span class="modern-badge bg-blue-50 dark:bg-blue-900/30 text-blue-800 capitalize">' +
+        '<span class="modern-badge bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 capitalize">' +
         esc(r) +
         '</span>';
     });
+    if (!roleBadges) {
+      roleBadges = '<span class="text-xs text-gray-400">No roles assigned</span>';
+    }
+    var img = emp.profile_picture
+      ? '<img src="/static/' + esc(emp.profile_picture) + '" alt="" class="w-full h-full object-cover">'
+      : '<i class="fas fa-user text-white"></i>';
+    var actions = buildActions(emp, true);
+    var actionGrid = actions
+      ? '<div class="staff-mobile-actions">' + actions + '</div>'
+      : '';
     return (
       '<article id="employee-' +
       emp.id +
-      '" class="staff-mobile-card"><div class="flex items-start gap-3"><div class="staff-avatar"><i class="fas fa-user text-white"></i></div>' +
-      '<div class="flex-1 min-w-0"><p class="font-semibold">' +
+      '" class="staff-mobile-card" data-employee-id="' +
+      emp.id +
+      '">' +
+      '<div class="flex gap-3 justify-between items-start">' +
+      '<div class="flex items-start gap-3 min-w-0 flex-1">' +
+      '<div class="staff-avatar">' +
+      img +
+      '</div>' +
+      '<div class="min-w-0 flex-1">' +
+      '<h2 class="text-base font-semibold text-gray-900 dark:text-white leading-snug break-words">' +
       esc(emp.full_name) +
-      '</p><p class="text-xs text-gray-500">' +
+      '</h2>' +
+      '<p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 break-all">' +
       esc(emp.email) +
-      '</p><div class="flex flex-wrap gap-1.5 mt-3">' +
+      '</p>' +
+      '</div></div>' +
+      '<div class="shrink-0 ml-2">' +
+      statusPill(st) +
+      '</div></div>' +
+      '<dl class="staff-mobile-meta">' +
+      '<div class="min-w-0"><dt>Staff #</dt><dd class="font-mono">' +
+      esc(emp.staff_employee_number || '—') +
+      '</dd></div>' +
+      '<div class="min-w-0"><dt>Portal ID</dt><dd class="font-mono">' +
+      esc(emp.employee_id || '—') +
+      '</dd></div>' +
+      '<div class="min-w-0"><dt>Phone</dt><dd>' +
+      esc(emp.phone || '—') +
+      '</dd></div>' +
+      '<div class="min-w-0"><dt>Joined</dt><dd>' +
+      formatJoined(emp.created_at) +
+      '</dd></div>' +
+      '</dl>' +
+      '<div class="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700/80">' +
       roleBadges +
-      '</div></div></div></article>'
+      '</div>' +
+      actionGrid +
+      '</article>'
     );
   }
 

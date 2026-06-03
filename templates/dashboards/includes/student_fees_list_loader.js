@@ -26,6 +26,25 @@
     return 'KES ' + x.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  function formatCategoryLabel(cat) {
+    var c = String(cat || '').toLowerCase().trim();
+    if (!c) return 'Not set';
+    if (c === 'self sponsored') return 'Self sponsored';
+    if (c === 'sponsored') return 'Sponsored';
+    if (c === 'both') return 'Both';
+    return c.charAt(0).toUpperCase() + c.slice(1);
+  }
+
+  function categoryBadge(cat) {
+    var c = String(cat || '').toLowerCase().trim();
+    var label = formatCategoryLabel(cat);
+    var cls = 'sf-cat-badge sf-cat-badge--neutral';
+    if (c === 'self sponsored') cls = 'sf-cat-badge sf-cat-badge--self';
+    else if (c === 'sponsored') cls = 'sf-cat-badge sf-cat-badge--sponsored';
+    else if (c === 'both') cls = 'sf-cat-badge sf-cat-badge--both';
+    return '<span class="' + cls + '" title="Student category">' + esc(label) + '</span>';
+  }
+
   function statusBadge(st) {
     if (st === 'overdue') {
       return '<span class="inline-flex px-2 py-0.5 text-[11px] font-semibold rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-200">Overdue</span>';
@@ -106,9 +125,13 @@
     return (
       '<tr class="student-row hover:bg-teal-50/50 dark:hover:bg-teal-950/10 transition-colors" ' +
       'data-student-id="' + esc(s.student_id) + '" data-student-name="' + esc((s.full_name || '').toLowerCase()) + '" data-grade="' + esc((s.current_grade || '').toLowerCase()) + '" data-category="' + esc((s.student_category || '').toLowerCase()) + '">' +
-      '<td class="px-3 sm:px-4 lg:px-5 py-3 min-w-[9rem]">' +
-      '<div class="text-sm font-semibold text-[var(--acc-ink)]">' + esc(s.full_name) + '</div>' +
-      '<div class="text-xs text-[var(--acc-muted)] mt-0.5">' + esc(s.student_id) + '</div>' +
+      '<td class="px-3 sm:px-4 lg:px-5 py-3 min-w-[10rem]">' +
+      '<div class="text-sm font-semibold text-[var(--acc-ink)] leading-snug">' + esc(s.full_name) + '</div>' +
+      '<div class="sf-student-meta">' +
+      '<span class="text-xs text-[var(--acc-muted)] font-mono">' + esc(s.student_id) + '</span>' +
+      categoryBadge(s.student_category) +
+      '</div>' +
+      '<div class="sm:hidden text-[11px] text-[var(--acc-muted)] mt-0.5">' + esc(level) + '</div>' +
       dueMob +
       statusMob +
       '</td>' +

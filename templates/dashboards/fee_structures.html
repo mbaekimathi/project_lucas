@@ -59,13 +59,31 @@ document.addEventListener('alpine:init', () => {
             if (!buckets[k]) buckets[k] = [];
             buckets[k].push(s);
         });
+        const parseSortTime = (s) => {
+            const raw = s.updated_at || s.created_at;
+            if (!raw) return 0;
+            const t = Date.parse(String(raw).replace(' ', 'T'));
+            return Number.isNaN(t) ? 0 : t;
+        };
         const groups = Object.values(buckets).map(rows => {
             if (!rows.length) return null;
-            const first = rows[0];
+            rows.sort((a, b) => {
+                const ta = parseSortTime(a);
+                const tb = parseSortTime(b);
+                if (tb !== ta) return tb - ta;
+                return (Number(b.id) || 0) - (Number(a.id) || 0);
+            });
+            const lead = rows[0];
             const levelNames = [];
             const structureIds = [];
+            let maxId = 0;
+            let sortTs = 0;
             rows.forEach(r => {
                 structureIds.push(r.id);
+                const rid = Number(r.id) || 0;
+                if (rid > maxId) maxId = rid;
+                const ts = parseSortTime(r);
+                if (ts > sortTs) sortTs = ts;
                 const ln = String(r.level_name || '').trim();
                 if (ln && !levelNames.some(n => n.toLowerCase() === ln.toLowerCase())) {
                     levelNames.push(ln);
@@ -73,38 +91,40 @@ document.addEventListener('alpine:init', () => {
             });
             levelNames.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
             return {
-                groupKey: this.batchKey(first),
-                id: first.id,
+                groupKey: this.batchKey(lead),
+                id: lead.id,
                 structureIds,
                 level_names: levelNames,
                 levels_label: levelNames.join(', '),
                 level_count: levelNames.length,
-                fee_name: first.fee_name,
-                finance_account_id: first.finance_account_id,
-                finance_account_name: first.finance_account_name,
-                academic_year_id: first.academic_year_id,
-                academic_year_name: first.academic_year_name,
-                term_id: first.term_id,
-                term_name: first.term_name,
-                category: first.category,
-                start_date: first.start_date,
-                end_date: first.end_date,
-                payment_deadline: first.payment_deadline,
-                total_amount: first.total_amount,
-                status: first.status,
-                year_is_current: first.year_is_current,
-                items: first.items || first['items'] || [],
+                fee_name: lead.fee_name,
+                finance_account_id: lead.finance_account_id,
+                finance_account_name: lead.finance_account_name,
+                academic_year_id: lead.academic_year_id,
+                academic_year_name: lead.academic_year_name,
+                term_id: lead.term_id,
+                term_name: lead.term_name,
+                category: lead.category,
+                start_date: lead.start_date,
+                end_date: lead.end_date,
+                payment_deadline: lead.payment_deadline,
+                total_amount: lead.total_amount,
+                status: lead.status,
+                year_is_current: lead.year_is_current,
+                items: lead.items || lead['items'] || [],
                 enrolled_student_count: rows.reduce(
                     (sum, r) => sum + (parseInt(r.enrolled_student_count, 10) || 0), 0
                 ),
-                created_at: first.created_at,
+                created_at: lead.created_at,
+                updated_at: lead.updated_at,
+                max_id: maxId,
+                sort_ts: sortTs,
             };
         }).filter(Boolean);
         groups.sort((a, b) => {
-            const ca = a.created_at ? String(a.created_at) : '';
-            const cb = b.created_at ? String(b.created_at) : '';
-            if (ca !== cb) return cb.localeCompare(ca);
-            return String(a.fee_name || '').localeCompare(String(b.fee_name || ''));
+            if ((b.sort_ts || 0) !== (a.sort_ts || 0)) return (b.sort_ts || 0) - (a.sort_ts || 0);
+            if ((b.max_id || 0) !== (a.max_id || 0)) return (b.max_id || 0) - (a.max_id || 0);
+            return String(b.fee_name || '').localeCompare(String(a.fee_name || ''));
         });
         return groups;
     },

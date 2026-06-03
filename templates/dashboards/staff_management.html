@@ -4,6 +4,37 @@
 
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
 
+{% block extra_head %}
+<style>
+  .staff-mgmt-table-scroll {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+  }
+  .staff-filter-scroll {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .staff-filter-scroll::-webkit-scrollbar {
+    display: none;
+  }
+  @media (max-width: 767px) {
+    .staff-toolbar-search input {
+      font-size: 1rem;
+      min-height: 2.75rem;
+    }
+    .staff-modal-body input:not([type="checkbox"]):not([type="radio"]),
+    .staff-modal-body select,
+    .staff-modal-body textarea {
+      font-size: 1rem;
+      min-height: 2.75rem;
+    }
+    .staff-modal-panel {
+      border-radius: 1.25rem 1.25rem 0 0;
+      max-height: min(92dvh, 720px);
+    }
+  }
+</style>
+{% endblock %}
 
 {% block sidebar_content %}
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
@@ -82,7 +113,7 @@
 {% set staff_label = 'teacher' if filter_role == 'teachers' else 'employee' %}
 {% set staff_label_plural = staff_label ~ 's' %}
 
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}" x-data="staffManagement()" x-init="init(); initStaffList()">
+<div class="p-3 sm:p-4 md:p-6 lg:p-8 w-full max-w-full min-w-0 overflow-x-hidden page-content max-w-7xl mx-auto pb-[max(1rem,env(safe-area-inset-bottom))] role-page role-page--{{ portal_page_variant|default('default') }}" x-data="staffManagement()" x-init="init(); initStaffList()">
 
     <!-- Hero -->
     <div class="page-hero mb-6 sm:mb-8">
@@ -104,16 +135,16 @@
                     </div>
                 </div>
                 {% if filter_role != 'teachers' %}
-                <div class="flex flex-wrap gap-2 sm:flex-shrink-0">
+                <div class="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto sm:flex-shrink-0">
                     {% if can_add|default(false) %}
                     <a href="{{ employee_dash_url('register-employee') }}"
-                       class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white text-brand-primary hover:bg-white/95 border border-white/80 shadow-sm transition-all touch-btn">
+                       class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white text-brand-primary hover:bg-white/95 border border-white/80 shadow-sm transition-all touch-btn w-full sm:w-auto">
                         <i class="fas fa-user-plus"></i>
                         <span>Add staff</span>
                     </a>
                     {% endif %}
                     <a href="{{ employee_dash_url('assign-roles-approve') }}"
-                       class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white/15 hover:bg-white/25 text-white border border-white/25 backdrop-blur-sm transition-all touch-btn">
+                       class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white/15 hover:bg-white/25 text-white border border-white/25 backdrop-blur-sm transition-all touch-btn w-full sm:w-auto">
                         <i class="fas fa-user-check"></i>
                         <span>Pending approvals</span>
                     </a>
@@ -159,13 +190,13 @@
                 <span id="staff-on-file-count" class="font-semibold text-gray-700 dark:text-gray-300">—</span> {{ staff_label_plural }} on file
             </p>
         </div>
-        <div class="grid lg:grid-cols-12 lg:divide-x lg:divide-gray-100 dark:lg:divide-gray-700">
-            <div class="lg:col-span-4 grid grid-cols-2 border-b border-gray-100 dark:border-gray-700 lg:border-b-0">
-                <div class="staff-mini-stat border-r border-b border-gray-100 dark:border-gray-700 lg:border-b-0">
+        <div class="grid md:grid-cols-12 md:divide-x md:divide-gray-100 dark:md:divide-gray-700">
+            <div class="md:col-span-4 lg:col-span-4 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-2 border-b border-gray-100 dark:border-gray-700 md:border-b-0">
+                <div class="staff-mini-stat border-r border-b border-gray-100 dark:border-gray-700 sm:border-b-0 md:border-b-0">
                     <p class="staff-mini-stat__label">Total</p>
                     <p id="staff-stat-total" class="staff-mini-stat__value text-gray-900 dark:text-white">—</p>
                 </div>
-                <div class="staff-mini-stat border-b border-gray-100 dark:border-gray-700 lg:border-b-0">
+                <div class="staff-mini-stat border-b border-gray-100 dark:border-gray-700 sm:border-r sm:border-b-0 md:border-b-0">
                     <p class="staff-mini-stat__label">Active</p>
                     <p id="staff-stat-active" class="staff-mini-stat__value text-green-700 dark:text-green-400">—</p>
                 </div>
@@ -178,7 +209,7 @@
                     <p id="staff-stat-suspended" class="staff-mini-stat__value text-red-700 dark:text-red-400">—</p>
                 </div>
             </div>
-            <div class="lg:col-span-8 p-4 sm:p-5">
+            <div class="md:col-span-8 lg:col-span-8 p-4 sm:p-5">
                 <div class="flex flex-col gap-4">
                     <div class="staff-toolbar-search flex-1 min-w-0 w-full">
                         <i class="fas fa-search text-sm"></i>
@@ -191,7 +222,7 @@
                     </div>
                     <div>
                         <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Status</p>
-                        <div class="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
+                        <div class="staff-filter-scroll flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:flex-wrap sm:overflow-visible sm:pb-0 sm:mx-0 sm:px-0" role="group" aria-label="Filter by status">
                             <button type="button" @click="statusFilter = 'all'; staffFetchList(1)"
                                     :class="statusFilter === 'all' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">
                                 All <span class="opacity-80" x-text="'(' + (totalCount || 0) + ')'"></span>
@@ -215,28 +246,28 @@
         </div>
     </section>
 
-    <div id="staff-pagination-bar" class="hidden flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <p id="staff-page-hint" class="text-xs text-gray-500"></p>
-        <div class="flex gap-2">
-            <button type="button" id="staff-prev-page" class="touch-btn px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 disabled:opacity-40">Previous</button>
-            <button type="button" id="staff-next-page" class="touch-btn px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 disabled:opacity-40">Next</button>
+    <div id="staff-pagination-bar" class="hidden flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 px-0.5">
+        <p id="staff-page-hint" class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 text-center sm:text-left"></p>
+        <div class="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
+            <button type="button" id="staff-prev-page" class="touch-btn px-3 py-2 text-sm font-semibold rounded-xl sm:rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 disabled:opacity-40 w-full sm:w-auto">Previous</button>
+            <button type="button" id="staff-next-page" class="touch-btn px-3 py-2 text-sm font-semibold rounded-xl sm:rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 disabled:opacity-40 w-full sm:w-auto">Next</button>
         </div>
     </div>
 
     <div>
-    <!-- Desktop table -->
-    <div class="hidden md:block modern-card staff-directory-card mb-6">
-        <div class="table-responsive-wrapper">
-            <table class="staff-directory-table">
+    <!-- Tablet & desktop: full directory table -->
+    <div class="hidden md:block modern-card staff-directory-card mb-6 overflow-hidden">
+        <div class="staff-mgmt-table-scroll table-responsive-wrapper overflow-x-auto">
+            <table class="staff-directory-table min-w-[44rem] lg:min-w-full xl:min-w-[56rem]">
                 <thead>
                     <tr>
-                        <th class="text-left min-w-[200px]">Staff member</th>
-                        <th class="text-left">Staff #</th>
-                        <th class="text-left">Portal ID</th>
-                        <th class="text-left">Contact</th>
-                        <th class="text-left">Roles</th>
-                        <th class="text-left">Status</th>
-                        <th class="text-left whitespace-nowrap">Joined</th>
+                        <th class="text-left min-w-[9rem] lg:min-w-[200px]">Staff member</th>
+                        <th class="text-left min-w-[4rem]">Staff #</th>
+                        <th class="text-left min-w-[4.5rem]">Portal ID</th>
+                        <th class="text-left min-w-[5rem]">Contact</th>
+                        <th class="text-left min-w-[5rem]">Roles</th>
+                        <th class="text-left min-w-[4.5rem]">Status</th>
+                        <th class="text-left whitespace-nowrap min-w-[4.5rem]">Joined</th>
                         <th class="text-right w-[1%] whitespace-nowrap">Actions</th>
                     </tr>
                 </thead>
@@ -245,8 +276,14 @@
         </div>
     </div>
 
-    <!-- Mobile cards -->
-    <div id="staff-mobile-list" class="md:hidden space-y-3 mb-6"></div>
+    <!-- Phones: stacked cards (no horizontal scroll) -->
+    <div class="md:hidden mb-6" x-show="!listLoading" x-cloak>
+        <div id="staff-mobile-list" class="space-y-3" role="feed" aria-label="Staff list"></div>
+    </div>
+    <div x-show="listLoading" x-cloak class="md:hidden flex items-center justify-center gap-2 py-10 text-sm text-gray-500 dark:text-gray-400 mb-6">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>Loading staff…</span>
+    </div>
 
     <div x-show="!listLoading && totalCount === 0" x-cloak class="modern-card empty-state mb-6">
         <div class="empty-state-icon"><i class="fas fa-users text-2xl text-gray-400"></i></div>
@@ -258,7 +295,7 @@
     <div x-show="deleteModal.open"
          x-cloak
          x-transition.opacity.duration.200ms
-         class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 bg-black/50"
+         class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 pb-[max(0px,env(safe-area-inset-bottom))] bg-black/50"
          @click.self="deleteModal.open = false"
          style="backdrop-filter: blur(6px);"
          role="dialog"
@@ -320,7 +357,7 @@
          x-transition:leave="transition ease-in duration-200"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 bg-black/50"
+         class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 pb-[max(0px,env(safe-area-inset-bottom))] bg-black/50"
          @click.self="editModal.open = false"
          style="backdrop-filter: blur(6px);"
          role="dialog"

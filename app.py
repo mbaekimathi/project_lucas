@@ -19629,7 +19629,8 @@ def fee_structures():
                 cursor.execute("""
                     SELECT fs.id, fs.academic_level_id, fs.finance_account_id, fs.academic_year_id,
                            fs.term_id, fs.fee_name, fs.category, fs.start_date, fs.end_date,
-                           fs.payment_deadline, fs.total_amount, fs.status, fs.created_at,
+                           fs.payment_deadline, fs.total_amount, fs.status,
+                           fs.created_at, fs.updated_at,
                            al.level_name, al.level_category,
                            ay.year_name as academic_year_name, ay.is_current as year_is_current,
                            t.term_name as term_name,
@@ -19640,7 +19641,7 @@ def fee_structures():
                     LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
                     LEFT JOIN terms t ON fs.term_id = t.id
                     LEFT JOIN finance_accounts fa ON fa.id = fs.finance_account_id
-                    ORDER BY fs.created_at DESC
+                    ORDER BY fs.created_at DESC, fs.updated_at DESC, fs.id DESC
                 """)
                 structures = cursor.fetchall()
                 
@@ -19673,6 +19674,17 @@ def fee_structures():
                         payment_deadline = payment_deadline.strftime('%Y-%m-%d')
                     elif payment_deadline:
                         payment_deadline = str(payment_deadline).split(' ')[0]
+
+                    created_at = row.get('created_at')
+                    updated_at = row.get('updated_at')
+                    if created_at and hasattr(created_at, 'isoformat'):
+                        created_at = created_at.isoformat(sep=' ', timespec='seconds')
+                    elif created_at:
+                        created_at = str(created_at).split('.')[0]
+                    if updated_at and hasattr(updated_at, 'isoformat'):
+                        updated_at = updated_at.isoformat(sep=' ', timespec='seconds')
+                    elif updated_at:
+                        updated_at = str(updated_at).split('.')[0]
                     
                     fee_structures_list.append({
                         'id': row.get('id'),
@@ -19689,7 +19701,8 @@ def fee_structures():
                         'payment_deadline': payment_deadline,
                         'total_amount': float(row.get('total_amount', 0)),
                         'status': row.get('status', 'active'),
-                        'created_at': row.get('created_at'),
+                        'created_at': created_at,
+                        'updated_at': updated_at,
                         'level_name': row.get('level_name', ''),
                         'level_category': row.get('level_category', ''),
                         'academic_year_name': row.get('academic_year_name', ''),
@@ -19773,6 +19786,15 @@ def fee_structures():
             print(f"Error fetching fee structures: {e}")
         finally:
             connection.close()
+
+    fee_structures_list.sort(
+        key=lambda s: (
+            s.get('created_at') or '',
+            s.get('updated_at') or '',
+            int(s.get('id') or 0),
+        ),
+        reverse=True,
+    )
     
     return render_template('dashboards/fee_structures.html', 
                          fee_structures=fee_structures_list, 
