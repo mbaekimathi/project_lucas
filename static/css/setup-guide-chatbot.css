@@ -517,6 +517,25 @@ body.has-pwa-install-bar .setup-guide-chatbot {
     color: #64748b;
 }
 
+.setup-guide-chatbot__check-item.is-auto-checked .setup-guide-chatbot__check-input {
+    accent-color: #14b8a6;
+}
+
+.setup-guide-chatbot__check-auto {
+    margin-left: 0.25rem;
+    color: #14b8a6;
+    font-size: 0.75rem;
+    opacity: 0.9;
+}
+
+.setup-guide-chatbot--coordinator .setup-guide-chatbot__check-item.is-auto-checked .setup-guide-chatbot__check-input {
+    accent-color: var(--sgc-primary, #800020);
+}
+
+.setup-guide-chatbot--coordinator .setup-guide-chatbot__check-auto {
+    color: var(--sgc-secondary, #a00030);
+}
+
 .dark .setup-guide-chatbot__check-item.is-done .setup-guide-chatbot__check-text {
     color: #94a3b8;
 }

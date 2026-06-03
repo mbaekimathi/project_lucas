@@ -3,8 +3,10 @@
   "assistantTitle": "Finance Setup Assistant",
   "roleLabel": "Accountant / Finance",
   "theme": "accountant",
-  "welcome": "Hi! Set up school finance in order. Tick each checkbox when done — progress saves on this device. Open a step link for a detailed checklist on that page.",
+  "welcome": "Hi! Set up school finance in order. Items you have already completed in the system are checked automatically. You can still tick or untick any box — progress syncs with live data.",
   "currentPath": {{ request.path|tojson }},
+  "systemChecked": {{ setup_guide_system_checked|default({})|tojson }},
+  "statusUrl": {{ setup_guide_status_url|tojson }},
   "steps": [
     {
       "id": 1,

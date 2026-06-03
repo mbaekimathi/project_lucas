@@ -3,8 +3,10 @@
   "assistantTitle": "Setup Assistant",
   "roleLabel": "Curriculum coordinator",
   "theme": "coordinator",
-  "welcome": "Hi! Follow the checklist on each step — tick the boxes as you complete tasks. Progress is saved on this device. Open a step link to get a page-specific checklist.",
+  "welcome": "Hi! Follow the setup steps in order. Tasks already done in the school system are checked automatically. You can still tick boxes yourself — the guide refreshes live as you work.",
   "currentPath": {{ request.path|tojson }},
+  "systemChecked": {{ setup_guide_system_checked|default({})|tojson }},
+  "statusUrl": {{ setup_guide_status_url|tojson }},
   "steps": [
     {
       "id": 1,

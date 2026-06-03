@@ -11,6 +11,8 @@
     var MSG_DELAY_MS = 420;
     var STORAGE_AUTO_OPEN = 'sgc_auto_open';
     var STORAGE_CHECKLIST = 'sgc_checklist_';
+    var STORAGE_MANUAL_UNCHECK = 'sgc_manual_uncheck_';
+    var STATUS_POLL_MS = 30000;
 
     function el(tag, className, html) {
         var node = document.createElement(tag);
@@ -88,6 +90,11 @@
         this.progressText = root.querySelector('[data-sgc-progress-text]');
         this.resetChecklistBtn = root.querySelector('[data-sgc-reset-checklist]');
         this.activeChecklistId = null;
+        this.systemChecked = this.config.systemChecked || {};
+        this.statusUrl = this.config.statusUrl || '';
+        this.statusPollTimer = null;
+
+        this.applySystemChecked(this.systemChecked);
 
         this.activePageGuide = this.findPageGuideForPath(this.currentPath);
         if (this.activePageGuide != null && typeof this.activePageGuide.stepIndex === 'number') {
@@ -109,7 +116,130 @@
             sessionStorage.removeItem(STORAGE_AUTO_OPEN);
             this.openPanel(false);
         }
+
+        this.startLiveStatusSync();
     }
+
+    SetupGuideChatbot.prototype.manualUncheckKey = function (checklistId, itemId) {
+        return STORAGE_MANUAL_UNCHECK + checklistId + '_' + itemId;
+    };
+
+    SetupGuideChatbot.prototype.isManuallyUnchecked = function (checklistId, itemId) {
+        try {
+            return localStorage.getItem(this.manualUncheckKey(checklistId, itemId)) === '1';
+        } catch (e) {
+            return false;
+        }
+    };
+
+    SetupGuideChatbot.prototype.setManuallyUnchecked = function (checklistId, itemId, on) {
+        try {
+            var key = this.manualUncheckKey(checklistId, itemId);
+            if (on) localStorage.setItem(key, '1');
+            else localStorage.removeItem(key);
+        } catch (e) {
+            /* ignore */
+        }
+    };
+
+    SetupGuideChatbot.prototype.applySystemChecked = function (systemChecked) {
+        if (!systemChecked || typeof systemChecked !== 'object') return;
+        var self = this;
+        var anyChanged = false;
+        Object.keys(systemChecked).forEach(function (checklistId) {
+            var items = systemChecked[checklistId];
+            if (!items || typeof items !== 'object') return;
+            var state = self.loadChecklistState(checklistId);
+            var checklistChanged = false;
+            Object.keys(items).forEach(function (itemId) {
+                if (!items[itemId]) return;
+                if (self.isManuallyUnchecked(checklistId, itemId)) return;
+                if (!state[itemId]) {
+                    state[itemId] = true;
+                    checklistChanged = true;
+                }
+            });
+            if (checklistChanged) {
+                self.saveChecklistState(checklistId, state);
+                anyChanged = true;
+            }
+        });
+        if (anyChanged) {
+            this.refreshAllChecklistsInDom();
+            this.renderChips();
+        }
+    };
+
+    SetupGuideChatbot.prototype.refreshAllChecklistsInDom = function () {
+        var self = this;
+        this.messagesEl.querySelectorAll('[data-sgc-checklist-id]').forEach(function (list) {
+            var checklistId = list.getAttribute('data-sgc-checklist-id');
+            var state = self.loadChecklistState(checklistId);
+            list.querySelectorAll('.setup-guide-chatbot__check-item').forEach(function (li) {
+                var input = li.querySelector('input');
+                if (!input) return;
+                var checked = !!state[input.value];
+                input.checked = checked;
+                li.classList.toggle('is-done', checked);
+                li.classList.toggle(
+                    'is-auto-checked',
+                    checked && !self.isManuallyUnchecked(checklistId, input.value)
+                );
+            });
+            var items = [];
+            list.querySelectorAll('.setup-guide-chatbot__check-item').forEach(function (li, idx) {
+                var input = li.querySelector('input');
+                var span = li.querySelector('.setup-guide-chatbot__check-text');
+                items.push({
+                    id: input ? input.value : 'item-' + idx,
+                    label: span ? span.textContent : ''
+                });
+            });
+            self.updateProgressBar(checklistId, items);
+        });
+    };
+
+    SetupGuideChatbot.prototype.fetchLiveStatus = function () {
+        var self = this;
+        if (!self.statusUrl) return Promise.resolve();
+        return fetch(self.statusUrl, {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' }
+        })
+            .then(function (res) {
+                if (!res.ok) throw new Error('status ' + res.status);
+                return res.json();
+            })
+            .then(function (data) {
+                if (!data || !data.success || !data.checked) return;
+                self.systemChecked = data.checked;
+                self.applySystemChecked(data.checked);
+                if (self.liveLabel && !self.activePageGuide) {
+                    self.liveLabel.textContent = 'Live sync';
+                }
+            })
+            .catch(function () {
+                /* silent — initial server render still applies */
+            });
+    };
+
+    SetupGuideChatbot.prototype.startLiveStatusSync = function () {
+        var self = this;
+        if (!self.statusUrl) return;
+        self.fetchLiveStatus();
+        if (self.statusPollTimer) clearInterval(self.statusPollTimer);
+        self.statusPollTimer = setInterval(function () {
+            if (document.hidden) return;
+            self.fetchLiveStatus();
+        }, STATUS_POLL_MS);
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) self.fetchLiveStatus();
+        });
+        window.addEventListener('focus', function () {
+            self.fetchLiveStatus();
+        });
+    };
 
     SetupGuideChatbot.prototype.findPageGuideForPath = function (path) {
         var guides = this.pageGuides.slice().sort(function (a, b) {
@@ -136,7 +266,7 @@
             if (this.liveLabel) this.liveLabel.textContent = 'On this page';
         } else {
             this.subtitleEl.textContent = this.roleLabel;
-            if (this.liveLabel) this.liveLabel.textContent = 'Live guide';
+            if (this.liveLabel) this.liveLabel.textContent = 'Live sync';
         }
     };
 
@@ -253,7 +383,17 @@
         if (this.resetChecklistBtn) {
             this.resetChecklistBtn.addEventListener('click', function () {
                 if (!self.activeChecklistId) return;
-                self.saveChecklistState(self.activeChecklistId, {});
+                var checklistId = self.activeChecklistId;
+                var list = self.messagesEl.querySelector(
+                    '[data-sgc-checklist-id="' + checklistId + '"]'
+                );
+                if (list) {
+                    list.querySelectorAll('input').forEach(function (input) {
+                        self.setManuallyUnchecked(checklistId, input.value, true);
+                    });
+                }
+                self.saveChecklistState(checklistId, {});
+                self.applySystemChecked(self.systemChecked);
                 self.refreshActiveChecklistUi();
                 self.renderChips();
             });
@@ -365,8 +505,19 @@
             input.value = item.id;
             input.checked = !!state[item.id];
             if (state[item.id]) li.classList.add('is-done');
+            if (state[item.id] && !self.isManuallyUnchecked(checklistId, item.id)) {
+                li.classList.add('is-auto-checked');
+            }
 
             var text = el('span', 'setup-guide-chatbot__check-text', escapeHtml(item.label));
+            if (li.classList.contains('is-auto-checked')) {
+                var autoHint = el(
+                    'span',
+                    'setup-guide-chatbot__check-auto',
+                    ' <i class="fas fa-circle-check" title="Detected in system" aria-hidden="true"></i>'
+                );
+                text.appendChild(autoHint);
+            }
             label.appendChild(input);
             label.appendChild(text);
             li.appendChild(label);
@@ -374,10 +525,24 @@
 
             input.addEventListener('change', function () {
                 var current = self.loadChecklistState(checklistId);
-                current[item.id] = input.checked;
-                if (!input.checked) delete current[item.id];
+                var sysDone =
+                    self.systemChecked &&
+                    self.systemChecked[checklistId] &&
+                    self.systemChecked[checklistId][item.id];
+                if (input.checked) {
+                    current[item.id] = true;
+                    self.setManuallyUnchecked(checklistId, item.id, false);
+                    li.classList.remove('is-auto-checked');
+                } else {
+                    delete current[item.id];
+                    if (sysDone) self.setManuallyUnchecked(checklistId, item.id, true);
+                }
                 self.saveChecklistState(checklistId, current);
                 li.classList.toggle('is-done', input.checked);
+                li.classList.toggle(
+                    'is-auto-checked',
+                    input.checked && sysDone && !self.isManuallyUnchecked(checklistId, item.id)
+                );
                 self.updateProgressBar(checklistId, items);
                 self.renderChips();
 
@@ -637,6 +802,7 @@
             scrollMessages(self.messagesEl);
             self.setBusy(false);
             self.updateNav();
+            self.fetchLiveStatus();
         });
     };
 
@@ -716,6 +882,7 @@
             });
             self.setBusy(false);
             self.updateNav();
+            self.fetchLiveStatus();
         });
     };
 

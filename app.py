@@ -1012,6 +1012,62 @@ def inject_accountant_accounts_sidebar():
         connection.close()
 
 
+def _setup_guide_effective_role():
+    """Role used by the floating setup guide (matches setup_guide_chatbot.html)."""
+    if not session.get('user_id'):
+        return ''
+    user_role = (session.get('role') or '').lower().strip()
+    viewing_as = (session.get('viewing_as_employee_role') or '').lower().strip()
+    is_technician = user_role == 'technician'
+    role = normalize_employee_dashboard_content_role(
+        user_role, is_technician, viewing_as
+    )
+    if has_request_context():
+        path_role = portal_role_from_request_path()
+        path_norm = normalize_allocated_role(path_role) if path_role else ''
+        ve_norm = normalize_allocated_role(viewing_as) if viewing_as else ''
+        if is_technician and ve_norm:
+            if path_norm and (
+                path_norm == ve_norm
+                or (path_norm in ('teacher', 'teachers') and ve_norm in ('teacher', 'teachers'))
+            ):
+                role = 'teachers' if path_norm in ('teacher', 'teachers') else path_norm
+            else:
+                role = ve_norm
+        elif path_norm:
+            role = path_norm
+    return (role or '').lower()
+
+
+@app.context_processor
+def inject_setup_guide_status():
+    """Live checklist state for setup guide chatbot."""
+    empty = {
+        'setup_guide_system_checked': {},
+        'setup_guide_status_url': None,
+    }
+    role = _setup_guide_effective_role()
+    if role not in ('curriculum coordinator', 'accountant'):
+        return empty
+    connection = get_db_connection()
+    if not connection:
+        return empty
+    try:
+        from setup_guide_status import fetch_setup_guide_system_checked
+
+        with connection.cursor() as cursor:
+            checked = fetch_setup_guide_system_checked(cursor, role)
+        return {
+            'setup_guide_system_checked': checked,
+            'setup_guide_status_url': employee_dashboard_path('setup-guide-status'),
+        }
+    except Exception as e:
+        print(f"inject_setup_guide_status: {e}")
+        return empty
+    finally:
+        connection.close()
+
+
 # Function to detect if running on hosted server
 def is_hosted():
     """Check if the application is running on the hosted server"""
@@ -8941,6 +8997,31 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+@app.route('/dashboard/employee/setup-guide-status', methods=['GET'])
+@login_required
+def setup_guide_status_api():
+    """JSON: live setup checklist completion from database."""
+    role = _setup_guide_effective_role()
+    if role not in ('curriculum coordinator', 'accountant'):
+        return jsonify({'success': False, 'message': 'Not available for this role'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        from setup_guide_status import setup_guide_status_payload
+
+        with connection.cursor() as cursor:
+            payload = setup_guide_status_payload(cursor, role)
+        payload['success'] = True
+        return jsonify(payload)
+    except Exception as e:
+        print(f"setup_guide_status_api: {e}")
+        return jsonify({'success': False, 'message': 'Could not load setup status'}), 500
+    finally:
+        connection.close()
+
 
 def role_required(role):
     """Decorator to require specific role"""
