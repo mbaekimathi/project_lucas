@@ -65,10 +65,11 @@ try:
     
     print("=" * 60)
     
-except Exception as e:
+except Exception as load_error:
     # If import fails, create a minimal error app
+    load_error_message = str(load_error)
     print("=" * 60)
-    print(f"ERROR loading app: {e}")
+    print(f"ERROR loading app: {load_error_message}")
     print("=" * 60)
     import traceback
     traceback.print_exc()
@@ -97,7 +98,7 @@ except Exception as e:
                 <h1>⚠️ Application Error</h1>
                 <p>Failed to load Flask application.</p>
                 <div class="error">
-                    <strong>Error:</strong> <code>{str(e)}</code>
+                    <strong>Error:</strong> <code>{load_error_message}</code>
                 </div>
                 <p><strong>What to do:</strong></p>
                 <ol>
