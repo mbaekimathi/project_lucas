@@ -88,6 +88,9 @@
 
 {% elif current_role in ('head of institution', 'deputy head of institution') %}
     {% include 'dashboards/includes/institution_leadership_sidebar.html' %}
+    {% if current_role == 'deputy head of institution' %}
+    {% include 'dashboards/includes/deputy_head_dashboard_tpad_link.html' %}
+    {% endif %}
 {% elif current_role == 'curriculum coordinator' %}
     {% include 'dashboards/includes/curriculum_coordinator_sidebar.html' %}
 {% elif current_role in ('teacher', 'teachers') %}
@@ -184,6 +187,15 @@
 {% endblock %}
 
 {% block extra_scripts %}
+{% if dashboard_content_role in ['teacher', 'teachers'] %}
+<script>
+window._teacherLessonCalendarApiUrl = {{ url_for('teacher_lesson_attendance_calendar_api')|tojson }};
+window._teacherAttendanceRegisterUrl = {{ employee_dash_url('student-management/student-attendance')|tojson }};
+</script>
+<script>
+{% include 'dashboards/includes/teacher_lesson_attendance_calendar.js' %}
+</script>
+{% endif %}
 {% if dashboard_content_role == 'curriculum coordinator' %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>

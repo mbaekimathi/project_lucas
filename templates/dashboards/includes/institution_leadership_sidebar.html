@@ -102,22 +102,6 @@
 </a>
 {% endif %}
 
-{% if _lead_nav in ('all', 'school') %}
-<p class="px-3 {% if _lead_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">School</p>
-<a href="{{ employee_dash_url('communication') }}"
-   class="sidebar-item {% if request.endpoint == 'communication' %}sidebar-item-active{% endif %}">
-    <i class="fas fa-broadcast-tower w-5"></i>
-    <span>Communication</span>
-    {% if request.endpoint == 'communication' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
-<a href="{{ employee_dash_url('tpad') }}"
-   class="sidebar-item {% if request.endpoint == 'employee_tpad' %}sidebar-item-active{% endif %}">
-    <i class="fas fa-tasks w-5"></i>
-    <span>TPAD</span>
-    {% if request.endpoint == 'employee_tpad' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
-{% endif %}
-
 {% if _lead_nav == 'all' %}
 <p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
 <a @click.prevent="comingSoonTitle = 'Academic Calendar'; comingSoonModalOpen = true"

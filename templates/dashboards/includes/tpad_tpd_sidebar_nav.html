@@ -1,0 +1,37 @@
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">TPD</p>
+<a href="{{ employee_dash_url('tpad/tpd/tpad-plan') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_tpd_plan' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-alt w-5"></i>
+    <span>TPAD plan</span>
+    {% if request.endpoint == 'employee_tpad_tpd_plan' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/tpd/completed-plans') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_completed_plans' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-check-double w-5"></i>
+    <span>TPAD completed plans</span>
+    {% if request.endpoint == 'employee_tpad_completed_plans' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/tpd/enrolment') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_enrolment' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-plus w-5"></i>
+    <span>TPAD enrolment</span>
+    {% if request.endpoint == 'employee_tpad_enrolment' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/tpd/feedback') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_feedback' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-comments w-5"></i>
+    <span>TPAD feedback</span>
+    {% if request.endpoint == 'employee_tpad_feedback' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/tpd/assessment') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_tpd_assessment' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>TPAD assessment</span>
+    {% if request.endpoint == 'employee_tpad_tpd_assessment' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/tpd/certificate') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_certificate' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-award w-5"></i>
+    <span>TPAD certificate</span>
+    {% if request.endpoint == 'employee_tpad_certificate' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

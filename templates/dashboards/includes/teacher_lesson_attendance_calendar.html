@@ -1,0 +1,114 @@
+{# Monthly lesson attendance calendar — requires teacher_lesson_attendance_calendar.js #}
+{% set cal_teacher_id = teacher_profile.id|default(selected_teacher_id|default('')) if teacher_profile else selected_teacher_id|default('') %}
+<div id="teacher-lesson-calendar-root"
+     class="bg-white dark:bg-gray-800 rounded-2xl shadow border border-gray-200 dark:border-gray-700 overflow-hidden"
+     data-teacher-id="{{ cal_teacher_id }}">
+    <div class="px-4 sm:px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+            <div class="w-9 h-9 rounded-lg bg-teal-600 text-white flex items-center justify-center shrink-0">
+                <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+            </div>
+            <div class="min-w-0">
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white m-0">Class attendance calendar</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 m-0 truncate">Lessons attended vs allocated on your timetable</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <button type="button" id="tlc-prev-month"
+                    class="h-9 w-9 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 touch-btn"
+                    title="Previous month" aria-label="Previous month">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <p id="tlc-month-label" class="text-sm font-bold text-gray-900 dark:text-white min-w-[9rem] text-center">—</p>
+            <button type="button" id="tlc-next-month"
+                    class="h-9 w-9 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 touch-btn"
+                    title="Next month" aria-label="Next month">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="px-4 sm:px-5 py-3 bg-teal-50/60 dark:bg-teal-950/20 border-b border-teal-100 dark:border-teal-900/40 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <span class="text-gray-600 dark:text-gray-300">Month total:</span>
+        <span id="tlc-month-summary" class="font-bold text-teal-800 dark:text-teal-200 tabular-nums">—</span>
+        <span id="tlc-term-badge" class="text-xs text-gray-500 dark:text-gray-400 hidden"></span>
+    </div>
+
+    <div class="px-4 sm:px-5 py-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+        <span class="inline-flex items-center gap-1"><span class="tlc-swatch tlc-band-complete"></span>100%</span>
+        <span class="inline-flex items-center gap-1"><span class="tlc-swatch tlc-band-good"></span>80–99%</span>
+        <span class="inline-flex items-center gap-1"><span class="tlc-swatch tlc-band-partial"></span>50–79%</span>
+        <span class="inline-flex items-center gap-1"><span class="tlc-swatch tlc-band-low"></span>1–49%</span>
+        <span class="inline-flex items-center gap-1"><span class="tlc-swatch tlc-band-missed"></span>0% (missed)</span>
+        <span class="inline-flex items-center gap-1"><span class="tlc-swatch tlc-band-none"></span>No lessons</span>
+    </div>
+
+    <p id="tlc-loading" class="px-5 py-8 text-sm text-gray-500 dark:text-gray-400 text-center hidden">
+        <i class="fas fa-spinner fa-spin mr-2"></i>Loading calendar…
+    </p>
+    <p id="tlc-error" class="mx-4 my-4 hidden text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3"></p>
+
+    <div id="tlc-grid-wrap" class="p-4 sm:p-5">
+        <div class="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 text-center">
+            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+        <div id="tlc-grid" class="grid grid-cols-7 gap-1 sm:gap-1.5"></div>
+    </div>
+
+    <div class="px-4 sm:px-5 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 text-sm text-gray-600 dark:text-gray-300">
+        <i class="fas fa-hand-pointer text-teal-600 dark:text-teal-400 mr-1.5" aria-hidden="true"></i>
+        Click a day in the current term to open the attendance register for that date, then select your class to mark attendance.
+    </div>
+</div>
+
+<style>
+.tlc-swatch {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.25rem;
+    border: 1px solid rgba(0,0,0,0.08);
+}
+.tlc-cell {
+    min-height: 3.25rem;
+    border-radius: 0.5rem;
+    border: 1px solid transparent;
+    padding: 0.25rem 0.2rem;
+    text-align: center;
+    cursor: default;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+@media (min-width: 640px) {
+    .tlc-cell { min-height: 4rem; padding: 0.35rem 0.25rem; }
+}
+.tlc-cell-interactive { cursor: pointer; text-decoration: none; color: inherit; display: block; }
+.tlc-cell-interactive:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.08); color: inherit; }
+.tlc-cell-interactive:focus-visible { outline: 2px solid #0d9488; outline-offset: 2px; }
+.tlc-cell-day { font-size: 0.7rem; font-weight: 700; line-height: 1.1; }
+.tlc-cell-pct { font-size: 0.6rem; font-weight: 700; line-height: 1.2; margin-top: 0.15rem; }
+.tlc-cell-ratio { font-size: 0.55rem; opacity: 0.85; line-height: 1.1; }
+.tlc-band-pad { visibility: hidden; pointer-events: none; }
+.tlc-band-outside { background: #f9fafb; color: #d1d5db; border-color: #f3f4f6; }
+.dark .tlc-band-outside { background: #111827; color: #4b5563; border-color: #1f2937; }
+.tlc-band-future { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
+.dark .tlc-band-future { background: #1f2937; color: #6b7280; border-color: #374151; }
+.tlc-band-none { background: #ffffff; color: #6b7280; border-color: #e5e7eb; }
+.dark .tlc-band-none { background: #1f2937; color: #9ca3af; border-color: #374151; }
+.tlc-band-missed { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.dark .tlc-band-missed { background: #450a0a; color: #fca5a5; border-color: #7f1d1d; }
+.tlc-band-low { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
+.dark .tlc-band-low { background: #431407; color: #fdba74; border-color: #9a3412; }
+.tlc-band-partial { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.dark .tlc-band-partial { background: #422006; color: #fcd34d; border-color: #78350f; }
+.tlc-band-good { background: #ecfccb; color: #3f6212; border-color: #d9f99d; }
+.dark .tlc-band-good { background: #1a2e05; color: #bef264; border-color: #365314; }
+.tlc-band-complete { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+.dark .tlc-band-complete { background: #064e3b; color: #6ee7b7; border-color: #047857; }
+.tlc-swatch.tlc-band-complete { background: #d1fae5; border-color: #a7f3d0; }
+.tlc-swatch.tlc-band-good { background: #ecfccb; border-color: #d9f99d; }
+.tlc-swatch.tlc-band-partial { background: #fef3c7; border-color: #fde68a; }
+.tlc-swatch.tlc-band-low { background: #ffedd5; border-color: #fed7aa; }
+.tlc-swatch.tlc-band-missed { background: #fee2e2; border-color: #fecaca; }
+.tlc-swatch.tlc-band-none { background: #ffffff; border-color: #e5e7eb; }
+.tlc-cell-selected { outline: 2px solid #0d9488; outline-offset: 1px; }
+</style>

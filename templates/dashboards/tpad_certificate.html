@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}TPAD certificate — TPD — TPAD — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block sidebar_content %}{% include 'dashboards/includes/tpad_subpage_sidebar.html' %}{% endblock %}
+{% block content %}
+{% set tpad_child_hero_title = 'TPAD certificate' %}
+{% set tpad_child_hero_subtitle = 'TPD · TPAD' %}
+{% set tpad_child_hero_icon = 'fa-award' %}
+{% set tpad_child_title = 'TPAD certificate' %}
+{% set tpad_child_message = 'Issue and download TPAD completion certificates. This module is under development.' %}
+{% include 'dashboards/includes/tpad_tpd_child_page.html' %}
+{% endblock %}

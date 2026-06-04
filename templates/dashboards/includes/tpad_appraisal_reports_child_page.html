@@ -1,0 +1,17 @@
+{# Included by appraisal reports child templates — set tpad_child_* variables before include #}
+<div class="px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto pt-4">
+    <a href="{{ employee_dash_url('tpad/appraisal-reports') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to Appraisal reports
+    </a>
+</div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = tpad_child_hero_title %}
+{% set role_hero_subtitle = tpad_child_hero_subtitle|default('Appraisal reports · TPAD') %}
+{% set role_hero_icon_class = tpad_child_hero_icon|default('fa-chart-bar') %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+{% set tpad_title = tpad_child_title %}
+{% set tpad_subtitle = tpad_child_subtitle|default('Appraisal reports · TPAD') %}
+{% set tpad_icon = tpad_child_hero_icon|default('fa-chart-bar') %}
+{% set tpad_coming_soon_message = tpad_child_message|default('This module is under development.') %}
+{% include 'dashboards/includes/tpad_section_body.html' %}

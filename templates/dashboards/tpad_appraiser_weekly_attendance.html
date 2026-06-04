@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Weekly attendance — Appraiser — TPAD — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/tpad_subpage_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto pt-4">
+    <a href="{{ employee_dash_url('tpad/appraiser-appraisals') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to appraiser appraisals
+    </a>
+</div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Weekly attendance' %}
+{% set role_hero_subtitle = 'TPAD · Teachers' %}
+{% set role_hero_icon_class = 'fa-calendar-alt' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="modern-card p-6 sm:p-8 border-l-4 border-teal-500 dark:border-teal-400">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                    <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md">
+                        <i class="fas fa-calendar-alt text-xl" aria-hidden="true"></i>
+                    </span>
+                    Weekly attendance
+                </h1>
+                <p class="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400 mt-2">Lessons attended vs timetable allocation</p>
+                <p id="tpad-weekly-range-label" class="text-sm text-gray-600 dark:text-gray-300 mt-1 {% if not (filter_meta and filter_meta.range_label) %}hidden{% endif %}">
+                    {% if filter_meta and filter_meta.range_label %}
+                    <span class="font-semibold">{{ filter_meta.range_label }}</span>
+                    {% if filter_meta.term_name %}<span class="text-gray-400 dark:text-gray-500">· {{ filter_meta.term_name }}</span>{% endif %}
+                    {% endif %}
+                </p>
+            </div>
+            <p class="text-sm font-medium text-teal-800 dark:text-teal-200 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-xl px-4 py-2 shrink-0">
+                <span class="font-bold" id="tpad-weekly-teachers-count">{{ teachers_count|default(0) }}</span>
+                teacher{{ '' if teachers_count == 1 else 's' }}
+            </p>
+        </div>
+
+        {% include 'dashboards/includes/tpad_attendance_filter.html' %}
+
+        {% if teachers_load_error %}
+        <p class="mt-4 text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3">
+            {{ teachers_load_error }}
+        </p>
+        {% endif %}
+
+        <p id="tpad-weekly-teachers-error" class="mt-4 hidden text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3"></p>
+
+        <p id="tpad-weekly-teachers-loading" class="mt-6 text-sm text-gray-500 dark:text-gray-400 hidden">
+            <i class="fas fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading teachers…
+        </p>
+
+        {% set teacher_list = teachers|default(active_teachers)|default([]) %}
+        <div id="tpad-weekly-teachers-table-wrap" class="mt-8 -mx-2 sm:mx-0 overflow-x-auto {% if not teacher_list or teacher_list|length == 0 %}hidden{% endif %}">
+            <table class="min-w-full text-sm text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                        <th scope="col" class="py-3 px-3 sm:px-4">Name</th>
+                        <th scope="col" class="py-3 px-3 sm:px-4 text-right">Attended / allocated</th>
+                        <th scope="col" class="py-3 px-3 sm:px-4 text-center w-16"><span class="sr-only">View details</span></th>
+                    </tr>
+                </thead>
+                <tbody id="tpad-weekly-teachers-tbody" class="divide-y divide-gray-100 dark:divide-gray-800">
+                    {% for teacher in teacher_list %}
+                    {% set attended = teacher.lessons_attended|default(0) %}
+                    {% set allocated = teacher.lessons_allocated|default(0) %}
+                    {% set fq = filter_meta.filter_query|default('') if filter_meta else '' %}
+                    {% set detail_url = employee_dash_url('tpad/appraiser-appraisals/weekly-attendance/teacher/' ~ teacher.id) ~ ('?' ~ fq if fq else '') %}
+                    <tr class="hover:bg-gray-50/80 dark:hover:bg-gray-800/50 group">
+                        <td class="py-3 px-3 sm:px-4 font-medium text-gray-900 dark:text-white">
+                            <a href="{{ detail_url }}" class="tpad-teacher-detail-link inline-flex items-center gap-2 text-inherit hover:text-brand-primary dark:hover:text-brand-secondary" data-teacher-id="{{ teacher.id }}">
+                                {{ teacher.full_name or '—' }}
+                            </a>
+                        </td>
+                        <td class="py-3 px-3 sm:px-4 text-right tabular-nums">
+                            <a href="{{ detail_url }}" class="tpad-teacher-detail-link inline-block hover:opacity-80" title="View class breakdown" data-teacher-id="{{ teacher.id }}">
+                                <span class="font-semibold {% if allocated and attended >= allocated %}text-green-700 dark:text-green-300{% elif attended %}text-amber-700 dark:text-amber-300{% else %}text-gray-700 dark:text-gray-300{% endif %}">
+                                    {{ attended }} / {{ allocated }}
+                                </span>
+                            </a>
+                        </td>
+                        <td class="py-3 px-3 sm:px-4 text-center">
+                            <a href="{{ detail_url }}"
+                               class="tpad-teacher-detail-link inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary hover:bg-teal-50 dark:hover:bg-teal-950/40 border border-transparent hover:border-teal-200 dark:hover:border-teal-800 touch-btn"
+                               title="View class breakdown for {{ teacher.full_name or 'teacher' }}"
+                               data-teacher-id="{{ teacher.id }}">
+                                <i class="fas fa-eye" aria-hidden="true"></i>
+                                <span class="sr-only">View {{ teacher.full_name or 'teacher' }}</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div id="tpad-weekly-teachers-empty" class="mt-10 flex flex-col items-center justify-center text-center py-12 px-4 rounded-2xl bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 {% if teacher_list and teacher_list|length > 0 %}hidden{% endif %}">
+            <span class="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                <i class="fas fa-user-slash text-xl" aria-hidden="true"></i>
+            </span>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mt-5">No teachers found</h2>
+            <p class="text-gray-600 dark:text-gray-300 mt-2 max-w-md text-sm leading-relaxed">
+                No employees with the teacher role are registered in the system yet.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const _tpadWeeklyTeachersApiUrl = {{ employee_dash_url('tpad/appraiser-appraisals/weekly-attendance/teachers')|tojson }};
+const _tpadWeeklyTeacherDetailBase = {{ employee_dash_url('tpad/appraiser-appraisals/weekly-attendance/teacher')|tojson }};
+</script>
+{% include 'dashboards/includes/tpad_weekly_attendance_loader.js' %}
+{% endblock %}

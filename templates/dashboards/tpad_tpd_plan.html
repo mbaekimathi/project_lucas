@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}TPAD plan — TPD — TPAD — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block sidebar_content %}{% include 'dashboards/includes/tpad_subpage_sidebar.html' %}{% endblock %}
+{% block content %}
+{% set tpad_child_hero_title = 'TPAD plan' %}
+{% set tpad_child_hero_subtitle = 'TPD · TPAD' %}
+{% set tpad_child_hero_icon = 'fa-file-alt' %}
+{% set tpad_child_title = 'TPAD plan' %}
+{% set tpad_child_message = 'Create and manage teacher professional development plans. This module is under development.' %}
+{% include 'dashboards/includes/tpad_tpd_child_page.html' %}
+{% endblock %}

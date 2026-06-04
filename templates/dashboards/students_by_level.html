@@ -728,8 +728,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <div class="min-w-0">
                     <label class="filter-label block" for="marks-filter-exam">Exam</label>
                     <select id="marks-filter-exam"
+                            :key="examSelectKey"
                             x-model="selectedExam" @change="onExamSelected()"
-                            :disabled="!filteredExams.length"
+                            :disabled="!filteredExams.length || !filtersReady"
                             class="marks-toolbar-select touch-manipulation">
                         <option value="" disabled x-text="filteredExams.length ? 'Exam…' : 'No exams'"></option>
                         <template x-for="exam in filteredExams" :key="exam.id">
@@ -741,10 +742,10 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     <label class="filter-label block filter-label--spacer" aria-hidden="true">&nbsp;</label>
                     <button type="button"
                             @click="resetToSchoolCurrent()"
-                            title="Reset to school's current year, term, and default exam"
+                            title="Reset to school's registered current exam (year, term, and exam)"
                             class="marks-toolbar-btn-reset w-full touch-manipulation">
                         <i class="fas fa-rotate-left text-xs opacity-90" aria-hidden="true"></i>
-                        Current term
+                        Current exam
                     </button>
                 </div>
             </div>
@@ -1048,7 +1049,8 @@ function marksSheet() {
         schoolYearId: "{{ selected_academic_year_id if selected_academic_year_id is not none else '' }}",
         schoolTermId: "{{ selected_term_id if selected_term_id is not none else '' }}",
         schoolDefaultExamId: "{{ selected_exam_id if selected_exam_id is not none else '' }}",
-        marks: {{ (student_marks or {})|tojson|safe }},
+        marks: {},
+        filtersReady: false,
         loading: false,
         saveStatus: {},
         lockedModal: false,
@@ -1056,6 +1058,7 @@ function marksSheet() {
         dismissedMarksClosedForExamId: '',
         marksCountdownInfoModalOpen: false,
         examList: {{ (exams or [])|tojson|safe }},
+        registeredCurrentExam: {{ (registered_current_exam or none)|tojson|safe }},
         academicYears: {{ (academic_years or [])|tojson|safe }},
         terms: {{ (terms or [])|tojson|safe }},
         defaultGradeBands: {{ (default_grade_bands or [])|tojson|safe }},
@@ -1092,9 +1095,16 @@ function marksSheet() {
         displayScaled: {{ 'true' if marks_display_scaled else 'false' }},
 
         currentExamName() {
-            if (!this.selectedExam) return '';
-            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            const ex = this._selectedExamMeta();
             return ex ? String(ex.exam_name || '').trim() : '';
+        },
+
+        _selectedExamMeta() {
+            if (!this.selectedExam) return null;
+            const id = String(this.selectedExam);
+            return this.filteredExams.find(e => String(e.id) === id)
+                || this.examList.find(e => String(e.id) === id)
+                || null;
         },
 
         _applyInitialGradeRemarksIfEmpty() {
@@ -1186,8 +1196,7 @@ function marksSheet() {
         },
 
         get examIsLocked() {
-            if (!this.selectedExam) return false;
-            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            const ex = this._selectedExamMeta();
             return !!(ex && ex.is_locked);
         },
 
@@ -1204,15 +1213,14 @@ function marksSheet() {
         },
 
         get selectedExamHasMarksDeadline() {
-            if (!this.selectedExam) return false;
-            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            const ex = this._selectedExamMeta();
             return !!(ex && ex.marks_lock_at);
         },
 
         get teacherMarksPeriodClosed() {
             void this._tick;
             if (!this.isTeacherMarks || !this.selectedExam) return false;
-            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            const ex = this._selectedExamMeta();
             if (!ex || !ex.marks_lock_at) return false;
             const end = this._marksLockMs(ex.marks_lock_at);
             return end !== null && Date.now() >= end;
@@ -1221,7 +1229,7 @@ function marksSheet() {
         get teacherMarksCountdownLabel() {
             void this._tick;
             if (!this.isTeacherMarks || !this.selectedExam) return '';
-            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            const ex = this._selectedExamMeta();
             if (!ex || !ex.marks_lock_at) return '';
             const end = this._marksLockMs(ex.marks_lock_at);
             if (end === null || Date.now() >= end) return '';
@@ -1238,7 +1246,7 @@ function marksSheet() {
         get marksCountdownSecondsRemaining() {
             void this._tick;
             if (!this.isTeacherMarks || !this.selectedExam) return null;
-            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            const ex = this._selectedExamMeta();
             if (!ex || !ex.marks_lock_at) return null;
             const end = this._marksLockMs(ex.marks_lock_at);
             if (end === null || Date.now() >= end) return null;
@@ -1253,7 +1261,7 @@ function marksSheet() {
 
         get selectedExamMarksLockDisplay() {
             if (!this.selectedExam) return '';
-            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            const ex = this._selectedExamMeta();
             if (!ex || !ex.marks_lock_at) return '';
             try {
                 const raw = String(ex.marks_lock_at).trim().replace(' ', 'T');
@@ -1371,23 +1379,118 @@ function marksSheet() {
             return yearScoped.filter(e => String(e.term_id) === String(this.selectedTermId));
         },
 
+        get examSelectKey() {
+            const ids = (this.filteredExams || []).map(e => String(e.id)).join('-');
+            return `${this.selectedAcademicYearId}|${this.selectedTermId}|${ids}`;
+        },
+
         chooseDefaultExam(candidates) {
             if (!candidates || !candidates.length) return '';
             const today = new Date().toISOString().slice(0, 10);
-            const todayExam = candidates.find(e => (e.exam_date || '') === today);
+            const todayExam = candidates.find(e => String(e.exam_date || '').slice(0, 10) === today);
             if (todayExam) return String(todayExam.id);
 
             const sorted = [...candidates].sort((a, b) => {
-                const da = (a.exam_date || '');
-                const db = (b.exam_date || '');
+                const da = String(a.exam_date || '').slice(0, 10);
+                const db = String(b.exam_date || '').slice(0, 10);
                 if (da !== db) return db.localeCompare(da);
                 return Number(b.id || 0) - Number(a.id || 0);
             });
             return sorted.length ? String(sorted[0].id) : '';
         },
 
+        _examIdInList(id, scopedExams) {
+            if (!id || !scopedExams || !scopedExams.length) return false;
+            return scopedExams.some(e => String(e.id) === String(id));
+        },
+
+        async _syncSelectedExamToDropdown() {
+            const scoped = this.filteredExams;
+            if (!scoped.length) {
+                this.selectedExam = '';
+                return;
+            }
+
+            let pick = '';
+            const byRegistered = this._matchRegisteredCurrentExam(scoped);
+            if (byRegistered) {
+                pick = String(byRegistered.id);
+            } else if (this._examIdInList(this.schoolDefaultExamId, scoped)) {
+                pick = String(this.schoolDefaultExamId);
+            } else if (this._examIdInList(this.defaultExamId, scoped)) {
+                pick = String(this.defaultExamId);
+            } else if (this._examIdInList(this.selectedExam, scoped)) {
+                pick = String(this.selectedExam);
+            } else {
+                pick = this._pickDefaultExamForScope(scoped);
+            }
+
+            if (pick !== String(this.selectedExam || '')) {
+                this.selectedExam = '';
+                await this.$nextTick();
+            }
+            this.selectedExam = pick || '';
+            await this.$nextTick();
+            const sel = document.getElementById('marks-filter-exam');
+            if (sel && pick) {
+                sel.value = pick;
+            }
+        },
+
+        _applyRegisteredYearTerm() {
+            const reg = this.registeredCurrentExam;
+            if (!reg) return;
+            const ay = String(reg.academic_year_id || '');
+            const tid = String(reg.term_id || '');
+            if (ay && this.academicYears.some(y => String(y.id) === ay)) {
+                this.selectedAcademicYearId = ay;
+            }
+            const yearTerms = this.terms.filter(t => String(t.academic_year_id) === String(this.selectedAcademicYearId));
+            if (tid && yearTerms.some(t => String(t.id) === tid)) {
+                this.selectedTermId = tid;
+            }
+        },
+
+        _matchRegisteredCurrentExam(scopedExams) {
+            const reg = this.registeredCurrentExam;
+            if (!reg || !scopedExams || !scopedExams.length) return null;
+            const regAy = String(reg.academic_year_id || '');
+            const regTid = String(reg.term_id || '');
+            if (regAy && String(this.selectedAcademicYearId) !== regAy) return null;
+            if (regTid && String(this.selectedTermId) !== regTid) return null;
+            const wantName = String(reg.exam_name || '').trim().toUpperCase();
+            const wantType = reg.exam_type != null && String(reg.exam_type).trim() !== ''
+                ? String(reg.exam_type).trim().toUpperCase()
+                : null;
+            let candidates = scopedExams.filter(e =>
+                String((e.exam_name || '').trim().toUpperCase()) === wantName
+            );
+            if (wantType !== null) {
+                candidates = candidates.filter(e =>
+                    String((e.exam_type || '').trim().toUpperCase()) === wantType
+                );
+            }
+            if (!candidates.length) return null;
+            candidates.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+            return candidates[0];
+        },
+
+        _pickDefaultExamForScope(scopedExams) {
+            if (!scopedExams || !scopedExams.length) return '';
+            const byRegistered = this._matchRegisteredCurrentExam(scopedExams);
+            if (byRegistered) return String(byRegistered.id);
+            const byServer = scopedExams.find(e => String(e.id) === String(this.defaultExamId));
+            if (byServer) return String(byServer.id);
+            let pool = scopedExams;
+            if (this.isTeacherMarks) {
+                const openMarks = pool.filter(e => this._marksEntryDeadlineOpen(e));
+                if (openMarks.length) pool = openMarks;
+            }
+            return this.chooseDefaultExam(pool);
+        },
+
         enforceDefaults() {
-            // 1) Year default (server default -> current -> first)
+            // 1) Year default (server default → current → first)
             const hasSelectedYear = this.academicYears.some(y => String(y.id) === String(this.selectedAcademicYearId));
             if (!hasSelectedYear) {
                 const byServer = this.academicYears.find(y => String(y.id) === String(this.defaultAcademicYearId));
@@ -1405,23 +1508,6 @@ function marksSheet() {
                 const fallbackTerm = byServer || currentTerm || yearTerms[0];
                 this.selectedTermId = fallbackTerm ? String(fallbackTerm.id) : '';
             }
-
-            // 3) Exam default for selected year+term (server default -> today -> latest)
-            const scopedExams = this.examList.filter(e =>
-                String(e.academic_year_id) === String(this.selectedAcademicYearId) &&
-                String(e.term_id) === String(this.selectedTermId)
-            );
-            const hasSelectedExam = scopedExams.some(e => String(e.id) === String(this.selectedExam));
-            if (!hasSelectedExam) {
-                const notAllocLocked = scopedExams.filter(e => !e.is_locked);
-                let pool = notAllocLocked.length ? notAllocLocked : scopedExams;
-                if (this.isTeacherMarks) {
-                    const openMarks = pool.filter(e => this._marksEntryDeadlineOpen(e));
-                    if (openMarks.length) pool = openMarks;
-                }
-                const byAnchor = pool.find(e => String(e.id) === String(this.defaultExamId));
-                this.selectedExam = byAnchor ? String(byAnchor.id) : this.chooseDefaultExam(pool);
-            }
         },
 
         syncDefaultsFromUi() {
@@ -1432,11 +1518,16 @@ function marksSheet() {
 
         async init() {
             this._applyInitialGradeRemarksIfEmpty();
+            this._applyRegisteredYearTerm();
             this.enforceDefaults();
             await this.loadExamsForFilters();
-            this.enforceDefaults();
+            await this._syncSelectedExamToDropdown();
+            await this.$nextTick();
             await this.onExamSelected();
             this.syncDefaultsFromUi();
+            this.filtersReady = true;
+            await this.$nextTick();
+            await this._syncSelectedExamToDropdown();
             setInterval(() => {
                 this._tick = Date.now();
                 this._maybeOpenMarksPeriodClosedModal();
@@ -1459,7 +1550,8 @@ function marksSheet() {
             this.selectedExam = '';
             this.enforceDefaults();
             await this.loadExamsForFilters();
-            this.enforceDefaults();
+            await this._syncSelectedExamToDropdown();
+            await this.$nextTick();
             await this.onExamSelected();
             this.syncDefaultsFromUi();
         },
@@ -1468,46 +1560,42 @@ function marksSheet() {
             this.selectedExam = '';
             this.enforceDefaults();
             await this.loadExamsForFilters();
-            this.enforceDefaults();
+            await this._syncSelectedExamToDropdown();
+            await this.$nextTick();
             await this.onExamSelected();
             this.syncDefaultsFromUi();
         },
 
         async resetToSchoolCurrent() {
-            const resolveYearId = () => {
-                const target = String(this.schoolYearId || '');
-                if (target && this.academicYears.some(y => String(y.id) === target)) return target;
-                const cur = this.academicYears.find(y => y.is_current);
-                if (cur) return String(cur.id);
-                return this.academicYears[0] ? String(this.academicYears[0].id) : '';
-            };
-            const yearId = resolveYearId();
-            if (!yearId) return;
-
-            this.selectedAcademicYearId = yearId;
-            const yTerms = this.terms.filter(t => String(t.academic_year_id) === String(yearId));
-            const resolveTermId = () => {
-                const target = String(this.schoolTermId || '');
-                if (target && yTerms.some(t => String(t.id) === target)) return target;
-                const cur = yTerms.find(t => t.is_current);
-                if (cur) return String(cur.id);
-                return yTerms[0] ? String(yTerms[0].id) : '';
-            };
-            this.selectedTermId = resolveTermId();
+            this._applyRegisteredYearTerm();
+            if (!this.registeredCurrentExam) {
+                const resolveYearId = () => {
+                    const target = String(this.schoolYearId || '');
+                    if (target && this.academicYears.some(y => String(y.id) === target)) return target;
+                    const cur = this.academicYears.find(y => y.is_current);
+                    if (cur) return String(cur.id);
+                    return this.academicYears[0] ? String(this.academicYears[0].id) : '';
+                };
+                const yearId = resolveYearId();
+                if (yearId) {
+                    this.selectedAcademicYearId = yearId;
+                    const yTerms = this.terms.filter(t => String(t.academic_year_id) === String(yearId));
+                    const resolveTermId = () => {
+                        const target = String(this.schoolTermId || '');
+                        if (target && yTerms.some(t => String(t.id) === target)) return target;
+                        const cur = yTerms.find(t => t.is_current);
+                        if (cur) return String(cur.id);
+                        return yTerms[0] ? String(yTerms[0].id) : '';
+                    };
+                    this.selectedTermId = resolveTermId();
+                }
+            }
             this.selectedExam = '';
 
             await this.loadExamsForFilters();
 
-            const scoped = this.examList.filter(e =>
-                String(e.academic_year_id) === String(this.selectedAcademicYearId) &&
-                String(e.term_id) === String(this.selectedTermId)
-            );
-            const unlocked = scoped.filter(e => !e.is_locked);
-            const pool = unlocked.length ? unlocked : scoped;
-            const schoolPick = String(this.schoolDefaultExamId || '');
-            const preferred = pool.find(e => String(e.id) === schoolPick);
-            this.selectedExam = preferred ? String(preferred.id) : this.chooseDefaultExam(pool);
-
+            await this._syncSelectedExamToDropdown();
+            await this.$nextTick();
             await this.onExamSelected();
             this.syncDefaultsFromUi();
         },

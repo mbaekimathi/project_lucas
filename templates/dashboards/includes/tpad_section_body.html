@@ -1,0 +1,23 @@
+<div class="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="modern-card p-6 sm:p-8 border-l-4 border-teal-500 dark:border-teal-400">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md">
+                <i class="fas {{ tpad_icon|default('fa-clipboard-check') }} text-xl" aria-hidden="true"></i>
+            </span>
+            {{ tpad_title }}
+        </h1>
+        {% if tpad_subtitle %}
+        <p class="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400 mt-2">{{ tpad_subtitle }}</p>
+        {% endif %}
+
+        <div class="mt-10 flex flex-col items-center justify-center text-center py-12 px-4 rounded-2xl bg-teal-50/90 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/60">
+            <span class="flex h-16 w-16 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-300 shadow-inner">
+                <i class="fas fa-hourglass-half text-2xl" aria-hidden="true"></i>
+            </span>
+            <h2 class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white mt-6">Coming soon</h2>
+            <p class="text-gray-600 dark:text-gray-300 mt-3 max-w-md leading-relaxed">
+                {{ tpad_coming_soon_message|default('This TPAD section is under development. Check back after a future update.') }}
+            </p>
+        </div>
+    </div>
+</div>

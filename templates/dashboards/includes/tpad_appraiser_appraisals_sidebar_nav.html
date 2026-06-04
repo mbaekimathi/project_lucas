@@ -1,0 +1,19 @@
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Appraiser appraisals</p>
+<a href="{{ employee_dash_url('tpad/appraiser-appraisals/pending-appraisals') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_pending_appraisals' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-hourglass-half w-5"></i>
+    <span>Pending appraisals</span>
+    {% if request.endpoint == 'employee_tpad_pending_appraisals' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/appraiser-appraisals/schedule-meetings') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_schedule_meetings' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-check w-5"></i>
+    <span>Schedule meetings</span>
+    {% if request.endpoint == 'employee_tpad_schedule_meetings' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/appraiser-appraisals/weekly-attendance') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_appraiser_weekly_attendance' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Weekly attendance</span>
+    {% if request.endpoint == 'employee_tpad_appraiser_weekly_attendance' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

@@ -135,6 +135,8 @@
             </a>
         </div>
 
+        {% include 'dashboards/includes/teacher_lesson_attendance_calendar.html' %}
+
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
                 <div class="flex items-center justify-between gap-2">
@@ -162,12 +164,16 @@
             </div>
             <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
                 <div class="flex items-center justify-between gap-2">
-                    <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Attendance logged</p>
+                    <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Lessons attended</p>
                     <span class="h-10 w-10 rounded-xl bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-200 flex items-center justify-center"><i class="fas fa-check-double"></i></span>
                 </div>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ ta.get('attendance_present_cohort', 0) }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Present marks in your levels this term.</p>
-                <p class="text-xs font-medium text-gray-600 dark:text-gray-300 mt-2">You recorded <span class="font-bold">{{ ta.get('attendance_entries_you_recorded', 0) }}</span> rows.</p>
+                {% set attended_term = ta.get('lessons_attended_term', ta.get('attendance_present_cohort', 0)) %}
+                {% set allocated_term = ta.get('lessons_allocated_term', 0) %}
+                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2 tabular-nums">
+                    {{ attended_term }}{% if allocated_term %}<span class="text-lg font-semibold text-gray-400 dark:text-gray-500"> / {{ allocated_term }}</span>{% endif %}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Classes with attendance marked this term.</p>
+                <p class="text-xs font-medium text-gray-600 dark:text-gray-300 mt-2">You recorded <span class="font-bold">{{ ta.get('attendance_entries_you_recorded', 0) }}</span> register rows.</p>
             </div>
             <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
                 <div class="flex items-center justify-between gap-2">

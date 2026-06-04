@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Communication centre - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}{% if tpad_mode|default(false) %}TPAD communication{% else %}Communication centre{% endif %} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
+{% if tpad_mode|default(false) %}
+{% include 'dashboards/includes/tpad_subpage_sidebar.html' %}
+{% else %}
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
 {% if nav_role in ('head of institution', 'deputy head of institution') %}
 {% set leadership_nav_scope = 'school' %}
@@ -17,9 +20,17 @@
     <span>Communication</span>
 </a>
 {% endif %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
+{% if tpad_mode|default(false) %}
+<div class="px-4 sm:px-6 lg:px-8 max-w-3xl mx-auto pt-4">
+    <a href="{{ employee_dash_url('tpad') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to TPAD
+    </a>
+</div>
+{% endif %}
 <style>
 .cc-page { --cc-radius: 0.875rem; }
 .cc-hero { background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 8%, transparent) 0%, transparent 55%), linear-gradient(180deg, #fff 0%, #f8fafc 100%); }
@@ -88,8 +99,8 @@
 </style>
 
 {% set role_theme = portal_page_variant|default('default') %}
-{% set role_hero_title = 'Communication centre' %}
-{% set role_hero_subtitle = '' %}
+{% set role_hero_title = 'TPAD communication' if tpad_mode|default(false) else 'Communication centre' %}
+{% set role_hero_subtitle = 'TPAD · Messages to teachers and staff' if tpad_mode|default(false) else '' %}
 {% set role_hero_icon_class = 'fa-broadcast-tower' %}
 {% include 'dashboards/includes/role_hero.html' %}
 
@@ -100,10 +111,14 @@
             <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg ring-2 ring-white/20">
                 <i class="fas fa-paper-plane"></i>
             </span>
-            Communication centre
+            {% if tpad_mode|default(false) %}TPAD communication{% else %}Communication centre{% endif %}
         </h1>
         <p class="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed max-w-xl">
+            {% if tpad_mode|default(false) %}
+            Send appraisal and TPAD-related messages to teachers and staff by email, SMS, or WhatsApp. Channels are configured under
+            {% else %}
             Reach staff or parents by email, SMS, or WhatsApp. Channels are configured under
+            {% endif %}
             <a href="{{ employee_dash_url('integration-settings') }}" class="text-brand-primary font-semibold hover:underline">Integration settings</a>.
         </p>
     </header>

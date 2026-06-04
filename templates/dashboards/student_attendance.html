@@ -73,6 +73,7 @@
 
 {% block content %}
 <div class="att-page-shell {% if is_teacher_view|default(false) and not is_parent_view|default(false) %}att-page-shell--teacher{% endif %} page-content max-w-7xl mx-auto role-page role-page--{% if is_teacher_view|default(false) %}teacher{% else %}{{ portal_page_variant|default('default') }}{% endif %} student-attendance-page">
+    {% include 'dashboards/includes/portal_page_flash.html' %}
     {% if is_parent_view|default(false) and is_technician|default(false) and current_view_role|default('') == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
         <div class="flex items-center justify-between flex-wrap gap-4">
@@ -813,9 +814,131 @@
         background: #1f2937;
         border-color: #374151;
     }
+
+    /* Save confirmation popup */
+    .att-save-popup {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
+    }
+    .att-save-popup.hidden { display: none !important; }
+    .att-save-popup__dialog {
+        width: min(100%, 22rem);
+        border-radius: 1rem;
+        padding: 1.5rem 1.25rem 1.25rem;
+        text-align: center;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+        animation: attSavePopupIn 0.22s ease-out;
+    }
+    @keyframes attSavePopupIn {
+        from { opacity: 0; transform: scale(0.94) translateY(10px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .att-save-popup__icon {
+        width: 3.25rem;
+        height: 3.25rem;
+        margin: 0 auto 0.875rem;
+        border-radius: 9999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+    .att-save-popup--success .att-save-popup__dialog {
+        background: #ecfdf5;
+        border: 1px solid #6ee7b7;
+        color: #064e3b;
+    }
+    .dark .att-save-popup--success .att-save-popup__dialog {
+        background: #022c22;
+        border-color: #047857;
+        color: #d1fae5;
+    }
+    .att-save-popup--success .att-save-popup__icon {
+        background: #d1fae5;
+        color: #059669;
+    }
+    .dark .att-save-popup--success .att-save-popup__icon {
+        background: rgba(5, 150, 105, 0.25);
+        color: #34d399;
+    }
+    .att-save-popup--error .att-save-popup__dialog {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #7f1d1d;
+    }
+    .dark .att-save-popup--error .att-save-popup__dialog {
+        background: #450a0a;
+        border-color: #991b1b;
+        color: #fecaca;
+    }
+    .att-save-popup--error .att-save-popup__icon {
+        background: #fee2e2;
+        color: #dc2626;
+    }
+    .dark .att-save-popup--error .att-save-popup__icon {
+        background: rgba(220, 38, 38, 0.25);
+        color: #f87171;
+    }
+    .att-save-popup__title {
+        margin: 0 0 0.35rem;
+        font-size: 1.125rem;
+        font-weight: 700;
+        line-height: 1.3;
+    }
+    .att-save-popup__message {
+        margin: 0;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        opacity: 0.92;
+    }
+    .att-save-popup__hint {
+        margin: 0.75rem 0 0;
+        font-size: 0.75rem;
+        opacity: 0.7;
+    }
+    .att-save-popup__close {
+        margin-top: 1rem;
+        width: 100%;
+        min-height: 2.75rem;
+        border: none;
+        border-radius: 0.625rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #fff;
+        background: #059669;
+        cursor: pointer;
+    }
+    .att-save-popup--error .att-save-popup__close {
+        background: #dc2626;
+    }
+    .att-save-popup__close:hover { filter: brightness(1.05); }
     </style>
 
     {% if not is_parent_view|default(false) %}
+    <div id="att-save-popup"
+         class="att-save-popup hidden att-save-popup--success"
+         aria-hidden="true"
+         role="alertdialog"
+         aria-modal="true"
+         aria-labelledby="att-save-popup-title">
+        <div class="att-save-popup__dialog" role="document">
+            <div class="att-save-popup__icon" aria-hidden="true">
+                <i class="fas fa-circle-check"></i>
+            </div>
+            <h2 id="att-save-popup-title" class="att-save-popup__title">Attendance saved</h2>
+            <p class="att-save-popup__message">Your attendance register has been saved successfully.</p>
+            <p class="att-save-popup__hint">Closing automatically…</p>
+            <button type="button" class="att-save-popup__close hidden">OK</button>
+        </div>
+    </div>
     <script>
     (function() {
         var ATTENDANCE_REGISTER_URL = {{ employee_dash_url('student-management/student-attendance')|tojson }};
@@ -980,13 +1103,61 @@
             cbs.forEach(function(cb) { cb.style.accentColor = color; });
         }
 
+        var attPopupTimer = null;
+
+        function hideAttendancePopup() {
+            var overlay = document.getElementById('att-save-popup');
+            if (!overlay) return;
+            overlay.classList.add('hidden');
+            overlay.setAttribute('aria-hidden', 'true');
+            if (attPopupTimer) {
+                clearTimeout(attPopupTimer);
+                attPopupTimer = null;
+            }
+        }
+
+        function showAttendancePopup(msg, isError) {
+            var overlay = document.getElementById('att-save-popup');
+            if (!overlay) return;
+            var titleEl = overlay.querySelector('.att-save-popup__title');
+            var msgEl = overlay.querySelector('.att-save-popup__message');
+            var hintEl = overlay.querySelector('.att-save-popup__hint');
+            var closeBtn = overlay.querySelector('.att-save-popup__close');
+            var iconWrap = overlay.querySelector('.att-save-popup__icon');
+            var icon = iconWrap ? iconWrap.querySelector('i') : null;
+            var title = isError ? 'Could not save attendance' : 'Attendance saved';
+            var message = msg || (isError ? 'Something went wrong. Please try again.' : 'Your attendance register has been saved successfully.');
+            if (titleEl) titleEl.textContent = title;
+            if (msgEl) msgEl.textContent = message;
+            if (icon) {
+                icon.className = isError ? 'fas fa-circle-exclamation' : 'fas fa-circle-check';
+            }
+            overlay.classList.remove('hidden', 'att-save-popup--success', 'att-save-popup--error');
+            overlay.classList.add(isError ? 'att-save-popup--error' : 'att-save-popup--success');
+            overlay.setAttribute('aria-hidden', 'false');
+            if (hintEl) hintEl.classList.toggle('hidden', !!isError);
+            if (closeBtn) closeBtn.classList.toggle('hidden', !isError);
+            if (attPopupTimer) {
+                clearTimeout(attPopupTimer);
+                attPopupTimer = null;
+            }
+            if (!isError) {
+                attPopupTimer = setTimeout(hideAttendancePopup, 2800);
+            }
+        }
+
         function showAttendanceStatus(msg, isError, levelCard) {
             var statusEl = getLevelSaveStatusEl(levelCard) || document.querySelector('.att-level-save-status');
-            if (!statusEl) return;
-            statusEl.classList.remove('hidden');
-            statusEl.textContent = msg;
-            classListRemove(statusEl, ['text-green-600', 'text-green-400', 'text-red-600', 'text-red-400', 'dark:text-green-400', 'dark:text-red-400']);
-            classListAdd(statusEl, isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400');
+            if (statusEl) {
+                statusEl.classList.remove('hidden');
+                statusEl.textContent = msg;
+                classListRemove(statusEl, ['text-green-600', 'text-green-400', 'text-red-600', 'text-red-400', 'dark:text-green-400', 'dark:text-red-400']);
+                classListAdd(statusEl, isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400');
+            }
+            var lower = String(msg || '').toLowerCase();
+            if (lower.indexOf('saving') === -1) {
+                showAttendancePopup(msg, isError);
+            }
         }
 
         function refreshAllAttendanceRows() {
@@ -1110,7 +1281,7 @@
                     if (statusEl && statusEl.textContent.indexOf('saved') !== -1) {
                         statusEl.classList.add('hidden');
                     }
-                }, 4000);
+                }, 3200);
             })
             .catch(function(err) {
                 if (mySeq !== attSaveSeq) return;
@@ -1234,6 +1405,24 @@
             });
         }
 
+        function wireAttendanceSavePopup() {
+            var overlay = document.getElementById('att-save-popup');
+            if (!overlay || overlay.getAttribute('data-att-popup-wired') === '1') return;
+            overlay.setAttribute('data-att-popup-wired', '1');
+            overlay.addEventListener('click', function(e) {
+                if (e.target === overlay) hideAttendancePopup();
+            });
+            var closeBtn = overlay.querySelector('.att-save-popup__close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', hideAttendancePopup);
+            }
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && overlay && !overlay.classList.contains('hidden')) {
+                    hideAttendancePopup();
+                }
+            });
+        }
+
         function bootAttendanceEmployeePage() {
             window.__applyAttendanceFilterBounds({
                 calendar_date_min: {{ (calendar_date_min or '')|tojson }},
@@ -1241,6 +1430,7 @@
                 calendar_month_min: {{ (calendar_month_min or '')|tojson }},
                 calendar_month_max: {{ (calendar_month_max or '')|tojson }}
             });
+            wireAttendanceSavePopup();
             wireAttendanceShellEvents();
             wireAttendanceLiveFilters();
             window.__initStudentAttendanceRegister();

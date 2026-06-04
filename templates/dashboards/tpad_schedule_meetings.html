@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Schedule meetings — Appraiser — TPAD — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/tpad_subpage_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto pt-4">
+    <a href="{{ employee_dash_url('tpad/appraiser-appraisals') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to appraiser appraisals
+    </a>
+</div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Schedule meetings' %}
+{% set role_hero_subtitle = 'TPAD · Appraiser appraisals' %}
+{% set role_hero_icon_class = 'fa-calendar-check' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+{% set tpad_title = 'Schedule meetings' %}
+{% set tpad_subtitle = 'Appraiser appraisals · TPAD' %}
+{% set tpad_icon = 'fa-calendar-check' %}
+{% set tpad_coming_soon_message = 'Plan and manage appraisal meetings with teachers. This module is under development.' %}
+{% include 'dashboards/includes/tpad_section_body.html' %}
+{% endblock %}

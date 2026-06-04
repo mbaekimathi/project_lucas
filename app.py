@@ -8998,6 +8998,9 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
+            accept = (request.headers.get('Accept') or '').lower()
+            if 'application/json' in accept or request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': 'Please login to continue.'}), 401
             flash('Please login to access this page.', 'error')
             return redirect(url_for('login'))
         return f(*args, **kwargs)
@@ -13553,6 +13556,8 @@ def _teacher_dashboard_analytics_empty():
         'timetable_slot_count': 0,
         'distinct_class_group_count': 0,
         'attendance_present_cohort': 0,
+        'lessons_attended_term': 0,
+        'lessons_allocated_term': 0,
         'attendance_entries_you_recorded': 0,
         'exams_supervise_duty_count': 0,
         'subject_rows': [],
@@ -13561,6 +13566,186 @@ def _teacher_dashboard_analytics_empty():
         'overall_rank': None,
         'overall_teachers_count': 0,
     }
+
+
+def _teacher_dashboard_collect_level_ids(cursor, teacher_id, term_id):
+    """Academic levels for this teacher from assignments, timetable, and attendance."""
+    level_ids = []
+    try:
+        teacher_id = int(teacher_id)
+        term_id = int(term_id)
+    except (TypeError, ValueError):
+        return level_ids
+    if not teacher_id:
+        return level_ids
+    try:
+        cursor.execute(
+            """
+            SELECT DISTINCT academic_level_id AS lid
+            FROM teacher_subject_assignments
+            WHERE teacher_id = %s AND academic_level_id IS NOT NULL
+            """,
+            (teacher_id,),
+        )
+        for r in cursor.fetchall() or []:
+            lid = r.get('lid') if isinstance(r, dict) else r[0]
+            if lid is not None:
+                level_ids.append(int(lid))
+    except Exception as ex:
+        print(f"_teacher_dashboard_collect_level_ids assignments: {ex}")
+    if term_id:
+        try:
+            cursor.execute(
+                """
+                SELECT DISTINCT academic_level_id AS lid
+                FROM timetables
+                WHERE teacher_id = %s AND term_id = %s AND academic_level_id IS NOT NULL
+                """,
+                (teacher_id, term_id),
+            )
+            for r in cursor.fetchall() or []:
+                lid = r.get('lid') if isinstance(r, dict) else r[0]
+                if lid is not None:
+                    level_ids.append(int(lid))
+        except Exception as ex:
+            print(f"_teacher_dashboard_collect_level_ids timetables: {ex}")
+        try:
+            ensure_student_attendance_records_table(cursor)
+            ensure_student_attendance_subject_column(cursor)
+            cursor.execute(
+                """
+                SELECT DISTINCT sar.academic_level_id AS lid
+                FROM student_attendance_records sar
+                INNER JOIN timetables t
+                    ON t.teacher_id = %s AND t.term_id = sar.term_id
+                   AND t.academic_level_id = sar.academic_level_id
+                   AND t.subject_id = sar.subject_id
+                   AND t.day_of_week = DAYNAME(sar.attendance_date)
+                WHERE sar.term_id = %s AND sar.academic_level_id IS NOT NULL
+                """,
+                (teacher_id, term_id),
+            )
+            for r in cursor.fetchall() or []:
+                lid = r.get('lid') if isinstance(r, dict) else r[0]
+                if lid is not None:
+                    level_ids.append(int(lid))
+        except Exception as ex:
+            print(f"_teacher_dashboard_collect_level_ids timetable attendance: {ex}")
+        try:
+            ensure_student_attendance_records_table(cursor)
+            cursor.execute(
+                """
+                SELECT DISTINCT academic_level_id AS lid
+                FROM student_attendance_records
+                WHERE term_id = %s AND recorded_by_employee_id = %s
+                  AND academic_level_id IS NOT NULL
+                """,
+                (term_id, teacher_id),
+            )
+            for r in cursor.fetchall() or []:
+                lid = r.get('lid') if isinstance(r, dict) else r[0]
+                if lid is not None:
+                    level_ids.append(int(lid))
+        except Exception as ex:
+            print(f"_teacher_dashboard_collect_level_ids recorded attendance: {ex}")
+    return list(dict.fromkeys(level_ids))
+
+
+def _teacher_dashboard_class_group_count(cursor, teacher_id, term_id):
+    """Distinct class + subject groups on timetable, or from attendance when no timetable."""
+    try:
+        teacher_id = int(teacher_id)
+        term_id = int(term_id)
+    except (TypeError, ValueError):
+        return 0
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT CONCAT(academic_level_id,'|',IFNULL(subject_id,0))) AS c
+            FROM timetables WHERE teacher_id = %s AND term_id = %s
+            """,
+            (teacher_id, term_id),
+        )
+        rr = cursor.fetchone()
+        cnt = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0) if rr else 0
+        if cnt:
+            return cnt
+    except Exception as ex:
+        print(f"_teacher_dashboard_class_group_count timetable: {ex}")
+    try:
+        ensure_student_attendance_records_table(cursor)
+        ensure_student_attendance_subject_column(cursor)
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT CONCAT(sar.academic_level_id,'|',sar.subject_id)) AS c
+            FROM student_attendance_records sar
+            WHERE sar.term_id = %s AND sar.subject_id > 0 AND sar.present = 1
+              AND (
+                sar.recorded_by_employee_id = %s
+                OR EXISTS (
+                    SELECT 1 FROM timetables t
+                    WHERE t.teacher_id = %s AND t.term_id = sar.term_id
+                      AND t.academic_level_id = sar.academic_level_id
+                      AND t.subject_id = sar.subject_id
+                      AND t.day_of_week = DAYNAME(sar.attendance_date)
+                )
+              )
+            """,
+            (term_id, teacher_id, teacher_id),
+        )
+        rr = cursor.fetchone()
+        return int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0) if rr else 0
+    except Exception as ex:
+        print(f"_teacher_dashboard_class_group_count attendance: {ex}")
+        return 0
+
+
+def _teacher_dashboard_lesson_stats_term(cursor, teacher_id, term_id):
+    """Lessons attended vs allocated from term start through today."""
+    stats = {'lessons_attended_term': 0, 'lessons_allocated_term': 0}
+    try:
+        teacher_id = int(teacher_id)
+        term_id = int(term_id)
+    except (TypeError, ValueError):
+        return stats
+    term_start, term_end = _get_term_date_bounds(cursor, term_id)
+    if not term_start:
+        return stats
+    today = date_cls.today()
+    range_end = min(today, term_end) if term_end else today
+    if range_end < term_start:
+        return stats
+    day_map = _tpad_fetch_teacher_day_slot_maps(cursor, [teacher_id], term_id).get(teacher_id, {})
+    stats['lessons_allocated_term'] = _tpad_count_allocated_from_day_map(
+        day_map, term_start, range_end
+    )
+    attended_map = _tpad_fetch_attended_by_teacher_ids(
+        cursor, [teacher_id], term_id, term_start, range_end
+    )
+    stats['lessons_attended_term'] = int(attended_map.get(teacher_id, 0) or 0)
+    if stats['lessons_attended_term']:
+        return stats
+    try:
+        ensure_student_attendance_records_table(cursor)
+        ensure_student_attendance_subject_column(cursor)
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT CONCAT(academic_level_id,'|',subject_id,'|',attendance_date)) AS c
+            FROM student_attendance_records
+            WHERE term_id = %s AND recorded_by_employee_id = %s
+              AND subject_id > 0 AND present = 1
+              AND attendance_date >= %s AND attendance_date <= %s
+            """,
+            (term_id, teacher_id, term_start, range_end),
+        )
+        rr = cursor.fetchone()
+        if rr:
+            stats['lessons_attended_term'] = int(
+                (rr.get('c') if isinstance(rr, dict) else rr[0]) or 0
+            )
+    except Exception as ex:
+        print(f"_teacher_dashboard_lesson_stats_term fallback: {ex}")
+    return stats
 
 
 def _curriculum_coordinator_dashboard_analytics_empty():
@@ -13896,26 +14081,7 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
     try:
         ensure_student_attendance_records_table(cursor)
         ensure_subject_exam_total_marks_column(cursor)
-        cursor.execute(
-            """
-            SELECT DISTINCT academic_level_id AS lid FROM teacher_subject_assignments WHERE teacher_id = %s
-            UNION
-            SELECT DISTINCT academic_level_id AS lid FROM timetables WHERE teacher_id = %s AND term_id = %s
-            """,
-            (teacher_id, teacher_id, term_id),
-        )
-        level_ids = []
-        for r in cursor.fetchall() or []:
-            if isinstance(r, dict):
-                lid = r.get('lid') if r.get('lid') is not None else r.get('academic_level_id')
-            else:
-                lid = r[0] if r else None
-            if lid is not None:
-                try:
-                    level_ids.append(int(lid))
-                except (TypeError, ValueError):
-                    continue
-        level_ids = list(dict.fromkeys(level_ids))
+        level_ids = _teacher_dashboard_collect_level_ids(cursor, teacher_id, term_id)
 
         if level_ids:
             ph = ','.join(['%s'] * len(level_ids))
@@ -14010,16 +14176,14 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
         if rr:
             out['timetable_slot_count'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
 
-        cursor.execute(
-            """
-            SELECT COUNT(DISTINCT CONCAT(academic_level_id,'|',IFNULL(subject_id,0))) AS c
-            FROM timetables WHERE teacher_id = %s AND term_id = %s
-            """,
-            (teacher_id, term_id),
+        out['distinct_class_group_count'] = _teacher_dashboard_class_group_count(
+            cursor, teacher_id, term_id
         )
-        rr = cursor.fetchone()
-        if rr:
-            out['distinct_class_group_count'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+
+        lesson_stats = _teacher_dashboard_lesson_stats_term(cursor, teacher_id, term_id)
+        out['lessons_attended_term'] = lesson_stats.get('lessons_attended_term', 0)
+        out['lessons_allocated_term'] = lesson_stats.get('lessons_allocated_term', 0)
+        out['attendance_present_cohort'] = out['lessons_attended_term']
 
         sup_count = 0
         try:
@@ -14728,23 +14892,1198 @@ def dashboard_employee():
                          accountant_dashboard=accountant_dashboard)
 
 
-@app.route('/dashboard/employee/tpad')
-@login_required
-def employee_tpad():
-    """Teacher Professional Appraisal & Development (TPAD) — staff and leadership."""
+EMPLOYEE_TPAD_ENDPOINTS = frozenset({
+    'employee_tpad',
+    'employee_tpad_self_appraisals',
+    'employee_tpad_self_assessment',
+    'employee_tpad_lesson_observation',
+    'employee_tpad_appraiser_appraisals',
+    'employee_tpad_pending_appraisals',
+    'employee_tpad_schedule_meetings',
+    'employee_tpad_appraiser_weekly_attendance',
+    'employee_tpad_appraiser_weekly_attendance_teacher',
+    'employee_tpad_tpd',
+    'employee_tpad_tpd_plan',
+    'employee_tpad_completed_plans',
+    'employee_tpad_enrolment',
+    'employee_tpad_feedback',
+    'employee_tpad_tpd_assessment',
+    'employee_tpad_certificate',
+    'employee_tpad_appraisal_reports',
+    'employee_tpad_standard_reports',
+    'employee_tpad_communication',
+})
+
+TPAD_ACCESS_ROLES = frozenset({
+    'deputy head of institution',
+    'head of institution',
+    'super admin',
+    'teachers',
+    'teacher',
+})
+
+
+def _employee_tpad_access_guard():
+    """Return redirect response if current user may not access TPAD pages, else None."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_technician = user_role == 'technician'
     effective = viewing_as_role if is_technician and viewing_as_role else user_role
-    allowed = effective in (
-        'deputy head of institution', 'head of institution', 'super admin',
-        'teachers', 'teacher',
-    )
-    if not allowed:
+    if effective not in TPAD_ACCESS_ROLES:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
+    return None
 
+
+def _tpad_weekly_attendance_week_bounds(reference_date=None):
+    """Monday–Sunday bounds for the ISO week containing reference_date (default today)."""
+    ref = reference_date or date_cls.today()
+    week_start = ref - timedelta(days=ref.weekday())
+    week_end = week_start + timedelta(days=6)
+    return week_start, week_end
+
+
+def _tpad_iter_dates_in_range(range_start, range_end):
+    if not range_start or not range_end:
+        return
+    start = range_start if range_end >= range_start else range_end
+    end = range_end if range_end >= range_start else range_start
+    d = start
+    while d <= end:
+        yield d
+        d += timedelta(days=1)
+
+
+def _tpad_count_allocated_from_day_map(day_slot_counts, range_start, range_end):
+    """Sum timetable slots across calendar days using a day-of-week -> slot count map."""
+    if not range_start or not range_end or not day_slot_counts:
+        return 0
+    total = 0
+    for d in _tpad_iter_dates_in_range(range_start, range_end):
+        total += int(day_slot_counts.get(d.strftime('%A'), 0) or 0)
+    return total
+
+
+def _get_term_date_bounds(cursor, term_id):
+    """Return (start_date, end_date) for a term as date objects."""
+    if not term_id:
+        return None, None
+    try:
+        cursor.execute(
+            "SELECT start_date, end_date FROM terms WHERE id = %s LIMIT 1",
+            (int(term_id),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None, None
+        raw_start = row.get('start_date') if isinstance(row, dict) else row[0]
+        raw_end = row.get('end_date') if isinstance(row, dict) else row[1]
+        return _coerce_to_date(raw_start), _coerce_to_date(raw_end)
+    except Exception as ex:
+        print(f"_get_term_date_bounds: {ex}")
+        return None, None
+
+
+def _tpad_clamp_filter_to_term(cursor, term_id, filter_params):
+    """Intersect the selected filter range with the active term and cap end at today."""
+    fp = dict(filter_params or {})
+    range_start = fp.get('range_start')
+    range_end = fp.get('range_end')
+    filter_type = (fp.get('filter_type') or 'day').strip().lower()
+    if not term_id or not range_start or not range_end:
+        return fp
+    term_start, term_end = _get_term_date_bounds(cursor, term_id)
+    today = date_cls.today()
+    orig_start, orig_end = range_start, range_end
+    if term_start and range_start < term_start:
+        range_start = term_start
+    cap_end = today
+    if term_end and term_end < cap_end:
+        cap_end = term_end
+    if range_end > cap_end:
+        range_end = cap_end
+    if range_end < range_start:
+        range_end = range_start
+    fp['range_start'] = range_start
+    fp['range_end'] = range_end
+    if filter_type == 'day':
+        fp['day'] = range_start.isoformat()
+        fp['range_label'] = _format_date_short(range_start)
+    elif filter_type == 'month':
+        fp['month'] = f'{range_start.year:04d}-{range_start.month:02d}'
+        fp['range_label'] = range_start.strftime('%b %Y')
+    elif filter_type == 'year':
+        fp['year'] = str(orig_start.year)
+        fp['range_label'] = str(orig_start.year)
+    elif filter_type == 'period':
+        fp['period_start'] = range_start.isoformat()
+        fp['period_end'] = range_end.isoformat()
+        if fp.get('range_label') and 'Term to date' in str(fp.get('range_label')):
+            pass
+        elif range_start == range_end:
+            fp['range_label'] = _format_date_short(range_start)
+        else:
+            fp['range_label'] = (
+                f"{range_start.strftime('%d %b')} – {_format_date_short(range_end)}"
+            )
+    elif range_start == range_end:
+        fp['range_label'] = _format_date_short(range_start)
+    else:
+        fp['range_label'] = (
+            f"{range_start.strftime('%d %b')} – {_format_date_short(range_end)}"
+        )
+    return fp
+
+
+def _parse_tpad_attendance_filter_for_request(cursor, source=None):
+    """
+    Parse TPAD attendance filter from the request.
+    When no filter_type is supplied, default to term start through today.
+    """
+    if source is None:
+        source = request.args if has_request_context() else {}
+    explicit = bool((source.get('filter_type') or '').strip())
+    if not explicit and cursor:
+        _, _, term_id, _ = _get_current_academic_year_and_term(cursor)
+        term_start, term_end = _get_term_date_bounds(cursor, term_id)
+        today = date_cls.today()
+        if term_start:
+            range_start = term_start
+            range_end = min(today, term_end) if term_end else today
+            if range_end < range_start:
+                range_end = range_start
+            fp = _parse_tpad_attendance_filter({
+                'filter_type': 'period',
+                'period_start': range_start.isoformat(),
+                'period_end': range_end.isoformat(),
+            })
+            fp['range_label'] = (
+                f"Term to date ({range_start.strftime('%d %b')} – "
+                f"{_format_date_short(range_end)})"
+            )
+            return _tpad_clamp_filter_to_term(cursor, term_id, fp)
+    fp = _parse_tpad_attendance_filter(source)
+    if cursor:
+        _, _, term_id, _ = _get_current_academic_year_and_term(cursor)
+        fp = _tpad_clamp_filter_to_term(cursor, term_id, fp)
+    return fp
+
+
+def _parse_tpad_attendance_filter(source=None):
+    """Parse day / month / period / year filter into an inclusive date range."""
+    if source is None:
+        source = request.args if has_request_context() else {}
+    filter_type = (source.get('filter_type') or 'day').strip().lower()
+    if filter_type not in ('day', 'month', 'period', 'year'):
+        filter_type = 'day'
+    today = date_cls.today()
+    day_val = (source.get('day') or '').strip()
+    month_val = (source.get('month') or '').strip()
+    year_val = (source.get('year') or '').strip()
+    period_start_val = (source.get('period_start') or '').strip()
+    period_end_val = (source.get('period_end') or '').strip()
+    range_start = range_end = None
+    if filter_type == 'day':
+        d = _coerce_to_date(day_val) or today
+        range_start = range_end = d
+        day_val = d.isoformat()
+    elif filter_type == 'month':
+        if month_val and len(month_val) >= 7:
+            try:
+                y, m = int(month_val[:4]), int(month_val[5:7])
+            except ValueError:
+                y, m = today.year, today.month
+        else:
+            y, m = today.year, today.month
+        range_start = date_cls(y, m, 1)
+        if m == 12:
+            range_end = date_cls(y, 12, 31)
+        else:
+            range_end = date_cls(y, m + 1, 1) - timedelta(days=1)
+        month_val = f'{y:04d}-{m:02d}'
+    elif filter_type == 'year':
+        try:
+            y = int(year_val) if year_val else today.year
+        except ValueError:
+            y = today.year
+        range_start = date_cls(y, 1, 1)
+        range_end = date_cls(y, 12, 31)
+        year_val = str(y)
+    else:
+        rs = _coerce_to_date(period_start_val) or today
+        re = _coerce_to_date(period_end_val) or rs
+        if re < rs:
+            rs, re = re, rs
+        range_start, range_end = rs, re
+        period_start_val = rs.isoformat()
+        period_end_val = re.isoformat()
+    if range_start == range_end:
+        range_label = _format_date_short(range_start)
+    elif filter_type == 'month':
+        range_label = range_start.strftime('%b %Y')
+    elif filter_type == 'year':
+        range_label = str(range_start.year)
+    else:
+        range_label = f"{range_start.strftime('%d %b')} – {_format_date_short(range_end)}"
+    return {
+        'filter_type': filter_type,
+        'day': day_val,
+        'month': month_val,
+        'year': year_val,
+        'period_start': period_start_val,
+        'period_end': period_end_val,
+        'range_start': range_start,
+        'range_end': range_end,
+        'range_label': range_label,
+    }
+
+
+def _tpad_filter_query_dict(filter_params):
+    """Build query-string dict for the active filter type only."""
+    fp = filter_params or {}
+    ft = (fp.get('filter_type') or 'period').strip().lower()
+    q = {'filter_type': ft}
+    if ft == 'day':
+        day_val = fp.get('day') or ''
+        if day_val:
+            q['day'] = day_val
+    elif ft == 'month':
+        month_val = fp.get('month') or ''
+        if month_val:
+            q['month'] = month_val
+    elif ft == 'year':
+        year_val = fp.get('year') or ''
+        if year_val:
+            q['year'] = year_val
+    elif ft == 'period':
+        if fp.get('period_start'):
+            q['period_start'] = fp['period_start']
+        if fp.get('period_end'):
+            q['period_end'] = fp['period_end']
+    return q
+
+
+def _tpad_filter_query_string(filter_params):
+    from urllib.parse import urlencode
+    return urlencode(_tpad_filter_query_dict(filter_params))
+
+
+def _tpad_attendance_filter_meta(filter_params, term_id, term_name, cursor=None):
+    fp = filter_params or {}
+    rs = fp.get('range_start')
+    re = fp.get('range_end')
+    meta = {
+        'filter_type': fp.get('filter_type') or 'period',
+        'day': fp.get('day') or '',
+        'month': fp.get('month') or '',
+        'year': fp.get('year') or '',
+        'period_start': fp.get('period_start') or '',
+        'period_end': fp.get('period_end') or '',
+        'range_start': rs.isoformat() if rs else None,
+        'range_end': re.isoformat() if re else None,
+        'range_label': fp.get('range_label'),
+        'term_id': term_id,
+        'term_name': term_name,
+        'filter_query': _tpad_filter_query_string(fp),
+    }
+    if cursor and term_id:
+        term_start, term_end = _get_term_date_bounds(cursor, term_id)
+        today = date_cls.today()
+        meta['term_start'] = term_start.isoformat() if term_start else None
+        if term_end:
+            meta['term_end'] = min(today, term_end).isoformat()
+        else:
+            meta['term_end'] = today.isoformat()
+    return meta
+
+
+def _tpad_fetch_teacher_day_slot_maps(cursor, teacher_ids, term_id):
+    """Return {teacher_id: {day_of_week: slot_count}} for timetable allocation scaling."""
+    maps = {}
+    if not term_id or not teacher_ids:
+        return maps
+    ids = [int(t) for t in teacher_ids if t is not None]
+    if not ids:
+        return maps
+    ph = ','.join(['%s'] * len(ids))
+    try:
+        cursor.execute(
+            f"""
+            SELECT teacher_id, day_of_week,
+                   COUNT(DISTINCT CONCAT(time_slot,'|',academic_level_id,'|',IFNULL(subject_id,0))) AS c
+            FROM timetables
+            WHERE term_id = %s AND teacher_id IN ({ph})
+            GROUP BY teacher_id, day_of_week
+            """,
+            [term_id] + ids,
+        )
+        for row in cursor.fetchall() or []:
+            tid = row.get('teacher_id') if isinstance(row, dict) else row[0]
+            day = (row.get('day_of_week') if isinstance(row, dict) else row[1]) or ''
+            cnt = row.get('c') if isinstance(row, dict) else row[2]
+            if tid is None or not day:
+                continue
+            tid = int(tid)
+            maps.setdefault(tid, {})[day.strip()] = int(cnt or 0)
+    except Exception as ex:
+        print(f"_tpad_fetch_teacher_day_slot_maps: {ex}")
+    return maps
+
+
+def _tpad_teacher_attended_records_predicate():
+    """SQL predicate: present subject attendance on a day the teacher is scheduled."""
+    return """
+        sar.present = 1 AND sar.subject_id > 0
+        AND EXISTS (
+            SELECT 1 FROM timetables t
+            WHERE t.teacher_id = %s AND t.term_id = sar.term_id
+              AND t.academic_level_id = sar.academic_level_id
+              AND t.subject_id = sar.subject_id
+              AND t.day_of_week = DAYNAME(sar.attendance_date)
+        )
+    """
+
+
+def _tpad_fetch_attended_by_teacher_ids(cursor, teacher_ids, term_id, range_start, range_end):
+    """Return {teacher_id: lessons_attended} from register rows on scheduled class days."""
+    result = {int(tid): 0 for tid in teacher_ids if tid is not None}
+    if not term_id or not teacher_ids or not range_start or not range_end:
+        return result
+    ids = [int(t) for t in teacher_ids if t is not None]
+    if not ids:
+        return result
+    ensure_student_attendance_records_table(cursor)
+    ensure_student_attendance_subject_column(cursor)
+    ph = ','.join(['%s'] * len(ids))
+    try:
+        cursor.execute(
+            f"""
+            SELECT t.teacher_id,
+                   COUNT(DISTINCT CONCAT(
+                       sar.academic_level_id, '|', sar.subject_id, '|', sar.attendance_date
+                   )) AS c
+            FROM student_attendance_records sar
+            INNER JOIN timetables t
+                ON t.term_id = sar.term_id
+               AND t.academic_level_id = sar.academic_level_id
+               AND t.subject_id = sar.subject_id
+               AND t.day_of_week = DAYNAME(sar.attendance_date)
+            WHERE sar.term_id = %s
+              AND sar.attendance_date >= %s AND sar.attendance_date <= %s
+              AND sar.present = 1 AND sar.subject_id > 0
+              AND t.teacher_id IN ({ph})
+            GROUP BY t.teacher_id
+            """,
+            [term_id, range_start, range_end] + ids,
+        )
+        for row in cursor.fetchall() or []:
+            tid = row.get('teacher_id') if isinstance(row, dict) else row[0]
+            cnt = row.get('c') if isinstance(row, dict) else row[1]
+            if tid is not None:
+                result[int(tid)] = int(cnt or 0)
+    except Exception as ex:
+        print(f"_tpad_fetch_attended_by_teacher_ids: {ex}")
+    return result
+
+
+def _tpad_fetch_teacher_attended_class_rows(cursor, teacher_id, term_id, range_start, range_end):
+    """Return {(level_id, subject_id): row_dict} attended counts from attendance register."""
+    attended_rows = {}
+    if not term_id or not teacher_id or not range_start or not range_end:
+        return attended_rows
+    ensure_student_attendance_records_table(cursor)
+    ensure_student_attendance_subject_column(cursor)
+    teacher_id = int(teacher_id)
+    predicate = _tpad_teacher_attended_records_predicate()
+    try:
+        cursor.execute(
+            f"""
+            SELECT sar.academic_level_id, sar.subject_id,
+                   COALESCE(al.level_name, '') AS level_name,
+                   COALESCE(al.level_category, '') AS level_category,
+                   COALESCE(s.subject_name, '') AS subject_name,
+                   COALESCE(s.subject_code, '') AS subject_code,
+                   COUNT(DISTINCT sar.attendance_date) AS lessons_attended
+            FROM student_attendance_records sar
+            LEFT JOIN academic_levels al ON al.id = sar.academic_level_id
+            LEFT JOIN subjects s ON s.id = sar.subject_id
+            WHERE sar.term_id = %s
+              AND sar.attendance_date >= %s AND sar.attendance_date <= %s
+              AND {predicate}
+            GROUP BY sar.academic_level_id, sar.subject_id,
+                     al.level_name, al.level_category, s.subject_name, s.subject_code
+            """,
+            (term_id, range_start, range_end, teacher_id),
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                level_id = r.get('academic_level_id')
+                subject_id = r.get('subject_id')
+                attended_rows[(int(level_id), int(subject_id or 0))] = {
+                    'academic_level_id': level_id,
+                    'subject_id': subject_id,
+                    'level_name': r.get('level_name') or '',
+                    'level_category': r.get('level_category') or '',
+                    'subject_name': r.get('subject_name') or '',
+                    'subject_code': r.get('subject_code') or '',
+                    'lessons_attended': int(r.get('lessons_attended') or 0),
+                }
+            else:
+                attended_rows[(int(r[0]), int(r[1] or 0))] = {
+                    'academic_level_id': r[0],
+                    'subject_id': r[1],
+                    'level_name': r[2] or '',
+                    'level_category': r[3] or '',
+                    'subject_name': r[4] or '',
+                    'subject_code': r[5] or '',
+                    'lessons_attended': int(r[6] or 0),
+                }
+    except Exception as ex:
+        print(f"_tpad_fetch_teacher_attended_class_rows: {ex}")
+    return attended_rows
+
+
+def _teacher_lesson_attendance_band(allocated, attended, in_term, is_future):
+    """Map daily allocated vs attended lessons to a display band for the calendar."""
+    if is_future:
+        return 'future'
+    if not in_term:
+        return 'outside'
+    if allocated <= 0:
+        return 'complete' if attended > 0 else 'none'
+    if attended <= 0:
+        return 'missed'
+    pct = (100.0 * attended) / allocated
+    if pct >= 100:
+        return 'complete'
+    if pct >= 80:
+        return 'good'
+    if pct >= 50:
+        return 'partial'
+    return 'low'
+
+
+def _fetch_teacher_lesson_attendance_calendar_month(cursor, teacher_id, term_id, year, month):
+    """
+    Monthly lesson attendance calendar for one teacher.
+    Each day shows timetable allocation vs classes with attendance marked on the register.
+    """
+    import calendar as cal_mod
+
+    empty = {
+        'year': year,
+        'month': month,
+        'month_label': '',
+        'term_id': term_id,
+        'term_name': '',
+        'summary': {'lessons_allocated': 0, 'lessons_attended': 0, 'percent': 0},
+        'weeks': [],
+        'days': [],
+    }
+    try:
+        teacher_id = int(teacher_id)
+        term_id = int(term_id)
+        year = int(year)
+        month = int(month)
+    except (TypeError, ValueError):
+        return empty
+    if not teacher_id or not term_id or month < 1 or month > 12:
+        return empty
+
+    term_start, term_end = _get_term_date_bounds(cursor, term_id)
+    term_name = ''
+    try:
+        cursor.execute("SELECT term_name FROM terms WHERE id = %s LIMIT 1", (term_id,))
+        tr = cursor.fetchone()
+        if tr:
+            term_name = (tr.get('term_name') if isinstance(tr, dict) else tr[0]) or ''
+    except Exception:
+        pass
+
+    today = date_cls.today()
+    month_start = date_cls(year, month, 1)
+    month_end = date_cls(year, month, cal_mod.monthrange(year, month)[1])
+    day_map = _tpad_fetch_teacher_day_slot_maps(cursor, [teacher_id], term_id).get(teacher_id, {})
+
+    attended_by_date = {}
+    ensure_student_attendance_records_table(cursor)
+    ensure_student_attendance_subject_column(cursor)
+    predicate = _tpad_teacher_attended_records_predicate()
+    try:
+        cursor.execute(
+            f"""
+            SELECT sar.attendance_date,
+                   sar.academic_level_id, sar.subject_id,
+                   COALESCE(al.level_name, '') AS level_name,
+                   COALESCE(s.subject_name, '') AS subject_name,
+                   COALESCE(s.subject_code, '') AS subject_code
+            FROM student_attendance_records sar
+            LEFT JOIN academic_levels al ON al.id = sar.academic_level_id
+            LEFT JOIN subjects s ON s.id = sar.subject_id
+            WHERE sar.term_id = %s
+              AND sar.attendance_date >= %s AND sar.attendance_date <= %s
+              AND {predicate}
+            GROUP BY sar.attendance_date, sar.academic_level_id, sar.subject_id,
+                     al.level_name, s.subject_name, s.subject_code
+            ORDER BY sar.attendance_date ASC, al.level_name ASC, s.subject_name ASC
+            """,
+            (term_id, month_start, month_end, teacher_id),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                att_date = row.get('attendance_date')
+                cls = {
+                    'academic_level_id': row.get('academic_level_id'),
+                    'subject_id': row.get('subject_id'),
+                    'level_name': row.get('level_name') or '',
+                    'subject_name': row.get('subject_name') or '',
+                    'subject_code': row.get('subject_code') or '',
+                }
+            else:
+                att_date = row[0]
+                cls = {
+                    'academic_level_id': row[1],
+                    'subject_id': row[2],
+                    'level_name': row[3] or '',
+                    'subject_name': row[4] or '',
+                    'subject_code': row[5] or '',
+                }
+            d = _coerce_to_date(att_date)
+            if not d:
+                continue
+            key = d.isoformat()
+            bucket = attended_by_date.setdefault(key, {'count': 0, 'classes': []})
+            bucket['count'] += 1
+            bucket['classes'].append(cls)
+    except Exception as ex:
+        print(f"_fetch_teacher_lesson_attendance_calendar_month attended: {ex}")
+
+    weeks = cal_mod.monthcalendar(year, month)
+    days_out = []
+    month_allocated = 0
+    month_attended = 0
+
+    for week in weeks:
+        for day_num in week:
+            if day_num == 0:
+                days_out.append({
+                    'date': None,
+                    'day': 0,
+                    'pad': True,
+                    'in_term': False,
+                    'is_future': False,
+                    'allocated': 0,
+                    'attended': 0,
+                    'percent': 0,
+                    'band': 'pad',
+                    'classes': [],
+                })
+                continue
+            d = date_cls(year, month, day_num)
+            d_iso = d.isoformat()
+            in_term = True
+            if term_start and d < term_start:
+                in_term = False
+            if term_end and d > term_end:
+                in_term = False
+            is_future = d > today
+            allocated = (
+                int(day_map.get(d.strftime('%A'), 0) or 0)
+                if in_term and not is_future else 0
+            )
+            att_info = attended_by_date.get(d_iso, {'count': 0, 'classes': []})
+            attended = int(att_info.get('count') or 0)
+            classes = att_info.get('classes') or []
+            if in_term and not is_future:
+                month_allocated += allocated
+                month_attended += attended
+            if allocated > 0:
+                percent = int(round(100.0 * attended / allocated))
+            elif attended > 0:
+                percent = 100
+            else:
+                percent = 0
+            band = _teacher_lesson_attendance_band(allocated, attended, in_term, is_future)
+            days_out.append({
+                'date': d_iso,
+                'day': day_num,
+                'pad': False,
+                'weekday': d.strftime('%A'),
+                'in_term': in_term,
+                'is_future': is_future,
+                'allocated': allocated,
+                'attended': attended,
+                'percent': percent,
+                'band': band,
+                'classes': classes,
+            })
+
+    summary_percent = (
+        int(round(100.0 * month_attended / month_allocated))
+        if month_allocated else (100 if month_attended else 0)
+    )
+    return {
+        'year': year,
+        'month': month,
+        'month_label': month_start.strftime('%B %Y'),
+        'term_id': term_id,
+        'term_name': term_name,
+        'term_start': term_start.isoformat() if term_start else None,
+        'term_end': term_end.isoformat() if term_end else None,
+        'summary': {
+            'lessons_allocated': month_allocated,
+            'lessons_attended': month_attended,
+            'percent': summary_percent,
+        },
+        'weeks': weeks,
+        'days': days_out,
+    }
+
+
+def _tpad_fetch_class_day_slot_map(cursor, teacher_id, term_id, level_id, subject_id):
+    """Return {day_of_week: slot_count} for one teacher class assignment."""
+    day_map = {}
+    if not term_id or not teacher_id or level_id is None:
+        return day_map
+    try:
+        cursor.execute(
+            """
+            SELECT day_of_week, COUNT(DISTINCT time_slot) AS c
+            FROM timetables
+            WHERE teacher_id = %s AND term_id = %s
+              AND academic_level_id = %s AND subject_id = %s
+            GROUP BY day_of_week
+            """,
+            (int(teacher_id), int(term_id), int(level_id), int(subject_id or 0)),
+        )
+        for row in cursor.fetchall() or []:
+            day = (row.get('day_of_week') if isinstance(row, dict) else row[0]) or ''
+            cnt = row.get('c') if isinstance(row, dict) else row[1]
+            if day:
+                day_map[day.strip()] = int(cnt or 0)
+    except Exception as ex:
+        print(f"_tpad_fetch_class_day_slot_map: {ex}")
+    return day_map
+
+
+def _tpad_weekly_attendance_meta(week_start, week_end, term_id, term_name):
+    """Legacy helper — prefer _tpad_attendance_filter_meta."""
+    return _tpad_attendance_filter_meta(
+        {
+            'filter_type': 'period',
+            'range_start': week_start,
+            'range_end': week_end,
+            'range_label': (
+                f"{week_start.strftime('%d %b')} – {week_end.strftime('%d %b %Y')}"
+                if week_start and week_end else None
+            ),
+        },
+        term_id,
+        term_name,
+    )
+
+
+def _fetch_tpad_teacher_weekly_class_breakdown(cursor, teacher_id, filter_params=None):
+    """
+    Per class (level + subject) stats for one teacher in the selected date range.
+    Returns (teacher_dict|None, class_rows, filter_meta, totals).
+    """
+    empty_totals = {'lessons_allocated': 0, 'lessons_attended': 0}
+    if filter_params is None:
+        filter_params = _parse_tpad_attendance_filter({})
+    range_start = filter_params.get('range_start')
+    range_end = filter_params.get('range_end')
+    _, _, term_id, term_name = _get_current_academic_year_and_term(cursor)
+    filter_meta = _tpad_attendance_filter_meta(filter_params, term_id, term_name, cursor)
+    try:
+        teacher_id = int(teacher_id)
+    except (TypeError, ValueError):
+        return None, [], filter_meta, empty_totals
+    ensure_employee_roles_schema(cursor)
+    cursor.execute(
+        f"""
+        SELECT e.id, e.full_name, e.employee_id
+        FROM employees e
+        WHERE e.id = %s AND {_sql_employee_is_teacher('e')}
+        LIMIT 1
+        """,
+        (teacher_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None, [], filter_meta, empty_totals
+    teacher = {
+        'id': row.get('id') if isinstance(row, dict) else row[0],
+        'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+        'employee_id': row.get('employee_id') if isinstance(row, dict) else row[2],
+    }
+    if not term_id:
+        return teacher, [], filter_meta, empty_totals
+    allocated_rows = {}
+    attended_rows = {}
+    try:
+        cursor.execute(
+            """
+            SELECT t.academic_level_id, t.subject_id,
+                   COALESCE(al.level_name, '') AS level_name,
+                   COALESCE(al.level_category, '') AS level_category,
+                   COALESCE(s.subject_name, '') AS subject_name,
+                   COALESCE(s.subject_code, '') AS subject_code,
+                   t.day_of_week,
+                   COUNT(DISTINCT t.time_slot) AS slot_count
+            FROM timetables t
+            LEFT JOIN academic_levels al ON al.id = t.academic_level_id
+            LEFT JOIN subjects s ON s.id = t.subject_id
+            WHERE t.teacher_id = %s AND t.term_id = %s
+            GROUP BY t.academic_level_id, t.subject_id, t.day_of_week,
+                     al.level_name, al.level_category, s.subject_name, s.subject_code
+            """,
+            (teacher_id, term_id),
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                level_id = r.get('academic_level_id')
+                subject_id = r.get('subject_id')
+                day = (r.get('day_of_week') or '').strip()
+                slot_count = int(r.get('slot_count') or 0)
+                meta = {
+                    'academic_level_id': level_id,
+                    'subject_id': subject_id,
+                    'level_name': r.get('level_name') or '',
+                    'level_category': r.get('level_category') or '',
+                    'subject_name': r.get('subject_name') or '',
+                    'subject_code': r.get('subject_code') or '',
+                }
+            else:
+                level_id = r[0]
+                subject_id = r[1]
+                day = (r[6] or '').strip()
+                slot_count = int(r[7] or 0)
+                meta = {
+                    'academic_level_id': level_id,
+                    'subject_id': subject_id,
+                    'level_name': r[2] or '',
+                    'level_category': r[3] or '',
+                    'subject_name': r[4] or '',
+                    'subject_code': r[5] or '',
+                }
+            key = (int(level_id), int(subject_id or 0))
+            if key not in allocated_rows:
+                allocated_rows[key] = dict(meta)
+                allocated_rows[key]['day_map'] = {}
+            if day:
+                allocated_rows[key]['day_map'][day] = (
+                    allocated_rows[key]['day_map'].get(day, 0) + slot_count
+                )
+    except Exception as ex:
+        print(f"_fetch_tpad_teacher_weekly_class_breakdown allocated: {ex}")
+    attended_rows = _tpad_fetch_teacher_attended_class_rows(
+        cursor, teacher_id, term_id, range_start, range_end
+    )
+    all_keys = set(allocated_rows.keys()) | set(attended_rows.keys())
+    class_rows = []
+    totals = {'lessons_allocated': 0, 'lessons_attended': 0}
+    for key in all_keys:
+        alloc = allocated_rows.get(key, {})
+        att = attended_rows.get(key, {})
+        day_map = alloc.get('day_map') or {}
+        allocated = _tpad_count_allocated_from_day_map(day_map, range_start, range_end)
+        attended = int(att.get('lessons_attended') or 0)
+        level_name = alloc.get('level_name') or att.get('level_name') or '—'
+        level_category = alloc.get('level_category') or att.get('level_category') or ''
+        subject_name = alloc.get('subject_name') or att.get('subject_name') or '—'
+        subject_code = alloc.get('subject_code') or att.get('subject_code') or ''
+        class_rows.append({
+            'academic_level_id': alloc.get('academic_level_id') or att.get('academic_level_id'),
+            'subject_id': alloc.get('subject_id') or att.get('subject_id'),
+            'level_name': level_name,
+            'level_category': level_category,
+            'subject_name': subject_name,
+            'subject_code': subject_code,
+            'lessons_allocated': allocated,
+            'lessons_attended': attended,
+        })
+        totals['lessons_allocated'] += allocated
+        totals['lessons_attended'] += attended
+    class_rows.sort(key=lambda c: (
+        (c.get('level_category') or '').lower(),
+        (c.get('level_name') or '').lower(),
+        (c.get('subject_name') or '').lower(),
+    ))
+    teacher['lessons_allocated'] = totals['lessons_allocated']
+    teacher['lessons_attended'] = totals['lessons_attended']
+    return teacher, class_rows, filter_meta, totals
+
+
+def _enrich_teachers_tpad_weekly_lesson_stats(cursor, teachers, filter_params=None):
+    """
+    Attach lesson stats per teacher for the selected date range:
+    - lessons_allocated: timetable slots scaled to the range
+    - lessons_attended: distinct class sessions marked present in the register
+    """
+    if not teachers:
+        return teachers
+    if filter_params is None:
+        filter_params = _parse_tpad_attendance_filter({})
+    range_start = filter_params.get('range_start')
+    range_end = filter_params.get('range_end')
+    _, _, term_id, term_name = _get_current_academic_year_and_term(cursor)
+    teacher_ids = [int(t['id']) for t in teachers if t.get('id')]
+    day_maps = _tpad_fetch_teacher_day_slot_maps(cursor, teacher_ids, term_id)
+    attended_by_teacher = _tpad_fetch_attended_by_teacher_ids(
+        cursor, teacher_ids, term_id, range_start, range_end
+    )
+    for teacher in teachers:
+        tid = teacher.get('id')
+        try:
+            tid_int = int(tid) if tid is not None else None
+        except (TypeError, ValueError):
+            tid_int = None
+        allocated = _tpad_count_allocated_from_day_map(
+            day_maps.get(tid_int, {}) if tid_int else {},
+            range_start,
+            range_end,
+        )
+        attended = attended_by_teacher.get(tid_int, 0) if tid_int else 0
+        teacher['lessons_allocated'] = allocated
+        teacher['lessons_attended'] = attended
+    return teachers
+
+
+def _fetch_teachers_for_tpad_weekly_attendance(cursor, filter_params=None):
+    """All employees with teacher role plus lesson allocated vs attended stats for the filter range."""
+    if filter_params is None:
+        filter_params = _parse_tpad_attendance_filter({})
+    ensure_employee_roles_schema(cursor)
+    teachers = []
+    term_id = term_name = None
+    try:
+        page = 1
+        while True:
+            payload = _fetch_staff_management_page(
+                cursor,
+                page=page,
+                per_page=100,
+                q='',
+                status='all',
+                sort='name_asc',
+                teachers_only=True,
+            )
+            teachers.extend(payload.get('employees') or [])
+            if page >= int(payload.get('pages') or 1):
+                break
+            page += 1
+        _, _, term_id, term_name = _get_current_academic_year_and_term(cursor)
+        teachers = _enrich_teachers_tpad_weekly_lesson_stats(cursor, teachers, filter_params)
+    except Exception as ex:
+        print(f"_fetch_teachers_for_tpad_weekly_attendance: {ex}")
+        import traceback
+        traceback.print_exc()
+    filter_meta = _tpad_attendance_filter_meta(filter_params, term_id, term_name, cursor)
+    return teachers, filter_meta
+
+
+@app.route('/dashboard/employee/tpad')
+@login_required
+def employee_tpad():
+    """Teacher Professional Appraisal & Development (TPAD) — overview."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
     return render_template('dashboards/tpad.html')
+
+
+@app.route('/dashboard/employee/tpad/self-appraisals')
+@login_required
+def employee_tpad_self_appraisals():
+    """TPAD — self appraisals."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_self_appraisals.html')
+
+
+@app.route('/dashboard/employee/tpad/self-appraisals/self-assessment')
+@login_required
+def employee_tpad_self_assessment():
+    """TPAD self appraisals — self assessment."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_self_assessment.html')
+
+
+@app.route('/dashboard/employee/tpad/self-appraisals/lesson-observation')
+@login_required
+def employee_tpad_lesson_observation():
+    """TPAD self appraisals — lesson observation."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_lesson_observation.html')
+
+
+@app.route('/dashboard/employee/tpad/appraiser-appraisals')
+@login_required
+def employee_tpad_appraiser_appraisals():
+    """TPAD — appraiser appraisals."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_appraiser_appraisals.html')
+
+
+@app.route('/dashboard/employee/tpad/appraiser-appraisals/pending-appraisals')
+@login_required
+def employee_tpad_pending_appraisals():
+    """TPAD appraiser — pending appraisals."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_pending_appraisals.html')
+
+
+@app.route('/dashboard/employee/tpad/appraiser-appraisals/schedule-meetings')
+@login_required
+def employee_tpad_schedule_meetings():
+    """TPAD appraiser — schedule meetings."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_schedule_meetings.html')
+
+
+@app.route('/dashboard/employee/tpad/appraiser-appraisals/weekly-attendance')
+@login_required
+def employee_tpad_appraiser_weekly_attendance():
+    """TPAD appraiser — weekly attendance (all employees with teacher role)."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    teachers = []
+    load_error = None
+    filter_params = _parse_tpad_attendance_filter({})
+    filter_meta = _tpad_attendance_filter_meta(filter_params, None, None)
+    connection = get_db_connection()
+    if not connection:
+        load_error = 'Database unavailable.'
+    else:
+        try:
+            with connection.cursor() as cursor:
+                filter_params = _parse_tpad_attendance_filter_for_request(cursor, request.args)
+                teachers, filter_meta = _fetch_teachers_for_tpad_weekly_attendance(cursor, filter_params)
+        except Exception as ex:
+            print(f"employee_tpad_appraiser_weekly_attendance: {ex}")
+            import traceback
+            traceback.print_exc()
+            load_error = 'Could not load teachers.'
+        finally:
+            connection.close()
+    return render_template(
+        'dashboards/tpad_appraiser_weekly_attendance.html',
+        teachers=teachers,
+        active_teachers=teachers,
+        teachers_count=len(teachers),
+        teachers_load_error=load_error,
+        filter_meta=filter_meta,
+        filter_params=filter_params,
+        weekly_meta=filter_meta,
+    )
+
+
+@app.route('/dashboard/employee/tpad/appraiser-appraisals/weekly-attendance/teachers')
+@login_required
+def employee_tpad_weekly_attendance_teachers_api():
+    """JSON list of all employees with teacher role for weekly attendance."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            filter_params = _parse_tpad_attendance_filter_for_request(cursor, request.args)
+            teachers, filter_meta = _fetch_teachers_for_tpad_weekly_attendance(cursor, filter_params)
+        return jsonify({
+            'success': True,
+            'teachers': teachers,
+            'total': len(teachers),
+            'filter_meta': filter_meta,
+            'weekly_meta': filter_meta,
+        })
+    except Exception as ex:
+        print(f"employee_tpad_weekly_attendance_teachers_api: {ex}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not load teachers'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/tpad/appraiser-appraisals/weekly-attendance/teacher/<int:teacher_id>')
+@login_required
+def employee_tpad_appraiser_weekly_attendance_teacher(teacher_id):
+    """TPAD appraiser — weekly attendance breakdown for one teacher by class."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    filter_params = _parse_tpad_attendance_filter({})
+    teacher = None
+    class_rows = []
+    filter_meta = _tpad_attendance_filter_meta(filter_params, None, None)
+    totals = {'lessons_allocated': 0, 'lessons_attended': 0}
+    load_error = None
+    connection = get_db_connection()
+    if not connection:
+        load_error = 'Database unavailable.'
+    else:
+        try:
+            with connection.cursor() as cursor:
+                filter_params = _parse_tpad_attendance_filter_for_request(cursor, request.args)
+                teacher, class_rows, filter_meta, totals = _fetch_tpad_teacher_weekly_class_breakdown(
+                    cursor, teacher_id, filter_params
+                )
+                if not teacher:
+                    load_error = 'Teacher not found.'
+        except Exception as ex:
+            print(f"employee_tpad_appraiser_weekly_attendance_teacher: {ex}")
+            import traceback
+            traceback.print_exc()
+            load_error = 'Could not load teacher attendance.'
+        finally:
+            connection.close()
+    if load_error == 'Teacher not found.':
+        flash('Teacher not found.', 'error')
+        return redirect(employee_dashboard_path('tpad/appraiser-appraisals/weekly-attendance'))
+    return render_template(
+        'dashboards/tpad_appraiser_weekly_attendance_teacher.html',
+        teacher=teacher,
+        class_rows=class_rows,
+        filter_meta=filter_meta,
+        filter_params=filter_params,
+        weekly_meta=filter_meta,
+        totals=totals,
+        teachers_load_error=load_error,
+    )
+
+
+@app.route('/dashboard/employee/tpad/appraiser-appraisals/weekly-attendance/teacher/<int:teacher_id>/classes')
+@login_required
+def employee_tpad_weekly_attendance_teacher_classes_api(teacher_id):
+    """JSON class breakdown for one teacher in the selected date range."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            filter_params = _parse_tpad_attendance_filter_for_request(cursor, request.args)
+            teacher, class_rows, filter_meta, totals = _fetch_tpad_teacher_weekly_class_breakdown(
+                cursor, teacher_id, filter_params
+            )
+            if not teacher:
+                return jsonify({'success': False, 'message': 'Teacher not found'}), 404
+        return jsonify({
+            'success': True,
+            'teacher': teacher,
+            'class_rows': class_rows,
+            'totals': totals,
+            'filter_meta': filter_meta,
+        })
+    except Exception as ex:
+        print(f"employee_tpad_weekly_attendance_teacher_classes_api: {ex}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not load class breakdown'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/tpad/tpd')
+@login_required
+def employee_tpad_tpd():
+    """TPAD — teacher professional development (TPD)."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_tpd.html')
+
+
+@app.route('/dashboard/employee/tpad/tpd/tpad-plan')
+@login_required
+def employee_tpad_tpd_plan():
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_tpd_plan.html')
+
+
+@app.route('/dashboard/employee/tpad/tpd/completed-plans')
+@login_required
+def employee_tpad_completed_plans():
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_completed_plans.html')
+
+
+@app.route('/dashboard/employee/tpad/tpd/enrolment')
+@login_required
+def employee_tpad_enrolment():
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_enrolment.html')
+
+
+@app.route('/dashboard/employee/tpad/tpd/feedback')
+@login_required
+def employee_tpad_feedback():
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_feedback.html')
+
+
+@app.route('/dashboard/employee/tpad/tpd/assessment')
+@login_required
+def employee_tpad_tpd_assessment():
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_tpd_assessment.html')
+
+
+@app.route('/dashboard/employee/tpad/tpd/certificate')
+@login_required
+def employee_tpad_certificate():
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_certificate.html')
+
+
+@app.route('/dashboard/employee/tpad/appraisal-reports')
+@login_required
+def employee_tpad_appraisal_reports():
+    """TPAD — appraisal reports."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_appraisal_reports.html')
+
+
+@app.route('/dashboard/employee/tpad/appraisal-reports/standard-reports')
+@login_required
+def employee_tpad_standard_reports():
+    """TPAD appraisal reports — standard reports."""
+    denied = _employee_tpad_access_guard()
+    if denied:
+        return denied
+    return render_template('dashboards/tpad_standard_reports.html')
 
 
 # Exams and Grades Route (for teachers) — canonical UI lives on exam_timetable.
@@ -23433,13 +24772,8 @@ def _staff_management_has_access():
 
 
 def _staff_management_teachers_sql_clause():
-    return """
-        (e.role IN ('teachers', 'teacher')
-         OR EXISTS (
-             SELECT 1 FROM employee_roles er
-             WHERE er.employee_id = e.id AND er.role IN ('teachers', 'teacher')
-         ))
-    """
+    """Match employees.role or employee_roles (teacher / teachers, normalized)."""
+    return _sql_employee_is_teacher('e')
 
 
 def _staff_management_status_where(status):
@@ -24831,6 +26165,19 @@ def _fetch_students_progress_page(cursor, level_name, page=1, per_page=50, q='')
     }
 
 
+def _attendance_register_teacher_scope():
+    """Whether attendance register should be scoped to one teacher's allocated classes."""
+    user_role = (session.get('role') or '').lower().strip()
+    viewing_as = (session.get('viewing_as_employee_role') or '').lower().strip()
+    is_teacher_role = user_role in ('teachers', 'teacher') or viewing_as in ('teachers', 'teacher')
+    if not is_teacher_role:
+        return False, None
+    teacher_id = _subject_progress_teacher_id() or _teacher_portal_employee_pk()
+    if not teacher_id:
+        return True, None
+    return True, teacher_id
+
+
 def _get_attendance_class_level_options(is_teacher, teacher_id=None):
     """Class names for attendance filter without loading every student."""
     options = []
@@ -24840,8 +26187,11 @@ def _get_attendance_class_level_options(is_teacher, teacher_id=None):
     try:
         with connection.cursor() as cursor:
             if is_teacher and teacher_id:
-                teacher_levels = _get_teacher_level_ids(teacher_id)
-                options = sorted([str(x).strip() for x in teacher_levels if str(x).strip()])
+                for level in _fetch_teacher_subject_progress_levels(cursor, teacher_id):
+                    ln = str((level or {}).get('level_name') or '').strip()
+                    if ln and ln not in options:
+                        options.append(ln)
+                options.sort()
             else:
                 cursor.execute("""
                     SELECT DISTINCT s.current_grade
@@ -25961,20 +27311,12 @@ def student_attendance():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
-    user_role = session.get('role', '').lower()
-    viewing_as = session.get('viewing_as_employee_role', '').lower()
-    is_teacher = user_role in ('teachers', 'teacher') or viewing_as in ('teachers', 'teacher')
-    is_technician = user_role == 'technician'
-    if is_teacher:
-        if is_technician and viewing_as in ('teachers', 'teacher'):
-            teacher_id = session.get('viewing_as_employee_id')
-        else:
-            teacher_id = session.get('user_id')
-    else:
-        teacher_id = None
+    is_teacher, teacher_id = _attendance_register_teacher_scope()
 
     class_level_options = _get_attendance_class_level_options(is_teacher, teacher_id)
     selected_class_level = (request.values.get('class_level') or '').strip()
+    if is_teacher and teacher_id and selected_class_level and selected_class_level not in class_level_options:
+        selected_class_level = ''
     if not selected_class_level and len(class_level_options) == 1:
         selected_class_level = class_level_options[0]
 
@@ -26630,6 +27972,70 @@ def _norm_db_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _resolve_marks_sheet_filter_defaults(exams, registered_current_exam, current_year_id, current_term_id):
+    """
+    Pick academic year, term, and exam for the marks sheet filters.
+    School registered current exam always takes priority when set.
+    Returns (year_id, term_id, exam_id).
+    """
+    year_id = current_year_id
+    term_id = current_term_id
+    exam_id = None
+
+    if registered_current_exam:
+        try:
+            reg_ay = int(registered_current_exam.get('academic_year_id') or 0)
+            reg_tid = int(registered_current_exam.get('term_id') or 0)
+        except (TypeError, ValueError):
+            reg_ay = reg_tid = 0
+        if reg_ay > 0:
+            year_id = reg_ay
+        if reg_tid > 0:
+            term_id = reg_tid
+
+    if not exams:
+        return year_id, term_id, exam_id
+
+    want_name = ''
+    if registered_current_exam:
+        want_name = (registered_current_exam.get('exam_name') or '').strip().upper()
+
+    scoped = [
+        e for e in exams
+        if str(e.get('academic_year_id')) == str(year_id) and str(e.get('term_id')) == str(term_id)
+    ]
+
+    selected = None
+    want_type = registered_current_exam.get('exam_type') if registered_current_exam else None
+    if scoped and want_name:
+        pool_match = [
+            e for e in scoped
+            if str((e.get('exam_name') or '').strip().upper()) == want_name
+            and (
+                want_type is None
+                or str((e.get('exam_type') or '').strip().upper()) == str(want_type or '').strip().upper()
+            )
+        ]
+        if pool_match:
+            pool_match.sort(key=lambda x: int(x.get('id') or 0))
+            selected = pool_match[0]
+
+    if not selected and scoped:
+        today_str = date_cls.today().isoformat()
+        selected = next(
+            (e for e in scoped if str(e.get('exam_date') or '')[:10] == today_str),
+            None,
+        )
+        if not selected:
+            scoped.sort(key=lambda x: ((x.get('exam_date') or ''), int(x.get('id') or 0)), reverse=True)
+            selected = scoped[0]
+
+    if selected:
+        exam_id = selected.get('id')
+
+    return year_id, term_id, exam_id
 
 
 def _pick_default_exam_id_for_progress(exams_by_id, year_id, term_id, registered_current_exam):
@@ -36051,6 +37457,60 @@ def classes_subjects_level_detail(level_id):
 def teacher_subject_progress():
     """Teacher URL alias for subject progress."""
     return subject_progress()
+
+
+@app.route('/dashboard/employee/lesson-attendance-calendar')
+@app.route('/teachers/lesson-attendance-calendar')
+@login_required
+def teacher_lesson_attendance_calendar_api():
+    """JSON monthly calendar of lesson attendance vs timetable allocation for the logged-in teacher."""
+    user_role = (session.get('role') or '').lower()
+    viewing_as = (session.get('viewing_as_employee_role') or '').lower()
+    teacher_id = _subject_progress_teacher_id()
+    if not teacher_id:
+        tid_raw = (request.args.get('teacher_id') or '').strip()
+        if user_role == 'technician' and tid_raw:
+            try:
+                teacher_id = int(tid_raw)
+            except (TypeError, ValueError):
+                teacher_id = None
+    if not teacher_id and user_role in ('teachers', 'teacher'):
+        try:
+            teacher_id = int(session.get('user_id'))
+        except (TypeError, ValueError):
+            teacher_id = None
+    if not teacher_id:
+        return jsonify({'success': False, 'message': 'Teacher account required'}), 403
+
+    today = date_cls.today()
+    try:
+        year = int(request.args.get('year') or today.year)
+        month = int(request.args.get('month') or today.month)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Invalid month'}), 400
+    if month < 1 or month > 12:
+        return jsonify({'success': False, 'message': 'Invalid month'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            _, _, term_id, term_name = _get_current_academic_year_and_term(cursor)
+            if not term_id:
+                return jsonify({'success': False, 'message': 'No active term'}), 404
+            payload = _fetch_teacher_lesson_attendance_calendar_month(
+                cursor, teacher_id, term_id, year, month
+            )
+            payload['term_name'] = payload.get('term_name') or term_name
+        return jsonify({'success': True, **payload})
+    except Exception as ex:
+        print(f"teacher_lesson_attendance_calendar_api: {ex}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not load calendar'}), 500
+    finally:
+        connection.close()
 
 
 @app.route('/dashboard/employee/subject-progress')
@@ -55559,7 +57019,8 @@ def students_by_academic_level(level_id):
                                        e.academic_year_id, e.term_id,
                                        MAX(e.exam_date) AS exam_date,
                                        MAX(COALESCE(e.is_locked, 0)) AS is_locked,
-                                       MAX(e.marks_lock_at) AS marks_lock_at
+                                       MAX(e.marks_lock_at) AS marks_lock_at,
+                                       MAX(e.exam_type) AS exam_type
                                 FROM exams e
                                 INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id 
                                     AND e.subject_id = tsa.subject_id
@@ -55572,7 +57033,8 @@ def students_by_academic_level(level_id):
                             cursor.execute("""
                                 SELECT exam_name, MIN(id) AS id, academic_year_id, term_id, MAX(exam_date) AS exam_date,
                                        MAX(COALESCE(is_locked, 0)) AS is_locked,
-                                       MAX(marks_lock_at) AS marks_lock_at
+                                       MAX(marks_lock_at) AS marks_lock_at,
+                                       MAX(exam_type) AS exam_type
                                 FROM exams
                                 WHERE academic_level_id = %s
                                 GROUP BY exam_name, academic_year_id, term_id
@@ -55621,6 +57083,7 @@ def students_by_academic_level(level_id):
                             'exam_date': str(row.get('exam_date')) if isinstance(row, dict) and row.get('exam_date') else (str(row[4]) if len(row) > 4 and row[4] else ''),
                             'is_locked': bool(row.get('is_locked')) if isinstance(row, dict) else bool(row[5] if len(row) > 5 else False),
                             'marks_lock_at': marks_lock_at_str,
+                            'exam_type': (row.get('exam_type') if isinstance(row, dict) else (row[7] if len(row) > 7 else None)) or '',
                         })
                 except Exception as e:
                     print(f"Error fetching exams: {e}")
@@ -55687,29 +57150,6 @@ def students_by_academic_level(level_id):
                             if subject_id not in student_marks[student_id]:
                                 student_marks[student_id][subject_id] = {}
                             student_marks[student_id][subject_id][exam_id] = marks
-                    try:
-                        cursor.execute("""
-                            SELECT id FROM exams
-                            WHERE academic_level_id = %s AND COALESCE(is_locked, 0) = 1
-                        """, (level_id,))
-                        locked_ids = {r.get('id') if isinstance(r, dict) else r[0] for r in cursor.fetchall()}
-                        if locked_ids and student_marks:
-                            for sid in list(student_marks.keys()):
-                                for subid in list(student_marks[sid].keys()):
-                                    emap = student_marks[sid][subid]
-                                    for eid in list(emap.keys()):
-                                        try:
-                                            eid_int = int(eid)
-                                        except (TypeError, ValueError):
-                                            eid_int = eid
-                                        if eid_int in locked_ids:
-                                            del emap[eid]
-                                    if not emap:
-                                        del student_marks[sid][subid]
-                                if not student_marks[sid]:
-                                    del student_marks[sid]
-                    except Exception as _le:
-                        print(f"Note filtering locked marks for level page: {_le}")
                 except Exception as e:
                     print(f"Marks table not found or error fetching marks: {e}")
                     student_marks = {}
@@ -55723,7 +57163,7 @@ def students_by_academic_level(level_id):
         flash('Database connection failed.', 'error')
         return redirect(url_for('exams_assessments'))
     
-    # Resolve year/term defaults robustly
+    # Resolve year/term/exam defaults — school registered current exam takes priority.
     if not current_year_id and academic_years:
         current_year_id = academic_years[0].get('id')
 
@@ -55738,58 +57178,11 @@ def students_by_academic_level(level_id):
         if not current_term_id and terms:
             current_term_id = terms[0].get('id')
 
-    # Default exam: prefer current year+term exam closest to today, else most recent in the same term, else first available
     selected_exam_id = None
-    if exams:
-        def marks_entry_window_open(ex):
-            ml = ex.get('marks_lock_at')
-            if not ml:
-                return True
-            try:
-                raw = str(ml).strip().replace('Z', '').replace(' ', 'T')
-                dt = datetime.fromisoformat(raw[:19])
-                return datetime.now() < dt
-            except Exception:
-                return True
-
-        unlocked_exams = [e for e in exams if not e.get('is_locked')]
-        if is_teacher:
-            open_marks = [e for e in unlocked_exams if marks_entry_window_open(e)]
-            exams_for_default = open_marks if open_marks else (unlocked_exams if unlocked_exams else exams)
-        else:
-            exams_for_default = unlocked_exams if unlocked_exams else exams
-        selected = None
-        current_scope_exams = [
-            e for e in exams_for_default
-            if str(e.get('academic_year_id')) == str(current_year_id) and str(e.get('term_id')) == str(current_term_id)
-        ]
-        if current_scope_exams:
-            today_str = datetime.now().date().isoformat()
-            selected = next((e for e in current_scope_exams if (e.get('exam_date') or '') == today_str), None)
-            if not selected:
-                current_scope_exams.sort(key=lambda x: ((x.get('exam_date') or ''), int(x.get('id') or 0)), reverse=True)
-                selected = current_scope_exams[0]
-        if not selected and registered_current_exam_pick:
-            rp = registered_current_exam_pick
-            want_name = (rp.get('exam_name') or '').strip().upper()
-            want_type = rp.get('exam_type')
-            pool_match = [
-                e for e in exams_for_default
-                if str((e.get('exam_name') or '').strip().upper()) == want_name
-                and str(e.get('academic_year_id')) == str(rp.get('academic_year_id'))
-                and str(e.get('term_id')) == str(rp.get('term_id'))
-                and (
-                    want_type is None
-                    or str((e.get('exam_type') or '').strip().upper()) == str(want_type)
-                )
-            ]
-            if pool_match:
-                pool_match.sort(key=lambda x: int(x.get('id') or 0))
-                selected = pool_match[0]
-        if not selected:
-            selected = exams_for_default[0]
-        if selected:
-            selected_exam_id = selected.get('id')
+    if exams or registered_current_exam_pick:
+        current_year_id, current_term_id, selected_exam_id = _resolve_marks_sheet_filter_defaults(
+            exams, registered_current_exam_pick, current_year_id, current_term_id,
+        )
 
     # Teachers and principals may enter/edit marks. Curriculum coordinators (and secretary, etc.)
     # can view the sheet and analytics-style totals but must not change marks here.
@@ -55867,7 +57260,8 @@ def students_by_academic_level(level_id):
                          can_edit=can_edit,
                          marks_summary_column=marks_summary_column,
                          marks_display_scaled=marks_display_scaled,
-                         is_teacher=is_teacher)
+                         is_teacher=is_teacher,
+                         registered_current_exam=registered_current_exam_pick)
 
 
 @app.route('/dashboard/employee/exams-assessments/grade-remarks/get', methods=['POST'])
@@ -56028,16 +57422,6 @@ def get_marks_by_exam():
                     
                     level_name = level_result.get('level_name') if isinstance(level_result, dict) else level_result[0]
                     
-                    locked_exam_ids_for_level = set()
-                    try:
-                        cursor.execute("""
-                            SELECT id FROM exams
-                            WHERE academic_level_id = %s AND COALESCE(is_locked, 0) = 1
-                        """, (level_id,))
-                        locked_exam_ids_for_level = {r.get('id') if isinstance(r, dict) else r[0] for r in cursor.fetchall()}
-                    except Exception as _lk:
-                        print(f"Note locked exam ids for get-marks: {_lk}")
-                    
                     # Get teacher's assigned subject IDs for this level (if teacher)
                     teacher_subject_ids = []
                     if is_teacher and teacher_id:
@@ -56167,22 +57551,6 @@ def get_marks_by_exam():
                             print(f"Marks table not found or error: {e}")
                             pass
 
-                    if locked_exam_ids_for_level and student_marks:
-                        for sid in list(student_marks.keys()):
-                            for subid in list(student_marks[sid].keys()):
-                                emap = student_marks[sid][subid]
-                                for eid in list(emap.keys()):
-                                    try:
-                                        eid_int = int(eid)
-                                    except (TypeError, ValueError):
-                                        eid_int = eid
-                                    if eid_int in locked_exam_ids_for_level:
-                                        del emap[eid]
-                                if not emap:
-                                    del student_marks[sid][subid]
-                            if not student_marks[sid]:
-                                del student_marks[sid]
-
                     subject_exam_max_payload = {}
                     try:
                         ensure_subject_exam_total_marks_column(cursor)
@@ -56276,7 +57644,8 @@ def get_exams_for_filters():
                         cursor.execute("""
                             SELECT e.exam_name, MIN(e.id) AS id, e.academic_year_id, e.term_id,
                                    MAX(e.exam_date) AS exam_date, MAX(COALESCE(e.is_locked, 0)) AS is_locked,
-                                   MAX(e.marks_lock_at) AS marks_lock_at
+                                   MAX(e.marks_lock_at) AS marks_lock_at,
+                                   MAX(e.exam_type) AS exam_type
                             FROM exams e
                             INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id
                                 AND e.subject_id = tsa.subject_id
@@ -56291,7 +57660,8 @@ def get_exams_for_filters():
                         cursor.execute("""
                             SELECT exam_name, MIN(id) AS id, academic_year_id, term_id,
                                    MAX(exam_date) AS exam_date, MAX(COALESCE(is_locked, 0)) AS is_locked,
-                                   MAX(marks_lock_at) AS marks_lock_at
+                                   MAX(marks_lock_at) AS marks_lock_at,
+                                   MAX(exam_type) AS exam_type
                             FROM exams
                             WHERE academic_level_id = %s
                               AND academic_year_id = %s
@@ -56346,6 +57716,7 @@ def get_exams_for_filters():
                         'exam_date': str(row.get('exam_date')) if isinstance(row, dict) and row.get('exam_date') else (str(row[4]) if len(row) > 4 and row[4] else ''),
                         'is_locked': bool(row.get('is_locked')) if isinstance(row, dict) else bool(row[5] if len(row) > 5 else False),
                         'marks_lock_at': marks_lock_at_str,
+                        'exam_type': (row.get('exam_type') if isinstance(row, dict) else (row[7] if len(row) > 7 else None)) or '',
                     })
 
             return jsonify({'success': True, 'exams': exams})
@@ -63669,12 +65040,13 @@ def _communication_channel_flags(integ):
     return {'email': email_ok, 'sms': sms_ok, 'whatsapp': wa_ok}
 
 
-# Communication Route (for academic coordinators)
-@app.route('/dashboard/employee/communication')
-@login_required
-def communication():
-    """Communication centre — broadcast to staff or parents."""
-    if not _user_can_access_communication():
+def _render_communication_centre(tpad_mode=False):
+    """Communication centre — broadcast to staff or parents (optional TPAD context)."""
+    if tpad_mode:
+        denied = _employee_tpad_access_guard()
+        if denied:
+            return denied
+    elif not _user_can_access_communication():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -63725,7 +65097,23 @@ def communication():
         channel_flags=channels,
         academic_levels=academic_levels,
         departments=departments,
+        tpad_mode=tpad_mode,
     )
+
+
+# Communication Route (for academic coordinators)
+@app.route('/dashboard/employee/communication')
+@login_required
+def communication():
+    """Communication centre — broadcast to staff or parents."""
+    return _render_communication_centre(tpad_mode=False)
+
+
+@app.route('/dashboard/employee/tpad/communication')
+@login_required
+def employee_tpad_communication():
+    """TPAD communication — same centre, accessed from TPAD hub only."""
+    return _render_communication_centre(tpad_mode=True)
 
 
 @app.route('/api/employee/communication/recipients', methods=['GET'])

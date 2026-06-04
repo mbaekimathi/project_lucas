@@ -1,0 +1,7 @@
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Appraisal reports</p>
+<a href="{{ employee_dash_url('tpad/appraisal-reports/standard-reports') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_standard_reports' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-alt w-5"></i>
+    <span>Standard reports</span>
+    {% if request.endpoint == 'employee_tpad_standard_reports' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

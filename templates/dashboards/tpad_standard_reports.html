@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Standard reports — Appraisal reports — TPAD — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block sidebar_content %}{% include 'dashboards/includes/tpad_subpage_sidebar.html' %}{% endblock %}
+{% block content %}
+{% set tpad_child_hero_title = 'Standard reports' %}
+{% set tpad_child_hero_subtitle = 'Appraisal reports · TPAD' %}
+{% set tpad_child_hero_icon = 'fa-file-alt' %}
+{% set tpad_child_title = 'Standard reports' %}
+{% set tpad_child_message = 'View and download standard TPAD appraisal reports. This module is under development.' %}
+{% include 'dashboards/includes/tpad_appraisal_reports_child_page.html' %}
+{% endblock %}

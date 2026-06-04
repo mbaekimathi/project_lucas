@@ -1,29 +1,29 @@
 {% extends "base.html" %}
 
-{% block title %}TPAD — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}Appraiser appraisals — TPAD — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-{% include 'dashboards/includes/tpad_hub_page_sidebar.html' %}
+{% include 'dashboards/includes/tpad_appraiser_appraisals_hub_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
 {% set role_theme = portal_page_variant|default('default') %}
-{% set role_hero_title = 'TPAD —' %}
-{% set role_hero_subtitle = 'Teacher Performance Appraisal & Development' %}
-{% set role_hero_icon_class = 'fa-clipboard-check' %}
+{% set role_hero_title = 'Appraiser appraisals' %}
+{% set role_hero_subtitle = 'TPAD · Appraise staff you are assigned to' %}
+{% set role_hero_icon_class = 'fa-user-check' %}
 {% include 'dashboards/includes/role_hero.html' %}
 
 <div class="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <div class="modern-card p-6 sm:p-8 border-l-4 border-teal-500 dark:border-teal-400">
         <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
             <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md">
-                <i class="fas fa-clipboard-check text-xl" aria-hidden="true"></i>
+                <i class="fas fa-user-check text-xl" aria-hidden="true"></i>
             </span>
-            TPAD
+            Appraiser appraisals
         </h1>
-        <p class="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400 mt-2">Teacher Professional Appraisal &amp; Development</p>
+        <p class="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400 mt-2">TPAD</p>
         <p class="text-gray-600 dark:text-gray-300 mt-4 max-w-2xl leading-relaxed">
-            Use the sidebar to open Self appraisals, Appraiser appraisals, TPD, Appraisal reports, or TPAD communication.
+            Use the sidebar to open <strong>Pending appraisals</strong>, <strong>Schedule meetings</strong>, or <strong>Weekly attendance</strong>.
         </p>
     </div>
 </div>

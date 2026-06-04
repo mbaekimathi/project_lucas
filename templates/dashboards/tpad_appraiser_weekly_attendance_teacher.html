@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}{{ teacher.full_name or 'Teacher' }} — Weekly attendance — TPAD — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/tpad_subpage_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto pt-4">
+    <a href="{{ employee_dash_url('tpad/appraiser-appraisals/weekly-attendance') }}{% if request.query_string %}?{{ request.query_string }}{% endif %}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to weekly attendance
+    </a>
+</div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = teacher.full_name or 'Teacher' %}
+{% set role_hero_subtitle = 'Weekly attendance · by class' %}
+{% set role_hero_icon_class = 'fa-eye' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="modern-card p-6 sm:p-8 border-l-4 border-teal-500 dark:border-teal-400">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                    <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md">
+                        <i class="fas fa-eye text-xl" aria-hidden="true"></i>
+                    </span>
+                    {{ teacher.full_name or 'Teacher' }}
+                </h1>
+                {% if teacher.employee_id %}
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ teacher.employee_id }}</p>
+                {% endif %}
+                <p id="tpad-weekly-range-label" class="text-sm text-gray-600 dark:text-gray-300 mt-2 {% if not (filter_meta and filter_meta.range_label) %}hidden{% endif %}">
+                    {% if filter_meta and filter_meta.range_label %}
+                    <span class="font-semibold">{{ filter_meta.range_label }}</span>
+                    {% if filter_meta.term_name %}<span class="text-gray-400 dark:text-gray-500">· {{ filter_meta.term_name }}</span>{% endif %}
+                    {% endif %}
+                </p>
+            </div>
+            {% set attended = totals.lessons_attended|default(teacher.lessons_attended|default(0)) %}
+            {% set allocated = totals.lessons_allocated|default(teacher.lessons_allocated|default(0)) %}
+            <p id="tpad-teacher-total-badge" class="text-sm font-medium text-teal-800 dark:text-teal-200 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-xl px-4 py-2 shrink-0 tabular-nums">
+                Total:
+                <span id="tpad-teacher-total-value" class="font-bold {% if allocated and attended >= allocated %}text-green-700 dark:text-green-300{% elif attended %}text-amber-700 dark:text-amber-300{% endif %}">
+                    {{ attended }} / {{ allocated }}
+                </span>
+            </p>
+        </div>
+
+        {% include 'dashboards/includes/tpad_attendance_filter.html' %}
+
+        {% if teachers_load_error %}
+        <p class="mt-4 text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3">
+            {{ teachers_load_error }}
+        </p>
+        {% endif %}
+
+        <p id="tpad-teacher-classes-error" class="mt-4 hidden text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3"></p>
+
+        <p id="tpad-teacher-classes-loading" class="mt-6 text-sm text-gray-500 dark:text-gray-400 hidden">
+            <i class="fas fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading classes…
+        </p>
+
+        <div id="tpad-teacher-classes-table-wrap" class="mt-8 -mx-2 sm:mx-0 overflow-x-auto {% if not class_rows or class_rows|length == 0 %}hidden{% endif %}">
+            <table class="min-w-full text-sm text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                        <th scope="col" class="py-3 px-3 sm:px-4">Class</th>
+                        <th scope="col" class="py-3 px-3 sm:px-4">Subject</th>
+                        <th scope="col" class="py-3 px-3 sm:px-4 text-right">Attended / allocated</th>
+                    </tr>
+                </thead>
+                <tbody id="tpad-teacher-classes-tbody" class="divide-y divide-gray-100 dark:divide-gray-800">
+                    {% for row in class_rows %}
+                    {% set row_attended = row.lessons_attended|default(0) %}
+                    {% set row_allocated = row.lessons_allocated|default(0) %}
+                    <tr class="hover:bg-gray-50/80 dark:hover:bg-gray-800/50">
+                        <td class="py-3 px-3 sm:px-4 font-medium text-gray-900 dark:text-white">
+                            {{ row.level_name or '—' }}
+                            {% if row.level_category %}
+                            <span class="block text-xs font-normal text-gray-500 dark:text-gray-400 mt-0.5">{{ row.level_category }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 px-3 sm:px-4 text-gray-700 dark:text-gray-300">
+                            {{ row.subject_name or '—' }}
+                            {% if row.subject_code %}
+                            <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ row.subject_code }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 px-3 sm:px-4 text-right tabular-nums">
+                            <span class="font-semibold {% if row_allocated and row_attended >= row_allocated %}text-green-700 dark:text-green-300{% elif row_attended %}text-amber-700 dark:text-amber-300{% else %}text-gray-700 dark:text-gray-300{% endif %}">
+                                {{ row_attended }} / {{ row_allocated }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div id="tpad-teacher-classes-empty" class="mt-10 flex flex-col items-center justify-center text-center py-12 px-4 rounded-2xl bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 {% if class_rows and class_rows|length > 0 %}hidden{% endif %}">
+            <span class="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                <i class="fas fa-chalkboard text-xl" aria-hidden="true"></i>
+            </span>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mt-5">No classes found</h2>
+            <p class="text-gray-600 dark:text-gray-300 mt-2 max-w-md text-sm leading-relaxed">
+                No timetable classes or attendance records match the selected range.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const _tpadTeacherClassesApiUrl = {{ employee_dash_url('tpad/appraiser-appraisals/weekly-attendance/teacher/' ~ teacher.id ~ '/classes')|tojson }};
+</script>
+{% include 'dashboards/includes/tpad_weekly_attendance_teacher_loader.js' %}
+{% endblock %}

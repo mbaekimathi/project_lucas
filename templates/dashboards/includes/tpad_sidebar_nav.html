@@ -1,0 +1,39 @@
+{% set _tpad_active_endpoints = (
+    'employee_tpad',
+    'employee_tpad_self_appraisals',
+    'employee_tpad_appraiser_appraisals',
+    'employee_tpad_tpd',
+    'employee_tpad_appraisal_reports',
+    'employee_tpad_communication',
+) %}
+<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">TPAD</p>
+<a href="{{ employee_dash_url('tpad/self-appraisals') }}"
+   class="sidebar-item {% if request.endpoint in ('employee_tpad_self_appraisals', 'employee_tpad_self_assessment', 'employee_tpad_lesson_observation') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-edit w-5"></i>
+    <span>Self appraisals</span>
+    {% if request.endpoint in ('employee_tpad_self_appraisals', 'employee_tpad_self_assessment', 'employee_tpad_lesson_observation') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/appraiser-appraisals') }}"
+   class="sidebar-item {% if request.endpoint in ('employee_tpad_appraiser_appraisals', 'employee_tpad_pending_appraisals', 'employee_tpad_schedule_meetings', 'employee_tpad_appraiser_weekly_attendance') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-check w-5"></i>
+    <span>Appraiser appraisals</span>
+    {% if request.endpoint in ('employee_tpad_appraiser_appraisals', 'employee_tpad_pending_appraisals', 'employee_tpad_schedule_meetings', 'employee_tpad_appraiser_weekly_attendance') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/tpd') }}"
+   class="sidebar-item {% if request.endpoint in ('employee_tpad_tpd', 'employee_tpad_tpd_plan', 'employee_tpad_completed_plans', 'employee_tpad_enrolment', 'employee_tpad_feedback', 'employee_tpad_tpd_assessment', 'employee_tpad_certificate') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chalkboard-teacher w-5"></i>
+    <span>TPD</span>
+    {% if request.endpoint in ('employee_tpad_tpd', 'employee_tpad_tpd_plan', 'employee_tpad_completed_plans', 'employee_tpad_enrolment', 'employee_tpad_feedback', 'employee_tpad_tpd_assessment', 'employee_tpad_certificate') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/appraisal-reports') }}"
+   class="sidebar-item {% if request.endpoint in ('employee_tpad_appraisal_reports', 'employee_tpad_standard_reports') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-bar w-5"></i>
+    <span>Appraisal reports</span>
+    {% if request.endpoint in ('employee_tpad_appraisal_reports', 'employee_tpad_standard_reports') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad/communication') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad_communication' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-broadcast-tower w-5"></i>
+    <span>TPAD communication</span>
+    {% if request.endpoint == 'employee_tpad_communication' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Self assessment — Self appraisals — TPAD — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/tpad_subpage_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto pt-4">
+    <a href="{{ employee_dash_url('tpad/self-appraisals') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to self appraisals
+    </a>
+</div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Self assessment' %}
+{% set role_hero_subtitle = 'TPAD · Self appraisals' %}
+{% set role_hero_icon_class = 'fa-clipboard-list' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+{% set tpad_title = 'Self assessment' %}
+{% set tpad_subtitle = 'Self appraisals · TPAD' %}
+{% set tpad_icon = 'fa-clipboard-list' %}
+{% set tpad_coming_soon_message = 'Complete and submit your self-assessment forms here. This module is under development.' %}
+{% include 'dashboards/includes/tpad_section_body.html' %}
+{% endblock %}

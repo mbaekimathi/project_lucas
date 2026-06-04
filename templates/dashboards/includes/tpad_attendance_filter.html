@@ -1,0 +1,303 @@
+{% set fp = filter_params|default({}) %}
+{% set fm = filter_meta|default({}) %}
+{% set ft = fp.filter_type|default(fm.filter_type|default('period')) %}
+{% set month_val = fp.month|default('') %}
+{% set month_num = month_val[5:7] if month_val|length >= 7 else '' %}
+{% set month_year = month_val[:4] if month_val|length >= 4 else '' %}
+{% set year_val = fp.year|default('') %}
+<form id="tpad-attendance-filter" class="mt-6 p-4 sm:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40" autocomplete="off"
+      data-tpad-term-start="{{ fm.term_start|default('') }}"
+      data-tpad-term-end="{{ fm.term_end|default('') }}">
+    <div class="flex flex-col lg:flex-row lg:items-end gap-3 lg:gap-4">
+        <div class="w-full lg:w-44 shrink-0">
+            <label for="tpad-filter-type" class="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Range</label>
+            <select id="tpad-filter-type" name="filter_type"
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white px-3 py-2.5">
+                <option value="day" {% if ft == 'day' %}selected{% endif %}>Day</option>
+                <option value="period" {% if ft == 'period' %}selected{% endif %}>Period</option>
+                <option value="month" {% if ft == 'month' %}selected{% endif %}>Month</option>
+                <option value="year" {% if ft == 'year' %}selected{% endif %}>Year</option>
+            </select>
+        </div>
+
+        <div id="tpad-filter-fields" class="flex-1 min-w-0">
+            <div data-tpad-panel="day" class="tpad-filter-panel" {% if ft != 'day' %}style="display:none"{% endif %}>
+                <div class="max-w-xs">
+                    <label for="tpad-filter-day" class="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Select day</label>
+                    <input type="date" id="tpad-filter-day" name="day" value="{{ fp.day|default('') }}"
+                           class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white px-3 py-2.5">
+                </div>
+            </div>
+
+            <div data-tpad-panel="period" class="tpad-filter-panel" {% if ft != 'period' %}style="display:none"{% endif %}>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+                    <div>
+                        <label for="tpad-filter-period-start" class="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Start date</label>
+                        <input type="date" id="tpad-filter-period-start" name="period_start" value="{{ fp.period_start|default('') }}"
+                               class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white px-3 py-2.5">
+                    </div>
+                    <div>
+                        <label for="tpad-filter-period-end" class="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">End date</label>
+                        <input type="date" id="tpad-filter-period-end" name="period_end" value="{{ fp.period_end|default('') }}"
+                               class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white px-3 py-2.5">
+                    </div>
+                </div>
+            </div>
+
+            <div data-tpad-panel="month" class="tpad-filter-panel" {% if ft != 'month' %}style="display:none"{% endif %}>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+                    <div>
+                        <label for="tpad-filter-month-num" class="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Month</label>
+                        <select id="tpad-filter-month-num" name="month_num"
+                                class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white px-3 py-2.5">
+                            {% set months = [('01','January'),('02','February'),('03','March'),('04','April'),('05','May'),('06','June'),('07','July'),('08','August'),('09','September'),('10','October'),('11','November'),('12','December')] %}
+                            {% for num, label in months %}
+                            <option value="{{ num }}" {% if month_num == num %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="tpad-filter-month-year" class="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Year</label>
+                        <select id="tpad-filter-month-year" name="month_year"
+                                class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white px-3 py-2.5">
+                            {% for y in range(2030, 2017, -1) %}
+                            <option value="{{ y }}" {% if month_year == y|string %}selected{% endif %}>{{ y }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div data-tpad-panel="year" class="tpad-filter-panel" {% if ft != 'year' %}style="display:none"{% endif %}>
+                <div class="max-w-xs">
+                    <label for="tpad-filter-year" class="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Select year</label>
+                    <select id="tpad-filter-year" name="year"
+                            class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white px-3 py-2.5">
+                        {% for y in range(2030, 2017, -1) %}
+                        <option value="{{ y }}" {% if year_val == y|string %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <p id="tpad-attendance-filter-loading" class="text-xs text-gray-500 dark:text-gray-400 shrink-0 self-center pb-1" style="display:none">
+            <i class="fas fa-spinner fa-spin mr-1" aria-hidden="true"></i>Updating…
+        </p>
+    </div>
+</form>
+<script>
+(function (global) {
+  var debounceTimer = null;
+  var onChangeHandler = null;
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function todayIso() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  function monthStartIso() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-01';
+  }
+  function termStartIso() {
+    var form = el('tpad-attendance-filter');
+    var ts = form && form.getAttribute('data-tpad-term-start');
+    return ts || monthStartIso();
+  }
+  function termEndIso() {
+    var form = el('tpad-attendance-filter');
+    var te = form && form.getAttribute('data-tpad-term-end');
+    return te || todayIso();
+  }
+  function el(id) { return document.getElementById(id); }
+
+  function activeType() {
+    var s = el('tpad-filter-type');
+    return (s && s.value) || 'period';
+  }
+
+  function initFromUrl() {
+    if (!global.location || !global.location.search) return;
+    var sp = new URLSearchParams(global.location.search);
+    var ft = sp.get('filter_type');
+    if (!ft) return;
+    var typeSelect = el('tpad-filter-type');
+    if (typeSelect) typeSelect.value = ft;
+    showPanel(ft);
+    if (ft === 'day') {
+      var day = el('tpad-filter-day');
+      if (day && sp.get('day')) day.value = sp.get('day');
+    } else if (ft === 'period') {
+      var ps = el('tpad-filter-period-start');
+      var pe = el('tpad-filter-period-end');
+      if (ps && sp.get('period_start')) ps.value = sp.get('period_start');
+      if (pe && sp.get('period_end')) pe.value = sp.get('period_end');
+    } else if (ft === 'month') {
+      var month = sp.get('month') || '';
+      if (month.length >= 7) {
+        var mn = el('tpad-filter-month-num');
+        var my = el('tpad-filter-month-year');
+        if (mn) mn.value = month.slice(5, 7);
+        if (my) my.value = month.slice(0, 4);
+      }
+    } else if (ft === 'year') {
+      var y = el('tpad-filter-year');
+      if (y && sp.get('year')) y.value = sp.get('year');
+    }
+  }
+
+  function showPanel(type) {
+    var panels = document.querySelectorAll('#tpad-attendance-filter [data-tpad-panel]');
+    for (var i = 0; i < panels.length; i++) {
+      var panel = panels[i];
+      var match = panel.getAttribute('data-tpad-panel') === type;
+      panel.style.display = match ? 'block' : 'none';
+    }
+  }
+
+  function ensureDefaults(type) {
+    if (type === 'day') {
+      var day = el('tpad-filter-day');
+      if (day && !day.value) day.value = todayIso();
+    } else if (type === 'period') {
+      var ps = el('tpad-filter-period-start');
+      var pe = el('tpad-filter-period-end');
+      if (ps && !ps.value) ps.value = termStartIso();
+      if (pe && !pe.value) pe.value = termEndIso();
+      if (ps && pe && ps.value && pe.value && pe.value < ps.value) pe.value = ps.value;
+    } else if (type === 'month') {
+      var mn = el('tpad-filter-month-num');
+      var my = el('tpad-filter-month-year');
+      if (mn && !mn.value) mn.value = pad2(new Date().getMonth() + 1);
+      if (my && !my.value) my.value = String(new Date().getFullYear());
+    } else if (type === 'year') {
+      var y = el('tpad-filter-year');
+      if (y && !y.value) y.value = String(new Date().getFullYear());
+    }
+  }
+
+  function getParams() {
+    var type = activeType();
+    ensureDefaults(type);
+    var params = { filter_type: type };
+    if (type === 'day') {
+      params.day = (el('tpad-filter-day') && el('tpad-filter-day').value) || todayIso();
+    } else if (type === 'month') {
+      var mn = el('tpad-filter-month-num');
+      var my = el('tpad-filter-month-year');
+      params.month = (my && my.value ? my.value : String(new Date().getFullYear())) + '-' +
+        (mn && mn.value ? mn.value : pad2(new Date().getMonth() + 1));
+    } else if (type === 'year') {
+      params.year = (el('tpad-filter-year') && el('tpad-filter-year').value) || String(new Date().getFullYear());
+    } else if (type === 'period') {
+      params.period_start = (el('tpad-filter-period-start') && el('tpad-filter-period-start').value) || termStartIso();
+      params.period_end = (el('tpad-filter-period-end') && el('tpad-filter-period-end').value) || termEndIso();
+      if (params.period_end < params.period_start) params.period_end = params.period_start;
+    }
+    return params;
+  }
+
+  function toQueryString(params) {
+    return Object.keys(params || {})
+      .filter(function (k) { return params[k] != null && params[k] !== ''; })
+      .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(String(params[k])); })
+      .join('&');
+  }
+
+  function syncUrl(params) {
+    if (!global.history || !global.history.replaceState) return;
+    var qs = toQueryString(params);
+    global.history.replaceState(null, '', qs ? global.location.pathname + '?' + qs : global.location.pathname);
+  }
+
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function emitChange() {
+    var params = getParams();
+    syncUrl(params);
+    if (typeof onChangeHandler !== 'function') return;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function () { onChangeHandler(params); }, 250);
+  }
+
+  function onRangeChange() {
+    var type = activeType();
+    showPanel(type);
+    ensureDefaults(type);
+    emitChange();
+  }
+
+  function wireFilter() {
+    var form = el('tpad-attendance-filter');
+    if (!form || form.getAttribute('data-tpad-wired') === '1') return;
+    form.setAttribute('data-tpad-wired', '1');
+
+    initFromUrl();
+    showPanel(activeType());
+    ensureDefaults(activeType());
+
+    var typeSelect = el('tpad-filter-type');
+    if (typeSelect) typeSelect.addEventListener('change', onRangeChange);
+
+    form.addEventListener('change', function (e) {
+      if (!e.target || e.target.id === 'tpad-filter-type') return;
+      if (e.target.id === 'tpad-filter-period-start') {
+        var pe = el('tpad-filter-period-end');
+        var ps = el('tpad-filter-period-start');
+        if (pe && ps && ps.value && pe.value && pe.value < ps.value) pe.value = ps.value;
+      }
+      if (e.target.id === 'tpad-filter-period-end') {
+        var ps2 = el('tpad-filter-period-start');
+        var pe2 = el('tpad-filter-period-end');
+        if (ps2 && pe2 && ps2.value && pe2.value && pe2.value < ps2.value) ps2.value = pe2.value;
+      }
+      emitChange();
+    });
+
+    form.addEventListener('input', function (e) {
+      if (e.target && e.target.type === 'date') emitChange();
+    });
+  }
+
+  global.TpadAttendanceFilter = {
+    init: function (options) {
+      options = options || {};
+      onChangeHandler = options.onChange || null;
+      wireFilter();
+      if (typeof onChangeHandler === 'function') emitChange();
+    },
+    getParams: getParams,
+    toQueryString: toQueryString,
+    syncUrl: function () { syncUrl(getParams()); },
+    syncVisibility: onRangeChange,
+    updateRangeLabel: function (meta, labelElId) {
+      var label = document.getElementById(labelElId || 'tpad-weekly-range-label');
+      if (!label || !meta || !meta.range_label) return;
+      var term = meta.term_name ? ' · ' + esc(meta.term_name) : '';
+      label.innerHTML = '<span class="font-semibold">' + esc(meta.range_label) + '</span>' +
+        '<span class="text-gray-400 dark:text-gray-500">' + term + '</span>';
+      label.classList.remove('hidden');
+    },
+    setLoading: function (loading) {
+      var spin = el('tpad-attendance-filter-loading');
+      if (spin) spin.style.display = loading ? 'block' : 'none';
+    },
+    appendQuery: function (baseUrl, params) {
+      if (!baseUrl || baseUrl === '#') return baseUrl;
+      var qs = toQueryString(params || getParams());
+      if (!qs) return baseUrl;
+      return baseUrl + (baseUrl.indexOf('?') >= 0 ? '&' : '?') + qs;
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireFilter);
+  } else {
+    wireFilter();
+  }
+})(window);
+</script>
