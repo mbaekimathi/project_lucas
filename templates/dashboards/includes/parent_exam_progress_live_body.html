@@ -1,0 +1,145 @@
+    {# Live results — updated via AJAX when filters change #}
+    <div x-show="loadError" style="display:none" x-cloak class="modern-card px-3 py-2 mb-4 border border-red-200 dark:border-red-800 bg-red-50/80 dark:bg-red-950/30 text-xs text-red-800 dark:text-red-200" aria-live="assertive">
+        <span x-text="loadError"></span>
+    </div>
+
+    <div x-show="live.filter_no_results"{% if not filter_no_results %} style="display:none" x-cloak{% endif %} class="modern-card p-6 mb-6 border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/30 text-center">
+        <p class="text-amber-900 dark:text-amber-100 font-medium">No marks match the selected filters.</p>
+        <button type="button" @click="resetFilters()" class="inline-block mt-3 text-sm font-semibold text-brand-primary dark:text-brand-secondary hover:underline">Show all exams</button>
+    </div>
+
+    <div x-show="hasResults()"{% if not summary or not summary.total_entries %} style="display:none"{% endif %}>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5 mb-4">
+            <div class="stat-card modern-card p-2.5 sm:p-3">
+                <p class="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Overall mean</p>
+                <p class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5"><span x-text="live.summary ? live.summary.overall_mean + '%' : '—'"></span></p>
+            </div>
+            <div class="stat-card modern-card p-2.5 sm:p-3">
+                <p class="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Pass rate</p>
+                <p class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5"><span x-text="live.summary ? live.summary.pass_rate + '%' : '—'"></span></p>
+            </div>
+            <div class="stat-card modern-card p-2.5 sm:p-3">
+                <p class="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Exams</p>
+                <p class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5" x-text="live.exams_count"></p>
+            </div>
+            <div class="stat-card modern-card p-2.5 sm:p-3">
+                <p class="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Subjects</p>
+                <p class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5" x-text="live.subjects_count"></p>
+            </div>
+            <div class="stat-card modern-card p-2.5 sm:p-3 col-span-1">
+                <p class="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Strongest</p>
+                <p class="text-xs sm:text-sm font-bold text-gray-900 dark:text-white mt-0.5 truncate" x-text="live.summary && live.summary.best_subject ? live.summary.best_subject : '—'"></p>
+                <p class="text-[10px] text-green-600 dark:text-green-400" x-show="live.summary && live.summary.best_mean != null" x-text="live.summary.best_mean + '%'"></p>
+            </div>
+            <div class="stat-card modern-card p-2.5 sm:p-3 col-span-1">
+                <p class="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Needs focus</p>
+                <p class="text-xs sm:text-sm font-bold text-gray-900 dark:text-white mt-0.5 truncate" x-text="live.summary && live.summary.weakest_subject ? live.summary.weakest_subject : '—'"></p>
+                <p class="text-[10px] text-amber-600 dark:text-amber-400" x-show="live.summary && live.summary.weakest_mean != null" x-text="live.summary.weakest_mean + '%'"></p>
+            </div>
+        </div>
+
+        <template x-if="live.by_exam && live.by_exam.length">
+            <div class="modern-card p-4 sm:p-6 mb-6">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1 flex items-center">
+                    <i class="fas fa-table text-brand-primary mr-2"></i>Raw marks data
+                </h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Every exam and subject mark for {{ student.full_name }} (scaled to %). Columns use short codes — see the key below.</p>
+                <div class="mb-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/40 p-3 sm:p-4">
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5">
+                        <i class="fas fa-key text-brand-primary text-xs"></i>Exam reference key
+                    </p>
+                    <ol class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-1.5 text-sm">
+                        <template x-for="ex in live.by_exam" :key="ex.ref">
+                            <li class="flex items-start gap-2 min-w-0">
+                                <span class="inline-flex shrink-0 items-center justify-center min-w-[2rem] px-1.5 py-0.5 rounded-md bg-brand-primary/10 text-brand-primary dark:text-brand-secondary font-mono text-xs font-bold" x-text="ex.ref"></span>
+                                <span class="text-gray-700 dark:text-gray-300 leading-snug min-w-0">
+                                    <span class="block truncate" x-text="ex.label"></span>
+                                    <span class="text-[11px] text-gray-500 dark:text-gray-400" x-show="ex.exam_date_note" x-text="ex.exam_date_note"></span>
+                                    <span class="text-[11px] text-gray-500 dark:text-gray-400" x-show="!ex.exam_date_note && ex.exam_date_str" x-text="ex.exam_date_str"></span>
+                                </span>
+                            </li>
+                        </template>
+                    </ol>
+                </div>
+                <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-50 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700">
+                            <tr>
+                                <th class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider sticky left-0 z-[2] bg-gray-50 dark:bg-gray-800/90 min-w-[8rem]">Subject</th>
+                                <template x-for="ex in live.by_exam" :key="'h-' + ex.ref">
+                                    <th class="px-2 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider w-12 min-w-[2.75rem]">
+                                        <abbr class="font-mono no-underline cursor-help text-brand-primary dark:text-brand-secondary" x-text="ex.ref" :title="ex.label"></abbr>
+                                    </th>
+                                </template>
+                                <th class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap w-16 min-w-[3.5rem]">Avg</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                            <template x-for="subj in live.by_subject" :key="subj.subject_name">
+                                <tr class="hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                                    <td class="px-3 py-2.5 font-medium text-gray-900 dark:text-white sticky left-0 z-[1] bg-white dark:bg-gray-900/80" x-text="subj.subject_name"></td>
+                                    <template x-for="ex in live.by_exam" :key="subj.subject_name + '-' + ex.ref">
+                                        <td class="px-2 py-2.5 text-center tabular-nums whitespace-nowrap">
+                                            <template x-if="cellMark(subj.subject_name, ex) != null">
+                                                <span class="font-semibold text-xs sm:text-sm" :class="markClassStrong(cellMark(subj.subject_name, ex))" x-text="cellMark(subj.subject_name, ex) + '%'"></span>
+                                            </template>
+                                            <template x-if="cellMark(subj.subject_name, ex) == null">
+                                                <span class="text-gray-400">—</span>
+                                            </template>
+                                        </td>
+                                    </template>
+                                    <td class="px-3 py-2.5 text-right font-bold tabular-nums whitespace-nowrap text-xs sm:text-sm" x-text="subj.mean + '%'"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </template>
+
+        <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <i class="fas fa-chart-bar text-brand-primary"></i>Performance charts
+            </h3>
+            <div class="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
+                <div class="modern-card p-4 sm:p-6 lg:col-span-2">
+                    <h4 class="text-base font-bold text-gray-900 dark:text-white mb-4">Performance by subject</h4>
+                    <div class="h-64 sm:h-80"><canvas id="subjectChart"></canvas></div>
+                    <div class="mt-4 space-y-3 max-h-64 overflow-y-auto custom-scrollbar">
+                        <template x-for="subj in live.by_subject" :key="'bar-' + subj.subject_name">
+                            <div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="font-medium text-gray-700 dark:text-gray-300" x-text="subj.subject_name"></span>
+                                    <span class="font-semibold" :class="markClass(subj.mean)" x-text="subj.mean + '%'"></span>
+                                </div>
+                                <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="h-full rounded-full" :class="barClass(subj.mean)" :style="'width:' + Math.min(subj.mean, 100) + '%'"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <div class="modern-card p-4 sm:p-6">
+                    <h4 class="text-base font-bold text-gray-900 dark:text-white mb-4">Mean score by exam</h4>
+                    <div class="h-64 sm:h-72"><canvas id="examChart"></canvas></div>
+                </div>
+                <div class="modern-card p-4 sm:p-6" x-show="live.by_period && live.by_period.length">
+                    <h4 class="text-base font-bold text-gray-900 dark:text-white mb-4">Performance by term</h4>
+                    <div class="h-56 sm:h-64"><canvas id="trendChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="live.has_exam_marks && !hasResults() && !live.filter_no_results" style="display:none" x-cloak class="empty-state modern-card">
+        <div class="empty-state-icon"><i class="fas fa-filter text-gray-400 text-3xl"></i></div>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No results for this filter</h3>
+        <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto">Your child has exam marks on record, but nothing matches the filters you selected.</p>
+        <button type="button" @click="resetFilters()" class="inline-block mt-4 text-brand-primary dark:text-brand-secondary font-semibold hover:underline">Show all exams</button>
+    </div>
+
+    <div x-show="!live.has_exam_marks"{% if has_exam_marks %} style="display:none" x-cloak{% endif %} class="empty-state modern-card">
+        <div class="empty-state-icon"><i class="fas fa-chart-line text-gray-400 text-3xl"></i></div>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No exam data yet</h3>
+        <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto">Exam marks will appear here once the school publishes results for {{ student.full_name }}.</p>
+    </div>

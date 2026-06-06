@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}{{ student.full_name }} — Class exam results - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/role_portal_theme.html' %}
+{% include 'dashboards/includes/parent_class_exam_responsive.html' %}
+{% endblock %}
+
+{% block sidebar_content %}
+{% set parent_nav_scope = 'exams' %}
+{% include 'dashboards/includes/parent_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="p-3 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }} pcer-shell overflow-x-hidden">
+    {% if is_technician and current_view_role == 'parent' %}
+    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician test mode</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their parent’s perspective</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 w-full sm:w-auto">
+                <select
+                    class="w-full sm:w-auto px-3 sm:px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white sm:min-w-[250px] text-sm"
+                    onchange="var v=this.value;if(v){window.location.href={{ parent_dash_url('class-exam-results')|tojson }}+'/'+encodeURIComponent(v);}">
+                    <option value="">-- Jump to another student --</option>
+                    {% for st in all_students %}
+                    {% set sid = st.get('student_id', '') or st[1] if st else '' %}
+                    <option value="{{ sid }}" {% if sid == student.student_id %}selected{% endif %}>
+                        {{ st.get('full_name', '') or st[2] if st else '' }} — {{ sid }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if sibling_count and sibling_count > 1 %}
+    <a href="{{ parent_dash_url('class-exam-results') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Choose another child
+    </a>
+    {% else %}
+    <a href="{{ parent_dash_url() }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to dashboard
+    </a>
+    {% endif %}
+
+    {% set role_theme = 'parent' %}
+    {% set role_hero_eyebrow = 'Academics' %}
+    {% set role_hero_title = student.full_name %}
+    {% set role_hero_subtitle = 'Class exam results · ' ~ (student.resolved_level_name or student.current_grade or 'Class') ~ ((' · ' ~ year_label ~ ' · ' ~ term_label) if year_label and term_label else ((' · ' ~ term_label) if term_label else '')) %}
+    {% set role_hero_icon_class = 'fa-chart-line' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    {% if term_options and term_options|length > 0 %}
+    <div class="modern-card px-3 py-2 sm:px-3.5 sm:py-2.5 mb-4 border border-gray-200 dark:border-gray-700">
+        <form method="get" action="{{ parent_dash_url('class-exam-results/' ~ student.student_id) }}" class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+            {% if selected_student_id %}
+            <input type="hidden" name="student_id" value="{{ selected_student_id }}">
+            {% endif %}
+            <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 shrink-0">
+                <i class="fas fa-filter text-brand-primary text-[10px]" aria-hidden="true"></i>
+                <span class="hidden sm:inline">Filters</span>
+            </span>
+            <select name="term_id" aria-label="Term"
+                    class="w-full sm:flex-1 sm:min-w-0 md:min-w-[12rem] md:flex-none rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs sm:text-sm px-2.5 py-2 text-gray-900 dark:text-white">
+                {% for t in term_options %}
+                <option value="{{ t.id }}" {% if selected_term_id and (t.id == selected_term_id or t.id|string == selected_term_id|string) %}selected{% endif %}>{{ t.year_name }} · {{ t.term_name }}</option>
+                {% endfor %}
+            </select>
+            {% set vo = view_options | default({}, true) %}
+            {% if vo.has_combined %}
+            <select name="level_view" aria-label="Class view"
+                    class="w-full sm:flex-1 sm:min-w-0 md:min-w-[10rem] md:flex-none rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs sm:text-sm px-2.5 py-2 text-gray-900 dark:text-white">
+                <option value="individual" {% if level_view|default('individual') == 'individual' %}selected{% endif %}>{{ vo.individual_label or 'My class' }} only</option>
+                <option value="combined" {% if level_view|default('individual') == 'combined' %}selected{% endif %}>{{ vo.combined_label or 'Combined' }} (combined)</option>
+            </select>
+            {% else %}
+            <input type="hidden" name="level_view" value="individual">
+            {% endif %}
+            <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-md bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-xs sm:text-sm font-semibold shadow-sm touch-btn">
+                <i class="fas fa-sync-alt text-[10px]" aria-hidden="true"></i> Apply
+            </button>
+        </form>
+        {% if vo.has_combined and vo.member_level_names %}
+        <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-2 mb-0 pl-0.5">
+            Combined view includes: {{ vo.member_level_names | join(' · ') }}
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% set sid = student.student_id %}
+    {% include 'dashboards/_parent_class_exam_results.html' %}
+    {% include 'dashboards/_parent_class_exam_roster.html' %}
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Smart Parent Meeting Scheduler - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
+
+{% block sidebar_content %}
+{% set parent_nav_scope = 'meetings' %}
+{% include 'dashboards/includes/parent_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-4xl mx-auto portal-page-root role-page role-page--parent">
+    {% if is_technician and current_view_role == 'parent' %}
+    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 sm:p-6 mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician test mode</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Preview the parent meeting scheduler</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <a href="{{ parent_dash_url() }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to dashboard
+    </a>
+
+    {% set role_theme = 'parent' %}
+    {% set role_hero_eyebrow = 'Parent portal' %}
+    {% set role_hero_title = 'Smart Parent Meeting Scheduler' %}
+    {% set role_hero_subtitle = 'Book and manage parent–teacher meetings online — pick a time that works for you.' %}
+    {% set role_hero_icon_class = 'fa-calendar-alt' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    <div class="rounded-2xl border border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 p-6 sm:p-10 text-center">
+        <span class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white text-2xl shadow-md mb-4">
+            <i class="fas fa-handshake" aria-hidden="true"></i>
+        </span>
+        <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white m-0">Coming soon</h2>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-2 mb-0 max-w-lg mx-auto leading-relaxed">
+            You will be able to view available meeting slots, request appointments with teachers, and receive reminders — all from this page.
+        </p>
+        {% if children %}
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-4 mb-0">
+            Linked {% if children|length == 1 %}child{% else %}children{% endif %}:
+            {% for child in children %}
+            <span class="font-semibold text-gray-700 dark:text-gray-300">{{ child.full_name }}</span>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

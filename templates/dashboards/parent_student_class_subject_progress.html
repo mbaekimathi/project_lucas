@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}{{ student.full_name }} — Class subject progress - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
+
+{% block sidebar_content %}
+{% set parent_nav_scope = 'exams' %}
+{% include 'dashboards/includes/parent_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }}">
+    {% if is_technician and current_view_role == 'parent' %}
+    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician test mode</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their parent’s perspective</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <select
+                    class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-w-[250px]"
+                    onchange="var v=this.value;if(v){window.location.href={{ parent_dash_url('class-subject-progress')|tojson }}+'/'+encodeURIComponent(v);}">
+                    <option value="">-- Jump to another student --</option>
+                    {% for st in all_students %}
+                    {% set sid = st.get('student_id', '') or st[1] if st else '' %}
+                    <option value="{{ sid }}" {% if sid == student.student_id %}selected{% endif %}>
+                        {{ st.get('full_name', '') or st[2] if st else '' }} — {{ sid }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if sibling_count and sibling_count > 1 %}
+    <a href="{{ parent_dash_url('class-subject-progress') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Choose another child
+    </a>
+    {% else %}
+    <a href="{{ parent_dash_url() }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to dashboard
+    </a>
+    {% endif %}
+
+    {% set role_theme = 'parent' %}
+    {% set role_hero_eyebrow = 'Academics' %}
+    {% set role_hero_title = student.full_name %}
+    {% set role_hero_subtitle = 'Class subject progress · ' ~ (student.resolved_level_name or student.current_grade or 'Class') ~ ((' · ' ~ year_label ~ ' · ' ~ term_label) if year_label and term_label else ((' · ' ~ term_label) if term_label else '')) %}
+    {% set role_hero_icon_class = 'fa-book-open' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    {% if term_options and term_options|length > 0 %}
+    <div class="modern-card px-3 py-2 sm:px-3.5 sm:py-2.5 mb-4 border border-gray-200 dark:border-gray-700">
+        <form method="get" action="{{ parent_dash_url('class-subject-progress/' ~ student.student_id) }}" class="flex flex-wrap items-center gap-x-2 gap-y-2">
+            <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 shrink-0">
+                <i class="fas fa-filter text-brand-primary text-[10px]" aria-hidden="true"></i>
+                <span class="hidden sm:inline">Term</span>
+            </span>
+            <select name="term_id" aria-label="Term"
+                    class="min-w-0 flex-1 sm:flex-none sm:min-w-[12rem] rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs sm:text-sm px-2 py-1.5 text-gray-900 dark:text-white">
+                {% for t in term_options %}
+                <option value="{{ t.id }}" {% if selected_term_id and (t.id == selected_term_id or t.id|string == selected_term_id|string) %}selected{% endif %}>{{ t.year_name }} · {{ t.term_name }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-xs font-semibold shadow-sm">
+                <i class="fas fa-sync-alt text-[10px]" aria-hidden="true"></i> Show term
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    {% set sid = student.student_id %}
+    {% include 'dashboards/_parent_class_subject_progress.html' %}
+</div>
+{% endblock %}

@@ -46,6 +46,8 @@
     {% set role_hero_subtitle = page_subtitle %}
     {% if detail_url_segment == 'class-timetable' %}
     {% set role_hero_icon_class = 'fa-calendar-week' %}
+    {% elif detail_url_segment == 'class-subject-progress' %}
+    {% set role_hero_icon_class = 'fa-book-open' %}
     {% else %}
     {% set role_hero_icon_class = 'fa-calendar-check' %}
     {% endif %}

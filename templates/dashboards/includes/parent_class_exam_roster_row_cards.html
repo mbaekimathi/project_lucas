@@ -1,0 +1,68 @@
+{# Mobile / narrow: student result cards (included per section) #}
+{% set rows = rows | default([]) %}
+{% set cols = cols | default([]) %}
+<div class="md:hidden p-3 space-y-2.5 pcer-mobile-roster" aria-label="Class list mobile view">
+    {% for row in rows %}
+    {% set pos_raw = row.position|default('') %}
+    {% set pos_num = pos_raw|int if (row.has_marks|default(true) and pos_raw != '' and pos_raw != '—') else 0 %}
+    <article class="pcer-student-card {% if row.is_linked_child %}pcer-child-row{% endif %}">
+        <div class="flex items-start gap-2.5 p-3 pb-2">
+            <div class="shrink-0">
+                {% if not row.has_marks|default(true) or pos_num <= 0 %}
+                <span class="inline-flex items-center justify-center w-8 h-8 rounded-md text-xs font-semibold text-gray-400">—</span>
+                {% elif pos_num == 1 %}
+                <span class="inline-flex items-center justify-center gap-0.5 w-8 h-8 rounded-lg bg-gradient-to-br from-yellow-400 to-amber-600 text-white text-xs font-black shadow-sm"><i class="fas fa-medal text-[8px]"></i>{{ pos_num }}</span>
+                {% elif pos_num == 2 %}
+                <span class="inline-flex items-center justify-center gap-0.5 w-8 h-8 rounded-lg bg-gradient-to-br from-slate-300 to-slate-500 text-white text-xs font-black shadow-sm"><i class="fas fa-medal text-[8px]"></i>{{ pos_num }}</span>
+                {% elif pos_num == 3 %}
+                <span class="inline-flex items-center justify-center gap-0.5 w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 text-white text-xs font-black shadow-sm"><i class="fas fa-medal text-[8px]"></i>{{ pos_num }}</span>
+                {% elif pos_num <= 5 %}
+                <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 text-xs font-bold border border-emerald-200 dark:border-emerald-800">{{ pos_num }}</span>
+                {% elif pos_num <= 10 %}
+                <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 text-xs font-bold border border-sky-200 dark:border-sky-800">{{ pos_num }}</span>
+                {% else %}
+                <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold">{{ pos_num }}</span>
+                {% endif %}
+            </div>
+            <div class="min-w-0 flex-1">
+                <p class="text-sm font-bold text-gray-900 dark:text-white m-0 leading-snug break-words">{{ row.full_name }}</p>
+                {% if is_combined_view %}
+                <p class="text-[11px] text-gray-500 dark:text-gray-400 m-0 mt-0.5">{{ row.home_class or row.current_grade or '—' }}</p>
+                {% endif %}
+                {% if row.is_linked_child %}
+                <span class="inline-flex items-center gap-1 mt-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">
+                    <i class="fas fa-star text-[8px]" aria-hidden="true"></i> Your child
+                </span>
+                {% endif %}
+            </div>
+            <div class="shrink-0 text-right">
+                <p class="text-[10px] uppercase font-semibold text-gray-500 dark:text-gray-400 m-0">Total</p>
+                <p class="text-base font-black text-gray-900 dark:text-white m-0 tabular-nums">{% if row.has_marks|default(true) %}{{ row.total_marks|default('—') }}{% else %}—{% endif %}</p>
+                <p class="text-[10px] text-gray-500 dark:text-gray-400 m-0 mt-0.5">
+                    Mean {% if row.has_marks|default(true) %}{{ row.mean|default('—') }}{% else %}—{% endif %}
+                    · {% set grd = row.grade|default('-') %}<span class="font-bold">{{ grd }}</span>
+                </p>
+            </div>
+        </div>
+        {% if cols and row.has_marks|default(true) %}
+        <div class="px-3 pb-3 pt-0">
+            <div class="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                {% for col in cols %}
+                {% set mark = row[col] if col in row else none %}
+                <div class="pcer-mark-chip" title="{{ col }}">
+                    <span class="pcer-mark-chip__label">{{ col }}</span>
+                    <span class="pcer-mark-chip__val {% if mark is not none and mark != '' %}{% if mark|float >= 70 %}text-green-600 dark:text-green-400{% elif mark|float >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}{% else %}text-gray-400{% endif %}">
+                        {% if mark is not none and mark != '' %}{{ mark }}{% else %}—{% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% elif not row.has_marks|default(true) %}
+        <p class="text-[11px] text-gray-400 dark:text-gray-500 px-3 pb-3 m-0">No marks recorded yet</p>
+        {% endif %}
+    </article>
+    {% else %}
+    <p class="text-sm text-center text-gray-500 dark:text-gray-400 py-8 m-0">No students in this class for the selected filters.</p>
+    {% endfor %}
+</div>

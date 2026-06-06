@@ -1,0 +1,137 @@
+{% set sections = class_sections | default([]) %}
+{% set cols = subject_columns | default([]) %}
+{% set roster = class_roster | default([]) %}
+
+<section class="mt-4 sm:mt-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden" aria-labelledby="parent-class-exam-roster-heading">
+    <div class="px-3 sm:px-5 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-slate-50/90 to-gray-50/70 dark:from-slate-900/40 dark:to-gray-900/30">
+        <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-start sm:justify-between gap-3">
+            <div class="flex items-start gap-2.5 sm:gap-3 min-w-0 flex-1">
+                <span class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 text-white flex items-center justify-center shrink-0 shadow-sm text-sm sm:text-base">
+                    <i class="fas fa-list-ol" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0">
+                    <h2 id="parent-class-exam-roster-heading" class="text-sm sm:text-lg font-bold text-gray-900 dark:text-white m-0 leading-tight">
+                        Class list — exam results
+                    </h2>
+                    <p class="text-[11px] sm:text-sm text-gray-500 dark:text-gray-400 m-0 mt-0.5 break-words">
+                        {% if is_combined_view %}
+                        Combined{% if level_label %}: <span class="font-semibold text-gray-700 dark:text-gray-300">{{ level_label }}</span>{% endif %}
+                        {% else %}
+                        {{ level_label or exam_bundle.grade or student.resolved_level_name or student.current_grade or 'Class' }}
+                        {% endif %}
+                        {% if term_label %} · {{ term_label }}{% endif %}
+                        · rank 1 → last{% if not is_combined_view %} · then unranked A–Z{% endif %}
+                    </p>
+                    <div class="flex flex-wrap items-center gap-1 sm:gap-1.5 mt-2">
+                        <span class="inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-semibold text-gray-500 dark:text-gray-400"><span class="inline-flex items-center justify-center w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-gradient-to-br from-yellow-400 to-amber-600 text-[7px] sm:text-[8px] text-white font-black">1</span> 1st</span>
+                        <span class="inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-semibold text-gray-500 dark:text-gray-400"><span class="inline-flex items-center justify-center w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-gradient-to-br from-slate-300 to-slate-500 text-[7px] sm:text-[8px] text-white font-black">2</span> 2nd</span>
+                        <span class="inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-semibold text-gray-500 dark:text-gray-400"><span class="inline-flex items-center justify-center w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-gradient-to-br from-amber-500 to-amber-700 text-[7px] sm:text-[8px] text-white font-black">3</span> 3rd</span>
+                        <span class="hidden min-[400px]:inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-semibold text-gray-500 dark:text-gray-400"><span class="inline-flex items-center justify-center w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-emerald-100 dark:bg-emerald-900/40 text-[7px] sm:text-[8px] text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800">4</span> Top 5</span>
+                        <span class="hidden min-[400px]:inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-semibold text-gray-500 dark:text-gray-400"><span class="inline-flex items-center justify-center w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-sky-100 dark:bg-sky-900/40 text-[7px] sm:text-[8px] text-sky-800 dark:text-sky-300 font-bold border border-sky-200 dark:border-sky-800">8</span> Top 10</span>
+                    </div>
+                </div>
+            </div>
+            {% if roster %}
+            <span class="inline-flex items-center gap-1.5 rounded-lg bg-white/80 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 sm:py-1 text-[10px] sm:text-[11px] font-semibold text-gray-700 dark:text-gray-200 shrink-0 self-start">
+                <i class="fas fa-users text-brand-primary text-[9px] sm:text-[10px]" aria-hidden="true"></i>
+                {{ roster|length }} enrolled
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if sections %}
+    {% for section in sections %}
+    {% set rows = section.rows | default([]) %}
+    {% if sections|length > 1 and not is_combined_view %}
+    <div class="px-3 sm:px-5 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-100 dark:border-gray-700">
+        <p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 m-0">{{ section.class_name }}</p>
+    </div>
+    {% endif %}
+
+    {% include 'dashboards/includes/parent_class_exam_roster_row_cards.html' %}
+
+    <div class="hidden md:block">
+        <p class="pcer-scroll-hint" aria-hidden="true"><i class="fas fa-arrows-alt-h text-[10px]"></i> Swipe sideways for all subjects</p>
+        <div class="pcer-scroll">
+            <table class="pcer-roster-table min-w-[640px]">
+                <thead class="text-gray-600 dark:text-gray-300 uppercase text-[10px] font-semibold">
+                    <tr>
+                        <th class="text-left py-2.5 px-2 pcer-sticky-pos">#</th>
+                        <th class="text-left py-2.5 px-2 pcer-sticky-name">Student</th>
+                        {% if is_combined_view %}
+                        <th class="text-left py-2.5 px-2 whitespace-nowrap">Class</th>
+                        {% endif %}
+                        {% for col in cols %}
+                        <th class="text-right py-2.5 px-2 whitespace-nowrap max-w-[4.5rem] truncate" title="{{ col }}">{{ col }}</th>
+                        {% endfor %}
+                        <th class="text-right py-2.5 px-2 whitespace-nowrap">Tot</th>
+                        <th class="text-right py-2.5 px-2 whitespace-nowrap">Avg</th>
+                        <th class="text-right py-2.5 px-2 w-10">Gr</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    {% for row in rows %}
+                    {% set pos_raw = row.position|default('') %}
+                    {% set pos_num = pos_raw|int if (row.has_marks|default(true) and pos_raw != '' and pos_raw != '—') else 0 %}
+                    <tr class="{% if row.is_linked_child %}pcer-child-row bg-indigo-50/80 dark:bg-indigo-950/30{% else %}hover:bg-gray-50 dark:hover:bg-gray-700/30{% endif %}">
+                        <td class="py-2 px-2 pcer-sticky-pos">
+                            {% if not row.has_marks|default(true) or pos_num <= 0 %}
+                            <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 rounded-md text-[11px] font-semibold text-gray-400">—</span>
+                            {% elif pos_num == 1 %}
+                            <span class="inline-flex items-center justify-center gap-0.5 min-w-[1.65rem] h-6 px-1 rounded-lg bg-gradient-to-br from-yellow-400 to-amber-600 text-white text-[11px] font-black shadow-sm"><i class="fas fa-medal text-[8px]"></i>{{ pos_num }}</span>
+                            {% elif pos_num == 2 %}
+                            <span class="inline-flex items-center justify-center gap-0.5 min-w-[1.65rem] h-6 px-1 rounded-lg bg-gradient-to-br from-slate-300 to-slate-500 text-white text-[11px] font-black shadow-sm"><i class="fas fa-medal text-[8px]"></i>{{ pos_num }}</span>
+                            {% elif pos_num == 3 %}
+                            <span class="inline-flex items-center justify-center gap-0.5 min-w-[1.65rem] h-6 px-1 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 text-white text-[11px] font-black shadow-sm"><i class="fas fa-medal text-[8px]"></i>{{ pos_num }}</span>
+                            {% elif pos_num <= 5 %}
+                            <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold border border-emerald-200 dark:border-emerald-800">{{ pos_num }}</span>
+                            {% elif pos_num <= 10 %}
+                            <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1 rounded-lg bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 text-[11px] font-bold border border-sky-200 dark:border-sky-800">{{ pos_num }}</span>
+                            {% elif pos_num <= 15 %}
+                            <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1 rounded-lg bg-violet-100 dark:bg-violet-900/35 text-violet-800 dark:text-violet-300 text-[11px] font-bold border border-violet-200 dark:border-violet-800">{{ pos_num }}</span>
+                            {% else %}
+                            <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1 rounded-lg bg-gray-100 dark:bg-gray-700/80 text-gray-700 dark:text-gray-300 text-[11px] font-bold">{{ pos_num }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-2 px-2 pcer-sticky-name font-medium text-gray-900 dark:text-white">
+                            <span class="block truncate" title="{{ row.full_name }}">{{ row.full_name }}</span>
+                            {% if row.is_linked_child %}
+                            <span class="inline-flex items-center gap-0.5 mt-0.5 text-[9px] font-bold uppercase text-indigo-600 dark:text-indigo-400"><i class="fas fa-star text-[7px]"></i> Yours</span>
+                            {% endif %}
+                        </td>
+                        {% if is_combined_view %}
+                        <td class="py-2 px-2 text-gray-600 dark:text-gray-300 whitespace-nowrap text-[11px]">{{ row.home_class or row.current_grade or '—' }}</td>
+                        {% endif %}
+                        {% for col in cols %}
+                        {% set mark = row[col] if col in row else none %}
+                        <td class="text-right py-2 px-1.5 tabular-nums text-[11px] {% if mark is not none and mark != '' %}{% if mark|float >= 70 %}text-green-600 dark:text-green-400{% elif mark|float >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}{% else %}text-gray-400{% endif %}">
+                            {% if mark is not none and mark != '' %}{{ mark }}{% else %}—{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-right py-2 px-2 font-bold text-gray-900 dark:text-white tabular-nums text-[11px]">{% if row.has_marks|default(true) %}{{ row.total_marks|default('—') }}{% else %}—{% endif %}</td>
+                        <td class="text-right py-2 px-2 font-semibold text-gray-800 dark:text-gray-200 tabular-nums text-[11px]">{% if row.has_marks|default(true) %}{{ row.mean|default('—') }}{% else %}—{% endif %}</td>
+                        <td class="text-right py-2 px-2">
+                            {% set grd = row.grade|default('-') %}
+                            <span class="inline-flex min-w-[1.5rem] justify-center rounded px-1 py-0.5 text-[9px] font-bold {% if grd != '-' %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200{% else %}text-gray-400{% endif %}">{{ grd }}</span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ 5 + cols|length + (1 if is_combined_view else 0) }}" class="py-10 px-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                            No students with exam marks for this class{% if term_label %} in {{ term_label }}{% endif %} yet.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="py-10 sm:py-12 px-4 text-center text-gray-500 dark:text-gray-400">
+        <i class="fas fa-users text-2xl sm:text-3xl mb-2 opacity-40" aria-hidden="true"></i>
+        <p class="m-0 text-sm">No class list available for the selected filters.</p>
+    </div>
+    {% endif %}
+</section>

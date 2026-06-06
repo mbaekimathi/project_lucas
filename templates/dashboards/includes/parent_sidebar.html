@@ -37,11 +37,23 @@
 
 {% if _par_nav in ('all', 'exams') %}
 <p class="px-3 {% if _par_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Academics</p>
-<a href="{{ parent_dash_url('exam-progress') }}"
+<a href="{% if class_exam_results_student_id %}{{ parent_dash_url('class-exam-results/' ~ class_exam_results_student_id) }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}{% else %}{{ parent_dash_url('class-exam-results') }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}{% endif %}"
+   class="sidebar-item {% if request.endpoint in ('parent_class_exam_results', 'parent_class_exam_results_detail') or '/class-exam-results' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-users w-5"></i>
+    <span>Class exam results</span>
+    {% if request.endpoint in ('parent_class_exam_results', 'parent_class_exam_results_detail') or '/class-exam-results' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{% if exam_progress_student_id %}{{ parent_dash_url('exam-progress/' ~ exam_progress_student_id) }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}{% else %}{{ parent_dash_url('exam-progress') }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}{% endif %}"
    class="sidebar-item {% if request.endpoint in ('parent_exam_progress', 'parent_exam_progress_detail') or '/exam-progress' in request.path %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-check w-5"></i>
-    <span>Exam results</span>
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Personal exam results</span>
     {% if request.endpoint in ('parent_exam_progress', 'parent_exam_progress_detail') or '/exam-progress' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{% if class_subject_progress_student_id %}{{ parent_dash_url('class-subject-progress/' ~ class_subject_progress_student_id) }}{% else %}{{ parent_dash_url('class-subject-progress') }}{% endif %}"
+   class="sidebar-item {% if request.endpoint in ('parent_class_subject_progress', 'parent_class_subject_progress_detail') or '/class-subject-progress' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-book-open w-5"></i>
+    <span>Subject progress</span>
+    {% if request.endpoint in ('parent_class_subject_progress', 'parent_class_subject_progress_detail') or '/class-subject-progress' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ parent_dash_url('class-timetable') }}"
    class="sidebar-item {% if request.endpoint in ('parent_portal_class_timetable', 'parent_portal_class_timetable_student') or '/class-timetable' in request.path %}sidebar-item-active{% endif %}">
@@ -67,11 +79,22 @@
 </a>
 {% endif %}
 
+{% if _par_nav in ('all', 'meetings') %}
+<p class="px-3 {% if _par_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Meetings</p>
+<a href="{{ parent_dash_url('meeting-scheduler') }}"
+   class="sidebar-item {% if request.endpoint == 'parent_meeting_scheduler' or '/meeting-scheduler' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Meeting scheduler</span>
+    {% if request.endpoint == 'parent_meeting_scheduler' or '/meeting-scheduler' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
 {% if _par_nav == 'all' %}
 <p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
-<a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true"
-   class="sidebar-item">
+<a href="{{ parent_dash_url() }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}#notifications-hub"
+   class="sidebar-item {% if request.endpoint == 'dashboard_parent' %}sidebar-item-active{% endif %}">
     <i class="fas fa-bell w-5"></i>
     <span>Notifications</span>
+    {% if request.endpoint == 'dashboard_parent' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}

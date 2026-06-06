@@ -1,0 +1,153 @@
+<style>
+/* Parent class exam results — responsive tables & cards */
+.pcer-shell { --pcer-sticky-bg: #fff; }
+.dark .pcer-shell { --pcer-sticky-bg: rgb(31 41 55); }
+
+.pcer-scroll-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: #64748b;
+    background: linear-gradient(90deg, rgba(248,250,252,0.95), transparent);
+    border-bottom: 1px solid rgba(226,232,240,0.8);
+}
+.dark .pcer-scroll-hint {
+    color: #94a3b8;
+    background: linear-gradient(90deg, rgba(15,23,42,0.9), transparent);
+    border-bottom-color: rgba(51,65,85,0.6);
+}
+@media (min-width: 768px) { .pcer-scroll-hint { display: none; } }
+
+.pcer-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+.pcer-scroll::-webkit-scrollbar { height: 5px; }
+.pcer-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--brand-primary, #800020) 35%, #cbd5e1);
+    border-radius: 999px;
+}
+
+.pcer-roster-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.6875rem;
+}
+@media (min-width: 640px) { .pcer-roster-table { font-size: 0.8125rem; } }
+@media (min-width: 1024px) { .pcer-roster-table { font-size: 0.875rem; } }
+
+.pcer-roster-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: rgb(249 250 251);
+    white-space: nowrap;
+}
+.dark .pcer-roster-table thead th { background: rgb(15 23 42 / 0.95); }
+
+.pcer-roster-table .pcer-sticky-pos {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    min-width: 2.5rem;
+    background: var(--pcer-sticky-bg);
+    box-shadow: 2px 0 6px rgba(15, 23, 42, 0.06);
+}
+.pcer-roster-table thead th.pcer-sticky-pos { z-index: 4; background: rgb(249 250 251); }
+.dark .pcer-roster-table thead th.pcer-sticky-pos { background: rgb(15 23 42); }
+
+.pcer-roster-table .pcer-sticky-name {
+    position: sticky;
+    left: 2.5rem;
+    z-index: 3;
+    min-width: 7rem;
+    max-width: 9rem;
+    background: var(--pcer-sticky-bg);
+    box-shadow: 4px 0 8px rgba(15, 23, 42, 0.05);
+}
+@media (min-width: 640px) {
+    .pcer-roster-table .pcer-sticky-name { left: 2.75rem; min-width: 8.5rem; max-width: 12rem; }
+}
+.pcer-roster-table thead th.pcer-sticky-name { z-index: 4; background: rgb(249 250 251); }
+.dark .pcer-roster-table thead th.pcer-sticky-name { background: rgb(15 23 42); }
+
+.pcer-roster-table tbody tr.pcer-child-row .pcer-sticky-pos,
+.pcer-roster-table tbody tr.pcer-child-row .pcer-sticky-name {
+    background: color-mix(in srgb, #6366f1 8%, var(--pcer-sticky-bg));
+}
+.dark .pcer-roster-table tbody tr.pcer-child-row .pcer-sticky-pos,
+.dark .pcer-roster-table tbody tr.pcer-child-row .pcer-sticky-name {
+    background: color-mix(in srgb, #6366f1 14%, var(--pcer-sticky-bg));
+}
+
+.pcer-subject-table { font-size: 0.75rem; }
+@media (min-width: 640px) { .pcer-subject-table { font-size: 0.875rem; } }
+
+.pcer-subject-table .pcer-col-hide-xs { display: none; }
+@media (min-width: 480px) { .pcer-subject-table .pcer-col-hide-xs { display: table-cell; } }
+.pcer-subject-table .pcer-col-hide-sm { display: none; }
+@media (min-width: 640px) { .pcer-subject-table .pcer-col-hide-sm { display: table-cell; } }
+
+.pcer-student-card {
+    border-radius: 0.75rem;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    overflow: hidden;
+}
+.dark .pcer-student-card {
+    border-color: #374151;
+    background: rgb(31 41 55);
+}
+.pcer-student-card.pcer-child-row {
+    border-color: color-mix(in srgb, #6366f1 45%, #e5e7eb);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #6366f1 20%, transparent);
+}
+.dark .pcer-student-card.pcer-child-row {
+    border-color: color-mix(in srgb, #6366f1 50%, #374151);
+}
+
+.pcer-mark-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.25rem;
+    padding: 0.25rem 0.15rem;
+    border-radius: 0.375rem;
+    background: rgba(248, 250, 252, 0.9);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    font-size: 0.625rem;
+    line-height: 1.2;
+}
+.dark .pcer-mark-chip {
+    background: rgba(15, 23, 42, 0.5);
+    border-color: rgba(51, 65, 85, 0.8);
+}
+.pcer-mark-chip__label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #64748b;
+    font-weight: 600;
+    font-size: 0.55rem;
+}
+.dark .pcer-mark-chip__label { color: #94a3b8; }
+.pcer-mark-chip__val { font-weight: 700; tabular-nums; }
+
+.pcer-subject-card {
+    border-radius: 0.75rem;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    padding: 0.75rem;
+}
+.dark .pcer-subject-card {
+    border-color: #374151;
+    background: rgb(31 41 55);
+}
+</style>

@@ -10285,6 +10285,67 @@ def _spotlight_fee_balance_for_student(cursor, student_id):
     }
 
 
+def _spotlight_pocket_money_for_student(cursor, student_id):
+    """Pocket money balance and ledger summary for parent dashboard card."""
+    base = {
+        'has_account': False,
+        'balance': 0.0,
+        'total_topped_up': 0.0,
+        'total_spent': 0.0,
+        'transaction_count': 0,
+    }
+    sid = (student_id or '').strip()
+    if not sid:
+        return base
+    ensure_student_pocket_money_tables(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT COALESCE(pm.balance, 0) AS balance
+            FROM students s
+            LEFT JOIN student_pocket_money_accounts pm ON pm.student_id = s.student_id
+            WHERE LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s))
+              AND LOWER(TRIM(COALESCE(s.status, 'in session'))) IN ('in session', 'active', '')
+            LIMIT 1
+            """,
+            (sid,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return base
+        if isinstance(row, dict):
+            balance = float(row.get('balance') or 0)
+        else:
+            balance = float(row[0] if row else 0)
+        base['has_account'] = True
+        base['balance'] = balance
+
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE 0 END), 0) AS total_topped_up,
+                COALESCE(SUM(CASE WHEN direction = 'debit' THEN amount ELSE 0 END), 0) AS total_spent,
+                COUNT(*) AS transaction_count
+            FROM student_pocket_money_transactions
+            WHERE student_id = %s
+            """,
+            (sid,),
+        )
+        agg = cursor.fetchone()
+        if agg:
+            if isinstance(agg, dict):
+                base['total_topped_up'] = float(agg.get('total_topped_up') or 0)
+                base['total_spent'] = float(agg.get('total_spent') or 0)
+                base['transaction_count'] = int(agg.get('transaction_count') or 0)
+            else:
+                base['total_topped_up'] = float(agg[0] if len(agg) > 0 else 0)
+                base['total_spent'] = float(agg[1] if len(agg) > 1 else 0)
+                base['transaction_count'] = int(agg[2] if len(agg) > 2 else 0)
+    except Exception as ex:
+        print(f"_spotlight_pocket_money_for_student: {ex}")
+    return base
+
+
 def _spotlight_subjects_for_student(cursor, student_id):
     """Subjects from class assignments for the student's grade, else distinct subjects from marks."""
     out = []
@@ -12957,6 +13018,7 @@ def dashboard_parent():
     # Parent home (/parent): spotlight student + analytics (fees, subjects, exams).
     spotlight_student = None
     spotlight_fee = None
+    spotlight_pocket_money = None
     spotlight_subjects = []
     spotlight_subject_progress = []
     parent_class_progress = {
@@ -13040,6 +13102,13 @@ def dashboard_parent():
                             print(f"dashboard_parent spotlight fee: {fe}")
                             spotlight_fee = {'has_structure': False}
                         try:
+                            spotlight_pocket_money = _spotlight_pocket_money_for_student(
+                                spotlight_cursor, sid
+                            )
+                        except Exception as pme:
+                            print(f"dashboard_parent spotlight pocket money: {pme}")
+                            spotlight_pocket_money = {'has_account': False}
+                        try:
                             parent_class_progress = _parent_class_subject_progress_bundle(
                                 spotlight_cursor, sid, current_term_id, current_term_name
                             )
@@ -13093,6 +13162,8 @@ def dashboard_parent():
     if not library_student_id and spotlight_student:
         library_student_id = (spotlight_student.get('student_id') or '').strip()
     pocket_money_student_id = library_student_id
+    exam_progress_student_id = library_student_id
+    class_exam_results_student_id = library_student_id
 
     return render_template('dashboards/dashboard_parent.html',
                          is_technician=is_technician,
@@ -13102,15 +13173,21 @@ def dashboard_parent():
                          selected_student_id=selected_student_id,
                          library_student_id=library_student_id,
                          pocket_money_student_id=pocket_money_student_id,
+                         exam_progress_student_id=exam_progress_student_id,
+                         class_exam_results_student_id=class_exam_results_student_id,
+                         class_subject_progress_student_id=library_student_id,
                          parent_children=parent_children,
                          parent_guardian=parent_guardian,
                          current_term_name=current_term_name,
                          spotlight_student=spotlight_student,
                          spotlight_fee=spotlight_fee,
+                         spotlight_pocket_money=spotlight_pocket_money,
                          spotlight_subjects=spotlight_subjects,
                          spotlight_subject_progress=spotlight_subject_progress,
                          parent_class_progress=parent_class_progress,
-                         spotlight_attendance=spotlight_attendance)
+                         spotlight_attendance=spotlight_attendance,
+                         mpesa_daraja_enabled=_get_daraja_settings_from_flag(),
+                         mpesa_sandbox_confirm=_mpesa_sandbox_manual_confirm_enabled())
 
 @app.route('/dashboard/parent/student-fees')
 @app.route('/parent/student-fees')
@@ -27763,6 +27840,66 @@ def _parent_student_library_books(cursor, student_id):
     return books
 
 
+def _progress_logical_exam_group_key(p):
+    """Same exam event: year + term + name (not per-subject exam row id/date)."""
+    ay = _norm_db_int(p.get('exam_academic_year_id'))
+    tid = _norm_db_int(p.get('exam_term_id'))
+    name_key = (p.get('exam_name') or '').strip().lower()
+    if ay is not None and tid is not None and name_key:
+        return ('id', ay, tid, name_key)
+    return (
+        'lbl',
+        (p.get('year_name') or '').strip(),
+        (p.get('term_name') or '').strip(),
+        name_key,
+    )
+
+
+def _progress_build_exam_group_id_map(progress_data):
+    """Map each exam_id to all exam_ids belonging to the same logical exam."""
+    groups = {}
+    for p in progress_data or []:
+        eid = _norm_db_int(p.get('exam_id'))
+        if eid is None:
+            continue
+        gk = _progress_logical_exam_group_key(p)
+        groups.setdefault(gk, set()).add(eid)
+    out = {}
+    for eids in groups.values():
+        for eid in eids:
+            out[eid] = eids
+    return out
+
+
+def _progress_dedupe_exam_filter_options(exam_rows):
+    """One dropdown row per logical exam (year + term + name), not per subject allocation."""
+    seen = set()
+    out = []
+    for ex in exam_rows or []:
+        lk = (
+            _norm_db_int(ex.get('academic_year_id')),
+            _norm_db_int(ex.get('term_id')),
+            (ex.get('exam_name') or ex.get('label') or '').strip().lower(),
+        )
+        if lk in seen:
+            continue
+        seen.add(lk)
+        out.append(ex)
+    return out
+
+
+def _progress_exam_detail_picker_default(by_exam, selected_exam_id):
+    """Alpine examPicker initial value (E1, E2, …) from optional page exam_id filter."""
+    sel = _norm_db_int(selected_exam_id)
+    if sel is None:
+        return 'all'
+    for i, ex in enumerate(by_exam or [], start=1):
+        group_ids = ex.get('exam_ids') or []
+        if ex.get('exam_id') == sel or sel in group_ids:
+            return f'E{i}'
+    return 'all'
+
+
 def _compute_progress_aggregates(progress_data):
     """Build by_subject, by_period, by_exam, summary from progress rows (each with marks, year, term, exam, subject)."""
     by_subject = []
@@ -27810,7 +27947,7 @@ def _compute_progress_aggregates(progress_data):
     exam_order = []
     exam_rows = {}
     for p in progress_data:
-        key = (p.get('year_name') or '', p.get('term_name') or '', p.get('exam_name') or '', p.get('exam_id') or 0)
+        key = _progress_logical_exam_group_key(p)
         if key not in exam_rows:
             exam_rows[key] = []
             exam_order.append(key)
@@ -27818,35 +27955,53 @@ def _compute_progress_aggregates(progress_data):
     for key in exam_order:
         rows = exam_rows[key]
         marks_list = [r['marks'] for r in rows if r.get('marks') is not None]
-        subj_list = []
+        subj_map = {}
         for r in rows:
-            if r.get('marks') is not None:
-                subj_list.append({'subject_name': r['subject_name'], 'marks': r['marks']})
+            if r.get('marks') is None:
+                continue
+            sk = _norm_db_int(r.get('subject_id'))
+            if sk is None:
+                sk = (r.get('subject_name') or 'N/A').strip().lower()
+            subj_map[sk] = {
+                'subject_name': r.get('subject_name') or 'N/A',
+                'marks': r['marks'],
+            }
+        subj_list = sorted(subj_map.values(), key=lambda x: x['subject_name'])
         if not subj_list:
             continue
-        subj_list.sort(key=lambda x: x['subject_name'])
         first = rows[0]
         parts = [x for x in (first.get('year_name'), first.get('term_name'), first.get('exam_name')) if x]
         label = ' · '.join(parts) if parts else 'Unknown'
         mean = round(sum(marks_list) / len(marks_list), 1)
         pass_count = sum(1 for m in marks_list if m >= 50)
         pr = round(100 * pass_count / len(marks_list), 0)
-        ed = first.get('exam_date')
-        exam_date_str = ''
-        if ed and hasattr(ed, 'strftime'):
-            exam_date_str = ed.strftime('%Y-%m-%d')
-        elif ed:
-            exam_date_str = str(ed)[:10]
+        date_strs = []
+        for r in rows:
+            ed = r.get('exam_date')
+            if ed and hasattr(ed, 'strftime'):
+                date_strs.append(ed.strftime('%Y-%m-%d'))
+            elif ed:
+                date_strs.append(str(ed)[:10])
+        unique_dates = sorted(set(d for d in date_strs if d))
+        exam_date_str = unique_dates[0] if len(unique_dates) == 1 else ''
+        exam_date_note = ''
+        if len(unique_dates) > 1:
+            exam_date_note = f"Sittings: {unique_dates[0]} – {unique_dates[-1]}"
+        group_exam_ids = sorted(
+            {_norm_db_int(r.get('exam_id')) for r in rows if _norm_db_int(r.get('exam_id')) is not None}
+        )
         by_exam.append(
             {
                 'label': label,
                 'year_name': first.get('year_name'),
                 'term_name': first.get('term_name'),
                 'exam_name': first.get('exam_name'),
-                'exam_id': first.get('exam_id'),
+                'exam_id': group_exam_ids[0] if group_exam_ids else first.get('exam_id'),
+                'exam_ids': group_exam_ids,
                 'exam_date_str': exam_date_str,
+                'exam_date_note': exam_date_note,
                 'mean': mean,
-                'count': len(marks_list),
+                'count': len(subj_list),
                 'pass_rate': pr,
                 'subjects': subj_list,
             }
@@ -28430,12 +28585,17 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
     if fa_exam is not None and fa_exam not in scoped_exam_ids:
         fa_exam = None
 
+    exam_group_id_map = _progress_build_exam_group_id_map(progress_data)
+    allowed_exam_ids = None
+    if fa_exam is not None:
+        allowed_exam_ids = exam_group_id_map.get(fa_exam) or {fa_exam}
+
     def _progress_row_matches_scope(p, require_exam, require_subj):
         if fa_year is not None and p.get('exam_academic_year_id') != fa_year:
             return False
         if fa_term is not None and p.get('exam_term_id') != fa_term:
             return False
-        if require_exam and fa_exam is not None and p.get('exam_id') != fa_exam:
+        if require_exam and allowed_exam_ids is not None and _norm_db_int(p.get('exam_id')) not in allowed_exam_ids:
             return False
         if require_subj and fa_subj is not None and p.get('subject_id') != fa_subj:
             return False
@@ -28466,10 +28626,12 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
         ],
         key=lambda t: (str(t.get('year_name') or ''), -(t.get('id') or 0)),
     )
-    exam_filter_exams = sorted(
-        [ex for ex in exams_map.values() if _exam_in_scope_row(ex)],
-        key=lambda x: (x.get('exam_date_str') or '', x.get('id') or 0),
-        reverse=True,
+    exam_filter_exams = _progress_dedupe_exam_filter_options(
+        sorted(
+            [ex for ex in exams_map.values() if _exam_in_scope_row(ex)],
+            key=lambda x: (x.get('exam_date_str') or '', x.get('id') or 0),
+            reverse=True,
+        )
     )
     exam_filter_subjects = [
         {'id': k, 'subject_name': subjects_map[k]}
@@ -28483,7 +28645,7 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
             return False
         if fa_term is not None and p.get('exam_term_id') != fa_term:
             return False
-        if fa_exam is not None and p.get('exam_id') != fa_exam:
+        if allowed_exam_ids is not None and _norm_db_int(p.get('exam_id')) not in allowed_exam_ids:
             return False
         if fa_subj is not None and p.get('subject_id') != fa_subj:
             return False
@@ -28511,10 +28673,12 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
             terms_map.values(),
             key=lambda t: (str(t.get('year_name') or ''), -(t.get('id') or 0)),
         )
-        exam_filter_exams = sorted(
-            exams_map.values(),
-            key=lambda x: (x.get('exam_date_str') or '', x.get('id') or 0),
-            reverse=True,
+        exam_filter_exams = _progress_dedupe_exam_filter_options(
+            sorted(
+                exams_map.values(),
+                key=lambda x: (x.get('exam_date_str') or '', x.get('id') or 0),
+                reverse=True,
+            )
         )
         exam_filter_subjects = [
             {'id': k, 'subject_name': subjects_map[k]}
@@ -28542,6 +28706,82 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
         'selected_exam_id': fa_exam,
         'selected_subject_id': fa_subj,
         'implicit_exam_default_fallback': implicit_default_fallback,
+    }
+
+
+def _parent_exam_progress_access(parent_email, student_id):
+    """Return (allowed, sibling_count) for parent exam progress views."""
+    allowed = False
+    sibling_count = 0
+    if not parent_email:
+        return allowed, sibling_count
+    connection = get_db_connection()
+    if not connection:
+        return allowed, sibling_count
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(DISTINCT s.student_id) AS cnt
+                FROM students s
+                INNER JOIN parents p ON s.student_id = p.student_id
+                WHERE p.email = %s AND s.status = 'in session'
+                """,
+                (parent_email,),
+            )
+            r = cursor.fetchone()
+            sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+            cursor.execute(
+                """
+                SELECT 1 FROM students s
+                INNER JOIN parents p ON s.student_id = p.student_id
+                WHERE p.email = %s AND LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s)) AND s.status = 'in session'
+                LIMIT 1
+                """,
+                (parent_email, student_id),
+            )
+            allowed = cursor.fetchone() is not None
+    except Exception as e:
+        print(f"_parent_exam_progress_access: {e}")
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+    return allowed, sibling_count
+
+
+def _parent_exam_progress_json_response(student_id, filter_args):
+    """JSON payload for live parent exam progress filters."""
+    payload = _fetch_student_progress_payload(student_id, filter_args, use_implicit_school_defaults=False)
+    by_exam = []
+    for i, ex in enumerate(payload.get('by_exam') or [], start=1):
+        row = dict(ex) if isinstance(ex, dict) else {}
+        row['ref'] = f'E{i}'
+        by_exam.append(row)
+    return {
+        'success': True,
+        'summary': payload.get('summary'),
+        'by_subject': payload.get('by_subject') or [],
+        'by_period': payload.get('by_period') or [],
+        'by_exam': by_exam,
+        'has_exam_marks': payload.get('has_exam_marks', False),
+        'filter_no_results': payload.get('filter_no_results', False),
+        'filters_active': payload.get('filters_active', False),
+        'exams_count': len(by_exam),
+        'subjects_count': len(payload.get('by_subject') or []),
+        'filters': {
+            'academic_years': payload.get('exam_filter_academic_years') or [],
+            'terms': payload.get('exam_filter_terms') or [],
+            'exams': payload.get('exam_filter_exams') or [],
+            'subjects': payload.get('exam_filter_subjects') or [],
+        },
+        'selected': {
+            'academic_year_id': payload.get('selected_academic_year_id'),
+            'term_id': payload.get('selected_term_id'),
+            'exam_id': payload.get('selected_exam_id'),
+            'subject_id': payload.get('selected_subject_id'),
+        },
     }
 
 
@@ -28615,36 +28855,7 @@ def parent_exam_progress_detail(student_id):
         flash('No linked parent account.', 'error')
         return redirect(parent_dashboard_path())
 
-    allowed = False
-    sibling_count = 0
-    connection = get_db_connection()
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT COUNT(DISTINCT s.student_id) AS cnt
-                    FROM students s
-                    INNER JOIN parents p ON s.student_id = p.student_id
-                    WHERE p.email = %s AND s.status = 'in session'
-                """, (parent_email,))
-                r = cursor.fetchone()
-                sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
-
-                cursor.execute("""
-                    SELECT 1 FROM students s
-                    INNER JOIN parents p ON s.student_id = p.student_id
-                    WHERE p.email = %s AND LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s)) AND s.status = 'in session'
-                    LIMIT 1
-                """, (parent_email, student_id))
-                allowed = cursor.fetchone() is not None
-        except Exception as e:
-            print(f"Error verifying parent exam access: {e}")
-        finally:
-            if connection:
-                try:
-                    connection.close()
-                except Exception:
-                    pass
+    allowed, sibling_count = _parent_exam_progress_access(parent_email, student_id)
 
     if not allowed:
         flash('You cannot view exam progress for this student.', 'error')
@@ -28663,6 +28874,41 @@ def parent_exam_progress_detail(student_id):
 
     summary = payload.get('summary') or {}
     by_exam = payload.get('by_exam') or []
+    selected_exam_id = payload.get('selected_exam_id')
+    by_exam_json = []
+    for i, ex in enumerate(by_exam, start=1):
+        row = dict(ex) if isinstance(ex, dict) else {}
+        row['ref'] = f'E{i}'
+        by_exam_json.append(row)
+    pep_config = {
+        'dataUrl': parent_dashboard_path(f'exam-progress/{student_id}/data'),
+        'filterPageUrl': parent_dashboard_path(f'exam-progress/{student_id}'),
+        'studentId': student_id,
+        'studentName': payload['student'].get('full_name') or '',
+        'initial': {
+            'summary': summary,
+            'by_subject': payload.get('by_subject') or [],
+            'by_period': payload.get('by_period') or [],
+            'by_exam': by_exam_json,
+            'has_exam_marks': payload.get('has_exam_marks', False),
+            'filter_no_results': payload.get('filter_no_results', False),
+            'filters_active': payload.get('filters_active', False),
+            'exams_count': len(by_exam),
+            'subjects_count': len(payload.get('by_subject') or []),
+            'filters': {
+                'academic_years': payload.get('exam_filter_academic_years') or [],
+                'terms': payload.get('exam_filter_terms') or [],
+                'exams': payload.get('exam_filter_exams') or [],
+                'subjects': payload.get('exam_filter_subjects') or [],
+            },
+            'selected': {
+                'academic_year_id': payload.get('selected_academic_year_id'),
+                'term_id': payload.get('selected_term_id'),
+                'exam_id': selected_exam_id,
+                'subject_id': payload.get('selected_subject_id'),
+            },
+        },
+    }
     return render_template(
         'dashboards/parent_student_exam_progress.html',
         student=payload['student'],
@@ -28680,16 +28926,729 @@ def parent_exam_progress_detail(student_id):
         exam_filter_subjects=payload.get('exam_filter_subjects', []),
         selected_academic_year_id=payload.get('selected_academic_year_id'),
         selected_term_id=payload.get('selected_term_id'),
-        selected_exam_id=payload.get('selected_exam_id'),
+        selected_exam_id=selected_exam_id,
         selected_subject_id=payload.get('selected_subject_id'),
         implicit_exam_default_fallback=payload.get('implicit_exam_default_fallback', False),
-        exams_count=len(by_exam),
-        subjects_count=len(payload.get('by_subject') or []),
+        exam_detail_picker_default=_progress_exam_detail_picker_default(by_exam, selected_exam_id),
+        pep_config=pep_config,
         is_technician=ctx['is_technician'],
         current_view_role=ctx['current_view_role'],
         all_students=ctx['all_students'],
         selected_student_id=ctx['selected_student_id'],
         show_sibling_nav=sibling_count > 1,
+        exam_progress_student_id=student_id,
+        class_exam_results_student_id=student_id,
+        class_subject_progress_student_id=student_id,
+    )
+
+
+@app.route('/dashboard/parent/exam-progress/<student_id>/data')
+@login_required
+def parent_exam_progress_data(student_id):
+    """Live JSON data for parent exam progress filters."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    parent_email = ctx.get('parent_email')
+    if not parent_email:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    allowed, _sibling_count = _parent_exam_progress_access(parent_email, student_id)
+    if not allowed:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    try:
+        return jsonify(_parent_exam_progress_json_response(student_id, request.args))
+    except Exception as e:
+        print(f"parent_exam_progress_data: {e}")
+        return jsonify({'success': False, 'message': 'Error loading exam data'}), 500
+
+
+def _parent_class_exam_level_view_options(cursor, stu):
+    """Whether the student's level belongs to a combined group (for parent class exam UI)."""
+    individual_label = (stu or {}).get('resolved_level_name') or (stu or {}).get('current_grade') or ''
+    has_combined = False
+    combined_label = ''
+    member_level_names = []
+    level_id = (stu or {}).get('academic_level_id')
+    if level_id:
+        combined_scope = _resolve_academic_report_level_scope(cursor, 'combined', level_id)
+        has_combined = bool(combined_scope.get('is_combined_view'))
+        if has_combined:
+            combined_label = (combined_scope.get('display_name') or '').strip()
+            member_level_names = list(combined_scope.get('level_names') or [])
+    return {
+        'has_combined': has_combined,
+        'individual_label': individual_label,
+        'combined_label': combined_label,
+        'member_level_names': member_level_names,
+    }
+
+
+def _parent_class_exam_enrolled_count(cursor, level_scope):
+    """Count in-session students for individual class or combined member levels."""
+    level_ids = list((level_scope or {}).get('level_ids') or [])
+    if not level_ids:
+        return 0
+    try:
+        q = """
+            SELECT COUNT(*) AS cnt FROM students
+            WHERE LOWER(COALESCE(status, '')) = 'in session'
+        """
+        params = []
+        q, params = _sql_filter_student_current_grade(q, params, level_ids)
+        cursor.execute(q, params)
+        r = cursor.fetchone()
+        return int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+    except Exception:
+        return 0
+
+
+def _parent_exam_bundle_from_roster_rows(rows, subject_columns, grade_label, enrolled_count):
+    """Build class aggregate stats from ranked exam roster rows."""
+    subject_stats = {}
+    for col in subject_columns or []:
+        subject_stats[col] = {
+            'subject_name': col,
+            'marks': [],
+            'pass_count': 0,
+        }
+    all_marks_for_class = []
+    students_in_class = set()
+    for row in rows or []:
+        sid = row.get('student_id') or row.get('admission_number')
+        if sid:
+            students_in_class.add(sid)
+        for col in subject_columns or []:
+            val = row.get(col)
+            if val is None or val == '':
+                continue
+            try:
+                scaled = float(val)
+            except (TypeError, ValueError):
+                continue
+            subject_stats[col]['marks'].append(scaled)
+            all_marks_for_class.append(scaled)
+            if scaled >= 50:
+                subject_stats[col]['pass_count'] += 1
+    subject_list = []
+    for col in subject_columns or []:
+        sdata = subject_stats.get(col) or {}
+        marks = sdata.get('marks') or []
+        if marks:
+            mean = round_mark_display(sum(marks) / len(marks)) or 0
+            min_m = round_mark_display(min(marks))
+            max_m = round_mark_display(max(marks))
+            count = len(marks)
+            pass_rate = round_mark_display(100 * sdata.get('pass_count', 0) / len(marks)) if marks else 0
+        else:
+            mean = 0
+            min_m = None
+            max_m = None
+            count = 0
+            pass_rate = 0
+        subject_list.append({
+            'subject_name': col,
+            'mean': mean,
+            'min': min_m,
+            'max': max_m,
+            'count': count,
+            'pass_rate': pass_rate,
+        })
+    class_mean = (
+        round_mark_display(sum(all_marks_for_class) / len(all_marks_for_class)) if all_marks_for_class else 0
+    )
+    pass_n = sum(1 for m in all_marks_for_class if m >= 50)
+    class_pass_rate = (
+        round_mark_display(100 * pass_n / len(all_marks_for_class)) if all_marks_for_class else 0
+    )
+    class_max = round_mark_display(max(all_marks_for_class)) if all_marks_for_class else None
+    class_min = round_mark_display(min(all_marks_for_class)) if all_marks_for_class else None
+    return {
+        'subjects': subject_list,
+        'class_mean': class_mean,
+        'class_max': class_max,
+        'class_min': class_min,
+        'class_pass_rate': class_pass_rate,
+        'student_count': len(students_in_class),
+        'total_marks_entries': len(all_marks_for_class),
+        'enrolled_count': enrolled_count,
+        'grade': grade_label or '',
+    }
+
+
+def _parent_merge_class_roster_with_enrolled(cursor, roster_rows, level_scope, linked_sid):
+    """Append enrolled classmates who have no marks yet (unranked at bottom)."""
+    level_ids = list((level_scope or {}).get('level_ids') or [])
+    if not level_ids:
+        return list(roster_rows or [])
+    ranked = list(roster_rows or [])
+    ranked_ids = {
+        str(r.get('student_id') or r.get('admission_number') or '').strip().lower()
+        for r in ranked
+    }
+    extras = []
+    try:
+        q = """
+            SELECT student_id, full_name, TRIM(COALESCE(current_grade, '')) AS current_grade
+            FROM students
+            WHERE LOWER(COALESCE(status, '')) = 'in session'
+        """
+        params = []
+        q, params = _sql_filter_student_current_grade(q, params, level_ids)
+        q += " ORDER BY full_name ASC, student_id ASC"
+        cursor.execute(q, params)
+        for r in cursor.fetchall() or []:
+            sid = str(r.get('student_id') if isinstance(r, dict) else r[0] or '').strip()
+            sid_key = sid.lower()
+            if sid_key in ranked_ids:
+                continue
+            full_name = r.get('full_name') if isinstance(r, dict) else (r[1] if len(r) > 1 else '')
+            cur_grade = r.get('current_grade') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')
+            extras.append({
+                'position': '—',
+                'student_id': sid,
+                'admission_number': sid,
+                'full_name': full_name,
+                'current_grade': cur_grade,
+                'home_class': cur_grade,
+                'total_marks': '',
+                'mean': '',
+                'grade': '-',
+                'is_linked_child': sid_key == linked_sid,
+                'has_marks': False,
+            })
+    except Exception as e:
+        print(f"_parent_merge_class_roster_with_enrolled: {e}")
+    for row in ranked:
+        row['has_marks'] = True
+    return ranked + extras
+
+
+def _parent_order_class_roster_rows(rows):
+    """Order class list: rank 1 → last, then students without marks A–Z."""
+    def _sort_key(r):
+        if not r.get('has_marks', True):
+            return (
+                1,
+                str(r.get('full_name') or '').lower(),
+                str(r.get('student_id') or r.get('admission_number') or '').lower(),
+            )
+        pos_raw = r.get('position')
+        try:
+            pos = int(pos_raw)
+        except (TypeError, ValueError):
+            pos = 10**9
+        return (
+            0,
+            pos,
+            str(r.get('full_name') or '').lower(),
+            str(r.get('student_id') or r.get('admission_number') or '').lower(),
+        )
+
+    return sorted(rows or [], key=_sort_key)
+
+
+def _parent_class_exam_results_page_data(cursor, stu, term_id=None, academic_year_id=None, level_view='individual'):
+    """Aggregates + ranked class roster for parent class exam results."""
+    level_view = (level_view or 'individual').strip().lower()
+    if level_view not in ('individual', 'combined'):
+        level_view = 'individual'
+    view_options = _parent_class_exam_level_view_options(cursor, stu)
+    level_id = (stu or {}).get('academic_level_id')
+    level_scope = _resolve_academic_report_level_scope(cursor, level_view, level_id) if level_id else {}
+    if level_view == 'combined' and not view_options.get('has_combined'):
+        level_view = 'individual'
+        level_scope = _resolve_academic_report_level_scope(cursor, 'individual', level_id) if level_id else {}
+
+    roster_rows = []
+    subject_columns = []
+    meta = {}
+    is_combined = False
+    level_label = (level_scope.get('display_name') or view_options.get('individual_label') or '').strip()
+
+    if level_id:
+        payload = _build_academic_report_payload(
+            cursor,
+            'exam_all_students_performance',
+            {
+                'term_id': term_id,
+                'academic_year_id': academic_year_id,
+                'level_id': level_id,
+                'level_view': level_view,
+            },
+        )
+        if not payload.get('error'):
+            roster_rows = payload.get('rows') or []
+            meta = payload.get('meta') or {}
+            subject_columns = meta.get('subject_columns') or []
+            is_combined = bool(meta.get('is_combined_level_view') or meta.get('merge_single_cohort'))
+            if is_combined:
+                level_label = (meta.get('combined_display_name') or level_label or '').strip()
+            elif view_options.get('individual_label'):
+                level_label = view_options['individual_label']
+
+    enrolled_count = _parent_class_exam_enrolled_count(cursor, level_scope)
+    linked_sid = str((stu or {}).get('student_id') or '').strip().lower()
+    for row in roster_rows:
+        row['is_linked_child'] = str(row.get('student_id') or row.get('admission_number') or '').strip().lower() == linked_sid
+        row['has_marks'] = True
+
+    roster_rows = _parent_merge_class_roster_with_enrolled(cursor, roster_rows, level_scope, linked_sid)
+    roster_rows = _parent_order_class_roster_rows(roster_rows)
+
+    if roster_rows and subject_columns:
+        exam_bundle = _parent_exam_bundle_from_roster_rows(
+            [r for r in roster_rows if r.get('has_marks')],
+            subject_columns,
+            level_label,
+            enrolled_count,
+        )
+    else:
+        exam_bundle = _parent_class_exam_results_bundle(
+            cursor, stu, term_id, academic_year_id, level_scope=level_scope, grade_label=level_label
+        )
+        exam_bundle['enrolled_count'] = enrolled_count
+
+    section_label = level_label or view_options.get('individual_label') or view_options.get('combined_label') or 'Class'
+    if is_combined:
+        section_label = level_label or view_options.get('combined_label') or 'Combined class'
+    class_sections = [{'class_name': section_label, 'rows': roster_rows}] if roster_rows else []
+
+    return {
+        'exam_bundle': exam_bundle,
+        'class_roster': roster_rows,
+        'subject_columns': subject_columns,
+        'class_sections': class_sections,
+        'is_combined_view': is_combined,
+        'level_view': level_view,
+        'level_label': level_label,
+        'view_options': view_options,
+    }
+
+
+def _parent_class_exam_results_bundle(cursor, stu, term_id=None, academic_year_id=None, level_scope=None, grade_label=None):
+    """Class-level exam aggregates for a linked child's grade."""
+    empty = {
+        'subjects': [],
+        'class_mean': 0,
+        'class_max': None,
+        'class_min': None,
+        'class_pass_rate': 0,
+        'student_count': 0,
+        'total_marks_entries': 0,
+        'enrolled_count': 0,
+        'grade': grade_label or '',
+    }
+    if not stu or not stu.get('academic_level_id'):
+        empty['grade'] = grade_label or (stu or {}).get('resolved_level_name') or (stu or {}).get('current_grade') or ''
+        return empty
+    if level_scope is None:
+        level_scope = _resolve_academic_report_level_scope(cursor, 'individual', stu['academic_level_id'])
+    level_name = grade_label or stu.get('resolved_level_name') or stu.get('current_grade') or ''
+    enrolled_count = _parent_class_exam_enrolled_count(cursor, level_scope)
+    level_ids = list(level_scope.get('level_ids') or [stu['academic_level_id']])
+
+    if not level_scope.get('is_combined_view') or len(level_ids) <= 1:
+        lev = {'id': level_ids[0], 'level_name': level_name}
+        bundle = _build_class_exam_performance_bundle(cursor, lev, term_id, academic_year_id)
+        bundle['enrolled_count'] = enrolled_count
+        bundle['grade'] = level_name
+        return bundle
+
+    merged_subjects = {}
+    total_entries = 0
+    pass_entries = 0
+    all_mins = []
+    all_maxs = []
+    student_count = 0
+    for lid in level_ids:
+        cursor.execute(
+            "SELECT level_name FROM academic_levels WHERE id = %s LIMIT 1",
+            (lid,),
+        )
+        lr = cursor.fetchone()
+        lname = (
+            lr.get('level_name') if isinstance(lr, dict) else (lr[0] if lr else None)
+        ) or level_name
+        partial = _build_class_exam_performance_bundle(
+            cursor, {'id': lid, 'level_name': lname}, term_id, academic_year_id
+        )
+        student_count = max(student_count, int(partial.get('student_count') or 0))
+        for subj in partial.get('subjects') or []:
+            sname = subj.get('subject_name')
+            if not sname:
+                continue
+            if sname not in merged_subjects:
+                merged_subjects[sname] = {
+                    'subject_name': sname,
+                    'weighted_sum': 0.0,
+                    'count': 0,
+                    'min': None,
+                    'max': None,
+                    'pass_count': 0,
+                }
+            cnt = int(subj.get('count') or 0)
+            mean = float(subj.get('mean') or 0)
+            if cnt > 0:
+                merged_subjects[sname]['weighted_sum'] += mean * cnt
+                merged_subjects[sname]['count'] += cnt
+                merged_subjects[sname]['pass_count'] += int(round((float(subj.get('pass_rate') or 0) / 100) * cnt))
+            smin = subj.get('min')
+            smax = subj.get('max')
+            if smin is not None:
+                try:
+                    smin_f = float(smin)
+                    merged_subjects[sname]['min'] = (
+                        smin_f if merged_subjects[sname]['min'] is None else min(merged_subjects[sname]['min'], smin_f)
+                    )
+                except (TypeError, ValueError):
+                    pass
+            if smax is not None:
+                try:
+                    smax_f = float(smax)
+                    merged_subjects[sname]['max'] = (
+                        smax_f if merged_subjects[sname]['max'] is None else max(merged_subjects[sname]['max'], smax_f)
+                    )
+                except (TypeError, ValueError):
+                    pass
+        partial_entries = int(partial.get('total_marks_entries') or 0)
+        if partial_entries:
+            total_entries += partial_entries
+            pass_entries += int(round((float(partial.get('class_pass_rate') or 0) / 100) * partial_entries))
+        pmin = partial.get('class_min')
+        pmax = partial.get('class_max')
+        if pmin is not None:
+            try:
+                all_mins.append(float(pmin))
+            except (TypeError, ValueError):
+                pass
+        if pmax is not None:
+            try:
+                all_maxs.append(float(pmax))
+            except (TypeError, ValueError):
+                pass
+
+    subject_list = []
+    weighted_mean_sum = 0.0
+    subject_entry_total = 0
+    for sdata in merged_subjects.values():
+        cnt = sdata['count']
+        if cnt:
+            mean = round_mark_display(sdata['weighted_sum'] / cnt) or 0
+            pass_rate = round_mark_display(100 * sdata['pass_count'] / cnt) if cnt else 0
+            min_m = round_mark_display(sdata['min']) if sdata['min'] is not None else None
+            max_m = round_mark_display(sdata['max']) if sdata['max'] is not None else None
+            weighted_mean_sum += float(mean) * cnt
+            subject_entry_total += cnt
+        else:
+            mean = 0
+            pass_rate = 0
+            min_m = None
+            max_m = None
+        subject_list.append({
+            'subject_name': sdata['subject_name'],
+            'mean': mean,
+            'min': min_m,
+            'max': max_m,
+            'count': cnt,
+            'pass_rate': pass_rate,
+        })
+    class_mean = round_mark_display(weighted_mean_sum / subject_entry_total) if subject_entry_total else 0
+    class_pass_rate = round_mark_display(100 * pass_entries / total_entries) if total_entries else 0
+    return {
+        'subjects': subject_list,
+        'class_mean': class_mean,
+        'class_max': round_mark_display(max(all_maxs)) if all_maxs else None,
+        'class_min': round_mark_display(min(all_mins)) if all_mins else None,
+        'class_pass_rate': class_pass_rate,
+        'student_count': student_count,
+        'total_marks_entries': total_entries,
+        'enrolled_count': enrolled_count,
+        'grade': level_name,
+    }
+
+
+@app.route('/dashboard/parent/class-exam-results')
+@login_required
+def parent_class_exam_results():
+    """Pick a child or redirect when only one is linked — class exam results."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(parent_dashboard_path())
+    qs_sid = (request.args.get('student_id') or '').strip()
+    if qs_sid:
+        return redirect(parent_dashboard_path(f'class-exam-results/{qs_sid}'))
+    children = _parent_fetch_in_session_children(parent_email)
+    if len(children) == 1:
+        return redirect(parent_dashboard_path(f"class-exam-results/{children[0]['student_id']}"))
+    return render_template(
+        'dashboards/parent_timetable_child_list.html',
+        children=children,
+        page_title='Class exam results',
+        page_subtitle='Aggregated exam performance for your child’s class — subject means and pass rates.',
+        detail_url_segment='class-exam-results',
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/class-exam-results/<student_id>')
+@login_required
+def parent_class_exam_results_detail(student_id):
+    """Class exam results for one linked child’s grade."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(parent_dashboard_path())
+
+    sibling_count = 0
+    stu = None
+    term_options = []
+    year_name = term_id = term_name = None
+    page_data = {
+        'exam_bundle': {
+            'subjects': [],
+            'class_mean': 0,
+            'class_max': None,
+            'class_min': None,
+            'class_pass_rate': 0,
+            'student_count': 0,
+            'total_marks_entries': 0,
+            'enrolled_count': 0,
+            'grade': '',
+        },
+        'class_roster': [],
+        'subject_columns': [],
+        'class_sections': [],
+        'is_combined_view': False,
+        'level_view': 'individual',
+        'level_label': '',
+        'view_options': {'has_combined': False, 'individual_label': '', 'combined_label': '', 'member_level_names': []},
+    }
+    level_view = (request.args.get('level_view') or 'individual').strip().lower()
+    if level_view not in ('individual', 'combined'):
+        level_view = 'individual'
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(DISTINCT s.student_id) AS cnt
+                    FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.status = 'in session'
+                    """,
+                    (parent_email,),
+                )
+                r = cursor.fetchone()
+                sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+                stu = _parent_resolve_student_level_for_timetables(cursor, parent_email, student_id)
+                term_options = _parent_term_options_for_timetables(cursor)
+                year_id, year_name, term_id, term_name = _school_current_term_bundle(cursor)
+                try:
+                    req_tid = int((request.args.get('term_id') or '').strip() or 0)
+                except (TypeError, ValueError):
+                    req_tid = 0
+                if req_tid > 0 and any(int(o['id']) == req_tid for o in term_options):
+                    term_id = req_tid
+                    for o in term_options:
+                        if int(o['id']) == term_id:
+                            term_name = o.get('term_name')
+                            year_name = o.get('year_name')
+                            break
+                if stu:
+                    page_data = _parent_class_exam_results_page_data(
+                        cursor, stu, term_id, year_id, level_view=level_view
+                    )
+                    level_view = page_data.get('level_view') or level_view
+        except Exception as e:
+            print(f"parent_class_exam_results_detail: {e}")
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not stu:
+        flash('You cannot view class exam results for this student.', 'error')
+        return redirect(parent_dashboard_path('class-exam-results'))
+
+    return render_template(
+        'dashboards/parent_student_class_exam_results.html',
+        student=stu,
+        exam_bundle=page_data.get('exam_bundle') or {},
+        class_roster=page_data.get('class_roster') or [],
+        subject_columns=page_data.get('subject_columns') or [],
+        class_sections=page_data.get('class_sections') or [],
+        is_combined_view=bool(page_data.get('is_combined_view')),
+        level_view=page_data.get('level_view') or level_view,
+        level_label=page_data.get('level_label') or '',
+        view_options=page_data.get('view_options') or {},
+        term_options=term_options,
+        selected_term_id=term_id,
+        term_label=term_name,
+        year_label=year_name,
+        sibling_count=sibling_count,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+        exam_progress_student_id=student_id,
+        class_exam_results_student_id=student_id,
+        class_subject_progress_student_id=student_id,
+    )
+
+
+@app.route('/dashboard/parent/meeting-scheduler')
+@login_required
+def parent_meeting_scheduler():
+    """Smart Parent Meeting Scheduler — book parent–teacher meetings."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    parent_email = ctx['parent_email']
+    children = _parent_fetch_in_session_children(parent_email) if parent_email else []
+    return render_template(
+        'dashboards/parent_meeting_scheduler.html',
+        children=children,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/class-subject-progress')
+@login_required
+def parent_class_subject_progress():
+    """Pick a child or redirect when only one is linked — class subject progress."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(parent_dashboard_path())
+    qs_sid = (request.args.get('student_id') or '').strip()
+    if qs_sid:
+        return redirect(parent_dashboard_path(f'class-subject-progress/{qs_sid}'))
+    children = _parent_fetch_in_session_children(parent_email)
+    if len(children) == 1:
+        return redirect(parent_dashboard_path(f"class-subject-progress/{children[0]['student_id']}"))
+    return render_template(
+        'dashboards/parent_timetable_child_list.html',
+        children=children,
+        page_title='Class subject progress',
+        page_subtitle='Curriculum coverage and class sessions for your child’s grade this term.',
+        detail_url_segment='class-subject-progress',
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/class-subject-progress/<student_id>')
+@login_required
+def parent_class_subject_progress_detail(student_id):
+    """Class subject progress for one linked child."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(parent_dashboard_path())
+
+    sibling_count = 0
+    stu = None
+    term_options = []
+    year_name = term_id = term_name = None
+    parent_class_progress = {
+        'grade': '',
+        'term_label': '',
+        'subject_count': 0,
+        'subjects_with_data': 0,
+        'avg_curriculum_pct': None,
+        'total_sessions_done': 0,
+        'total_sessions_planned': 0,
+        'subjects': [],
+    }
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(DISTINCT s.student_id) AS cnt
+                    FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.status = 'in session'
+                    """,
+                    (parent_email,),
+                )
+                r = cursor.fetchone()
+                sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+                stu = _parent_resolve_student_level_for_timetables(cursor, parent_email, student_id)
+                term_options = _parent_term_options_for_timetables(cursor)
+                year_id, year_name, term_id, term_name = _school_current_term_bundle(cursor)
+                try:
+                    req_tid = int((request.args.get('term_id') or '').strip() or 0)
+                except (TypeError, ValueError):
+                    req_tid = 0
+                if req_tid > 0 and any(int(o['id']) == req_tid for o in term_options):
+                    term_id = req_tid
+                    for o in term_options:
+                        if int(o['id']) == term_id:
+                            term_name = o.get('term_name')
+                            year_name = o.get('year_name')
+                            break
+                if stu and term_id:
+                    parent_class_progress = _parent_class_subject_progress_bundle(
+                        cursor, student_id, term_id, term_name
+                    )
+        except Exception as e:
+            print(f"parent_class_subject_progress_detail: {e}")
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not stu:
+        flash('You cannot view subject progress for this student.', 'error')
+        return redirect(parent_dashboard_path('class-subject-progress'))
+
+    return render_template(
+        'dashboards/parent_student_class_subject_progress.html',
+        student=stu,
+        parent_class_progress=parent_class_progress,
+        term_options=term_options,
+        selected_term_id=term_id,
+        term_label=term_name,
+        year_label=year_name,
+        sibling_count=sibling_count,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+        exam_progress_student_id=student_id,
+        class_exam_results_student_id=student_id,
+        class_subject_progress_student_id=student_id,
     )
 
 
@@ -28906,7 +29865,7 @@ def _parent_exam_timetable_sections_for_class(cursor, academic_level_id, term_id
             """
             SELECT e.exam_date, e.start_time, e.end_time, al.level_name,
                    e.exam_name, COALESCE(s.subject_name, 'Paper') AS subject_name,
-                   e.venue, e.status
+                   s.subject_code, e.venue, e.status
             FROM exams e
             LEFT JOIN academic_levels al ON e.academic_level_id = al.id
             LEFT JOIN subjects s ON e.subject_id = s.id
@@ -28926,6 +29885,7 @@ def _parent_exam_timetable_sections_for_class(cursor, academic_level_id, term_id
                         'level_name': r.get('level_name'),
                         'exam_name': r.get('exam_name'),
                         'subject_name': r.get('subject_name'),
+                        'subject_code': subject_display_label(r.get('subject_code'), r.get('subject_name'), 'EXAM'),
                         'venue': r.get('venue'),
                         'status': r.get('status'),
                     }
@@ -28939,8 +29899,9 @@ def _parent_exam_timetable_sections_for_class(cursor, academic_level_id, term_id
                         'level_name': r[3] if len(r) > 3 else None,
                         'exam_name': r[4] if len(r) > 4 else None,
                         'subject_name': r[5] if len(r) > 5 else None,
-                        'venue': r[6] if len(r) > 6 else None,
-                        'status': r[7] if len(r) > 7 else None,
+                        'subject_code': subject_display_label(r[6] if len(r) > 6 else None, r[5] if len(r) > 5 else None, 'EXAM'),
+                        'venue': r[7] if len(r) > 7 else None,
+                        'status': r[8] if len(r) > 8 else None,
                     }
                 )
     except Exception as e:
@@ -52134,8 +53095,8 @@ def _fetch_store_requisitions_list(cursor, status_filter='all', limit=200):
 
 
 def _accountant_effective_role():
-    user_role = session.get('role', '').lower()
-    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    user_role = (session.get('role') or '').lower()
+    viewing_as_role = (session.get('viewing_as_employee_role') or '').lower()
     is_technician = user_role == 'technician'
     return viewing_as_role if is_technician and viewing_as_role else user_role
 

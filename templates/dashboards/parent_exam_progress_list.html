@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Exam Results — choose a child - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}Personal exam results — choose a child - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 
 {% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
@@ -43,9 +43,9 @@
 
     {% set role_theme = 'parent' %}
     {% set role_hero_eyebrow = 'Parent portal' %}
-    {% set role_hero_title = 'Exam results & progress' %}
-    {% set role_hero_subtitle = 'Choose a child to see overall analytics and performance by exam.' %}
-    {% set role_hero_icon_class = 'fa-clipboard-check' %}
+    {% set role_hero_title = 'Personal exam results' %}
+    {% set role_hero_subtitle = 'Choose a child to see their individual marks, analytics, and performance by exam.' %}
+    {% set role_hero_icon_class = 'fa-user-graduate' %}
     {% include 'dashboards/includes/role_hero.html' %}
 
     {% if children %}

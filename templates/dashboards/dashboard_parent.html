@@ -25,8 +25,10 @@
 {% endblock %}
 
 {% block content %}
+{% from 'dashboards/includes/parent_mpesa_pay_macro.html' import mpesa_pay_button %}
 {% set stu = spotlight_student %}
 {% set fee = spotlight_fee | default({'has_structure': false}) %}
+{% set pocket = spotlight_pocket_money | default({'has_account': false, 'balance': 0, 'total_topped_up': 0, 'total_spent': 0, 'transaction_count': 0}) %}
 {% set att = spotlight_attendance | default({'has_data': false, 'pct': 0, 'category': 'none'}) %}
 {% set guardian = parent_guardian | default({}) %}
 {% set sid = (stu.student_id if stu else '') or selected_student_id %}
@@ -152,7 +154,7 @@
     </div>
 
     {% if stu and sid %}
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
         <!-- Fee balance -->
         <section class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden flex flex-col">
             <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
@@ -162,7 +164,12 @@
                     </span>
                     <h2 class="text-sm font-bold text-gray-900 dark:text-white m-0">Fee balance</h2>
                 </div>
-                <a href="{{ parent_dash_url('student-fees') }}" class="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline">Details</a>
+                <div class="flex items-center gap-3 shrink-0">
+                    {% if fee.has_structure and fee.balance > 0 %}
+                    {{ mpesa_pay_button('school_fee', sid, stu.full_name, fee.balance, 'Pay with M-Pesa', 'text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline bg-transparent border-0 p-0 shadow-none min-h-0') }}
+                    {% endif %}
+                    <a href="{{ parent_dash_url('student-fees') }}" class="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline">Details</a>
+                </div>
             </div>
             <div class="p-4 flex-1 flex flex-col justify-center">
                 {% if fee.has_structure %}
@@ -193,6 +200,65 @@
                 {% endif %}
                 {% else %}
                 <p class="text-sm text-gray-500 dark:text-gray-400 m-0">No active fee structure for this class.</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Pocket money -->
+        <section class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden flex flex-col">
+            <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-9 h-9 rounded-lg bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 flex items-center justify-center">
+                        <i class="fas fa-coins" aria-hidden="true"></i>
+                    </span>
+                    <h2 class="text-sm font-bold text-gray-900 dark:text-white m-0">Pocket money</h2>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                    {% if pocket.has_account %}
+                    {{ mpesa_pay_button('pocket_money', sid, stu.full_name, '', 'Top up with M-Pesa', 'text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline bg-transparent border-0 p-0 shadow-none min-h-0') }}
+                    {% endif %}
+                    <a href="{{ parent_dash_url('pocket-money/' ~ sid) }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}" class="text-xs font-semibold text-violet-600 dark:text-violet-400 hover:underline">Details</a>
+                </div>
+            </div>
+            <div class="p-4 flex-1 flex flex-col justify-center">
+                {% if pocket.has_account %}
+                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mb-1">Available balance</p>
+                <p class="text-3xl font-extrabold tabular-nums {% if pocket.balance > 500 %}text-emerald-600 dark:text-emerald-400{% elif pocket.balance > 0 %}text-amber-600 dark:text-amber-400{% else %}text-gray-500 dark:text-gray-400{% endif %} m-0">
+                    KES {{ "{:,.0f}".format(pocket.balance) }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 m-0">
+                    Topped up <span class="font-semibold text-gray-800 dark:text-gray-200">KES {{ "{:,.0f}".format(pocket.total_topped_up) }}</span>
+                    · Spent <span class="font-semibold">KES {{ "{:,.0f}".format(pocket.total_spent) }}</span>
+                </p>
+                {% if pocket.total_topped_up > 0 %}
+                <div class="mt-3 h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                    {% set remaining_pct = (100 * pocket.balance / pocket.total_topped_up) if pocket.total_topped_up else 0 %}
+                    <div class="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-500" style="width: {{ [100, remaining_pct]|min }}%"></div>
+                </div>
+                {% elif pocket.balance > 0 %}
+                <div class="mt-3 h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                    <div class="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-500" style="width: 100%"></div>
+                </div>
+                {% endif %}
+                {% if pocket.balance <= 0 and pocket.transaction_count == 0 %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-gray-600 dark:text-gray-400">
+                    <i class="fas fa-info-circle"></i> No transactions yet
+                </span>
+                {% elif pocket.balance <= 0 %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-gray-600 dark:text-gray-400">
+                    <i class="fas fa-wallet"></i> No balance
+                </span>
+                {% elif pocket.balance <= 500 %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-amber-700 dark:text-amber-300">
+                    <i class="fas fa-exclamation-circle"></i> Low balance
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    <i class="fas fa-check-circle"></i> Active balance
+                </span>
+                {% endif %}
+                {% else %}
+                <p class="text-sm text-gray-500 dark:text-gray-400 m-0">Pocket money is not available for this student.</p>
                 {% endif %}
             </div>
         </section>
@@ -251,27 +317,9 @@
         </section>
     </div>
 
-    {% include 'dashboards/_parent_class_subject_progress.html' %}
+    {% include 'dashboards/_parent_notifications_hub.html' %}
 
-    <!-- Quick links -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <a href="{{ parent_dash_url('student-fees') }}" class="rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-center hover:border-orange-400 hover:bg-orange-50/50 dark:hover:bg-orange-900/10 transition">
-            <i class="fas fa-receipt text-orange-500 text-lg mb-1"></i>
-            <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Fees</p>
-        </a>
-        <a href="{{ parent_dash_url('attendance/' ~ sid) }}" class="rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-center hover:border-teal-400 hover:bg-teal-50/50 dark:hover:bg-teal-900/10 transition">
-            <i class="fas fa-calendar-check text-teal-600 text-lg mb-1"></i>
-            <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Attendance</p>
-        </a>
-        <a href="{{ parent_dash_url('exam-progress/' ~ sid) }}" class="rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-center hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition">
-            <i class="fas fa-chart-line text-indigo-500 text-lg mb-1"></i>
-            <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Exam results</p>
-        </a>
-        <a href="{{ parent_dash_url('library/' ~ sid) }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}" class="rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-center hover:border-violet-400 hover:bg-violet-50/50 dark:hover:bg-violet-900/10 transition">
-            <i class="fas fa-book-open text-violet-500 text-lg mb-1"></i>
-            <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Library</p>
-        </a>
-    </div>
+    {% include 'dashboards/includes/parent_mpesa_pay.html' %}
 
     {% elif (is_technician or is_technician_parent_preview) and not selected_student_id %}
     <div class="rounded-2xl border border-dashed border-blue-300 dark:border-blue-700 py-16 text-center">

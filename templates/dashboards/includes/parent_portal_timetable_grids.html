@@ -1,60 +1,302 @@
+{# Parent portal timetables — shared styles for class & exam grids #}
+{% if timetable_sections is defined or exam_timetable_sections is defined %}
+<style>
+.parent-tt-shell { --ptt-radius: 0.875rem; }
+.parent-tt-card {
+    border-radius: 1rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #800020) 12%, #e5e7eb);
+    background: linear-gradient(180deg, #fff 0%, #fafafa 100%);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+    overflow: hidden;
+}
+.dark .parent-tt-card {
+    border-color: color-mix(in srgb, var(--brand-primary, #800020) 22%, #374151);
+    background: linear-gradient(180deg, rgb(31 41 55) 0%, rgb(17 24 39) 100%);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.parent-tt-head {
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    background: linear-gradient(135deg,
+        color-mix(in srgb, var(--brand-primary, #800020) 8%, transparent),
+        color-mix(in srgb, var(--brand-secondary, #a0522d) 6%, transparent));
+}
+@media (min-width: 640px) { .parent-tt-head { padding: 1rem 1.15rem; } }
+.dark .parent-tt-head { background: linear-gradient(135deg, rgba(128,0,32,0.18), rgba(160,82,45,0.12)); }
+.parent-tt-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+.parent-tt-scroll::-webkit-scrollbar { height: 6px; }
+.parent-tt-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--brand-primary, #800020) 35%, #cbd5e1);
+    border-radius: 999px;
+}
+.parent-tt-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    font-size: 0.625rem;
+}
+@media (min-width: 640px) {
+    .parent-tt-table { table-layout: auto; font-size: 0.8125rem; min-width: 640px; }
+}
+@media (min-width: 1024px) { .parent-tt-table { font-size: 0.875rem; } }
+.parent-tt-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 0.35rem 0.15rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+    font-size: 0.5rem;
+    white-space: nowrap;
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--brand-primary, #800020) 14%, #f8fafc),
+        color-mix(in srgb, var(--brand-primary, #800020) 8%, #f1f5f9));
+    border-bottom: 2px solid color-mix(in srgb, var(--brand-primary, #800020) 25%, #e2e8f0);
+    color: #334155;
+}
+@media (min-width: 640px) {
+    .parent-tt-table thead th { padding: 0.65rem 0.5rem; font-size: 0.65rem; letter-spacing: 0.02em; }
+}
+.dark .parent-tt-table thead th {
+    background: linear-gradient(180deg, rgb(30 41 59), rgb(15 23 42));
+    border-bottom-color: color-mix(in srgb, var(--brand-primary, #800020) 35%, #475569);
+    color: #e2e8f0;
+}
+.parent-tt-table thead th.parent-tt-corner {
+    left: 0;
+    z-index: 3;
+    width: 2.75rem;
+    min-width: 2.75rem;
+    text-align: left;
+    padding-left: 0.35rem;
+}
+@media (min-width: 640px) {
+    .parent-tt-table thead th.parent-tt-corner { width: auto; min-width: 5.5rem; padding-left: 0.85rem; }
+}
+.parent-tt-table thead th.parent-tt-time {
+    min-width: 0;
+    text-align: center;
+    color: color-mix(in srgb, var(--brand-primary, #800020) 75%, #1e293b);
+}
+@media (min-width: 640px) { .parent-tt-table thead th.parent-tt-time { min-width: 3.25rem; } }
+.dark .parent-tt-table thead th.parent-tt-time { color: color-mix(in srgb, var(--brand-secondary, #a0522d) 70%, #f1f5f9); }
+.parent-tt-table tbody tr:nth-child(even) td:not(.parent-tt-day) { background: rgba(248, 250, 252, 0.85); }
+.dark .parent-tt-table tbody tr:nth-child(even) td:not(.parent-tt-day) { background: rgba(15, 23, 42, 0.45); }
+.parent-tt-table tbody tr:hover td:not(.parent-tt-day) {
+    background: color-mix(in srgb, var(--brand-primary, #800020) 6%, #fff);
+}
+.dark .parent-tt-table tbody tr:hover td:not(.parent-tt-day) {
+    background: color-mix(in srgb, var(--brand-primary, #800020) 12%, rgb(17 24 39));
+}
+.parent-tt-day {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    width: 2.75rem;
+    min-width: 2.75rem;
+    padding: 0.35rem 0.25rem;
+    font-weight: 700;
+    font-size: 0.55rem;
+    color: #1e293b;
+    background: #f8fafc;
+    border-right: 2px solid color-mix(in srgb, var(--brand-primary, #800020) 15%, #e2e8f0);
+    box-shadow: 4px 0 12px rgba(15, 23, 42, 0.04);
+    white-space: nowrap;
+}
+@media (min-width: 640px) {
+    .parent-tt-day {
+        width: auto;
+        min-width: 5.5rem;
+        padding: 0.75rem 0.85rem;
+        font-size: inherit;
+    }
+}
+.dark .parent-tt-day {
+    color: #f1f5f9;
+    background: rgb(30 41 59);
+    border-right-color: color-mix(in srgb, var(--brand-primary, #800020) 25%, #475569);
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.2);
+}
+.parent-tt-cell {
+    padding: 0.2rem 0.1rem;
+    text-align: center;
+    vertical-align: middle;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+    border-right: 1px solid rgba(226, 232, 240, 0.6);
+    min-width: 0;
+    transition: background 0.15s ease;
+}
+@media (min-width: 640px) {
+    .parent-tt-cell { padding: 0.45rem 0.35rem; min-width: 3.25rem; }
+}
+.dark .parent-tt-cell {
+    border-bottom-color: rgba(51, 65, 85, 0.8);
+    border-right-color: rgba(51, 65, 85, 0.5);
+}
+.parent-tt-code {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.65rem;
+    max-width: 100%;
+    padding: 0.12rem 0.2rem;
+    border-radius: 0.3rem;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    line-height: 1.15;
+    border: 1px solid transparent;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+@media (min-width: 640px) {
+    .parent-tt-code {
+        font-size: 0.72rem;
+        padding: 0.32rem 0.5rem;
+        min-width: 2.5rem;
+        border-radius: 0.5rem;
+        letter-spacing: 0.03em;
+    }
+}
+@media (hover: hover) { .parent-tt-code:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(15, 23, 42, 0.1); } }
+.parent-tt-code--0 { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.parent-tt-code--1 { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.parent-tt-code--2 { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+.parent-tt-code--3 { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.parent-tt-code--4 { background: #fff1f2; color: #be123c; border-color: #fecdd3; }
+.parent-tt-code--5 { background: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
+.dark .parent-tt-code--0 { background: rgba(6, 78, 59, 0.35); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.35); }
+.dark .parent-tt-code--1 { background: rgba(30, 58, 138, 0.35); color: #93c5fd; border-color: rgba(59, 130, 246, 0.35); }
+.dark .parent-tt-code--2 { background: rgba(91, 33, 182, 0.35); color: #c4b5fd; border-color: rgba(139, 92, 246, 0.35); }
+.dark .parent-tt-code--3 { background: rgba(146, 64, 14, 0.35); color: #fcd34d; border-color: rgba(245, 158, 11, 0.35); }
+.dark .parent-tt-code--4 { background: rgba(159, 18, 57, 0.35); color: #fda4af; border-color: rgba(244, 63, 94, 0.35); }
+.dark .parent-tt-code--5 { background: rgba(14, 116, 144, 0.35); color: #67e8f9; border-color: rgba(34, 211, 238, 0.35); }
+.parent-tt-empty { color: #cbd5e1; font-size: 0.55rem; user-select: none; }
+@media (min-width: 640px) { .parent-tt-empty { font-size: 0.75rem; } }
+.dark .parent-tt-empty { color: #475569; }
+.parent-tt-grid { padding: 0.25rem 0.25rem 0.5rem; }
+@media (min-width: 640px) { .parent-tt-grid { padding: 0.35rem 0.35rem 0.65rem; } }
+.parent-tt-date-short { display: inline; }
+.parent-tt-date-full { display: none; }
+@media (min-width: 640px) {
+    .parent-tt-date-short { display: none; }
+    .parent-tt-date-full { display: inline; }
+}
+.parent-tt-day--wide,
+.parent-tt-table thead th.parent-tt-corner--wide {
+    width: 3.25rem;
+    min-width: 3.25rem;
+}
+@media (min-width: 640px) {
+    .parent-tt-day--wide,
+    .parent-tt-table thead th.parent-tt-corner--wide {
+        width: auto;
+        min-width: 6.5rem;
+    }
+}
+.parent-tt-table thead th.parent-tt-time--session {
+    font-size: 0.45rem;
+    line-height: 1.2;
+    white-space: normal;
+    word-break: break-word;
+}
+@media (min-width: 640px) {
+    .parent-tt-table thead th.parent-tt-time--session {
+        font-size: 0.65rem;
+        white-space: nowrap;
+    }
+}
+</style>
+{% endif %}
+
 {# Weekly class timetable grid (pass timetable_sections from the route). #}
 {% if timetable_sections is defined %}
-<div class="space-y-6">
+<div class="parent-tt-shell space-y-5 sm:space-y-6">
     {% if timetable_sections and timetable_sections|length > 0 %}
     {% for sec in timetable_sections %}
     {% set tt = sec.timetable %}
-    <div class="modern-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">{{ sec.level_name }}</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Weekly class timetable · periods × days</p>
-        </div>
+    <article class="parent-tt-card">
+        <header class="parent-tt-head flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-primary/15 text-brand-primary dark:text-brand-secondary">
+                        <i class="fas fa-calendar-week text-sm" aria-hidden="true"></i>
+                    </span>
+                    <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white truncate">{{ sec.level_name }}</h2>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-10">Weekly schedule · subject codes by period</p>
+            </div>
+            {% if tt and tt.days and tt.slots %}
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/80 dark:bg-gray-900/50 border border-gray-200/80 dark:border-gray-600/80 px-2.5 py-1 text-[11px] font-semibold text-gray-600 dark:text-gray-300 shrink-0">
+                <i class="fas fa-clock text-brand-primary text-[10px]" aria-hidden="true"></i>
+                {{ tt.days|length }} days · {{ tt.slots|length }} periods
+            </span>
+            {% endif %}
+        </header>
         {% if tt and tt.days and tt.slots %}
-        <div class="overflow-x-auto">
-            <table class="w-full text-xs sm:text-sm border-collapse min-w-[640px]">
-                <thead>
-                    <tr>
-                        <th class="sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-300 w-28">Time</th>
+        <div class="parent-tt-grid">
+            <div class="parent-tt-scroll" role="region" aria-label="Weekly timetable grid" tabindex="0">
+                <table class="parent-tt-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="parent-tt-corner">Day</th>
+                            {% for slot in tt.slots %}
+                            <th scope="col" class="parent-tt-time">{{ slot }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
                         {% for day in tt.days %}
-                        <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10">{{ day }}</th>
+                        <tr>
+                            <th scope="row" class="parent-tt-day">
+                                <span class="sm:hidden">{{ day[:3] }}</span>
+                                <span class="hidden sm:inline">{{ day }}</span>
+                            </th>
+                            {% for slot in tt.slots %}
+                            <td class="parent-tt-cell">
+                                {% set cell_items = tt.cells[day][slot] %}
+                                {% if cell_items %}
+                                    <div class="flex flex-wrap items-center justify-center gap-0.5 sm:gap-1">
+                                    {% for item in cell_items %}
+                                        {% if item.badge %}
+                                        {% set chip_idx = (item.badge|length) % 6 %}
+                                        <span class="parent-tt-code parent-tt-code--{{ chip_idx }}" title="{{ item.primary }}{% if item.secondary %} · {{ item.secondary }}{% endif %}">{{ item.badge }}</span>
+                                        {% elif item.primary %}
+                                        <span class="parent-tt-code parent-tt-code--0">{{ item.primary }}</span>
+                                        {% endif %}
+                                    {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span class="parent-tt-empty">—</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
                         {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for slot in tt.slots %}
-                    <tr>
-                        <td class="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-600 px-2 py-2 font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{{ slot }}</td>
-                        {% for day in tt.days %}
-                        <td class="border border-gray-200 dark:border-gray-600 align-top p-1.5 bg-white dark:bg-gray-800/80 min-h-[4rem]">
-                            {% set cell_items = tt.cells[day][slot] %}
-                            {% if cell_items %}
-                                {% for item in cell_items %}
-                                <div class="rounded-md bg-gradient-to-br from-brand-primary/8 to-brand-secondary/5 dark:from-brand-primary/15 dark:to-brand-secondary/10 border border-brand-primary/20 px-2 py-1.5 mb-1 last:mb-0">
-                                    <div class="font-semibold text-gray-900 dark:text-white leading-tight">{{ item.primary }}</div>
-                                    {% if item.secondary %}<div class="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">{{ item.secondary }}</div>{% endif %}
-                                    {% if item.badge %}<span class="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">{{ item.badge }}</span>{% endif %}
-                                </div>
-                                {% endfor %}
-                            {% else %}
-                                <span class="text-gray-300 dark:text-gray-600 select-none">—</span>
-                            {% endif %}
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
         {% else %}
         <p class="p-8 text-center text-gray-500 text-sm">No slots for this class.</p>
         {% endif %}
-    </div>
+    </article>
     {% endfor %}
     {% else %}
-    <div class="modern-card p-10 text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-xl">
-        <i class="fas fa-calendar-alt text-4xl mb-3 text-gray-300 dark:text-gray-600"></i>
-        <p class="font-medium text-gray-700 dark:text-gray-300">No weekly periods for this class in the selected term.</p>
-        <p class="text-sm mt-2">The school may still be building the timetable, or there may be no rows assigned for this term yet.</p>
+    <div class="modern-card p-8 sm:p-10 text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-xl">
+        <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800 mb-4">
+            <i class="fas fa-calendar-alt text-2xl text-gray-300 dark:text-gray-600" aria-hidden="true"></i>
+        </span>
+        <p class="font-semibold text-gray-700 dark:text-gray-300">No weekly periods for this class in the selected term.</p>
+        <p class="text-sm mt-2 max-w-md mx-auto">The school may still be building the timetable, or there may be no rows assigned for this term yet.</p>
     </div>
     {% endif %}
 </div>
@@ -62,73 +304,85 @@
 
 {# Exam timetable grid (pass exam_timetable_sections from the route). #}
 {% if exam_timetable_sections is defined %}
-<div class="space-y-6">
+<div class="parent-tt-shell space-y-5 sm:space-y-6">
     {% if exam_timetable_sections and exam_timetable_sections|length > 0 %}
     {% for esec in exam_timetable_sections %}
     {% set exam_timetable_grid = esec.exam_timetable_grid %}
-    <div class="modern-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">{{ esec.level_name }}</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Exam timetable · sessions × dates</p>
-        </div>
-        {% if exam_timetable_grid and exam_timetable_grid.dates %}
-        <div class="overflow-x-auto">
-            <table class="w-full text-xs sm:text-sm border-collapse min-w-[560px]">
-                <thead>
-                    <tr>
-                        <th class="sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-300 w-32 sm:w-36">Session</th>
-                        {% for dh in exam_timetable_grid.date_headers %}
-                        <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10">
-                            <span class="block leading-tight">{{ dh.label }}</span>
-                        </th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for lbl in exam_timetable_grid.time_labels %}
-                    <tr>
-                        <td class="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-600 px-2 py-2 font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap align-top">
-                            <i class="fas fa-clock text-amber-600 mr-1 text-[10px]"></i>{{ lbl }}
-                        </td>
+    <article class="parent-tt-card">
+        <header class="parent-tt-head flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-primary/15 text-brand-primary dark:text-brand-secondary">
+                        <i class="fas fa-calendar-check text-sm" aria-hidden="true"></i>
+                    </span>
+                    <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white truncate">{{ esec.level_name }}</h2>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-10">Exam schedule · subject codes by session</p>
+            </div>
+            {% if exam_timetable_grid and exam_timetable_grid.dates and exam_timetable_grid.time_labels %}
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/80 dark:bg-gray-900/50 border border-gray-200/80 dark:border-gray-600/80 px-2.5 py-1 text-[11px] font-semibold text-gray-600 dark:text-gray-300 shrink-0">
+                <i class="fas fa-clock text-brand-primary text-[10px]" aria-hidden="true"></i>
+                {{ exam_timetable_grid.dates|length }} dates · {{ exam_timetable_grid.time_labels|length }} sessions
+            </span>
+            {% endif %}
+        </header>
+        {% if exam_timetable_grid and exam_timetable_grid.dates and exam_timetable_grid.time_labels %}
+        <div class="parent-tt-grid">
+            <div class="parent-tt-scroll" role="region" aria-label="Exam timetable grid" tabindex="0">
+                <table class="parent-tt-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="parent-tt-corner parent-tt-corner--wide">Date</th>
+                            {% for lbl in exam_timetable_grid.time_labels %}
+                            <th scope="col" class="parent-tt-time parent-tt-time--session">{{ lbl }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
                         {% for dh in exam_timetable_grid.date_headers %}
                         {% set d = dh.iso %}
-                        {% set cell_exams = exam_timetable_grid.cells[d][lbl] %}
-                        <td class="border border-gray-200 dark:border-gray-600 align-top p-1.5 bg-white dark:bg-gray-800/80 min-h-[3.5rem]">
-                            {% if cell_exams %}
-                                {% for ex in cell_exams %}
-                                <div class="rounded-md border border-gray-200 dark:border-gray-600 bg-gradient-to-br from-brand-primary/8 to-brand-secondary/5 dark:from-brand-primary/15 dark:to-brand-secondary/10 px-2 py-1.5 mb-1 last:mb-0">
-                                    <div class="font-semibold text-gray-900 dark:text-white leading-tight">{{ ex.exam_name }}</div>
-                                    <div class="text-[11px] text-brand-primary dark:text-brand-secondary font-medium mt-0.5">{{ ex.subject_name }}</div>
-                                    {% if ex.venue %}
-                                    <div class="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5"><i class="fas fa-map-marker-alt mr-0.5 text-red-500/80"></i>{{ ex.venue }}</div>
-                                    {% endif %}
-                                    {% if ex.status %}
-                                    <span class="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase
-                                        {% if ex.status == 'completed' %}bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300
-                                        {% elif ex.status == 'scheduled' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
-                                        {% else %}bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200{% endif %}">{{ ex.status }}</span>
-                                    {% endif %}
-                                </div>
-                                {% endfor %}
-                            {% else %}
-                                <span class="text-gray-300 dark:text-gray-600 select-none">—</span>
-                            {% endif %}
-                        </td>
+                        {% set dh_parts = dh.label.split(' ') %}
+                        {% set date_short = (dh_parts[1] ~ ' ' ~ dh_parts[2]) if dh_parts|length >= 3 else dh.label %}
+                        <tr>
+                            <th scope="row" class="parent-tt-day parent-tt-day--wide">
+                                <span class="parent-tt-date-short">{{ date_short }}</span>
+                                <span class="parent-tt-date-full">{{ dh.label }}</span>
+                            </th>
+                            {% for lbl in exam_timetable_grid.time_labels %}
+                            {% set cell_exams = exam_timetable_grid.cells[d][lbl] %}
+                            <td class="parent-tt-cell">
+                                {% if cell_exams %}
+                                    <div class="flex flex-wrap items-center justify-center gap-0.5 sm:gap-1">
+                                    {% for ex in cell_exams %}
+                                        {% set code = ex.subject_code or ex.subject_name or ex.exam_name or 'EX' %}
+                                        {% set chip_idx = (code|length) % 6 %}
+                                        {% set tip = (ex.exam_name or '') ~ (' · ' ~ ex.subject_name if ex.subject_name else '') ~ (' · ' ~ ex.venue if ex.venue else '') ~ (' · ' ~ ex.status if ex.status else '') %}
+                                        <span class="parent-tt-code parent-tt-code--{{ chip_idx }}" title="{{ tip }}">{{ code }}</span>
+                                    {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span class="parent-tt-empty">—</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
                         {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
         {% else %}
         <p class="p-8 text-center text-gray-500 text-sm">No exam dates in this view.</p>
         {% endif %}
-    </div>
+    </article>
     {% endfor %}
     {% else %}
-    <div class="modern-card p-10 text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-xl">
-        <i class="fas fa-calendar-times text-4xl mb-3 text-gray-300 dark:text-gray-600"></i>
-        <p class="font-medium text-gray-700 dark:text-gray-300">No exam sessions scheduled for this class in the selected term.</p>
+    <div class="modern-card p-8 sm:p-10 text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-xl">
+        <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800 mb-4">
+            <i class="fas fa-calendar-times text-2xl text-gray-300 dark:text-gray-600" aria-hidden="true"></i>
+        </span>
+        <p class="font-semibold text-gray-700 dark:text-gray-300">No exam sessions scheduled for this class in the selected term.</p>
+        <p class="text-sm mt-2 max-w-md mx-auto">Exam dates will appear here once the school publishes the timetable for this term.</p>
     </div>
     {% endif %}
 </div>
