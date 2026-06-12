@@ -1,0 +1,20 @@
+{% set _erd_registered_base = employee_dash_url('exam-evaluation/registered') ~ '?' ~ erd_query %}
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">This exam</p>
+<a href="{{ _erd_registered_base }}&erd_tab=exam_data"
+   class="sidebar-item {% if erd_tab == 'exam_data' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-edit w-5"></i>
+    <span>Exam timetable edit</span>
+    {% if erd_tab == 'exam_data' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ _erd_registered_base }}&erd_tab=timetable_data"
+   class="sidebar-item {% if erd_tab == 'timetable_data' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Exam timetable</span>
+    {% if erd_tab == 'timetable_data' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ _erd_registered_base }}&erd_tab=analytics"
+   class="sidebar-item {% if erd_tab == 'analytics' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-pie w-5"></i>
+    <span>Exam analytics</span>
+    {% if erd_tab == 'analytics' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

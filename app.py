@@ -34431,6 +34431,7 @@ def exam_evaluation():
                          level_combinations=level_combinations,
                          subjects=subjects,
                          teachers=teachers,
+                         teacher_subject_pairs=teacher_subject_pairs,
                          exams=exams,
                          open_edit_id=open_edit_id,
                          session_presets=session_presets_ui,
@@ -36131,21 +36132,28 @@ def save_exam():
                     }), 400
 
     normalized_allocations = []
+    template_allocations = []
+    manual_share_template = (not auto_generate and share_timetable)
     seen_teacher_slots = []  # for within-request conflicts: list of (teacher_id, exam_date, start_min, end_min)
     seen_class_session_slots = set()  # (academic_level_id, exam_date, session_type)
+    seen_template_session_slots = set()  # (exam_date, session_type) for shared manual template
 
     # Normalize + validate payload (manual mode only)
     for idx, a in enumerate(allocations if not auto_generate else []):
         try:
-            academic_level_id = int(a.get('academic_level_id', 0))
+            academic_level_id = int(a.get('academic_level_id', 0) or 0)
             subject_id = int(a.get('subject_id', 0))
-            teacher_id = int(a.get('teacher_id', 0))
+            teacher_raw = a.get('teacher_id')
+            teacher_id = int(teacher_raw) if teacher_raw not in (None, '', 0) else 0
             allocation_exam_date = a.get('exam_date', '').strip()
             session_type = (a.get('session_type') or '').strip().upper()
         except (ValueError, TypeError):
             return jsonify({'success': False, 'message': f'Invalid allocation row at #{idx + 1}'}), 400
 
-        if academic_level_id <= 0 or subject_id <= 0 or teacher_id <= 0 or not allocation_exam_date or not session_type:
+        if manual_share_template:
+            if subject_id <= 0 or not allocation_exam_date or not session_type:
+                return jsonify({'success': False, 'message': f'Missing fields in allocation row #{idx + 1} (need: subject, date, session)'}), 400
+        elif academic_level_id <= 0 or subject_id <= 0 or teacher_id <= 0 or not allocation_exam_date or not session_type:
             return jsonify({'success': False, 'message': f'Missing fields in allocation row #{idx + 1} (need: level, subject, teacher, date, session)'}), 400
 
         if session_type == 'CUSTOM':
@@ -36168,15 +36176,66 @@ def save_exam():
             emin = _time_to_minutes(end_time_str)
             duration_minutes = (emin - smin) if (smin is not None and emin is not None) else None
 
-        # Within-request teacher conflict check (overlap on same date)
         smin = _time_to_minutes(start_time_str)
         emin = _time_to_minutes(end_time_str)
         if smin is None or emin is None:
             return jsonify({'success': False, 'message': f'Invalid time values in row #{idx + 1}'}), 400
 
-        # Handle wrap-around (treat as same-day range; if end <= start, consider it crosses midnight)
         if emin <= smin:
             emin += 24 * 60
+
+        venue = (a.get('venue') or '').strip().upper()
+
+        if manual_share_template:
+            slot_key = (str(allocation_exam_date), str(session_type))
+            if slot_key in seen_template_session_slots:
+                return jsonify({
+                    'success': False,
+                    'message': f"Invalid allocation: shared timetable allows only one subject per session per day. Duplicate session detected in row #{idx + 1}."
+                }), 400
+            seen_template_session_slots.add(slot_key)
+
+            level_assignments_by_level = {}
+            la_raw = a.get('level_assignments')
+            if not isinstance(la_raw, list) or not la_raw:
+                return jsonify({
+                    'success': False,
+                    'message': f'Row #{idx + 1}: assign a teacher for each combined class.'
+                }), 400
+            for la in la_raw:
+                if not isinstance(la, dict):
+                    continue
+                try:
+                    la_level_id = int(la.get('academic_level_id', 0) or 0)
+                    la_teacher_id = int(la.get('teacher_id', 0) or 0)
+                except (ValueError, TypeError):
+                    return jsonify({
+                        'success': False,
+                        'message': f'Invalid teacher assignment in row #{idx + 1}.'
+                    }), 400
+                if la_level_id <= 0 or la_teacher_id <= 0:
+                    return jsonify({
+                        'success': False,
+                        'message': f'Row #{idx + 1}: each combined class needs a teacher.'
+                    }), 400
+                level_assignments_by_level[la_level_id] = {
+                    'teacher_id': la_teacher_id,
+                    'venue': (la.get('venue') or '').strip().upper(),
+                }
+
+            template_allocations.append({
+                'subject_id': subject_id,
+                'exam_date': allocation_exam_date,
+                'venue': venue,
+                'session_type': session_type,
+                'start_time': start_time_str,
+                'end_time': end_time_str,
+                'duration_minutes': duration_minutes,
+                'smin': smin,
+                'emin': emin,
+                'level_assignments_by_level': level_assignments_by_level,
+            })
+            continue
 
         for (t_id, ed, os, oe) in seen_teacher_slots:
             if t_id == teacher_id and ed == allocation_exam_date and (smin < oe and emin > os):
@@ -36187,9 +36246,6 @@ def save_exam():
 
         seen_teacher_slots.append((teacher_id, allocation_exam_date, smin, emin))
 
-        venue = (a.get('venue') or '').strip().upper()
-        
-        # Enforce: one subject per class/session/day (within submission)
         slot_key = (int(academic_level_id), str(allocation_exam_date), str(session_type))
         if slot_key in seen_class_session_slots:
             return jsonify({
@@ -36209,6 +36265,9 @@ def save_exam():
             'end_time': end_time_str,
             'duration_minutes': duration_minutes,
         })
+
+    if manual_share_template and not template_allocations:
+        return jsonify({'success': False, 'message': 'Please add at least one subject allocation for the shared timetable.'}), 400
     
     connection = get_db_connection()
     if not connection:
@@ -36225,7 +36284,207 @@ def save_exam():
                     created_by = emp.get('id') if isinstance(emp, dict) else emp[0]
         
         with connection.cursor() as cursor:
-            if auto_generate:
+            if manual_share_template:
+                import random
+                from collections import defaultdict
+
+                level_ids = []
+                if level_ids_raw and isinstance(level_ids_raw, list):
+                    try:
+                        level_ids = sorted({int(x) for x in level_ids_raw if int(x) > 0})
+                    except (ValueError, TypeError):
+                        return jsonify({'success': False, 'message': 'Invalid level_ids.'}), 400
+                if not level_ids:
+                    return jsonify({'success': False, 'message': 'Select at least one class for the shared timetable.'}), 400
+
+                share_groups: list[list[int]] = []
+                if share_groups_raw is None:
+                    share_groups_raw = []
+                if not isinstance(share_groups_raw, list):
+                    return jsonify({'success': False, 'message': 'Invalid share_groups (must be a list).'}), 400
+
+                level_set = set(int(x) for x in level_ids)
+                claimed = set()
+                for g in share_groups_raw:
+                    if not isinstance(g, dict):
+                        continue
+                    raw_ids = g.get('level_ids')
+                    if not isinstance(raw_ids, list):
+                        continue
+                    try:
+                        ids = [int(x) for x in raw_ids if int(x) > 0]
+                    except (ValueError, TypeError):
+                        continue
+                    uniq = []
+                    for lid in ids:
+                        if lid not in level_set or lid in claimed:
+                            continue
+                        claimed.add(lid)
+                        uniq.append(int(lid))
+                    if len(uniq) >= 2:
+                        share_groups.append(sorted(uniq))
+
+                if not share_groups:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Shared manual registration requires at least one combined group with Share timetable enabled (2+ classes).'
+                    }), 400
+
+                all_share_level_ids = sorted({int(x) for grp in share_groups for x in grp})
+                ph = ','.join(['%s'] * len(all_share_level_ids))
+                cursor.execute(f"""
+                    SELECT id, level_category, level_name, level_code
+                    FROM academic_levels
+                    WHERE id IN ({ph})
+                """, tuple(all_share_level_ids))
+                level_venue_by_id = {}
+                for r in cursor.fetchall():
+                    lid = r.get('id') if isinstance(r, dict) else r[0]
+                    lcat = (r.get('level_category') if isinstance(r, dict) else (r[1] if len(r) > 1 else '')) or ''
+                    lname = (r.get('level_name') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')) or ''
+                    lcode = (r.get('level_code') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')) or ''
+                    code_u = str(lcode).strip().upper()
+                    if code_u:
+                        label = code_u
+                    else:
+                        parts = [p.strip() for p in (lcat, lname) if p and str(p).strip()]
+                        label = ' '.join(parts).strip().upper()
+                    level_venue_by_id[lid] = label if label else f'LEVEL {lid}'
+
+                cursor.execute(f"""
+                    SELECT tsa.academic_level_id, tsa.subject_id, tsa.teacher_id
+                    FROM teacher_subject_assignments tsa
+                    INNER JOIN subjects s ON s.id = tsa.subject_id AND s.status = 'active'
+                    INNER JOIN academic_levels al ON al.id = tsa.academic_level_id AND al.level_status = 'active'
+                    INNER JOIN employees emp ON emp.id = tsa.teacher_id
+                        AND emp.status = 'active'
+                        AND (emp.role = 'teachers' OR emp.role = 'teacher')
+                    WHERE tsa.academic_level_id IN ({ph})
+                """, tuple(all_share_level_ids))
+
+                excluded_by_ls = defaultdict(set)
+                subjects_by_level = defaultdict(set)
+                for row in cursor.fetchall() or []:
+                    lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
+                    sid = row.get('subject_id') if isinstance(row, dict) else row[1]
+                    tid = row.get('teacher_id') if isinstance(row, dict) else row[2]
+                    if lid and sid:
+                        subjects_by_level[int(lid)].add(int(sid))
+                    if lid and sid and tid:
+                        excluded_by_ls[(int(lid), int(sid))].add(int(tid))
+
+                cursor.execute("""
+                    SELECT id
+                    FROM employees
+                    WHERE status = 'active' AND (role = 'teachers' OR role = 'teacher')
+                    ORDER BY id ASC
+                """)
+                all_active_teacher_ids = [
+                    int(r.get('id') if isinstance(r, dict) else r[0])
+                    for r in (cursor.fetchall() or []) if (r.get('id') if isinstance(r, dict) else r[0])
+                ]
+                if not all_active_teacher_ids:
+                    return jsonify({'success': False, 'message': 'No active teachers found to supervise exams.'}), 400
+
+                all_active_set = set(all_active_teacher_ids)
+                candidate_by_ls = defaultdict(set)
+                for grp in share_groups:
+                    for lid in grp:
+                        for sid in sorted(subjects_by_level.get(int(lid), set())):
+                            key = (int(lid), int(sid))
+                            excluded = excluded_by_ls.get(key) or set()
+                            candidates = all_active_set.difference(excluded)
+                            if not candidates:
+                                return jsonify({
+                                    'success': False,
+                                    'message': f'No eligible supervisors for subject {sid} in class {lid}: all active teachers teach that subject in that class.'
+                                }), 400
+                            candidate_by_ls[key] = set(candidates)
+
+                def _teacher_conflicts(tid: int, ed: str, s: int, e: int) -> bool:
+                    for (t_id, day, os, oe) in seen_teacher_slots:
+                        if int(t_id) == int(tid) and str(day) == str(ed) and (s < oe and e > os):
+                            return True
+                    return False
+
+                normalized_allocations.clear()
+                seen_teacher_slots.clear()
+                seen_class_session_slots.clear()
+
+                for grp in share_groups:
+                    for tmpl in template_allocations:
+                        sid = int(tmpl['subject_id'])
+                        for lid in grp:
+                            if sid not in subjects_by_level.get(int(lid), set()):
+                                return jsonify({
+                                    'success': False,
+                                    'message': f'Subject in row is not allocated to all classes in a shared group (subject id {sid}, class {lid}).'
+                                }), 400
+
+                    for tmpl in template_allocations:
+                        subject_id = int(tmpl['subject_id'])
+                        allocation_exam_date = tmpl['exam_date']
+                        session_type = tmpl['session_type']
+                        smin = tmpl['smin']
+                        emin = tmpl['emin']
+                        la_by_level = tmpl.get('level_assignments_by_level') or {}
+                        used_in_slot = set()
+                        for level_id in grp:
+                            class_slot_key = (int(level_id), allocation_exam_date, session_type)
+                            if class_slot_key in seen_class_session_slots:
+                                return jsonify({
+                                    'success': False,
+                                    'message': 'Internal error: duplicate class slot while building shared manual timetable.'
+                                }), 500
+
+                            level_la = la_by_level.get(int(level_id))
+                            if not level_la or not level_la.get('teacher_id'):
+                                return jsonify({
+                                    'success': False,
+                                    'message': f'Assign a teacher for each combined class (class id {level_id}).'
+                                }), 400
+
+                            teacher_id = int(level_la['teacher_id'])
+                            candidates = candidate_by_ls.get((int(level_id), subject_id)) or set()
+                            if teacher_id not in candidates:
+                                return jsonify({
+                                    'success': False,
+                                    'message': f'Selected supervisor is not eligible for subject {subject_id} in class {level_id} (cannot supervise a subject they teach in that class).'
+                                }), 400
+                            if int(teacher_id) in used_in_slot:
+                                return jsonify({
+                                    'success': False,
+                                    'message': 'The same teacher cannot supervise more than one combined class in the same exam slot.'
+                                }), 400
+                            if _teacher_conflicts(int(teacher_id), allocation_exam_date, smin, emin):
+                                return jsonify({
+                                    'success': False,
+                                    'message': 'Teacher conflict: one teacher cannot supervise two exams in overlapping times on the same date.'
+                                }), 400
+
+                            used_in_slot.add(int(teacher_id))
+                            seen_class_session_slots.add(class_slot_key)
+                            seen_teacher_slots.append((int(teacher_id), allocation_exam_date, smin, emin))
+
+                            venue = (level_la.get('venue') or '').strip().upper()
+                            if not venue:
+                                venue = (tmpl.get('venue') or '').strip().upper()
+                            if not venue:
+                                venue = level_venue_by_id.get(int(level_id), f'LEVEL {int(level_id)}')
+
+                            normalized_allocations.append({
+                                'academic_level_id': int(level_id),
+                                'subject_id': subject_id,
+                                'teacher_id': int(teacher_id),
+                                'exam_date': allocation_exam_date,
+                                'venue': venue,
+                                'session_type': session_type,
+                                'start_time': tmpl['start_time'],
+                                'end_time': tmpl['end_time'],
+                                'duration_minutes': tmpl.get('duration_minutes'),
+                            })
+
+            elif auto_generate:
                 import random
                 from collections import defaultdict
 
@@ -37163,6 +37422,185 @@ def exam_evaluation_eligible_supervisors():
             })
     except Exception as e:
         print(f"Error eligible supervisors: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/exam-evaluation/check-supervisor-conflicts', methods=['POST'])
+@login_required
+def exam_evaluation_check_supervisor_conflicts():
+    """Live registration check: supervisor already booked in an overlapping exam slot."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    try:
+        teacher_id = int(data.get('teacher_id', 0))
+        exam_date = (data.get('exam_date') or '').strip()
+        session_type = (data.get('session_type') or '').strip().upper()
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid data'}), 400
+
+    if teacher_id <= 0 or not exam_date or not session_type:
+        return jsonify({'success': False, 'message': 'Missing supervisor, date, or session'}), 400
+
+    try:
+        datetime.strptime(exam_date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Invalid exam date'}), 400
+
+    session_presets = _default_exam_session_presets()
+    _tmp_conn = None
+    try:
+        _tmp_conn = get_db_connection()
+        if _tmp_conn:
+            with _tmp_conn.cursor() as _c:
+                session_presets = _load_exam_session_presets_from_db(_c)
+    except Exception:
+        session_presets = _default_exam_session_presets()
+    finally:
+        try:
+            if _tmp_conn:
+                _tmp_conn.close()
+        except Exception:
+            pass
+
+    def _time_to_minutes(t: str) -> int | None:
+        try:
+            parts = str(t).strip().split(':')
+            if len(parts) < 2:
+                return None
+            return int(parts[0]) * 60 + int(parts[1])
+        except Exception:
+            return None
+
+    def _minutes_to_time_str(total_minutes: int) -> str:
+        total_minutes = total_minutes % (24 * 60)
+        return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}:00"
+
+    def _calc_end(start_time_str: str, duration_min: int) -> str:
+        sm = _time_to_minutes(start_time_str)
+        if sm is None:
+            raise ValueError('Invalid start time')
+        return _minutes_to_time_str(sm + duration_min)
+
+    def _normalize_time_mysql(val):
+        if val is None:
+            return None
+        if isinstance(val, timedelta):
+            secs = int(val.total_seconds())
+            secs = secs % (24 * 3600)
+            mm = secs // 60
+            return f"{mm // 60:02d}:{mm % 60:02d}"
+        if hasattr(val, 'strftime'):
+            return val.strftime('%H:%M')
+        s = str(val).strip()
+        parts = s.split(':')
+        if len(parts) >= 2:
+            try:
+                return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+            except (ValueError, TypeError):
+                pass
+        return s[:5] if s else ''
+
+    try:
+        if session_type == 'CUSTOM':
+            start_time = (data.get('start_time') or '').strip()
+            try:
+                duration_minutes = int(data.get('duration_minutes', 0))
+            except (ValueError, TypeError):
+                duration_minutes = 0
+            if not start_time or duration_minutes <= 0:
+                return jsonify({'success': False, 'message': 'Custom session requires start time and duration'}), 400
+            end_time = _calc_end(start_time, duration_minutes)
+            start_time_str = start_time if len(start_time.split(':')) == 3 else f"{start_time}:00"
+            end_time_str = end_time
+        else:
+            if session_type not in session_presets:
+                return jsonify({'success': False, 'message': 'Invalid session type'}), 400
+            start_time_str, end_time_str = session_presets[session_type]
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Invalid time values'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT e.id, e.exam_name, e.session_type, e.start_time, e.end_time,
+                       al.level_name, al.level_category
+                FROM exams e
+                LEFT JOIN academic_levels al ON al.id = e.academic_level_id
+                WHERE e.supervisor_id = %s
+                  AND e.exam_date = %s
+                  AND e.start_time IS NOT NULL
+                  AND e.end_time IS NOT NULL
+                  AND (e.start_time < %s AND e.end_time > %s)
+                ORDER BY e.start_time ASC, e.id ASC
+                LIMIT 5
+            """, (teacher_id, exam_date, end_time_str, start_time_str))
+            rows = cursor.fetchall() or []
+
+            cursor.execute(f"""
+                SELECT full_name, {_employee_staff_identity_sql('employees')} AS employee_id
+                FROM employees WHERE id = %s LIMIT 1
+            """, (teacher_id,))
+            teacher_row = cursor.fetchone()
+            teacher_name = ''
+            if teacher_row:
+                teacher_name = (teacher_row.get('full_name') if isinstance(teacher_row, dict) else teacher_row[0]) or ''
+
+            conflicts = []
+            for r in rows:
+                level_name = (r.get('level_name') if isinstance(r, dict) else (r[5] if len(r) > 5 else '')) or ''
+                level_category = (r.get('level_category') if isinstance(r, dict) else (r[6] if len(r) > 6 else '')) or ''
+                level_label = level_name
+                if level_category:
+                    level_label = f"{level_name} ({level_category})" if level_name else str(level_category)
+                if not level_label:
+                    level_label = 'another academic level'
+                conflicts.append({
+                    'exam_id': int(r.get('id') if isinstance(r, dict) else r[0]),
+                    'exam_name': str((r.get('exam_name') if isinstance(r, dict) else r[1]) or ''),
+                    'session_type': str((r.get('session_type') if isinstance(r, dict) else r[2]) or ''),
+                    'start_time': _normalize_time_mysql(r.get('start_time') if isinstance(r, dict) else r[3]) or '',
+                    'end_time': _normalize_time_mysql(r.get('end_time') if isinstance(r, dict) else r[4]) or '',
+                    'level_name': level_label,
+                })
+
+            if not conflicts:
+                return jsonify({'success': True, 'busy': False, 'conflicts': []})
+
+            first = conflicts[0]
+            st = first.get('start_time', '')[:5] if first.get('start_time') else ''
+            en = first.get('end_time', '')[:5] if first.get('end_time') else ''
+            time_part = f" ({st}–{en})" if st and en else ''
+            who = teacher_name or 'This supervisor'
+            message = (
+                f"{who} is busy in {first.get('level_name', 'another academic level')} "
+                f"on {exam_date}{time_part}"
+                f" — {first.get('exam_name') or 'another exam'}."
+            )
+            return jsonify({
+                'success': True,
+                'busy': True,
+                'message': message,
+                'conflicts': conflicts,
+            })
+    except Exception as e:
+        print(f"Error check supervisor conflicts: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500

@@ -175,33 +175,216 @@
         background: color-mix(in srgb, #d97706 12%, #111827);
         color: #fcd34d;
     }
+
+    /* Mobile: tighter typography and spacing for small screens */
+    @media (max-width: 639px) {
+        .exam-eval-page {
+            font-size: 0.8125rem;
+            line-height: 1.35;
+        }
+        .exam-eval-page .dashboard-card {
+            padding: 0.75rem;
+            border-radius: 0.625rem;
+        }
+        .exam-eval-page h1 {
+            font-size: 1rem;
+            gap: 0.5rem;
+        }
+        .exam-eval-page h1 > div {
+            width: 1.75rem;
+            height: 1.75rem;
+        }
+        .exam-eval-page h1 i {
+            font-size: 0.6875rem;
+        }
+        .exam-eval-page h2 {
+            font-size: 0.875rem;
+            gap: 0.375rem;
+        }
+        .exam-eval-page h2 > div,
+        .exam-eval-page h3 > div {
+            width: 1.5rem;
+            height: 1.5rem;
+        }
+        .exam-eval-page h3 {
+            font-size: 0.875rem;
+        }
+        .exam-eval-page .modern-input,
+        .exam-eval-page select,
+        .exam-eval-page input[type="text"],
+        .exam-eval-page input[type="date"],
+        .exam-eval-page input[type="time"],
+        .exam-eval-page input[type="number"],
+        .exam-eval-page input[type="datetime-local"] {
+            font-size: 0.75rem;
+            padding: 0.375rem 0.5rem;
+        }
+        .exam-eval-page .modern-input.border-2,
+        .exam-eval-page input.border-2,
+        .exam-eval-page select.border-2 {
+            padding: 0.375rem 0.5rem;
+        }
+        .exam-eval-page label {
+            font-size: 0.6875rem;
+            margin-bottom: 0.25rem;
+        }
+        .exam-eval-page .modern-btn {
+            font-size: 0.75rem;
+            padding: 0.4375rem 0.75rem;
+        }
+        .exam-eval-page .exam-eval-segment {
+            font-size: 0.6875rem;
+        }
+        .exam-eval-page .exam-eval-segment label {
+            padding: 0.375rem 0.625rem;
+            font-size: 0.6875rem;
+        }
+        .exam-eval-page .exam-eval-chip {
+            font-size: 0.6875rem;
+            padding: 0.125rem 0.375rem;
+        }
+        .exam-eval-page .exam-eval-group {
+            padding: 0.5rem;
+        }
+        .exam-eval-page .allocation-card {
+            padding: 0.75rem;
+            border-radius: 0.625rem;
+        }
+        .exam-eval-page .allocation-card .text-sm {
+            font-size: 0.75rem;
+        }
+        .exam-eval-page .allocation-card label {
+            font-size: 0.6875rem;
+            margin-bottom: 0.375rem;
+        }
+        .exam-eval-page .allocation-card .space-y-4 > * + * {
+            margin-top: 0.625rem;
+        }
+        .exam-eval-page [class*="text-[11px]"],
+        .exam-eval-page [class*="text-[10px]"] {
+            font-size: 0.625rem;
+        }
+        .exam-eval-page .text-xs {
+            font-size: 0.6875rem;
+        }
+        .exam-eval-page .text-sm {
+            font-size: 0.75rem;
+        }
+        .exam-eval-page .text-base {
+            font-size: 0.8125rem;
+        }
+        .exam-eval-page .text-lg {
+            font-size: 0.875rem;
+        }
+        .exam-eval-page .text-xl {
+            font-size: 1rem;
+        }
+        .exam-eval-page .p-4 {
+            padding: 0.625rem;
+        }
+        .exam-eval-page .p-5 {
+            padding: 0.75rem;
+        }
+        .exam-eval-page .px-6 {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
+        .exam-eval-page .py-3 {
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+        }
+        .exam-eval-page .gap-3 {
+            gap: 0.5rem;
+        }
+        .exam-eval-page .gap-4 {
+            gap: 0.625rem;
+        }
+        .exam-eval-page .mb-4 {
+            margin-bottom: 0.75rem;
+        }
+        .exam-eval-page .mb-6 {
+            margin-bottom: 0.875rem;
+        }
+        .exam-eval-page .space-y-4 > * + * {
+            margin-top: 0.75rem;
+        }
+        .exam-eval-page .rounded-xl {
+            border-radius: 0.625rem;
+        }
+        .exam-eval-page .rounded-2xl {
+            border-radius: 0.75rem;
+        }
+        .exam-eval-page .h-10.w-10,
+        .exam-eval-page .h-10 {
+            width: 2rem;
+            height: 2rem;
+        }
+        .exam-eval-page .h-10.w-10 i.text-lg {
+            font-size: 0.875rem;
+        }
+        .exam-eval-page .py-8 {
+            padding-top: 1.25rem;
+            padding-bottom: 1.25rem;
+        }
+        .exam-eval-page .py-12 {
+            padding-top: 1.5rem;
+            padding-bottom: 1.5rem;
+        }
+        .exam-eval-page .w-20.h-20 {
+            width: 3rem;
+            height: 3rem;
+        }
+        .exam-eval-page .w-20.h-20 .text-3xl {
+            font-size: 1.25rem;
+        }
+        .exam-eval-page .exam-eval-calendar-scroll button {
+            height: 1.625rem;
+            font-size: 0.6875rem;
+        }
+        .exam-eval-page .grid.grid-cols-7.gap-1 {
+            gap: 0.125rem;
+        }
+        .exam-eval-page .fixed.inset-0 h3 {
+            font-size: 0.875rem;
+        }
+        .exam-eval-page .fixed.inset-0 .text-sm {
+            font-size: 0.75rem;
+        }
+        .exam-eval-page .fixed.inset-0 .modern-btn {
+            font-size: 0.75rem;
+            padding: 0.4375rem 0.75rem;
+        }
+        .exam-eval-page .fixed.inset-0 label {
+            font-size: 0.6875rem;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="exam-eval-page p-3 sm:p-4 lg:p-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 max-w-[100vw] overflow-x-hidden portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="examEvaluation()" x-init="init()">
     <div class="mb-4 scroll-reveal">
-        <h1 class="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2.5">
-            <div class="w-9 h-9 shrink-0 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-md shadow-brand-primary/15">
-                <i class="fas fa-clipboard-check text-white text-sm"></i>
+        <h1 class="text-base sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2 sm:gap-2.5">
+            <div class="w-7 h-7 sm:w-9 sm:h-9 shrink-0 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-md shadow-brand-primary/15">
+                <i class="fas fa-clipboard-check text-white text-[10px] sm:text-sm"></i>
             </div>
             <span>Exam &amp; Evaluation</span>
         </h1>
-        <p class="mt-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400">Register exams and manage timetables.</p>
+        <p class="mt-1 text-[11px] sm:text-sm text-gray-500 dark:text-gray-400">Register exams and manage timetables.</p>
     </div>
 
     <!-- Register Exam + Allocations -->
-    <div class="dashboard-card rounded-xl shadow-lg p-4 sm:p-5 mb-4">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-            <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <div class="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm">
-                    <i class="fas fa-plus-circle text-white text-xs"></i>
+    <div class="dashboard-card rounded-xl shadow-lg p-3 sm:p-5 mb-3 sm:mb-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 sm:mb-4">
+            <h2 class="text-sm sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <div class="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm">
+                    <i class="fas fa-plus-circle text-white text-[10px] sm:text-xs"></i>
                 </div>
                 Register exam
             </h2>
             <button type="button"
                     @click="toggleRegisterExamPanel()"
-                    class="modern-btn w-full sm:w-auto px-3 py-2 text-sm bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-lg font-semibold transition-all shadow-md">
+                    class="modern-btn w-full sm:w-auto px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-lg font-semibold transition-all shadow-md">
                 <i class="fas fa-plus mr-1.5 text-xs"></i>
                 <span x-text="showRegisterExamPanel ? 'Hide' : 'New exam'"></span>
             </button>
@@ -210,19 +393,19 @@
         <div x-show="showRegisterExamPanel" x-cloak>
 
         <!-- Success Message -->
-        <div x-show="successMessage" x-cloak class="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded-lg flex items-center shadow-sm">
-            <i class="fas fa-check-circle text-green-600 dark:text-green-400 mr-3 text-xl"></i>
+        <div x-show="successMessage" x-cloak class="mb-3 sm:mb-4 p-2.5 sm:p-4 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded-lg flex items-center shadow-sm text-xs sm:text-sm">
+            <i class="fas fa-check-circle text-green-600 dark:text-green-400 mr-2 sm:mr-3 text-sm sm:text-xl shrink-0"></i>
             <span class="text-green-800 dark:text-green-300 font-medium" x-text="successMessage"></span>
         </div>
 
         <!-- Error Message -->
-        <div x-show="errorMessage" x-cloak class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg flex items-center shadow-sm">
-            <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400 mr-3 text-xl"></i>
+        <div x-show="errorMessage" x-cloak class="mb-3 sm:mb-4 p-2.5 sm:p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg flex items-center shadow-sm text-xs sm:text-sm">
+            <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400 mr-2 sm:mr-3 text-sm sm:text-xl shrink-0"></i>
             <span class="text-red-800 dark:text-red-300 font-medium" x-text="errorMessage"></span>
         </div>
 
         <!-- Client conflict warning -->
-        <div x-show="clientConflictMessage" x-cloak class="mb-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded-lg flex items-center text-sm">
+        <div x-show="clientConflictMessage" x-cloak class="mb-3 p-2.5 sm:p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded-lg flex items-center text-xs sm:text-sm">
             <i class="fas fa-exclamation-triangle text-yellow-700 dark:text-yellow-400 mr-2"></i>
             <span class="text-yellow-900 dark:text-yellow-200 font-medium" x-text="clientConflictMessage"></span>
         </div>
@@ -291,35 +474,103 @@
             <!-- Registration mode -->
             <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
                 <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Mode</p>
-                <div class="exam-eval-segment inline-flex rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden text-sm font-semibold">
-                    <label class="cursor-pointer px-4 py-2 border-r border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-colors">
+                <div class="exam-eval-segment inline-flex rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden text-xs sm:text-sm font-semibold">
+                    <label class="cursor-pointer px-3 py-1.5 sm:px-4 sm:py-2 border-r border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-colors">
                         <input type="radio" name="registrationMode" value="auto" x-model="registrationMode" @change="onRegistrationModeChange()" class="sr-only">
                         Auto schedule
                     </label>
-                    <label class="cursor-pointer px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-colors">
+                    <label class="cursor-pointer px-3 py-1.5 sm:px-4 sm:py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-colors">
                         <input type="radio" name="registrationMode" value="manual" x-model="registrationMode" @change="onRegistrationModeChange()" class="sr-only">
                         Manual
                     </label>
                 </div>
             </div>
 
-            <!-- Academic levels — manual (single) -->
+            <!-- Academic levels — manual (single class or combined shared timetable) -->
             <div class="pt-4 border-t border-gray-200 dark:border-gray-700" x-show="registrationMode === 'manual'">
-                <div class="mb-3">
-                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                        Class <span class="text-red-500">*</span>
-                    </label>
-                    <select x-model="selectedAcademicLevel"
-                            @change="onAcademicLevelChange()"
-                            :required="registrationMode === 'manual'"
-                            class="modern-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
-                        <option value="">Select Academic Level</option>
-                        <template x-for="level in academicLevels" :key="level.id">
-                            <option :value="level.id" x-text="level.level_name + ' (' + level.level_category + ')'"></option>
-                        </template>
-                    </select>
-
+                <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
+                    <div class="min-w-0 flex-1">
+                        <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                            Classes <span class="text-red-500">*</span>
+                            <a href="{{ employee_dash_url('combined-academic-levels') }}" class="ml-1 text-brand-primary font-medium hover:underline" title="Manage combined academic levels"><i class="fas fa-layer-group"></i></a>
+                        </label>
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
+                            <i class="fas fa-link text-brand-primary mr-0.5" aria-hidden="true"></i>
+                            Pick one class, or check multiple in a combined group and enable <strong class="font-semibold text-gray-600 dark:text-gray-300">Share timetable</strong> so they use the same exam dates and sessions.
+                        </p>
+                    </div>
+                    <div class="flex gap-1.5 shrink-0">
+                        <button type="button" @click="selectAllLevels(); onManualLevelsChange()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white">All</button>
+                        <button type="button" @click="clearLevels(); onManualLevelsChange()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Clear</button>
+                    </div>
                 </div>
+
+                <div class="space-y-2" x-show="levelCombinations.length > 0">
+                    <template x-for="combo in levelCombinations" :key="'manual-combo-' + combo.combo_id">
+                        <div class="exam-eval-group p-2 transition-colors"
+                             :class="isComboShareEnabled(combo.combo_id) && includedCountForCombo(combo.combo_id) >= 2 ? 'exam-eval-group--shared' : ''">
+                            <div class="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-gray-100 dark:border-gray-700">
+                                <span class="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate" x-text="combo.level_name || 'Combined group'"></span>
+                                <span class="exam-eval-share-badge shrink-0"
+                                      x-show="isComboShareEnabled(combo.combo_id) && includedCountForCombo(combo.combo_id) >= 2"
+                                      title="These classes use the same exam dates and sessions">
+                                    <i class="fas fa-link text-[9px]" aria-hidden="true"></i>
+                                    Shared timetable
+                                </span>
+                                <span class="text-[10px] text-gray-500 shrink-0 ml-auto" x-text="includedCountForCombo(combo.combo_id) + '/' + (combo.members || []).length + ' classes'"></span>
+                            </div>
+                            <label class="flex items-center gap-2 mb-1.5 cursor-pointer"
+                                   :class="includedCountForCombo(combo.combo_id) < 2 ? 'opacity-50 cursor-not-allowed' : ''">
+                                <input type="checkbox"
+                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary h-3.5 w-3.5"
+                                       :checked="isComboShareEnabled(combo.combo_id)"
+                                       :disabled="includedCountForCombo(combo.combo_id) < 2"
+                                       @change="toggleComboShare(combo.combo_id); onManualLevelsChange()">
+                                <span class="text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                                    Share timetable across checked classes
+                                    <span class="text-gray-400 dark:text-gray-500 font-normal" x-show="includedCountForCombo(combo.combo_id) < 2">(pick 2+ classes)</span>
+                                </span>
+                            </label>
+                            <div class="flex flex-wrap gap-1">
+                                <template x-for="member in (combo.members || [])" :key="'manual-combo-' + combo.combo_id + '-m-' + member.id">
+                                    <label class="exam-eval-chip">
+                                        <input type="checkbox"
+                                               class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary h-3 w-3"
+                                               :checked="isLevelIncluded(member.id)"
+                                               @change="toggleCombinationMember(combo.combo_id, member.id); onManualLevelsChange()">
+                                        <span x-text="member.level_name"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="mt-2" x-show="ungroupedLevels.length > 0">
+                    <p class="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1" x-show="levelCombinations.length > 0">Other classes</p>
+                    <div class="flex flex-wrap gap-1 p-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40 max-h-32 overflow-y-auto">
+                        <template x-for="level in ungroupedLevels" :key="'manual-ung-' + level.id">
+                            <label class="exam-eval-chip">
+                                <input type="checkbox"
+                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary h-3 w-3"
+                                       :checked="isLevelIncluded(level.id)"
+                                       @change="toggleUngroupedLevel(level.id); onManualLevelsChange()">
+                                <span x-text="level.level_name"></span>
+                            </label>
+                        </template>
+                    </div>
+                </div>
+
+                <p class="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400" x-show="selectedLevelIds.length === 0">Select at least one class.</p>
+                <p class="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400"
+                   x-show="selectedLevelIds.length > 1 && !manualSharedTimetableActive">
+                    Multiple classes selected: enable <strong>Share timetable</strong> on a combined group, or select only one class.
+                </p>
+                <p class="mt-1.5 text-[11px] text-brand-primary dark:text-brand-primary/90 font-medium"
+                   x-show="manualSharedTimetableActive">
+                    <i class="fas fa-info-circle mr-0.5"></i>
+                    Shared timetable: enter subjects, dates, and sessions once — pick a teacher and venue for each combined class below.
+                </p>
             </div>
 
             <!-- Academic levels — auto (multi) -->
@@ -524,16 +775,16 @@
                 </div>
                 </div>
 
-                <div class="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <div class="mt-3 sm:mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
                     <button type="button"
                             @click="resetAll()"
                             :disabled="savingExam"
-                            class="modern-btn order-2 sm:order-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
+                            class="modern-btn order-2 sm:order-1 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
                         <i class="fas fa-redo mr-1.5 text-xs"></i>Reset
                     </button>
                     <button type="submit"
                             :disabled="isRegisterDisabled"
-                            class="modern-btn order-1 sm:order-2 px-5 py-2 text-sm bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-lg font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto sm:ml-auto">
+                            class="modern-btn order-1 sm:order-2 px-4 py-1.5 sm:px-5 sm:py-2 text-xs sm:text-sm bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-lg font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto sm:ml-auto">
                         <i class="fas fa-save text-xs" x-show="!savingExam"></i>
                         <i class="fas fa-spinner fa-spin text-xs" x-show="savingExam"></i>
                         <span x-text="savingExam ? 'Saving…' : 'Register exam'"></span>
@@ -542,18 +793,18 @@
             </div>
 
             <!-- Allocations -->
-            <div class="pt-4 border-t border-gray-200 dark:border-gray-700" x-show="registrationMode === 'manual' && selectedAcademicLevel">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-                    <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                        <div class="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
-                            <i class="fas fa-tasks text-white text-sm"></i>
+            <div class="pt-4 border-t border-gray-200 dark:border-gray-700" x-show="registrationMode === 'manual' && manualLevelsReady">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-4">
+                    <h3 class="text-sm sm:text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                        <div class="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-2 sm:mr-3 shadow-md">
+                            <i class="fas fa-tasks text-white text-[10px] sm:text-sm"></i>
                         </div>
                         Subject Allocations
                     </h3>
                     <button type="button"
                             @click="addAllocation()"
-                            :disabled="!selectedAcademicLevel"
-                            class="modern-btn px-4 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl text-sm font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            :disabled="!manualLevelsReady"
+                            class="modern-btn px-3 py-1.5 sm:px-4 sm:py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
                         <i class="fas fa-plus mr-2"></i>Add Allocation
                     </button>
                 </div>
@@ -561,60 +812,22 @@
                 <!-- Mobile cards -->
                 <div class="space-y-4 md:hidden">
                     <template x-for="(row, idx) in allocations" :key="row._key">
-                        <div class="allocation-card p-5 rounded-xl">
-                            <div class="flex items-center justify-between mb-3">
-                                <div class="text-sm font-semibold text-gray-900 dark:text-white">Allocation <span x-text="idx + 1"></span></div>
-                                <button type="button" @click="removeAllocation(idx)" class="text-red-600 hover:text-red-700 text-sm font-semibold">
+                        <div class="allocation-card p-3 sm:p-5 rounded-xl">
+                            <div class="flex items-center justify-between mb-2 sm:mb-3">
+                                <div class="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">Allocation <span x-text="idx + 1"></span></div>
+                                <button type="button" @click="removeAllocation(idx)" class="text-red-600 hover:text-red-700 text-xs sm:text-sm font-semibold">
                                     <i class="fas fa-trash mr-1"></i>Remove
                                 </button>
                             </div>
 
                             <div class="space-y-4">
                                 <div>
-                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Subject *</label>
-                                    <select x-model="row.subject_id"
-                                            @change="onRowChange()"
-                                            :class="getSubjectSelectClass(row)"
-                                            class="modern-input w-full px-3 py-2.5 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
-                                        <option value="">Select Subject</option>
-                                        <template x-for="subject in getAvailableSubjects(row)" :key="subject.id">
-                                            <option :value="subject.id" x-text="subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '')"></option>
-                                        </template>
-                                    </select>
-                                    <p x-show="isSubjectDuplicate(row)" class="mt-2 text-xs text-red-600 dark:text-red-400 font-medium">
-                                        <i class="fas fa-exclamation-triangle mr-1"></i>This subject is already used for this academic level.
-                                    </p>
-                                </div>
-
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Teacher *</label>
-                                    <select x-model="row.teacher_id"
-                                            @change="onRowChange()"
-                                            class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
-                                        <option value="">Select Teacher</option>
-                                        <template x-for="t in teachers" :key="t.id">
-                                            <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
-                                        </template>
-                                    </select>
-                                </div>
-
-                                <div>
                                     <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Date *</label>
-                                    <input type="date" 
+                                    <input type="date"
                                            x-model="row.exam_date"
                                            @change="onRowChange()"
                                            :required="registrationMode === 'manual'"
                                            class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
-                                </div>
-
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Venue</label>
-                                    <input type="text"
-                                           x-model="row.venue"
-                                           @input="row.venue = $event.target.value.toUpperCase(); onRowChange()"
-                                           class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white uppercase focus:ring-2 focus:ring-brand-primary"
-                                           placeholder="E.G., HALL A"
-                                           style="text-transform: uppercase;">
                                 </div>
 
                                 <div>
@@ -662,6 +875,88 @@
                                         </div>
                                     </template>
                                 </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Subject *</label>
+                                    <select x-model="row.subject_id"
+                                            @change="onRowChange()"
+                                            :class="getSubjectSelectClass(row)"
+                                            class="modern-input w-full px-3 py-2.5 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                        <option value="">Select Subject</option>
+                                        <template x-for="subject in getAvailableSubjects(row)" :key="subject.id">
+                                            <option :value="subject.id" x-text="formatSubjectOptionLabel(subject, row)"></option>
+                                        </template>
+                                    </select>
+                                    <p x-show="row.subject_id && getSubjectAllocatedTeacherText(row)"
+                                       class="mt-1.5 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                                        <span class="font-semibold text-gray-700 dark:text-gray-300">Allocated teacher:</span>
+                                        <span x-text="getSubjectAllocatedTeacherText(row)"></span>
+                                    </p>
+                                    <p x-show="isSubjectDuplicate(row)" class="mt-2 text-xs text-red-600 dark:text-red-400 font-medium">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>This subject is already used for this academic level.
+                                    </p>
+                                </div>
+
+                                <div x-show="!manualSharedTimetableActive">
+                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Venue</label>
+                                    <input type="text"
+                                           x-model="row.venue"
+                                           @input="row.venue = $event.target.value.toUpperCase(); onRowChange()"
+                                           class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white uppercase focus:ring-2 focus:ring-brand-primary"
+                                           placeholder="E.G., HALL A"
+                                           style="text-transform: uppercase;">
+                                </div>
+
+                                <div x-show="!manualSharedTimetableActive">
+                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Supervisor *</label>
+                                    <select x-model="row.teacher_id"
+                                            @change="onRowChange()"
+                                            :class="supervisorSelectClass(row, null)"
+                                            class="modern-input w-full px-3 py-2.5 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                        <option value="">Select Supervisor</option>
+                                        <template x-for="t in teachers" :key="t.id">
+                                            <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
+                                        </template>
+                                    </select>
+                                    <p x-show="hasSupervisorConflict(row, null)"
+                                       class="mt-1.5 text-xs text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                                        <span x-text="getSupervisorConflictMessage(row, null)"></span>
+                                    </p>
+                                </div>
+
+                                <template x-if="manualSharedTimetableActive">
+                                    <div class="space-y-3">
+                                        <template x-for="lvl in getManualShareLevels()" :key="'mvs-' + row._key + '-lvl-' + lvl.id">
+                                            <div class="rounded-lg border border-gray-200 dark:border-gray-600 p-3 bg-gray-50/80 dark:bg-gray-800/40">
+                                                <p class="text-xs font-bold text-gray-700 dark:text-gray-200 mb-2"
+                                                   x-text="lvl.level_name + (lvl.level_category ? ' (' + lvl.level_category + ')' : '')"></p>
+                                                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Venue</label>
+                                                <input type="text"
+                                                       x-model="row.level_assignments[String(lvl.id)].venue"
+                                                       @input="row.level_assignments[String(lvl.id)].venue = $event.target.value.toUpperCase(); onRowChange()"
+                                                       class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white uppercase focus:ring-2 focus:ring-brand-primary mb-3"
+                                                       placeholder="E.G., HALL A"
+                                                       style="text-transform: uppercase;">
+                                                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Supervisor *</label>
+                                                <select x-model="row.level_assignments[String(lvl.id)].teacher_id"
+                                                        @change="onRowChange()"
+                                                        :class="supervisorSelectClass(row, lvl.id)"
+                                                        class="modern-input w-full px-3 py-2.5 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                                    <option value="">Select Supervisor</option>
+                                                    <template x-for="t in teachers" :key="t.id">
+                                                        <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
+                                                    </template>
+                                                </select>
+                                                <p x-show="hasSupervisorConflict(row, lvl.id)"
+                                                   class="mt-1.5 text-xs text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                                    <span x-text="getSupervisorConflictMessage(row, lvl.id)"></span>
+                                                </p>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
                             </div>
                         </div>
                     </template>
@@ -673,11 +968,12 @@
                         <table class="w-full border-collapse">
                             <thead>
                                 <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
-                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject</th>
-                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Teacher</th>
                                     <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Date</th>
-                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Venue</th>
                                     <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Session / Time</th>
+                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject</th>
+                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold" x-show="!manualSharedTimetableActive">Venue</th>
+                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold" x-show="manualSharedTimetableActive">Venue (per class)</th>
+                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Supervisor</th>
                                     <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
                                 </tr>
                             </thead>
@@ -685,44 +981,14 @@
                                 <template x-for="(row, idx) in allocations" :key="row._key">
                                     <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top transition-colors" :class="{'bg-red-50 dark:bg-red-900/10': isSubjectDuplicate(row)}">
                                     <td class="p-3 sm:p-4">
-                                        <select x-model="row.subject_id" @change="onRowChange()"
-                                                :class="getSubjectSelectClass(row)"
-                                                class="modern-input w-full px-3 py-2 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
-                                            <option value="">Select Subject</option>
-                                            <template x-for="subject in getAvailableSubjects(row)" :key="subject.id">
-                                                <option :value="subject.id" x-text="subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '')"></option>
-                                            </template>
-                                        </select>
-                                        <p x-show="isSubjectDuplicate(row)" class="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
-                                            <i class="fas fa-exclamation-triangle mr-1"></i>Duplicate subject
-                                        </p>
-                                    </td>
-                                    <td class="p-3 sm:p-4">
-                                        <select x-model="row.teacher_id" @change="onRowChange()"
-                                                class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
-                                            <option value="">Select Teacher</option>
-                                            <template x-for="t in teachers" :key="t.id">
-                                                <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
-                                            </template>
-                                        </select>
-                                    </td>
-                                    <td class="p-3 sm:p-4">
-                                        <input type="date" 
+                                        <input type="date"
                                                x-model="row.exam_date"
                                                @change="onRowChange()"
                                                :required="registrationMode === 'manual'"
                                                class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
                                     </td>
                                     <td class="p-3 sm:p-4">
-                                        <input type="text"
-                                               x-model="row.venue"
-                                               @input="row.venue = $event.target.value.toUpperCase(); onRowChange()"
-                                               class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white uppercase focus:ring-2 focus:ring-brand-primary"
-                                               placeholder="E.G., HALL A"
-                                               style="text-transform: uppercase;">
-                                    </td>
-                                    <td class="p-3 sm:p-4">
-                                        <div class="grid grid-cols-1 gap-2">
+                                        <div class="grid grid-cols-1 gap-2 min-w-[10rem]">
                                             <select x-model="row.session_type" @change="applySessionPreset(row); onRowChange()"
                                                     class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
                                                 <option value="">Select Session</option>
@@ -757,6 +1023,86 @@
                                             </template>
                                         </div>
                                     </td>
+                                    <td class="p-3 sm:p-4">
+                                        <select x-model="row.subject_id" @change="onRowChange()"
+                                                :class="getSubjectSelectClass(row)"
+                                                class="modern-input w-full px-3 py-2 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                            <option value="">Select Subject</option>
+                                            <template x-for="subject in getAvailableSubjects(row)" :key="subject.id">
+                                                <option :value="subject.id" x-text="formatSubjectOptionLabel(subject, row)"></option>
+                                            </template>
+                                        </select>
+                                        <p x-show="row.subject_id && getSubjectAllocatedTeacherText(row)"
+                                           class="mt-1.5 text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed max-w-xs">
+                                            <span class="font-semibold text-gray-700 dark:text-gray-300">Allocated teacher:</span>
+                                            <span x-text="getSubjectAllocatedTeacherText(row)"></span>
+                                        </p>
+                                        <p x-show="isSubjectDuplicate(row)" class="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
+                                            <i class="fas fa-exclamation-triangle mr-1"></i>Duplicate subject
+                                        </p>
+                                    </td>
+                                    <td class="p-3 sm:p-4">
+                                        <div x-show="!manualSharedTimetableActive">
+                                            <input type="text"
+                                                   x-model="row.venue"
+                                                   @input="row.venue = $event.target.value.toUpperCase(); onRowChange()"
+                                                   class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white uppercase focus:ring-2 focus:ring-brand-primary"
+                                                   placeholder="E.G., HALL A"
+                                                   style="text-transform: uppercase;">
+                                        </div>
+                                        <div x-show="manualSharedTimetableActive" class="space-y-2 min-w-[10rem]">
+                                            <template x-for="lvl in getManualShareLevels()" :key="'dv-' + row._key + '-lvl-' + lvl.id">
+                                                <div>
+                                                    <p class="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1"
+                                                       x-text="lvl.level_name"></p>
+                                                    <input type="text"
+                                                           x-model="row.level_assignments[String(lvl.id)].venue"
+                                                           @input="row.level_assignments[String(lvl.id)].venue = $event.target.value.toUpperCase(); onRowChange()"
+                                                           class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white uppercase focus:ring-2 focus:ring-brand-primary"
+                                                           placeholder="E.G., HALL A"
+                                                           style="text-transform: uppercase;">
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </td>
+                                    <td class="p-3 sm:p-4">
+                                        <div x-show="!manualSharedTimetableActive">
+                                            <select x-model="row.teacher_id" @change="onRowChange()"
+                                                    :class="supervisorSelectClass(row, null)"
+                                                    class="modern-input w-full px-3 py-2 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                                <option value="">Select Supervisor</option>
+                                                <template x-for="t in teachers" :key="t.id">
+                                                    <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
+                                                </template>
+                                            </select>
+                                            <p x-show="hasSupervisorConflict(row, null)"
+                                               class="mt-1 text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed max-w-xs">
+                                                <i class="fas fa-exclamation-triangle mr-1"></i>
+                                                <span x-text="getSupervisorConflictMessage(row, null)"></span>
+                                            </p>
+                                        </div>
+                                        <div x-show="manualSharedTimetableActive" class="space-y-2 min-w-[12rem]">
+                                            <template x-for="lvl in getManualShareLevels()" :key="'d-' + row._key + '-lvl-' + lvl.id">
+                                                <div>
+                                                    <p class="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1"
+                                                       x-text="lvl.level_name"></p>
+                                                    <select x-model="row.level_assignments[String(lvl.id)].teacher_id" @change="onRowChange()"
+                                                            :class="supervisorSelectClass(row, lvl.id)"
+                                                            class="modern-input w-full px-3 py-2 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                                        <option value="">Select Supervisor</option>
+                                                        <template x-for="t in teachers" :key="t.id">
+                                                            <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
+                                                        </template>
+                                                    </select>
+                                                    <p x-show="hasSupervisorConflict(row, lvl.id)"
+                                                       class="mt-1 text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
+                                                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                                                        <span x-text="getSupervisorConflictMessage(row, lvl.id)"></span>
+                                                    </p>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </td>
                                     <td class="p-3 sm:p-4 text-center">
                                         <button type="button" @click="removeAllocation(idx)"
                                                 class="modern-btn px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-all shadow-md">
@@ -774,19 +1120,19 @@
                 </div>
             </div>
 
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-gray-200 dark:border-gray-700">
                 <button type="button"
                         @click="resetAll()"
                         :disabled="savingExam"
-                        class="modern-btn px-6 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
-                    <i class="fas fa-redo mr-2"></i>Reset
+                        class="modern-btn px-4 py-2 sm:px-6 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
+                    <i class="fas fa-redo mr-1.5 sm:mr-2"></i>Reset
                 </button>
                 <button type="submit"
                         :disabled="isRegisterDisabled"
-                        class="modern-btn px-6 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
-                    <i class="fas fa-save mr-2" x-show="!savingExam"></i>
-                    <i class="fas fa-spinner fa-spin mr-2" x-show="savingExam"></i>
-                    <span x-text="savingExam ? 'Registering...' : (registrationMode === 'auto' ? 'Register exam (auto-schedule all levels)' : 'Register Exam & Save Allocations')"></span>
+                        class="modern-btn px-4 py-2 sm:px-6 sm:py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                    <i class="fas fa-save mr-1.5 sm:mr-2" x-show="!savingExam"></i>
+                    <i class="fas fa-spinner fa-spin mr-1.5 sm:mr-2" x-show="savingExam"></i>
+                    <span x-text="savingExam ? 'Registering...' : (registrationMode === 'auto' ? 'Register exam (auto-schedule all levels)' : (manualSharedTimetableActive ? 'Register shared timetable' : 'Register Exam & Save Allocations'))"></span>
                 </button>
             </div>
             </div>
@@ -795,20 +1141,20 @@
     </div>
 
     <!-- Registered Exam Allocations: open full timetables on dedicated page -->
-    <div class="dashboard-card rounded-xl shadow-lg p-4 sm:p-5">
-        <div class="flex flex-col gap-4 mb-4">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 min-w-0">
-                    <div class="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm shrink-0">
-                        <i class="fas fa-list text-white text-xs"></i>
+    <div class="dashboard-card rounded-xl shadow-lg p-3 sm:p-5">
+        <div class="flex flex-col gap-3 sm:gap-4 mb-3 sm:mb-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+                <h2 class="text-sm sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 min-w-0">
+                    <div class="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm shrink-0">
+                        <i class="fas fa-list text-white text-[10px] sm:text-xs"></i>
                     </div>
                     Registered exams
                 </h2>
-                <span class="px-4 py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-sm shrink-0 self-start sm:self-center">
+                <span class="px-3 py-1 sm:px-4 sm:py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-xs sm:text-sm shrink-0 self-start sm:self-center">
                     <span x-text="uniqueExams.length"></span> exam(s)
                 </span>
             </div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">
+            <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 leading-snug">
                 <i class="fas fa-star text-amber-500"></i> = current exam for marks sheets ·
                 <i class="fas fa-clock text-emerald-600 dark:text-emerald-400"></i> = set when marks entry closes · open a row for timetable.
             </p>
@@ -823,25 +1169,25 @@
             <span class="text-green-800 dark:text-green-300 font-medium" x-text="successMessage"></span>
         </div>
 
-        <div x-show="uniqueExams.length === 0" class="text-center py-12">
-            <div class="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i class="fas fa-inbox text-gray-400 text-3xl"></i>
+        <div x-show="uniqueExams.length === 0" class="text-center py-8 sm:py-12">
+            <div class="w-14 h-14 sm:w-20 sm:h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                <i class="fas fa-inbox text-gray-400 text-xl sm:text-3xl"></i>
             </div>
-            <p class="text-gray-600 dark:text-gray-400 text-lg">No exams registered yet.</p>
+            <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-lg">No exams registered yet.</p>
         </div>
 
-        <div x-show="uniqueExams.length > 0" class="space-y-4 md:space-y-0">
+        <div x-show="uniqueExams.length > 0" class="space-y-3 sm:space-y-4 md:space-y-0">
             <!-- Mobile: exam cards -->
-            <div class="md:hidden space-y-4">
+            <div class="md:hidden space-y-3">
                 <template x-for="exam in uniqueExams" :key="'card-' + exam._key">
-                    <div class="allocation-card rounded-xl p-4 sm:p-5 cursor-pointer transition-shadow hover:shadow-md min-w-0"
+                    <div class="allocation-card rounded-xl p-3 sm:p-5 cursor-pointer transition-shadow hover:shadow-md min-w-0"
                          :class="registeredCurrentExamKey && exam._key === registeredCurrentExamKey ? 'ring-2 ring-brand-primary ring-offset-2 dark:ring-offset-gray-900' : ''"
                          @click="window.location.href = registeredExamDetailUrl(exam)">
                         <div class="flex items-start justify-between gap-3 mb-3">
                             <div class="min-w-0 flex-1">
                                 <a :href="registeredExamDetailUrl(exam)"
                                    @click.stop
-                                   class="text-base font-bold text-gray-900 dark:text-white hover:text-brand-primary break-words"
+                                   class="text-sm sm:text-base font-bold text-gray-900 dark:text-white hover:text-brand-primary break-words"
                                    x-text="exam.exam_name"></a>
                                 <span x-show="registeredCurrentExamKey && exam._key === registeredCurrentExamKey"
                                       class="ml-2 align-middle text-[10px] font-bold uppercase tracking-wide text-white bg-brand-primary px-1.5 py-0.5 rounded">Current</span>
@@ -852,14 +1198,14 @@
                             <button type="button"
                                     @click.stop="setCurrentRegisteredExam(exam)"
                                     :disabled="savingRegisteredCurrentExam"
-                                    class="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-amber-200 dark:border-amber-700/60 bg-white dark:bg-gray-900 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    class="shrink-0 inline-flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl border-2 border-amber-200 dark:border-amber-700/60 bg-white dark:bg-gray-900 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
                                     :title="registeredCurrentExamKey === exam._key ? 'Current exam' : 'Set as current exam'">
-                                <i class="text-lg" aria-hidden="true"
+                                <i class="text-sm sm:text-lg" aria-hidden="true"
                                    :class="registeredCurrentExamKey === exam._key ? 'fas fa-star' : 'far fa-star'"></i>
                                 <span class="sr-only" x-text="registeredCurrentExamKey === exam._key ? 'Current exam' : 'Set as school-wide current exam'"></span>
                             </button>
                         </div>
-                        <dl class="grid grid-cols-1 gap-2 text-sm mb-4">
+                        <dl class="grid grid-cols-1 gap-1.5 sm:gap-2 text-xs sm:text-sm mb-3 sm:mb-4">
                             <div class="flex flex-wrap gap-x-2 gap-y-1">
                                 <dt class="text-gray-500 dark:text-gray-400 font-medium shrink-0">Type</dt>
                                 <dd class="text-gray-900 dark:text-white font-semibold" x-text="exam.exam_type || '—'"></dd>
@@ -873,32 +1219,32 @@
                                 <dd class="text-gray-900 dark:text-white" x-text="exam.term_name || '—'"></dd>
                             </div>
                         </dl>
-                        <div class="flex flex-col gap-3 pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop>
+                        <div class="flex flex-col gap-2 sm:gap-3 pt-2 sm:pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop>
                             <a :href="registeredExamDetailUrl(exam)"
-                               class="modern-btn inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 dark:bg-brand-primary/20 dark:hover:bg-brand-primary/30 text-sm font-semibold w-full">
-                                <i class="fas fa-calendar-alt"></i>
+                               class="modern-btn inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 dark:bg-brand-primary/20 dark:hover:bg-brand-primary/30 text-xs sm:text-sm font-semibold w-full">
+                                <i class="fas fa-calendar-alt text-[10px] sm:text-xs"></i>
                                 <span>Open allocation timetable</span>
                             </a>
-                            <div class="flex flex-wrap gap-2">
+                            <div class="flex flex-wrap gap-1.5 sm:gap-2">
                                 <button type="button"
                                         @click="editRegistration(exam)"
                                         :disabled="!exam.id || exam.is_locked || savingExam"
-                                        class="modern-btn flex-1 min-w-[40%] px-3 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white">
+                                        class="modern-btn flex-1 min-w-[40%] px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white">
                                     <i class="fas fa-edit mr-1"></i>Edit
                                 </button>
                                 <button type="button"
                                         @click="deleteRegistration(exam)"
                                         :disabled="!exam.id || exam.is_locked || savingExam"
-                                        class="modern-btn flex-1 min-w-[40%] px-3 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-700 text-white">
+                                        class="modern-btn flex-1 min-w-[40%] px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-700 text-white">
                                     <i class="fas fa-trash mr-1"></i>Delete
                                 </button>
                             </div>
-                            <div class="flex flex-col gap-2 pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop>
+                            <div class="flex flex-col gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop>
                                 <button type="button"
                                         @click.stop="openMarksLockModal(exam)"
                                         :disabled="lockingExam || savingMarksLockKey === exam._key"
                                         :title="marksLockDeadlineTitle(exam)"
-                                        class="exam-eval-deadline-btn inline-flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                        class="exam-eval-deadline-btn inline-flex items-center justify-center gap-1.5 sm:gap-2 w-full px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg border-2 text-xs sm:text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                         :class="marksLockDeadlinePassed(exam) && exam.marks_lock_at ? 'exam-eval-deadline-btn--closed' : (exam.marks_lock_at ? 'exam-eval-deadline-btn--set' : '')">
                                     <i class="fas fa-clock shrink-0" aria-hidden="true"></i>
                                     <span class="text-left leading-tight" x-text="marksLockDeadlineSummary(exam)"></span>
@@ -921,7 +1267,7 @@
                                 <button type="button"
                                         @click="toggleExamLock(exam)"
                                         :disabled="lockingExam"
-                                        class="modern-btn w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                                        class="modern-btn w-full sm:w-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all disabled:opacity-50"
                                         :class="exam.is_locked
                                             ? 'bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-600 dark:text-white dark:hover:bg-gray-500'
                                             : 'bg-amber-600 hover:bg-amber-700 text-white'">
@@ -1076,14 +1422,14 @@
          aria-hidden="true"></div>
     <div class="relative w-full max-w-md rounded-2xl overflow-hidden bg-white dark:bg-gray-900 border border-emerald-200/80 dark:border-emerald-800/60 shadow-2xl"
          @click.stop>
-        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-5 py-4">
-            <h3 class="text-lg font-bold flex items-center gap-2">
-                <i class="fas fa-clock" aria-hidden="true"></i>
+        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-4 py-3 sm:px-5 sm:py-4">
+            <h3 class="text-sm sm:text-lg font-bold flex items-center gap-2">
+                <i class="fas fa-clock text-xs sm:text-base" aria-hidden="true"></i>
                 Marks entry deadline
             </h3>
-            <p class="text-xs text-white/85 mt-1 break-words" x-text="marksLockModalExam ? marksLockModalExam.exam_name : ''"></p>
+            <p class="text-[10px] sm:text-xs text-white/85 mt-1 break-words" x-text="marksLockModalExam ? marksLockModalExam.exam_name : ''"></p>
         </div>
-        <div class="p-5 space-y-4">
+        <div class="p-4 sm:p-5 space-y-3 sm:space-y-4">
             <template x-if="marksLockModalExam && marksLockDeadlinePassed(marksLockModalExam) && marksLockModalExam.marks_lock_at">
                 <div class="space-y-3">
                     <p class="text-sm text-gray-600 dark:text-gray-300">This deadline has passed. Clear it to set a new one.</p>
@@ -1151,15 +1497,15 @@
          aria-hidden="true"></div>
     <div class="relative w-full max-w-md rounded-2xl overflow-hidden bg-white dark:bg-gray-900 border border-amber-200/80 dark:border-amber-800/60 shadow-2xl"
          @click.stop>
-        <div class="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-5 py-4">
-            <h3 class="text-lg font-bold flex items-center gap-2">
-                <i class="fas fa-unlock" aria-hidden="true"></i>
+        <div class="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-3 sm:px-5 sm:py-4">
+            <h3 class="text-sm sm:text-lg font-bold flex items-center gap-2">
+                <i class="fas fa-unlock text-xs sm:text-base" aria-hidden="true"></i>
                 Unlock exam
             </h3>
-            <p class="text-xs text-white/85 mt-1 break-words" x-text="unlockModalExam ? unlockModalExam.exam_name : ''"></p>
+            <p class="text-[10px] sm:text-xs text-white/85 mt-1 break-words" x-text="unlockModalExam ? unlockModalExam.exam_name : ''"></p>
         </div>
-        <div class="p-5 space-y-4">
-            <p class="text-sm text-gray-600 dark:text-gray-300">
+        <div class="p-4 sm:p-5 space-y-3 sm:space-y-4">
+            <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-300">
                 Set when marks entry closes (must be in the future).
             </p>
             <div>
@@ -1197,12 +1543,12 @@
          aria-hidden="true"></div>
     <div class="relative w-full max-w-xl max-h-[90vh] flex flex-col min-h-0 rounded-2xl overflow-hidden bg-white dark:bg-gray-900 border border-gray-200/80 dark:border-gray-700/80 shadow-2xl"
          @click.stop>
-        <div class="shrink-0 bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-5 py-4">
-            <h3 class="text-lg font-bold">Edit Exam Registration</h3>
-            <p class="text-xs text-white/80 mt-1 break-words" x-text="editingRegistration ? editingRegistration.old_exam_name : ''"></p>
+        <div class="shrink-0 bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-4 py-3 sm:px-5 sm:py-4">
+            <h3 class="text-sm sm:text-lg font-bold">Edit Exam Registration</h3>
+            <p class="text-[10px] sm:text-xs text-white/80 mt-1 break-words" x-text="editingRegistration ? editingRegistration.old_exam_name : ''"></p>
         </div>
         <form @submit.prevent="saveRegistrationEdit()" class="flex flex-col flex-1 min-h-0">
-            <div class="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4 min-h-0">
+            <div class="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-3 sm:space-y-4 min-h-0">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Academic Year</label>
@@ -1295,13 +1641,13 @@
              aria-labelledby="edit-exam-modal-title">
 
             <!-- Header -->
-            <div class="shrink-0 bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-5 py-4 sm:px-6 sm:py-5">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
-                        <i class="fas fa-edit text-xl" aria-hidden="true"></i>
+            <div class="shrink-0 bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-4 py-3 sm:px-6 sm:py-5">
+                <div class="flex items-start gap-2.5 sm:gap-4">
+                    <div class="w-9 h-9 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
+                        <i class="fas fa-edit text-sm sm:text-xl" aria-hidden="true"></i>
                     </div>
                     <div class="min-w-0 flex-1 pr-2">
-                        <h3 id="edit-exam-modal-title" class="text-lg sm:text-xl font-bold tracking-tight leading-snug break-words">
+                        <h3 id="edit-exam-modal-title" class="text-sm sm:text-xl font-bold tracking-tight leading-snug break-words">
                             Edit allocation
                         </h3>
                         <p class="text-sm text-white/90 font-semibold mt-1 break-words uppercase tracking-wide" x-text="editingExam && editingExam.contextExamName ? editingExam.contextExamName : '—'"></p>
@@ -1495,6 +1841,7 @@
 <script type="application/json" id="exam-data-terms">{{ terms|tojson|safe }}</script>
 <script type="application/json" id="exam-data-academic-levels">{{ academic_levels|tojson|safe }}</script>
 <script type="application/json" id="exam-data-level-combinations">{{ level_combinations|default([])|tojson|safe }}</script>
+<script type="application/json" id="exam-data-teacher-subject-pairs">{{ teacher_subject_pairs|default([])|tojson|safe }}</script>
 <script type="application/json" id="exam-data-subjects">{{ subjects|tojson|safe }}</script>
 <script type="application/json" id="exam-data-teachers">{{ teachers|tojson|safe }}</script>
 <script type="application/json" id="exam-data-exams">{{ exams|tojson|safe }}</script>
@@ -1511,6 +1858,7 @@ function examEvaluation() {
         academicLevels: [],
         subjects: [],
         teachers: [],
+        teacherSubjectPairs: [],
         exams: [],
 
         savingExam: false,
@@ -1529,6 +1877,8 @@ function examEvaluation() {
         successMessage: '',
         errorMessage: '',
         clientConflictMessage: '',
+        supervisorConflictByKey: {},
+        _supervisorCheckTimers: {},
         showRegisterExamPanel: false,
         editingExam: null,
         editingRegistration: null,
@@ -1568,6 +1918,11 @@ function examEvaluation() {
             this.academicLevels = JSON.parse(document.getElementById('exam-data-academic-levels')?.textContent || '[]');
             this.subjects = JSON.parse(document.getElementById('exam-data-subjects')?.textContent || '[]');
             this.teachers = JSON.parse(document.getElementById('exam-data-teachers')?.textContent || '[]');
+            try {
+                this.teacherSubjectPairs = JSON.parse(document.getElementById('exam-data-teacher-subject-pairs')?.textContent || '[]');
+            } catch (e) {
+                this.teacherSubjectPairs = [];
+            }
             this.exams = JSON.parse(document.getElementById('exam-data-exams')?.textContent || '[]');
 
             try {
@@ -1773,16 +2128,131 @@ function examEvaluation() {
             this.clientConflictMessage = '';
             this.errorMessage = '';
             if (this.registrationMode === 'manual') {
-                if (this.allocations.length === 0 && this.selectedAcademicLevel) {
-                    this.addAllocation();
-                } else if (this.allocations.length === 0) {
-                    this.addAllocation();
-                }
+                this.selectedLevelIds = [];
+                this.selectedAcademicLevel = '';
+                this.allocations = [];
+                this.initFromLevelCombinations();
             } else if (this.registrationMode === 'auto') {
                 if (!this.selectedLevelIds || this.selectedLevelIds.length === 0) {
                     this.selectAllLevels();
                 }
             }
+        },
+
+        get manualSharedTimetableActive() {
+            if (this.registrationMode !== 'manual') return false;
+            return (this.levelCombinations || []).some(c => {
+                return this.isComboShareEnabled(c.combo_id) && this.includedCountForCombo(c.combo_id) >= 2;
+            });
+        },
+
+        get manualLevelsReady() {
+            if (this.registrationMode !== 'manual') return false;
+            if (this.manualSharedTimetableActive) return this.selectedLevelIds.length > 0;
+            return this.selectedLevelIds.length === 1;
+        },
+
+        onManualLevelsChange() {
+            this.clientConflictMessage = '';
+            this.errorMessage = '';
+            if (this.manualSharedTimetableActive) {
+                this.selectedAcademicLevel = '__shared__';
+            } else if (this.selectedLevelIds.length === 1) {
+                this.selectedAcademicLevel = this.selectedLevelIds[0];
+            } else {
+                this.selectedAcademicLevel = '';
+            }
+            this.allocations = [];
+            if (this.manualLevelsReady) {
+                this.addAllocation();
+            }
+        },
+
+        getManualShareLevelIds() {
+            const ids = new Set();
+            (this.levelCombinations || []).forEach(c => {
+                if (!this.isComboShareEnabled(c.combo_id)) return;
+                if (this.includedCountForCombo(c.combo_id) < 2) return;
+                (c.members || []).forEach(m => {
+                    if (this.isLevelIncluded(m.id)) ids.add(String(m.id));
+                });
+            });
+            return Array.from(ids);
+        },
+
+        getManualShareLevels() {
+            const levels = [];
+            const seen = new Set();
+            (this.levelCombinations || []).forEach(c => {
+                if (!this.isComboShareEnabled(c.combo_id)) return;
+                if (this.includedCountForCombo(c.combo_id) < 2) return;
+                (c.members || []).forEach(m => {
+                    if (!this.isLevelIncluded(m.id)) return;
+                    const s = String(m.id);
+                    if (seen.has(s)) return;
+                    seen.add(s);
+                    levels.push(m);
+                });
+            });
+            return levels;
+        },
+
+        initRowLevelAssignments(row) {
+            const la = row.level_assignments || {};
+            this.getManualShareLevels().forEach(lvl => {
+                const k = String(lvl.id);
+                if (!la[k]) la[k] = { teacher_id: '', venue: '' };
+            });
+            row.level_assignments = la;
+        },
+
+        getSubjectsForLevel(levelId) {
+            const pairs = (this.teacherSubjectPairs || []).filter(
+                p => String(p.academic_level_id) === String(levelId)
+            );
+            const subjectIds = new Set(pairs.map(p => String(p.subject_id)));
+            return (this.subjects || []).filter(s => subjectIds.has(String(s.id)));
+        },
+
+        getAllocatedTeachersForSubject(subjectId, levelId) {
+            if (!subjectId || !levelId) return [];
+            return (this.teacherSubjectPairs || []).filter(
+                p => String(p.subject_id) === String(subjectId) && String(p.academic_level_id) === String(levelId)
+            );
+        },
+
+        formatAllocatedTeacherNames(pairs) {
+            return (pairs || []).map(p => {
+                const name = p.teacher_name || '—';
+                return p.employee_id ? `${name} (${p.employee_id})` : name;
+            }).join(', ');
+        },
+
+        getSubjectAllocatedTeacherText(row, subjectId) {
+            const sid = subjectId != null ? subjectId : row.subject_id;
+            if (!sid) return '';
+
+            if (this.manualSharedTimetableActive) {
+                const parts = [];
+                for (const lvl of this.getManualShareLevels()) {
+                    const pairs = this.getAllocatedTeachersForSubject(sid, lvl.id);
+                    if (!pairs.length) continue;
+                    const label = lvl.level_name || `Class ${lvl.id}`;
+                    parts.push(`${label}: ${this.formatAllocatedTeacherNames(pairs)}`);
+                }
+                return parts.join(' · ');
+            }
+
+            const levelId = this.selectedAcademicLevel;
+            if (!levelId || levelId === '__shared__') return '';
+            const pairs = this.getAllocatedTeachersForSubject(sid, levelId);
+            return pairs.length ? this.formatAllocatedTeacherNames(pairs) : '';
+        },
+
+        formatSubjectOptionLabel(subject, row) {
+            const base = subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '');
+            const teachers = this.getSubjectAllocatedTeacherText(row, subject.id);
+            return teachers ? `${base} — ${teachers}` : base;
         },
 
         get ungroupedLevels() {
@@ -1796,9 +2266,7 @@ function examEvaluation() {
         initFromLevelCombinations() {
             const share = {};
             (this.levelCombinations || []).forEach(c => {
-                const cid = String(c.combo_id);
-                const members = (c.members || []).map(m => String(m.id));
-                share[cid] = members.length >= 2;
+                share[String(c.combo_id)] = false;
             });
             this.comboShareEnabled = share;
         },
@@ -1821,6 +2289,8 @@ function examEvaluation() {
         },
 
         toggleCombinationMember(comboId, levelId) {
+            const cid = String(comboId);
+            const prevCount = this.includedCountForCombo(comboId);
             const s = String(levelId);
             const i = this.selectedLevelIds.indexOf(s);
             if (i >= 0) {
@@ -1828,9 +2298,11 @@ function examEvaluation() {
             } else {
                 this.selectedLevelIds.push(s);
             }
-            const cid = String(comboId);
-            if (this.includedCountForCombo(comboId) < 2 && this.comboShareEnabled[cid]) {
+            const newCount = this.includedCountForCombo(comboId);
+            if (newCount < 2) {
                 this.comboShareEnabled[cid] = false;
+            } else if (prevCount < 2 && newCount >= 2) {
+                this.comboShareEnabled[cid] = true;
             }
         },
 
@@ -2141,10 +2613,21 @@ function examEvaluation() {
         },
 
         get areRowsValid() {
-            if (!this.selectedAcademicLevel || this.allocations.length === 0) return false;
+            if (!this.manualLevelsReady || this.allocations.length === 0) return false;
+            const needTeacher = this.registrationMode === 'manual' && !this.manualSharedTimetableActive;
+            const needPerLevel = this.registrationMode === 'manual' && this.manualSharedTimetableActive;
+            const shareLevels = needPerLevel ? this.getManualShareLevels() : [];
             return this.allocations.every(r => {
-                if (!r.subject_id || !r.teacher_id || !r.exam_date || !r.session_type) return false;
-                if (this.isSubjectDuplicate(r)) return false; // Reject duplicates
+                if (!r.subject_id || !r.exam_date || !r.session_type) return false;
+                if (needTeacher && !r.teacher_id) return false;
+                if (needPerLevel) {
+                    const la = r.level_assignments || {};
+                    for (const lvl of shareLevels) {
+                        const entry = la[String(lvl.id)];
+                        if (!entry || !entry.teacher_id) return false;
+                    }
+                }
+                if (this.isSubjectDuplicate(r)) return false;
                 if (r.session_type === 'CUSTOM') {
                     return !!(r.start_time && r.duration_minutes && parseInt(r.duration_minutes) > 0 && r.end_time);
                 }
@@ -2153,7 +2636,7 @@ function examEvaluation() {
         },
 
         get isRegisterDisabled() {
-            if (this.savingExam || !this.isHeaderValid || !!this.clientConflictMessage) return true;
+            if (this.savingExam || !this.isHeaderValid || !!this.clientConflictMessage || this.hasAnySupervisorConflict()) return true;
             if (this.registrationMode === 'auto') {
                 if (!this.autoBaseDate || this.selectedLevelIds.length === 0 || this.selectedSessionTypes.length === 0) return true;
                 if (this.selectedSessionTypes.includes('CUSTOM')) {
@@ -2164,7 +2647,8 @@ function examEvaluation() {
                 if (this.autoRequiredDays > 0 && this.autoExamDates.length !== this.autoRequiredDays) return true;
                 return false;
             }
-            return !this.selectedAcademicLevel || !this.areRowsValid;
+            if (this.selectedLevelIds.length > 1 && !this.manualSharedTimetableActive) return true;
+            return !this.manualLevelsReady || !this.areRowsValid;
         },
 
         _makeKey() {
@@ -2172,10 +2656,10 @@ function examEvaluation() {
         },
 
         addAllocation() {
-            if (!this.selectedAcademicLevel) return;
-            this.allocations.push({
+            if (!this.manualLevelsReady) return;
+            const row = {
                 _key: this._makeKey(),
-                academic_level_id: this.selectedAcademicLevel,
+                academic_level_id: this.selectedAcademicLevel || '',
                 subject_id: '',
                 teacher_id: '',
                 exam_date: '',
@@ -2184,36 +2668,49 @@ function examEvaluation() {
                 start_time: '',
                 end_time: '',
                 duration_minutes: '',
-            });
+                level_assignments: {},
+            };
+            if (this.manualSharedTimetableActive) {
+                this.initRowLevelAssignments(row);
+            }
+            this.allocations.push(row);
             this.onRowChange();
         },
 
-        onAcademicLevelChange() {
-            // Clear all allocations when academic level changes
-            this.allocations = [];
-            this.clientConflictMessage = '';
-            if (this.selectedAcademicLevel) {
-                this.addAllocation();
-            }
-        },
-
         getAvailableSubjects(row) {
-            if (!this.selectedAcademicLevel) return [];
-            // Get all subjects used for this academic level (excluding current row)
+            if (!this.manualLevelsReady) return [];
             const usedSubjectIds = this.allocations
-                .filter(r => r._key !== row._key && r.academic_level_id === this.selectedAcademicLevel && r.subject_id)
+                .filter(r => r._key !== row._key && r.subject_id)
                 .map(r => String(r.subject_id));
-            // Return subjects not already used
-            return this.subjects.filter(s => !usedSubjectIds.includes(String(s.id)));
+
+            if (this.manualSharedTimetableActive) {
+                const levelIds = this.getManualShareLevelIds();
+                if (!levelIds.length) return [];
+                let common = null;
+                for (const lid of levelIds) {
+                    const subs = new Set(this.getSubjectsForLevel(lid).map(s => String(s.id)));
+                    common = common === null ? subs : new Set([...common].filter(x => subs.has(x)));
+                }
+                return (this.subjects || []).filter(
+                    s => common && common.has(String(s.id)) && !usedSubjectIds.includes(String(s.id))
+                );
+            }
+
+            if (!this.selectedAcademicLevel || this.selectedAcademicLevel === '__shared__') return [];
+            const levelSubjects = this.getSubjectsForLevel(this.selectedAcademicLevel);
+            if (!levelSubjects.length) {
+                return (this.subjects || []).filter(s => !usedSubjectIds.includes(String(s.id)));
+            }
+            const allowed = new Set(levelSubjects.map(s => String(s.id)));
+            return (this.subjects || []).filter(
+                s => allowed.has(String(s.id)) && !usedSubjectIds.includes(String(s.id))
+            );
         },
 
         isSubjectDuplicate(row) {
-            if (!row.subject_id || !this.selectedAcademicLevel) return false;
-            // Check if this subject is already used in another row for the same academic level
-            return this.allocations.some(r => 
-                r._key !== row._key && 
-                String(r.academic_level_id) === String(this.selectedAcademicLevel) && 
-                String(r.subject_id) === String(row.subject_id)
+            if (!row.subject_id || !this.manualLevelsReady) return false;
+            return this.allocations.some(r =>
+                r._key !== row._key && String(r.subject_id) === String(row.subject_id)
             );
         },
 
@@ -2225,6 +2722,8 @@ function examEvaluation() {
         },
 
         removeAllocation(idx) {
+            const row = this.allocations[idx];
+            if (row) this.clearSupervisorConflictsForRow(row);
             this.allocations.splice(idx, 1);
             this.onRowChange();
         },
@@ -2281,8 +2780,8 @@ function examEvaluation() {
         },
 
         onRowChange() {
-            this.clientConflictMessage = '';
-            this.checkClientTeacherConflicts();
+            this.syncGlobalConflictMessage();
+            this.scheduleSupervisorConflictChecksForRow();
         },
 
         _timeToMinutes(t) {
@@ -2295,18 +2794,177 @@ function examEvaluation() {
             return h * 60 + m;
         },
 
-        checkClientTeacherConflicts() {
+        getTeacherName(teacherId) {
+            const t = (this.teachers || []).find(x => String(x.id) === String(teacherId));
+            if (!t) return 'This supervisor';
+            return t.full_name + (t.employee_id ? ' (' + t.employee_id + ')' : '');
+        },
+
+        getLevelLabel(levelId) {
+            const lv = (this.academicLevels || []).find(l => String(l.id) === String(levelId));
+            if (lv) {
+                return lv.level_name + (lv.level_category ? ' (' + lv.level_category + ')' : '');
+            }
+            const m = this.getManualShareLevels().find(l => String(l.id) === String(levelId));
+            if (m) {
+                return m.level_name + (m.level_category ? ' (' + m.level_category + ')' : '');
+            }
+            return `Class ${levelId}`;
+        },
+
+        getSupervisorConflictKey(row, levelId) {
+            return String(row._key) + '|' + String(levelId || 'single');
+        },
+
+        getSupervisorConflictMessage(row, levelId) {
+            const key = this.getSupervisorConflictKey(row, levelId);
+            const local = this.supervisorConflictByKey[key];
+            return local && local.message ? local.message : '';
+        },
+
+        hasSupervisorConflict(row, levelId) {
+            const key = this.getSupervisorConflictKey(row, levelId);
+            return !!(this.supervisorConflictByKey[key] && this.supervisorConflictByKey[key].busy);
+        },
+
+        hasAnySupervisorConflict() {
+            return Object.values(this.supervisorConflictByKey || {}).some(c => c && c.busy);
+        },
+
+        supervisorSelectClass(row, levelId) {
+            if (this.hasSupervisorConflict(row, levelId)) {
+                return 'border-amber-500 dark:border-amber-500 ring-1 ring-amber-400/50';
+            }
+            return 'border-gray-300 dark:border-gray-600';
+        },
+
+        clearSupervisorConflictsForRow(row) {
+            const prefix = String(row._key) + '|';
+            Object.keys(this.supervisorConflictByKey || {}).forEach(k => {
+                if (k.startsWith(prefix)) delete this.supervisorConflictByKey[k];
+            });
+            Object.keys(this._supervisorCheckTimers || {}).forEach(k => {
+                if (k.startsWith(prefix)) {
+                    clearTimeout(this._supervisorCheckTimers[k]);
+                    delete this._supervisorCheckTimers[k];
+                }
+            });
+        },
+
+        scheduleSupervisorConflictChecksForRow(row) {
+            const rows = row ? [row] : (this.allocations || []);
+            rows.forEach(r => {
+                if (this.manualSharedTimetableActive) {
+                    this.getManualShareLevels().forEach(lvl => {
+                        this.scheduleSupervisorConflictCheck(r, lvl.id);
+                    });
+                } else {
+                    this.scheduleSupervisorConflictCheck(r, null);
+                }
+            });
+        },
+
+        scheduleSupervisorConflictCheck(row, levelId) {
+            const self = this;
+            const key = this.getSupervisorConflictKey(row, levelId);
+            clearTimeout(this._supervisorCheckTimers[key]);
+            this._supervisorCheckTimers[key] = setTimeout(() => {
+                self.fetchSupervisorConflict(row, levelId);
+            }, 350);
+        },
+
+        async fetchSupervisorConflict(row, levelId) {
+            const key = this.getSupervisorConflictKey(row, levelId);
+            let teacherId = '';
+            if (this.manualSharedTimetableActive && levelId != null) {
+                const entry = (row.level_assignments || {})[String(levelId)];
+                teacherId = entry ? entry.teacher_id : '';
+            } else {
+                teacherId = row.teacher_id;
+            }
+
+            if (!teacherId || !row.exam_date || !row.session_type || !row.start_time || !row.end_time) {
+                delete this.supervisorConflictByKey[key];
+                this.syncGlobalConflictMessage();
+                return;
+            }
+
+            const payload = {
+                teacher_id: parseInt(teacherId, 10),
+                exam_date: row.exam_date,
+                session_type: row.session_type,
+            };
+            if (row.session_type === 'CUSTOM') {
+                payload.start_time = row.start_time;
+                payload.duration_minutes = parseInt(row.duration_minutes || 0, 10);
+            }
+
+            try {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/check-supervisor-conflicts') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const result = await response.json();
+                if (response.ok && result.success && result.busy) {
+                    this.supervisorConflictByKey[key] = { busy: true, message: result.message || 'Supervisor is busy in another academic level.' };
+                } else if (!(this.supervisorConflictByKey[key] && this.supervisorConflictByKey[key].local)) {
+                    delete this.supervisorConflictByKey[key];
+                }
+            } catch (e) {
+                delete this.supervisorConflictByKey[key];
+            }
+            this.syncGlobalConflictMessage();
+        },
+
+        checkLocalSupervisorConflicts() {
+            Object.keys(this.supervisorConflictByKey || {}).forEach(k => {
+                if (this.supervisorConflictByKey[k] && this.supervisorConflictByKey[k].local) {
+                    delete this.supervisorConflictByKey[k];
+                }
+            });
+
             const slots = [];
             for (let i = 0; i < this.allocations.length; i++) {
                 const r = this.allocations[i];
-                if (!r.teacher_id || !r.session_type || !r.exam_date) continue;
-                if (!r.start_time || !r.end_time) continue;
+                if (!r.session_type || !r.exam_date || !r.start_time || !r.end_time) continue;
                 const s = this._timeToMinutes(r.start_time);
                 const eRaw = this._timeToMinutes(r.end_time);
                 if (s === null || eRaw === null) continue;
                 let e = eRaw;
                 if (e <= s) e += 24 * 60;
-                slots.push({ idx: i, teacher_id: String(r.teacher_id), exam_date: r.exam_date, s, e });
+
+                if (this.manualSharedTimetableActive) {
+                    const la = r.level_assignments || {};
+                    for (const lvl of this.getManualShareLevels()) {
+                        const entry = la[String(lvl.id)];
+                        if (!entry || !entry.teacher_id) continue;
+                        slots.push({
+                            idx: i,
+                            rowKey: r._key,
+                            teacher_id: String(entry.teacher_id),
+                            level_id: String(lvl.id),
+                            level_label: this.getLevelLabel(lvl.id),
+                            exam_date: r.exam_date,
+                            session_type: r.session_type,
+                            s,
+                            e,
+                        });
+                    }
+                } else {
+                    if (!r.teacher_id) continue;
+                    slots.push({
+                        idx: i,
+                        rowKey: r._key,
+                        teacher_id: String(r.teacher_id),
+                        level_id: String(this.selectedAcademicLevel || ''),
+                        level_label: this.getLevelLabel(this.selectedAcademicLevel),
+                        exam_date: r.exam_date,
+                        session_type: r.session_type,
+                        s,
+                        e,
+                    });
+                }
             }
 
             for (let i = 0; i < slots.length; i++) {
@@ -2314,15 +2972,59 @@ function examEvaluation() {
                     const a = slots[i];
                     const b = slots[j];
                     if (a.teacher_id !== b.teacher_id) continue;
-                    if (a.exam_date !== b.exam_date) continue; // Different dates = no conflict
+                    if (a.exam_date !== b.exam_date) continue;
                     const overlap = a.s < b.e && a.e > b.s;
                     if (overlap) {
-                        this.clientConflictMessage = 'Teacher conflict: one teacher cannot supervise two exams in overlapping times on the same date. Please change teacher, date, or session/time.';
-                        return true;
+                        const who = this.getTeacherName(a.teacher_id);
+                        const where = b.level_label && b.level_label !== a.level_label
+                            ? `another allocation (${b.level_label})`
+                            : 'another allocation in this registration';
+                        const msg = `${who} is busy in ${where} on the same date and session.`;
+                        const keyA = this.getSupervisorConflictKey({ _key: a.rowKey }, this.manualSharedTimetableActive ? a.level_id : null);
+                        const keyB = this.getSupervisorConflictKey({ _key: b.rowKey }, this.manualSharedTimetableActive ? b.level_id : null);
+                        this.supervisorConflictByKey[keyA] = { busy: true, message: msg, local: true };
+                        this.supervisorConflictByKey[keyB] = { busy: true, message: msg, local: true };
+                        return msg;
                     }
                 }
             }
-            return false;
+
+            if (this.manualSharedTimetableActive) {
+                for (let i = 0; i < this.allocations.length; i++) {
+                    const r = this.allocations[i];
+                    if (!r.session_type || !r.exam_date || !r.start_time || !r.end_time) continue;
+                    const la = r.level_assignments || {};
+                    const teachersInRow = new Set();
+                    for (const lvl of this.getManualShareLevels()) {
+                        const entry = la[String(lvl.id)];
+                        if (!entry || !entry.teacher_id) continue;
+                        const tid = String(entry.teacher_id);
+                        if (teachersInRow.has(tid)) {
+                            const msg = `${this.getTeacherName(tid)} cannot supervise more than one combined class in the same exam slot.`;
+                            const key = this.getSupervisorConflictKey(r, lvl.id);
+                            this.supervisorConflictByKey[key] = { busy: true, message: msg, local: true };
+                            return msg;
+                        }
+                        teachersInRow.add(tid);
+                    }
+                }
+            }
+            return '';
+        },
+
+        syncGlobalConflictMessage() {
+            const localMsg = this.checkLocalSupervisorConflicts();
+            if (localMsg) {
+                this.clientConflictMessage = localMsg;
+                return;
+            }
+            const dbBusy = Object.values(this.supervisorConflictByKey || {}).find(c => c && c.busy);
+            this.clientConflictMessage = dbBusy ? dbBusy.message : '';
+        },
+
+        checkClientTeacherConflicts() {
+            this.syncGlobalConflictMessage();
+            return !!this.clientConflictMessage;
         },
 
         generateExamName() {
@@ -2446,22 +3148,45 @@ function examEvaluation() {
                     allocations: []
                 };
             } else {
+                const shareGroups = this.buildShareGroupsPayload();
+                const sharedManual = this.manualSharedTimetableActive && shareGroups.length > 0;
                 payload = {
                     exam_name: this.examForm.exam_name.trim().toUpperCase(),
                     exam_type: this.examForm.exam_type.trim().toUpperCase(),
                     academic_year_id: parseInt(this.examForm.academic_year_id),
                     term_id: parseInt(this.examForm.term_id),
                     auto_generate: false,
-                    allocations: this.allocations.map(r => ({
-                        academic_level_id: parseInt(this.selectedAcademicLevel),
-                        subject_id: parseInt(r.subject_id),
-                        teacher_id: parseInt(r.teacher_id),
-                        exam_date: r.exam_date,
-                        venue: r.venue ? r.venue.trim().toUpperCase() : '',
-                        session_type: r.session_type,
-                        start_time: r.session_type === 'CUSTOM' ? r.start_time : null,
-                        duration_minutes: r.session_type === 'CUSTOM' ? parseInt(r.duration_minutes || 0) : null
-                    }))
+                    share_timetable: sharedManual,
+                    share_groups: shareGroups,
+                    level_ids: this.selectedLevelIds.map(id => parseInt(id, 10)),
+                    allocations: this.allocations.map(r => {
+                        const base = {
+                            subject_id: parseInt(r.subject_id),
+                            exam_date: r.exam_date,
+                            venue: r.venue ? r.venue.trim().toUpperCase() : '',
+                            session_type: r.session_type,
+                            start_time: r.session_type === 'CUSTOM' ? r.start_time : null,
+                            duration_minutes: r.session_type === 'CUSTOM' ? parseInt(r.duration_minutes || 0) : null,
+                        };
+                        if (sharedManual) {
+                            return {
+                                ...base,
+                                level_assignments: this.getManualShareLevels().map(lvl => {
+                                    const entry = (r.level_assignments || {})[String(lvl.id)] || {};
+                                    return {
+                                        academic_level_id: parseInt(lvl.id, 10),
+                                        teacher_id: parseInt(entry.teacher_id, 10),
+                                        venue: entry.venue ? entry.venue.trim().toUpperCase() : '',
+                                    };
+                                }),
+                            };
+                        }
+                        return {
+                            ...base,
+                            academic_level_id: parseInt(this.selectedAcademicLevel),
+                            teacher_id: parseInt(r.teacher_id),
+                        };
+                    }),
                 };
             }
 
@@ -2510,6 +3235,7 @@ function examEvaluation() {
             this.allocations = [];
             this.registrationMode = 'auto';
             this.selectedLevelIds = [];
+            this.teacherSubjectPairs = this.teacherSubjectPairs || [];
             this.autoBaseDate = '';
             this.selectedSessionTypes = [];
             this.autoCalendarMonthOffset = 0;

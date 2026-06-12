@@ -45,7 +45,7 @@
 {% endif %}
 {% endif %}
 
-{% if _tch_nav in ('all', 'exams') %}
+{% if _tch_nav in ('all', 'exams') and not teacher_hide_exams_section %}
 <p class="px-3 {% if _tch_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Exams</p>
 <a href="{{ employee_dash_url('exams-assessments') }}"
    class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or '/exams-assessments' in request.path %}sidebar-item-active{% endif %}">

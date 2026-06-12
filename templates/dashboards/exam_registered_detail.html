@@ -4,14 +4,27 @@
 
 {% block sidebar_content %}
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or role or session.get('role', ''))|lower %}
-<div class="space-y-2">
-    <a href="{{ url_for('exam_timetable') }}"
-       class="w-full sidebar-item sidebar-item-active"
-       aria-current="page">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span>Exam timetable management</span>
-    </a>
-</div>
+{% if nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif nav_role in ('teachers', 'teacher') %}
+{% set teacher_nav_scope = 'exams' %}
+{% set teacher_hide_exams_section = true %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'exams' %}
+{% set cc_hide_exams_section = true %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% elif nav_role == 'technician' %}
+{% include 'dashboards/includes/technician_page_sidebar.html' %}
+{% else %}
+<a href="{{ employee_dash_url('exam-evaluation') }}"
+   class="sidebar-item mb-2 {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam registration</span>
+</a>
+{% endif %}
+{% include 'dashboards/includes/erd_exam_detail_sidebar_tabs.html' %}
 {% endblock %}
 
 {% block extra_head %}
@@ -28,6 +41,298 @@
     .dark .erd-timetable-scroll table tbody td.sticky-date-col {
         box-shadow: 4px 0 12px -4px rgba(0, 0, 0, 0.35);
     }
+
+    /* Mobile: tighter typography and spacing */
+    @media (max-width: 639px) {
+        .erd-exam-page {
+            font-size: 0.8125rem;
+            line-height: 1.35;
+        }
+        .erd-exam-page .dashboard-card {
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+        }
+        .erd-exam-page h1 {
+            font-size: 0.9375rem;
+            gap: 0.5rem;
+        }
+        .erd-exam-page h1 > span:first-child {
+            width: 2rem;
+            height: 2rem;
+        }
+        .erd-exam-page h1 i {
+            font-size: 0.75rem;
+        }
+        .erd-exam-page h2:not(.erd-level-heading) {
+            font-size: 0.875rem;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .erd-exam-page .erd-level-heading__name {
+            font-size: 0.6875rem;
+        }
+        .erd-exam-page .erd-level-heading__category {
+            font-size: 0.5rem;
+        }
+        .erd-exam-page h3 {
+            font-size: 0.6875rem;
+            margin-bottom: 0.5rem;
+        }
+        .erd-exam-page label {
+            font-size: 0.6875rem;
+        }
+        .erd-exam-page select,
+        .erd-exam-page input[type="text"],
+        .erd-exam-page input[type="date"],
+        .erd-exam-page input[type="time"],
+        .erd-exam-page input[type="number"],
+        .erd-exam-page input[type="datetime-local"] {
+            font-size: 0.75rem;
+            padding: 0.375rem 0.5rem;
+        }
+        .erd-exam-page .text-xs {
+            font-size: 0.6875rem;
+        }
+        .erd-exam-page .text-sm {
+            font-size: 0.75rem;
+        }
+        .erd-exam-page .text-base {
+            font-size: 0.8125rem;
+        }
+        .erd-exam-page .text-lg {
+            font-size: 0.875rem;
+        }
+        .erd-exam-page .text-xl {
+            font-size: 0.9375rem;
+        }
+        .erd-exam-page .text-2xl {
+            font-size: 1.125rem;
+        }
+        .erd-exam-page .p-4 {
+            padding: 0.625rem;
+        }
+        .erd-exam-page .p-5 {
+            padding: 0.75rem;
+        }
+        .erd-exam-page .p-12 {
+            padding: 1.5rem;
+        }
+        .erd-exam-page .px-4 {
+            padding-left: 0.625rem;
+            padding-right: 0.625rem;
+        }
+        .erd-exam-page .py-3 {
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+        }
+        .erd-exam-page .mb-4 {
+            margin-bottom: 0.625rem;
+        }
+        .erd-exam-page .mb-5 {
+            margin-bottom: 0.75rem;
+        }
+        .erd-exam-page .mb-6 {
+            margin-bottom: 0.875rem;
+        }
+        .erd-exam-page .space-y-8 > * + * {
+            margin-top: 1rem;
+        }
+        .erd-exam-page .space-y-3 > * + * {
+            margin-top: 0.5rem;
+        }
+        .erd-exam-page .gap-3 {
+            gap: 0.5rem;
+        }
+        .erd-exam-page .gap-4 {
+            gap: 0.625rem;
+        }
+        .erd-exam-page .rounded-2xl {
+            border-radius: 0.75rem;
+        }
+        .erd-exam-page .rounded-xl {
+            border-radius: 0.625rem;
+        }
+        .erd-exam-page .min-h-\[42px\] {
+            min-height: 2.125rem;
+        }
+        .erd-exam-page .min-h-\[44px\] {
+            min-height: 2.25rem;
+        }
+        .erd-exam-page .erd-timetable-scroll table {
+            font-size: 0.6875rem;
+        }
+        .erd-exam-page .erd-timetable-scroll table.min-w-\[28rem\],
+        .erd-exam-page .erd-timetable-scroll table.min-w-\[640px\] {
+            min-width: 26rem;
+        }
+        .erd-exam-page .erd-timetable-scroll th,
+        .erd-exam-page .erd-timetable-scroll td {
+            padding: 0.25rem 0.375rem;
+        }
+        .erd-exam-page [class*="text-[10px]"],
+        .erd-exam-page [class*="text-[11px]"],
+        .erd-exam-page [class*="text-[12px]"],
+        .erd-exam-page [class*="text-[9px]"] {
+            font-size: 0.625rem;
+        }
+        #erd-add-modal,
+        #erd-edit-modal {
+            font-size: 0.8125rem;
+        }
+        #erd-add-modal h3,
+        #erd-edit-modal h3 {
+            font-size: 0.875rem;
+        }
+        #erd-add-modal label,
+        #erd-edit-modal label {
+            font-size: 0.6875rem;
+        }
+        #erd-add-modal select,
+        #erd-add-modal input,
+        #erd-edit-modal select,
+        #erd-edit-modal input {
+            font-size: 0.75rem;
+            padding: 0.375rem 0.5rem;
+        }
+        #erd-add-modal button,
+        #erd-edit-modal button {
+            font-size: 0.75rem;
+            padding: 0.4375rem 0.75rem;
+        }
+        #erd-add-rows .rounded-xl,
+        #erd-add-rows [data-row-idx] {
+            padding: 0.5rem;
+        }
+        body.role-portal-layout:has(.erd-exam-page) .role-hero {
+            margin-bottom: 0.75rem;
+            border-radius: 0.75rem;
+        }
+        body.role-portal-layout:has(.erd-exam-page) .role-hero > div {
+            padding: 0.625rem 0.75rem;
+        }
+        body.role-portal-layout:has(.erd-exam-page) .role-hero-title {
+            font-size: 0.8125rem !important;
+            margin-top: 0.15rem;
+        }
+        body.role-portal-layout:has(.erd-exam-page) .role-hero-icon-wrap {
+            width: 1.75rem;
+            height: 1.75rem;
+            border-radius: 0.5rem;
+        }
+        body.role-portal-layout:has(.erd-exam-page) .role-hero-icon-wrap i {
+            font-size: 0.6875rem !important;
+        }
+        .erd-mobile-tabs button {
+            font-size: 0.625rem;
+            padding: 0.375rem 0.25rem;
+            line-height: 1.2;
+        }
+        .erd-exam-page .shadow-xl {
+            box-shadow: 0 4px 12px -4px rgba(15, 23, 42, 0.12);
+        }
+        .erd-exam-page .erd-timetable-scroll .sticky-date-col {
+            min-width: 4.5rem;
+            width: 4.5rem;
+        }
+        .erd-exam-page .erd-timetable-scroll table {
+            min-width: 26rem;
+        }
+        .erd-exam-page .erd-timetable-scroll .min-h-\[44px\] {
+            min-height: 1.75rem;
+        }
+    }
+
+    .erd-mobile-tabs button[aria-current="page"] {
+        background: var(--brand-primary);
+        color: #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    }
+
+    body.role-portal-layout main h2.erd-level-heading {
+        font-size: unset;
+        font-weight: unset;
+        line-height: normal;
+    }
+    .erd-level-heading {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        min-width: 0;
+        margin-bottom: 0;
+    }
+    .erd-level-heading__icon {
+        width: 1.625rem;
+        height: 1.625rem;
+        border-radius: 0.375rem;
+        background: color-mix(in srgb, var(--brand-primary) 14%, transparent);
+        color: var(--brand-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .erd-level-heading__icon i {
+        font-size: 0.625rem;
+    }
+    .erd-level-heading__body {
+        min-width: 0;
+        flex: 1;
+    }
+    .erd-level-heading__name {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 700;
+        line-height: 1.25;
+        color: inherit;
+        word-break: break-word;
+    }
+    .erd-level-heading__category {
+        display: block;
+        margin-top: 0.125rem;
+        font-size: 0.5625rem;
+        font-weight: 600;
+        line-height: 1.2;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: #6b7280;
+        word-break: break-word;
+    }
+    .dark .erd-level-heading__category {
+        color: #9ca3af;
+    }
+    @media (min-width: 640px) {
+        .erd-level-heading {
+            gap: 0.75rem;
+            align-items: center;
+        }
+        .erd-level-heading__icon {
+            width: 2.25rem;
+            height: 2.25rem;
+            border-radius: 0.5rem;
+        }
+        .erd-level-heading__icon i {
+            font-size: 0.875rem;
+        }
+        .erd-level-heading__name {
+            display: inline;
+            font-size: 1.125rem;
+        }
+        .erd-level-heading__category {
+            display: inline;
+            margin-top: 0;
+            margin-left: 0.25rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: none;
+            letter-spacing: normal;
+        }
+        .erd-level-heading__category::before {
+            content: "(";
+        }
+        .erd-level-heading__category::after {
+            content: ")";
+        }
+    }
 </style>
 {% endblock %}
 
@@ -40,33 +345,33 @@
 
 
 {# Use single-quoted x-data so |tojson's double-quotes cannot break the attribute (otherwise: x-data="erdExamPage("timetable")" breaks Alpine). #}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen max-w-[100vw] overflow-x-hidden bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+<div class="erd-exam-page p-3 sm:p-6 lg:p-8 min-h-screen max-w-[100vw] overflow-x-hidden bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
      x-data='erdExamPage({{ erd_tab|tojson }})'>
-    <div class="mb-6">
+    <div class="mb-4 sm:mb-6">
         <a href="{% if erd_teacher_view %}{{ employee_dash_url('exam-timetable') }}{% else %}{{ url_for('exam_evaluation') }}{% endif %}"
-           class="inline-flex items-center gap-2 text-sm font-semibold text-brand-primary hover:underline mb-4">
-            <i class="fas fa-arrow-left"></i>
+           class="inline-flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-semibold text-brand-primary hover:underline mb-3 sm:mb-4">
+            <i class="fas fa-arrow-left text-[10px] sm:text-xs"></i>
             {% if erd_teacher_view %}Back to Exams Timetable{% else %}Back to Exam &amp; Evaluation{% endif %}
         </a>
-        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 sm:gap-4">
             <div>
-                <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 flex flex-wrap items-center gap-3">
-                    <span class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary shadow-lg">
-                        <i class="fas fa-calendar-alt text-white"></i>
+                <h1 class="text-base sm:text-2xl font-bold text-gray-900 dark:text-white mb-1.5 sm:mb-2 flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span class="inline-flex items-center justify-center w-8 h-8 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary shadow-lg shrink-0">
+                        <i class="fas fa-calendar-alt text-white text-xs sm:text-base"></i>
                     </span>
-                    <span class="break-words">{{ exam_meta.exam_name }}</span>
+                    <span class="break-words min-w-0">{{ exam_meta.exam_name }}</span>
                 </h1>
-                <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 ml-0 lg:ml-14">
+                <p class="text-[10px] sm:text-sm text-gray-600 dark:text-gray-400 ml-0 lg:ml-14 leading-snug flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                     <span class="font-semibold">{{ exam_meta.exam_type or '—' }}</span>
-                    <span class="mx-2">·</span>
-                    {{ exam_meta.year_name or '—' }}
-                    <span class="mx-2">·</span>
-                    {{ exam_meta.term_name or '—' }}
-                    <span class="mx-2">·</span>
+                    <span class="text-gray-400" aria-hidden="true">·</span>
+                    <span>{{ exam_meta.year_name or '—' }}</span>
+                    <span class="text-gray-400" aria-hidden="true">·</span>
+                    <span>{{ exam_meta.term_name or '—' }}</span>
+                    <span class="text-gray-400" aria-hidden="true">·</span>
                     <span>{{ allocation_count }} allocation(s)</span>
                 </p>
                 {% if erd_teacher_view %}
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 lg:ml-14 max-w-xl">
+                <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1.5 sm:mt-2 lg:ml-14 max-w-xl leading-snug">
                     Showing only classes where you are allocated as exam supervisor.
                 </p>
                 {% endif %}
@@ -75,13 +380,13 @@
                 {% if not exam_meta.is_locked and not erd_teacher_view %}
                 <button type="button"
                         id="erd-open-add-modal"
-                        class="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-md w-full sm:w-auto">
-                    <i class="fas fa-plus"></i>
+                        class="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4 sm:py-3 rounded-lg sm:rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-md w-full sm:w-auto">
+                    <i class="fas fa-plus text-[10px] sm:text-sm"></i>
                     Allocate Other Class
                 </button>
                 {% endif %}
                 {% if exam_meta.is_locked %}
-                <div class="flex items-start sm:items-center gap-2 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-sm font-medium shrink-0 w-full lg:w-auto">
+                <div class="flex items-start sm:items-center gap-2 px-3 py-2 sm:px-4 sm:py-3 rounded-lg sm:rounded-xl bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs sm:text-sm font-medium shrink-0 w-full lg:w-auto leading-snug">
                     <i class="fas fa-lock mt-0.5 sm:mt-0"></i>
                     This exam is locked. Timetables are view-only until it is unlocked on the registration page.
                 </div>
@@ -90,63 +395,68 @@
         </div>
     </div>
 
-    <div class="mb-6 border-b border-gray-200 dark:border-gray-700 pb-4 overflow-x-auto">
-        <div class="flex flex-nowrap sm:flex-wrap gap-2 min-w-max">
-        <button type="button"
-                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition whitespace-nowrap"
-                :class="mainTab === 'exam_data'
-                    ? 'bg-brand-primary text-white shadow-md'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-brand-primary/40'"
-                @click="setMainTab('exam_data')">
-            <i class="fas fa-database mr-2"></i>Exam data
-        </button>
-        <button type="button"
-                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition whitespace-nowrap"
-                :class="mainTab === 'timetable_data'
-                    ? 'bg-brand-primary text-white shadow-md'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-brand-primary/40'"
-                @click="setMainTab('timetable_data')">
-            <i class="fas fa-calendar-alt mr-2"></i>Timetable
-        </button>
-        <button type="button"
-                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition whitespace-nowrap"
-                :class="mainTab === 'analytics'
-                    ? 'bg-violet-600 text-white shadow-md'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-violet-500/40'"
-                @click="setMainTab('analytics')">
-            <i class="fas fa-chart-pie mr-2"></i>Analytics
-        </button>
+    <nav class="erd-mobile-tabs lg:hidden mb-3 sm:mb-4" aria-label="Exam sections">
+        <div class="grid grid-cols-3 gap-0.5 p-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70">
+            <button type="button"
+                    @click="setMainTab('exam_data')"
+                    :aria-current="mainTab === 'exam_data' ? 'page' : false"
+                    class="rounded-md px-1 py-1.5 text-[10px] sm:text-xs font-semibold text-center transition-colors"
+                    :class="mainTab === 'exam_data' ? '' : 'text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/60'">
+                <i class="fas fa-edit block text-[10px] mb-0.5 opacity-80" aria-hidden="true"></i>
+                Timetable edit
+            </button>
+            <button type="button"
+                    @click="setMainTab('timetable_data')"
+                    :aria-current="mainTab === 'timetable_data' ? 'page' : false"
+                    class="rounded-md px-1 py-1.5 text-[10px] sm:text-xs font-semibold text-center transition-colors"
+                    :class="mainTab === 'timetable_data' ? '' : 'text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/60'">
+                <i class="fas fa-calendar-alt block text-[10px] mb-0.5 opacity-80" aria-hidden="true"></i>
+                Timetable
+            </button>
+            <button type="button"
+                    @click="setMainTab('analytics')"
+                    :aria-current="mainTab === 'analytics' ? 'page' : false"
+                    class="rounded-md px-1 py-1.5 text-[10px] sm:text-xs font-semibold text-center transition-colors"
+                    :class="mainTab === 'analytics' ? '' : 'text-gray-600 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/60'">
+                <i class="fas fa-chart-pie block text-[10px] mb-0.5 opacity-80" aria-hidden="true"></i>
+                Analytics
+            </button>
         </div>
-    </div>
+    </nav>
 
     <div x-show="mainTab === 'exam_data'">
     {% if not timetables_by_level %}
-    <div class="dashboard-card rounded-2xl shadow-xl p-12 text-center text-gray-600 dark:text-gray-400">
+    <div class="dashboard-card rounded-2xl shadow-xl p-8 sm:p-12 text-center text-xs sm:text-sm text-gray-600 dark:text-gray-400">
         No class-level allocations found for this exam.
     </div>
     {% else %}
-    <div class="space-y-8">
+    <div class="space-y-4 sm:space-y-8">
         {% for level in timetables_by_level %}
-        <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 border border-gray-200/80 dark:border-gray-700">
-            <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-3">
-                <span class="w-9 h-9 rounded-lg bg-brand-primary/15 text-brand-primary flex items-center justify-center">
+        <div class="dashboard-card rounded-2xl shadow-xl p-3 sm:p-6 md:p-8 border border-gray-200/80 dark:border-gray-700">
+            <h2 class="erd-level-heading text-gray-900 dark:text-white mb-3 sm:mb-6">
+                <span class="erd-level-heading__icon" aria-hidden="true">
                     <i class="fas fa-layer-group"></i>
                 </span>
-                {{ level.level_name }}{% if level.level_category %} <span class="text-gray-500 dark:text-gray-400 font-semibold">({{ level.level_category }})</span>{% endif %}
+                <span class="erd-level-heading__body">
+                    <span class="erd-level-heading__name">{{ level.level_name }}</span>
+                    {% if level.level_category %}
+                    <span class="erd-level-heading__category">{{ level.level_category }}</span>
+                    {% endif %}
+                </span>
             </h2>
 
-            <div class="space-y-8">
+            <div class="space-y-4 sm:space-y-8">
                 {% for block in level.dates %}
                 <div>
-                    <h3 class="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
-                        <i class="fas fa-calendar-day text-brand-primary"></i>
+                    <h3 class="text-[10px] sm:text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
+                        <i class="fas fa-calendar-day text-brand-primary text-[10px] sm:text-xs"></i>
                         {{ block.date or '—' }}
                     </h3>
-                    <div class="md:hidden space-y-3">
+                    <div class="md:hidden space-y-2 sm:space-y-3">
                         {% for slot in block.slots %}
-                        <div class="rounded-xl border-2 border-gray-200 dark:border-gray-700 p-3.5 sm:p-4 bg-white/80 dark:bg-gray-800/60">
-                            <div class="flex items-start justify-between gap-3">
-                                <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                        <div class="rounded-lg sm:rounded-xl border-2 border-gray-200 dark:border-gray-700 p-2.5 sm:p-4 bg-white/80 dark:bg-gray-800/60">
+                            <div class="flex items-start justify-between gap-2 sm:gap-3">
+                                <p class="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white leading-snug">
                                     {{ slot.subject_name or '—' }}
                                     {% if slot.subject_code %}<span class="text-xs text-gray-500 dark:text-gray-400">({{ slot.subject_code }})</span>{% endif %}
                                 </p>
@@ -160,7 +470,7 @@
                                     {{ slot.status or 'scheduled' }}
                                 </span>
                             </div>
-                            <div class="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-700 dark:text-gray-300">
+                            <div class="mt-1.5 sm:mt-2 grid grid-cols-1 gap-0.5 sm:gap-1 text-[10px] sm:text-xs text-gray-700 dark:text-gray-300">
                                 <p><span class="font-semibold">Time:</span>
                                     {% if slot.start_time or slot.end_time %}
                                         {{ (slot.start_time or '—')[:5] }} – {{ (slot.end_time or '—')[:5] }}
@@ -176,19 +486,19 @@
                                 </p>
                                 <p><span class="font-semibold">Venue:</span> {{ slot.venue or '—' }}</p>
                             </div>
-                            <div class="mt-3">
+                            <div class="mt-2 sm:mt-3">
                                 {% if exam_meta.is_locked or erd_teacher_view %}
-                                <span class="text-xs text-gray-400 dark:text-gray-500">{% if erd_teacher_view and not exam_meta.is_locked %}View only{% else %}Locked{% endif %}</span>
+                                <span class="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">{% if erd_teacher_view and not exam_meta.is_locked %}View only{% else %}Locked{% endif %}</span>
                                 {% else %}
-                                <div class="grid grid-cols-2 gap-2">
+                                <div class="grid grid-cols-2 gap-1.5 sm:gap-2">
                                     <button type="button"
-                                       class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white min-h-[42px]"
+                                       class="inline-flex items-center justify-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white min-h-[34px] sm:min-h-[42px]"
                                        data-edit-exam-id="{{ slot.id }}">
                                         <i class="fas fa-edit"></i>
                                         <span>Edit</span>
                                     </button>
                                     <button type="button"
-                                            class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white min-h-[42px]"
+                                            class="inline-flex items-center justify-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-semibold bg-red-600 hover:bg-red-700 text-white min-h-[34px] sm:min-h-[42px]"
                                             data-delete-exam-id="{{ slot.id }}">
                                         <i class="fas fa-trash"></i>
                                         Delete
@@ -288,11 +598,11 @@
 
     <div x-show="mainTab === 'timetable_data'" x-cloak>
         {% if not timetables_by_level %}
-        <div class="dashboard-card rounded-2xl shadow-xl p-12 text-center text-gray-600 dark:text-gray-400">
+        <div class="dashboard-card rounded-2xl shadow-xl p-8 sm:p-12 text-center text-xs sm:text-sm text-gray-600 dark:text-gray-400">
             No class-level allocations found for this exam.
         </div>
         {% else %}
-        <div class="space-y-8">
+        <div class="space-y-4 sm:space-y-8">
             {# Only show sessions that exist in saved allocations for this exam (i.e., what was checked/used during registration). #}
             {% set _session_order = ['MORNING','MIDDAY','AFTERNOON','EVENING','CUSTOM'] %}
             {% set session_cols = [] %}
@@ -305,35 +615,40 @@
                 {% set session_cols = ['MORNING','MIDDAY','AFTERNOON','EVENING'] %}
             {% endif %}
             {% for level in timetables_by_level %}
-            <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 border border-gray-200/80 dark:border-gray-700">
-                <div class="mb-5 space-y-2">
-                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                            <span class="w-9 h-9 rounded-lg bg-brand-primary/15 text-brand-primary flex items-center justify-center shrink-0">
+            <div class="dashboard-card rounded-2xl shadow-xl p-3 sm:p-6 md:p-8 border border-gray-200/80 dark:border-gray-700">
+                <div class="mb-3 sm:mb-5 space-y-2 sm:space-y-2">
+                    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
+                        <h2 class="erd-level-heading text-gray-900 dark:text-white w-full sm:w-auto">
+                            <span class="erd-level-heading__icon" aria-hidden="true">
                                 <i class="fas fa-th"></i>
                             </span>
-                            <span class="min-w-0">{{ level.level_name }}{% if level.level_category %} <span class="text-gray-500 dark:text-gray-400 font-semibold">({{ level.level_category }})</span>{% endif %}</span>
+                            <span class="erd-level-heading__body">
+                                <span class="erd-level-heading__name">{{ level.level_name }}</span>
+                                {% if level.level_category %}
+                                <span class="erd-level-heading__category">{{ level.level_category }}</span>
+                                {% endif %}
+                            </span>
                         </h2>
-                        <p class="hidden md:block text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                        <p class="hidden md:block text-xs text-gray-500 dark:text-gray-400 shrink-0 pt-1">
                             Grid view: rows = days, columns = sessions.
                         </p>
                     </div>
-                    <p class="md:hidden text-xs text-gray-500 dark:text-gray-400 inline-flex items-start gap-2">
-                        <i class="fas fa-arrows-alt-h text-brand-primary shrink-0 mt-0.5"></i>
+                    <p class="md:hidden text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-start gap-1.5 sm:gap-2 leading-snug pt-0.5">
+                        <i class="fas fa-arrows-alt-h text-brand-primary shrink-0 mt-0.5 text-[10px]"></i>
                         <span>Swipe sideways for the full timetable — days in rows, sessions in columns.</span>
                     </p>
                 </div>
 
                 {# Timetable grid on all breakpoints; horizontal scroll on narrow screens. #}
                 <div class="erd-timetable-scroll overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 max-w-full">
-                    <table class="min-w-[640px] md:min-w-[760px] lg:min-w-[820px] w-full border-separate border-spacing-0 text-sm">
+                    <table class="min-w-[28rem] sm:min-w-[640px] md:min-w-[760px] lg:min-w-[820px] w-full border-separate border-spacing-0 text-xs sm:text-sm">
                         <thead>
                             <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
-                                <th class="p-2 md:p-3 text-left font-bold w-28 min-w-[7rem] md:w-36 sticky left-0 z-20 bg-gradient-to-r from-brand-primary to-brand-secondary">
+                                <th class="p-1.5 sm:p-2 md:p-3 text-left font-bold w-[4.5rem] sm:w-28 min-w-[4.5rem] sm:min-w-[7rem] md:w-36 sticky left-0 z-20 bg-gradient-to-r from-brand-primary to-brand-secondary text-[10px] sm:text-sm">
                                     Date
                                 </th>
                                 {% for sc in session_cols %}
-                                <th class="p-2 md:p-3 text-left font-bold whitespace-nowrap">
+                                <th class="p-1.5 sm:p-2 md:p-3 text-left font-bold whitespace-nowrap text-[10px] sm:text-sm">
                                     <div class="leading-tight">
                                         <div>
                                             {% if sc == 'MORNING' %}Morning{% elif sc == 'MIDDAY' %}Midday{% elif sc == 'AFTERNOON' %}Afternoon{% elif sc == 'EVENING' %}Evening{% else %}Custom{% endif %}
@@ -341,7 +656,7 @@
                                         {% set _hh = exam_rows|selectattr('session_type','equalto',sc)|list %}
                                         {% set _h = _hh|first %}
                                         {% set _sp = session_presets.get(sc) if session_presets else none %}
-                                        <div class="text-[11px] font-semibold text-white/90">
+                                        <div class="text-[9px] sm:text-[11px] font-semibold text-white/90">
                                             {% if _h and (_h.start_time or _h.end_time) %}
                                                 {{ (_h.start_time or '—')[:5] }}–{{ (_h.end_time or '—')[:5] }}
                                             {% elif _sp and (_sp.start or _sp.end) %}
@@ -358,18 +673,18 @@
                         <tbody>
                             {% for block in level.dates %}
                             <tr class="border-t border-gray-200 dark:border-gray-800">
-                                <td class="sticky-date-col p-2 md:p-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap sticky left-0 z-10 bg-white dark:bg-gray-900 md:bg-white/90 md:dark:bg-gray-900/70 border-r border-gray-200 dark:border-gray-800">
-                                    <div class="text-xs md:text-sm font-bold leading-tight">{{ block.date or '—' }}</div>
+                                <td class="sticky-date-col p-1.5 sm:p-2 md:p-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap sticky left-0 z-10 bg-white dark:bg-gray-900 md:bg-white/90 md:dark:bg-gray-900/70 border-r border-gray-200 dark:border-gray-800">
+                                    <div class="text-[10px] sm:text-xs md:text-sm font-bold leading-tight">{{ block.date or '—' }}</div>
                                 </td>
                                 {% for sc in session_cols %}
                                 {% set hits = block.slots|selectattr('session_type','equalto',sc)|list %}
-                                <td class="p-2 sm:p-2.5 align-top text-gray-800 dark:text-gray-200">
+                                <td class="p-1 sm:p-2.5 align-top text-gray-800 dark:text-gray-200">
                                     {% if hits and hits|length > 0 %}
                                         <div class="space-y-1.5 sm:space-y-2">
                                             {% for slot in hits[:2] %}
-                                                <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-1.5 sm:p-2">
-                                                    <div class="flex items-start justify-between gap-2">
-                                                        <div class="font-semibold text-gray-900 dark:text-white leading-snug text-[12px] sm:text-sm">
+                                                <div class="rounded-md sm:rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-1 sm:p-1.5 md:p-2">
+                                                    <div class="flex items-start justify-between gap-1 sm:gap-2">
+                                                        <div class="font-semibold text-gray-900 dark:text-white leading-snug text-[10px] sm:text-sm">
                                                             {{ slot.subject_name or '—' }}
                                                         </div>
                                                         {% set st = (slot.status or 'scheduled')|lower %}
@@ -398,7 +713,7 @@
                                             {% endif %}
                                         </div>
                                     {% else %}
-                                        <div class="h-full min-h-[44px] sm:min-h-[54px] rounded-lg border border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-400 text-xs">
+                                        <div class="h-full min-h-[2rem] sm:min-h-[44px] md:min-h-[54px] rounded-md sm:rounded-lg border border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-400 text-[10px] sm:text-xs">
                                             —
                                         </div>
                                     {% endif %}
@@ -427,20 +742,20 @@
                 {% endfor %}
 
                 {% if missing_any and not erd_teacher_view %}
-                <div class="mt-5 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-900/20 p-4">
-                    <div class="flex items-start gap-3">
-                        <span class="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 flex items-center justify-center shrink-0">
-                            <i class="fas fa-exclamation-triangle"></i>
+                <div class="mt-3 sm:mt-5 rounded-lg sm:rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-900/20 p-3 sm:p-4">
+                    <div class="flex items-start gap-2 sm:gap-3">
+                        <span class="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 flex items-center justify-center shrink-0">
+                            <i class="fas fa-exclamation-triangle text-xs sm:text-base"></i>
                         </span>
                         <div class="min-w-0">
-                            <p class="text-sm font-bold text-amber-900 dark:text-amber-100">Unallocated subject(s)</p>
-                            <p class="text-xs text-amber-800/80 dark:text-amber-200/80 mt-1">
+                            <p class="text-xs sm:text-sm font-bold text-amber-900 dark:text-amber-100">Unallocated subject(s)</p>
+                            <p class="text-[10px] sm:text-xs text-amber-800/80 dark:text-amber-200/80 mt-1 leading-snug">
                                 These active subjects have no timetable slot for this class.
                             </p>
-                            <div class="mt-3 flex flex-wrap gap-2">
+                            <div class="mt-2 sm:mt-3 flex flex-wrap gap-1.5 sm:gap-2">
                                 {% for s in subjects %}
                                     {% if s.id is not none and (s.id|int) not in ns.allocated_ids %}
-                                        <span class="inline-flex items-center px-3 py-1.5 rounded-full bg-white/80 dark:bg-gray-900/40 border border-amber-200 dark:border-amber-800 text-xs font-semibold text-amber-900 dark:text-amber-100">
+                                        <span class="inline-flex items-center px-2 py-1 sm:px-3 sm:py-1.5 rounded-full bg-white/80 dark:bg-gray-900/40 border border-amber-200 dark:border-amber-800 text-[10px] sm:text-xs font-semibold text-amber-900 dark:text-amber-100">
                                             {{ s.subject_name }}{% if s.subject_code %} <span class="text-[11px] text-amber-800/70 dark:text-amber-200/70">({{ s.subject_code }})</span>{% endif %}
                                         </span>
                                     {% endif %}
@@ -456,76 +771,76 @@
         {% endif %}
     </div>{# end timetable data tab #}
 
-    <div x-show="mainTab === 'analytics'" x-cloak class="space-y-8">
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div class="dashboard-card rounded-xl p-4 border border-gray-200/80 dark:border-gray-700">
-                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Allocations</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ analytics.total_allocations }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Total slots</p>
+    <div x-show="mainTab === 'analytics'" x-cloak class="space-y-4 sm:space-y-8">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+            <div class="dashboard-card rounded-lg sm:rounded-xl p-2.5 sm:p-4 border border-gray-200/80 dark:border-gray-700">
+                <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Allocations</p>
+                <p class="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white mt-0.5 sm:mt-1">{{ analytics.total_allocations }}</p>
+                <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">Total slots</p>
             </div>
-            <div class="dashboard-card rounded-xl p-4 border border-gray-200/80 dark:border-gray-700">
-                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classes</p>
-                <p class="text-2xl font-bold text-emerald-700 dark:text-emerald-300 mt-1">{{ analytics.distinct_levels }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Levels covered</p>
+            <div class="dashboard-card rounded-lg sm:rounded-xl p-2.5 sm:p-4 border border-gray-200/80 dark:border-gray-700">
+                <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classes</p>
+                <p class="text-lg sm:text-2xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5 sm:mt-1">{{ analytics.distinct_levels }}</p>
+                <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">Levels covered</p>
             </div>
-            <div class="dashboard-card rounded-xl p-4 border border-gray-200/80 dark:border-gray-700">
-                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Subjects</p>
-                <p class="text-2xl font-bold text-sky-700 dark:text-sky-300 mt-1">{{ analytics.distinct_subjects }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Distinct subjects</p>
+            <div class="dashboard-card rounded-lg sm:rounded-xl p-2.5 sm:p-4 border border-gray-200/80 dark:border-gray-700">
+                <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Subjects</p>
+                <p class="text-lg sm:text-2xl font-bold text-sky-700 dark:text-sky-300 mt-0.5 sm:mt-1">{{ analytics.distinct_subjects }}</p>
+                <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">Distinct subjects</p>
             </div>
-            <div class="dashboard-card rounded-xl p-4 border border-gray-200/80 dark:border-gray-700">
-                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Supervisors</p>
-                <p class="text-2xl font-bold text-violet-700 dark:text-violet-300 mt-1">{{ analytics.assigned_supervisors }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Teachers allocated</p>
+            <div class="dashboard-card rounded-lg sm:rounded-xl p-2.5 sm:p-4 border border-gray-200/80 dark:border-gray-700">
+                <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Supervisors</p>
+                <p class="text-lg sm:text-2xl font-bold text-violet-700 dark:text-violet-300 mt-0.5 sm:mt-1">{{ analytics.assigned_supervisors }}</p>
+                <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">Teachers allocated</p>
             </div>
         </div>
 
-        <div class="flex flex-wrap gap-2">
-            <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
+        <div class="flex flex-wrap gap-1.5 sm:gap-2">
+            <button type="button" class="rounded-lg px-2.5 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wide transition"
                     :class="analyticsSlice === 'day' ? 'bg-brand-primary text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
                     @click="analyticsSlice='day'; destroyCharts()">By day</button>
-            <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
+            <button type="button" class="rounded-lg px-2.5 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wide transition"
                     :class="analyticsSlice === 'class' ? 'bg-emerald-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
                     @click="analyticsSlice='class'; destroyCharts()">By class</button>
-            <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
+            <button type="button" class="rounded-lg px-2.5 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wide transition"
                     :class="analyticsSlice === 'supervisor' ? 'bg-violet-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
                     @click="analyticsSlice='supervisor'; destroyCharts()">By supervisor</button>
         </div>
 
         {# —— Day —— #}
-        <section class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'day'">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <section class="dashboard-card rounded-2xl shadow-xl p-3 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'day'">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
                 <div>
-                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <i class="fas fa-calendar-day text-brand-primary"></i>
+                    <h2 class="text-sm sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-1.5 sm:gap-2">
+                        <i class="fas fa-calendar-day text-brand-primary text-xs sm:text-base"></i>
                         Allocations per day
                     </h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Slots scheduled on each date.</p>
+                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Slots scheduled on each date.</p>
                 </div>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full text-xs sm:text-sm">
                     <thead>
-                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            <th class="pb-3 pr-4">Date</th>
-                            <th class="pb-3 pr-4 w-48 hidden sm:table-cell">Share</th>
-                            <th class="pb-3 text-right">Count</th>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-[10px] sm:text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <th class="pb-2 sm:pb-3 pr-3 sm:pr-4">Date</th>
+                            <th class="pb-2 sm:pb-3 pr-3 sm:pr-4 w-48 hidden sm:table-cell">Share</th>
+                            <th class="pb-2 sm:pb-3 text-right">Count</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         {% for row in analytics.day_stats %}
                         <tr>
-                            <td class="py-3 pr-4 font-medium text-gray-900 dark:text-white">{{ row.exam_date }}</td>
-                            <td class="py-3 pr-4 hidden sm:table-cell">
+                            <td class="py-2 sm:py-3 pr-3 sm:pr-4 font-medium text-gray-900 dark:text-white">{{ row.exam_date }}</td>
+                            <td class="py-2 sm:py-3 pr-3 sm:pr-4 hidden sm:table-cell">
                                 <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden max-w-[12rem]">
                                     <div class="h-full rounded-full bg-brand-primary" style="width: {{ row.bar_pct }}%"></div>
                                 </div>
                                 <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-block">{{ row.share_pct }}%</span>
                             </td>
-                            <td class="py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
+                            <td class="py-2 sm:py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="3" class="py-6 text-center text-gray-500">No data.</td></tr>
+                        <tr><td colspan="3" class="py-4 sm:py-6 text-center text-gray-500">No data.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -533,49 +848,49 @@
         </section>
 
         {# —— Class —— #}
-        <section class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'class'">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <section class="dashboard-card rounded-2xl shadow-xl p-3 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'class'">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
                 <div>
-                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <i class="fas fa-layer-group text-emerald-600 dark:text-emerald-400"></i>
+                    <h2 class="text-sm sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-1.5 sm:gap-2">
+                        <i class="fas fa-layer-group text-emerald-600 dark:text-emerald-400 text-xs sm:text-base"></i>
                         Exams per class
                     </h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Slots per academic level.</p>
+                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Slots per academic level.</p>
                 </div>
-                <div class="inline-flex rounded-xl border border-gray-200 dark:border-gray-600 p-1 bg-gray-50 dark:bg-gray-800/80 self-start">
-                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                <div class="inline-flex rounded-lg sm:rounded-xl border border-gray-200 dark:border-gray-600 p-0.5 sm:p-1 bg-gray-50 dark:bg-gray-800/80 self-start">
+                    <button type="button" class="rounded-lg px-2 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold"
                             :class="classMode === 'raw' ? 'bg-white dark:bg-gray-700 shadow text-emerald-800 dark:text-emerald-200' : 'text-gray-500'"
                             @click="classMode='raw'; destroyChart('class')">Raw data</button>
-                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                    <button type="button" class="rounded-lg px-2 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold"
                             :class="classMode === 'visual' ? 'bg-white dark:bg-gray-700 shadow text-emerald-800 dark:text-emerald-200' : 'text-gray-500'"
                             @click="classMode='visual'; scheduleChartBuild('class')">Visual</button>
                 </div>
             </div>
             <div x-show="classMode === 'raw'" class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full text-xs sm:text-sm">
                     <thead>
-                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            <th class="pb-3 pr-4">Class</th>
-                            <th class="pb-3 pr-4 w-48 hidden sm:table-cell">Share</th>
-                            <th class="pb-3 text-right">Count</th>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-[10px] sm:text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <th class="pb-2 sm:pb-3 pr-3 sm:pr-4">Class</th>
+                            <th class="pb-2 sm:pb-3 pr-3 sm:pr-4 w-48 hidden sm:table-cell">Share</th>
+                            <th class="pb-2 sm:pb-3 text-right">Count</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         {% for row in analytics.class_stats %}
                         <tr>
-                            <td class="py-3 pr-4 font-medium text-gray-900 dark:text-white">
+                            <td class="py-2 sm:py-3 pr-3 sm:pr-4 font-medium text-gray-900 dark:text-white">
                                 {{ row.level_name }}{% if row.level_category %} <span class="text-gray-500 dark:text-gray-400 font-normal">({{ row.level_category }})</span>{% endif %}
                             </td>
-                            <td class="py-3 pr-4 hidden sm:table-cell">
+                            <td class="py-2 sm:py-3 pr-3 sm:pr-4 hidden sm:table-cell">
                                 <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden max-w-[12rem]">
                                     <div class="h-full rounded-full bg-emerald-500 dark:bg-emerald-400" style="width: {{ row.bar_pct }}%"></div>
                                 </div>
                                 <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-block">{{ row.share_pct }}%</span>
                             </td>
-                            <td class="py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
+                            <td class="py-2 sm:py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="3" class="py-6 text-center text-gray-500">No data.</td></tr>
+                        <tr><td colspan="3" class="py-4 sm:py-6 text-center text-gray-500">No data.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -588,46 +903,46 @@
         </section>
 
         {# —— Supervisor —— #}
-        <section class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'supervisor'">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <section class="dashboard-card rounded-2xl shadow-xl p-3 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'supervisor'">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
                 <div>
-                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <i class="fas fa-chalkboard-teacher text-violet-600 dark:text-violet-400"></i>
+                    <h2 class="text-sm sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-1.5 sm:gap-2">
+                        <i class="fas fa-chalkboard-teacher text-violet-600 dark:text-violet-400 text-xs sm:text-base"></i>
                         Supervisor analysis
                     </h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Sessions per teacher.</p>
+                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Sessions per teacher.</p>
                 </div>
-                <div class="inline-flex rounded-xl border border-gray-200 dark:border-gray-600 p-1 bg-gray-50 dark:bg-gray-800/80 self-start">
-                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                <div class="inline-flex rounded-lg sm:rounded-xl border border-gray-200 dark:border-gray-600 p-0.5 sm:p-1 bg-gray-50 dark:bg-gray-800/80 self-start">
+                    <button type="button" class="rounded-lg px-2 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold"
                             :class="superMode === 'raw' ? 'bg-white dark:bg-gray-700 shadow text-violet-800 dark:text-violet-200' : 'text-gray-500'"
                             @click="superMode='raw'; destroyChart('supervisor')">Raw data</button>
-                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                    <button type="button" class="rounded-lg px-2 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold"
                             :class="superMode === 'visual' ? 'bg-white dark:bg-gray-700 shadow text-violet-800 dark:text-violet-200' : 'text-gray-500'"
                             @click="superMode='visual'; scheduleChartBuild('supervisor')">Visual</button>
                 </div>
             </div>
             <div x-show="superMode === 'raw'" class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full text-xs sm:text-sm">
                     <thead>
-                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            <th class="pb-3 pr-4">Teacher</th>
-                            <th class="pb-3 pr-4 w-48 hidden sm:table-cell">Share</th>
-                            <th class="pb-3 text-right">Sessions</th>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-[10px] sm:text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <th class="pb-2 sm:pb-3 pr-3 sm:pr-4">Teacher</th>
+                            <th class="pb-2 sm:pb-3 pr-3 sm:pr-4 w-48 hidden sm:table-cell">Share</th>
+                            <th class="pb-2 sm:pb-3 text-right">Sessions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         {% for row in analytics.supervisor_stats %}
                         <tr>
-                            <td class="py-3 pr-4 font-medium text-gray-900 dark:text-white">
+                            <td class="py-2 sm:py-3 pr-3 sm:pr-4 font-medium text-gray-900 dark:text-white">
                                 {{ row.full_name }}{% if row.employee_id %}<span class="text-xs text-gray-500 ml-1">({{ row.employee_id }})</span>{% endif %}
                             </td>
-                            <td class="py-3 pr-4 hidden sm:table-cell">
+                            <td class="py-2 sm:py-3 pr-3 sm:pr-4 hidden sm:table-cell">
                                 <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden max-w-[12rem]">
                                     <div class="h-full rounded-full bg-violet-500 dark:bg-violet-400" style="width: {{ row.bar_pct }}%"></div>
                                 </div>
                                 <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-block">{{ row.share_pct }}%</span>
                             </td>
-                            <td class="py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
+                            <td class="py-2 sm:py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
                         </tr>
                         {% else %}
                         <tr><td colspan="3" class="py-6 text-center text-gray-500">No data.</td></tr>
@@ -649,41 +964,41 @@
     <div id="erd-add-backdrop" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
     <div class="absolute inset-0 p-3 sm:p-6 flex items-center justify-center">
         <div class="w-full max-w-2xl max-h-[95vh] overflow-hidden rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col">
-            <div class="px-4 sm:px-5 py-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white flex items-center justify-between gap-3">
-                <h3 class="font-bold text-base sm:text-lg">Allocate Another Class</h3>
-                <button id="erd-add-close-modal" type="button" class="w-9 h-9 rounded-lg bg-white/20 hover:bg-white/30">
+            <div class="px-3 sm:px-5 py-3 sm:py-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white flex items-center justify-between gap-2 sm:gap-3">
+                <h3 class="font-bold text-sm sm:text-lg">Allocate Another Class</h3>
+                <button id="erd-add-close-modal" type="button" class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white/20 hover:bg-white/30 text-sm">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <form id="erd-add-form" class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form id="erd-add-form" class="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 sm:space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     <div>
-                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Academic Level</label>
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Academic Level</label>
                         <select id="erd-add-level" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></select>
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Exam Date</label>
-                        <input id="erd-add-date" type="date" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Exam Date</label>
+                        <input id="erd-add-date" type="date" class="w-full px-3 py-2 sm:py-2.5 text-sm rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                     </div>
                     <div class="md:col-span-2">
-                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Venue</label>
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Venue</label>
                         <input id="erd-add-venue" type="text" readonly class="w-full px-3 py-2.5 uppercase rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white">
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Defaulted from selected class (academic level).</p>
                     </div>
                 </div>
-                <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200">Subject allocations</h4>
-                        <button id="erd-add-row-btn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white">
+                <div class="rounded-lg sm:rounded-xl border border-gray-200 dark:border-gray-700 p-2.5 sm:p-4">
+                    <div class="flex items-center justify-between mb-2 sm:mb-3">
+                        <h4 class="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-200">Subject allocations</h4>
+                        <button id="erd-add-row-btn" type="button" class="inline-flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white">
                             <i class="fas fa-plus"></i> Add Subject
                         </button>
                     </div>
                     <div id="erd-add-rows" class="space-y-3"></div>
                 </div>
-                <p id="erd-add-error" class="hidden text-sm text-red-600 dark:text-red-400"></p>
+                <p id="erd-add-error" class="hidden text-xs sm:text-sm text-red-600 dark:text-red-400"></p>
                 <div class="pt-2 flex flex-col-reverse sm:flex-row justify-end gap-2">
-                    <button id="erd-add-cancel-btn" type="button" class="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Cancel</button>
-                    <button id="erd-add-save-btn" type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold">Allocate Selected Subjects</button>
+                    <button id="erd-add-cancel-btn" type="button" class="px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Cancel</button>
+                    <button id="erd-add-save-btn" type="submit" class="px-4 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm rounded-xl bg-emerald-600 text-white font-semibold">Allocate Selected Subjects</button>
                 </div>
             </form>
         </div>
@@ -928,25 +1243,25 @@
     <div id="erd-edit-backdrop" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
     <div class="absolute inset-0 p-3 sm:p-6 flex items-center justify-center">
         <div class="w-full max-w-2xl max-h-[95vh] overflow-hidden rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col">
-            <div class="px-4 sm:px-5 py-4 bg-gradient-to-r from-brand-primary to-brand-secondary text-white flex items-center justify-between gap-3">
-                <h3 class="font-bold text-base sm:text-lg">Edit Allocation</h3>
-                <button id="erd-close-modal" type="button" class="w-9 h-9 rounded-lg bg-white/20 hover:bg-white/30">
+            <div class="px-3 sm:px-5 py-3 sm:py-4 bg-gradient-to-r from-brand-primary to-brand-secondary text-white flex items-center justify-between gap-2 sm:gap-3">
+                <h3 class="font-bold text-sm sm:text-lg">Edit Allocation</h3>
+                <button id="erd-close-modal" type="button" class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white/20 hover:bg-white/30 text-sm">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <form id="erd-edit-form" class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+            <form id="erd-edit-form" class="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 sm:space-y-4">
                 <input type="hidden" id="erd-id">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     <div>
-                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Academic Level</label>
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Academic Level</label>
                         <select id="erd-level" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></select>
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Subject</label>
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Subject</label>
                         <select id="erd-subject" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></select>
                     </div>
                     <div class="md:col-span-2">
-                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Teacher</label>
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Teacher</label>
                         <select id="erd-teacher" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></select>
                         <p id="erd-teacher-hint" class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                             <span class="text-emerald-700 dark:text-emerald-400 font-medium">Green group</span>: free for this date and session.
@@ -956,15 +1271,15 @@
                         <div id="erd-teacher-conflict-detail" class="hidden mt-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/25 px-3 py-2.5 text-xs text-amber-950 dark:text-amber-100"></div>
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Exam Date</label>
-                        <input id="erd-date" type="date" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Exam Date</label>
+                        <input id="erd-date" type="date" class="w-full px-3 py-2 sm:py-2.5 text-sm rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Venue</label>
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Venue</label>
                         <input id="erd-venue" type="text" class="w-full px-3 py-2.5 uppercase rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Session</label>
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Session</label>
                         <select id="erd-session" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                             <option value="">Select Session</option>
                             <option value="MORNING">Morning Session</option>
@@ -991,8 +1306,8 @@
                 </div>
                 <p id="erd-error" class="hidden text-sm text-red-600 dark:text-red-400"></p>
                 <div class="pt-2 flex flex-col-reverse sm:flex-row justify-end gap-2">
-                    <button id="erd-cancel-btn" type="button" class="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Cancel</button>
-                    <button id="erd-save-btn" type="submit" class="px-5 py-2.5 rounded-xl bg-brand-primary text-white font-semibold">Save</button>
+                    <button id="erd-cancel-btn" type="button" class="px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Cancel</button>
+                    <button id="erd-save-btn" type="submit" class="px-4 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm rounded-xl bg-brand-primary text-white font-semibold">Save</button>
                 </div>
             </form>
         </div>
