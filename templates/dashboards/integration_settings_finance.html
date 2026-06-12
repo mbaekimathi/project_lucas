@@ -13,13 +13,18 @@
 
 {% block content %}
 {% set role_hero_title = 'M-Pesa Daraja' %}
-{% set role_hero_subtitle = 'STK push payments · school paybill profiles · credentials in .env' %}
+{% set role_hero_subtitle = 'STK push payments · school paybill profiles · Daraja credentials' %}
 {% set role_hero_icon_class = 'fa-mobile-alt' %}
 {% include 'dashboards/includes/role_hero.html' %}
 
 {% set mpesa = integration_data.mpesa_daraja %}
 {% set mpesa_profiles_initial = mpesa_account_presets|default(integration_data.mpesa_daraja.mpesa_accounts|default([])) %}
-<script type="application/json" id="mpesa-finance-init-data">{{ {'enabled': mpesa.enabled, 'accounts': mpesa_profiles_initial}|tojson }}</script>
+{% set creds = daraja_credentials|default({}) %}
+<script type="application/json" id="mpesa-finance-init-data">{{ {
+    'enabled': mpesa.enabled,
+    'accounts': mpesa_profiles_initial,
+    'credentials': creds
+}|tojson }}</script>
 <script>
 function readMpesaFinanceInit() {
   var el = document.getElementById('mpesa-finance-init-data');
@@ -55,9 +60,21 @@ function darajaFinanceSettings() {
     });
   }
   var initialAccounts = Array.isArray(init.accounts) ? init.accounts.map(normalizeAccount) : [];
+  var initialCreds = init.credentials && typeof init.credentials === 'object' ? init.credentials : {};
   return {
     enabled: !!init.enabled,
     accounts: initialAccounts,
+    credentials: Object.assign({
+      environment: 'sandbox',
+      consumer_key: '',
+      consumer_secret: '',
+      passkey: '',
+      shortcode: '',
+      stk_callback_url: '',
+      callback_base_url: '',
+      consumer_secret_set: false,
+      passkey_set: false,
+    }, initialCreds),
     financeSaveUrl: {{ employee_dash_url('integration-settings/finance/save')|tojson }},
     saving: false,
     saveMessage: '',
@@ -65,6 +82,9 @@ function darajaFinanceSettings() {
     accountsSaving: false,
     accountsMsg: '',
     accountsError: false,
+    credSaving: false,
+    credMsg: '',
+    credError: false,
     addAccount: function () { this.accounts.push(newAccount()); },
     removeAccount: function (idx) { this.accounts.splice(idx, 1); },
     saveAccounts: function () {
@@ -124,6 +144,50 @@ function darajaFinanceSettings() {
         .catch(function () { self.saveError = true; self.saveMessage = 'Could not save.'; })
         .finally(function () { self.saving = false; });
     },
+    saveCredentials: function () {
+      var self = this;
+      if (!String(self.credentials.consumer_key || '').trim()) {
+        self.credError = true;
+        self.credMsg = 'Consumer key is required.';
+        return;
+      }
+      if (!self.credentials.consumer_secret_set && !String(self.credentials.consumer_secret || '').trim()) {
+        self.credError = true;
+        self.credMsg = 'Consumer secret is required.';
+        return;
+      }
+      if (!self.credentials.passkey_set && !String(self.credentials.passkey || '').trim()) {
+        self.credError = true;
+        self.credMsg = 'Lipa Na M-Pesa passkey is required.';
+        return;
+      }
+      self.credSaving = true;
+      self.credMsg = '';
+      self.credError = false;
+      fetch(self.financeSaveUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ credentials: self.credentials }),
+      })
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (result) {
+          var data = result.data || {};
+          self.credError = !result.ok || !data.success;
+          self.credMsg = data.message || (data.success ? 'Saved.' : 'Save failed.');
+          if (data.success && data.credentials) {
+            self.credentials.consumer_secret = '';
+            self.credentials.passkey = '';
+            self.credentials.consumer_secret_set = !!data.credentials.consumer_secret_set;
+            self.credentials.passkey_set = !!data.credentials.passkey_set;
+            Object.assign(self.credentials, data.credentials);
+            self.credentials.consumer_secret = '';
+            self.credentials.passkey = '';
+          }
+        })
+        .catch(function () { self.credError = true; self.credMsg = 'Could not save credentials.'; })
+        .finally(function () { self.credSaving = false; });
+    },
   };
 }
 </script>
@@ -136,7 +200,7 @@ function darajaFinanceSettings() {
         <div class="mf-panel__head">
             <div class="min-w-0 flex-1">
                 <h2 class="mf-title">Daraja connection</h2>
-                <p class="mf-subtitle">Enable parent &amp; accountant M-Pesa STK after .env credentials are set.</p>
+                <p class="mf-subtitle">Enable parent &amp; accountant M-Pesa STK after credentials are saved.</p>
             </div>
             <label class="mf-toggle shrink-0">
                 <input type="checkbox" class="sr-only" x-model="enabled">
@@ -184,6 +248,67 @@ function darajaFinanceSettings() {
                     <i class="fas fa-spinner fa-spin" x-show="saving"></i>
                     <i class="fas fa-save" x-show="!saving"></i>
                     Save connection
+                </button>
+            </div>
+        </div>
+    </section>
+
+    {# —— STK credentials —— #}
+    <section class="mf-panel">
+        <div class="mf-panel__head">
+            <div class="min-w-0 flex-1">
+                <h2 class="mf-title">STK push credentials</h2>
+                <p class="mf-subtitle">Safaricom Daraja consumer key, secret, and Lipa Na M-Pesa passkey.</p>
+            </div>
+        </div>
+        <div class="mf-panel__body space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="mf-field">
+                    <span class="mf-field__label">Environment</span>
+                    <select x-model="credentials.environment" class="mf-select w-full">
+                        <option value="sandbox">Sandbox (testing)</option>
+                        <option value="production">Production (live)</option>
+                    </select>
+                </div>
+                <div class="mf-field">
+                    <span class="mf-field__label">Paybill shortcode <span class="text-gray-400 font-normal">(optional)</span></span>
+                    <input type="text" x-model="credentials.shortcode" class="mf-input w-full mf-input--mono" placeholder="e.g. 174379" maxlength="20">
+                </div>
+                <div class="mf-field md:col-span-2">
+                    <span class="mf-field__label">Consumer key <span class="text-red-500">*</span></span>
+                    <input type="text" x-model="credentials.consumer_key" class="mf-input w-full mf-input--mono" autocomplete="off">
+                </div>
+                <div class="mf-field md:col-span-2">
+                    <span class="mf-field__label">Consumer secret <span class="text-red-500">*</span></span>
+                    <input type="password" x-model="credentials.consumer_secret" class="mf-input w-full mf-input--mono"
+                           :placeholder="credentials.consumer_secret_set ? 'Saved — leave blank to keep current' : 'Consumer secret'"
+                           autocomplete="new-password">
+                </div>
+                <div class="mf-field md:col-span-2">
+                    <span class="mf-field__label">Lipa Na M-Pesa passkey <span class="text-red-500">*</span></span>
+                    <input type="password" x-model="credentials.passkey" class="mf-input w-full mf-input--mono"
+                           :placeholder="credentials.passkey_set ? 'Saved — leave blank to keep current' : 'Online passkey'"
+                           autocomplete="new-password">
+                </div>
+                <div class="mf-field md:col-span-2">
+                    <span class="mf-field__label">STK callback URL</span>
+                    <input type="url" x-model="credentials.stk_callback_url" class="mf-input w-full mf-input--mono"
+                           placeholder="https://your-school.example.com/api/mpesa/stk-callback">
+                </div>
+                <div class="mf-field md:col-span-2">
+                    <span class="mf-field__label">Public site URL</span>
+                    <input type="url" x-model="credentials.callback_base_url" class="mf-input w-full mf-input--mono"
+                           placeholder="https://your-school.example.com">
+                </div>
+            </div>
+            <p x-show="credMsg" x-cloak class="mf-alert"
+               :class="credError ? 'mf-alert--err' : 'mf-alert--ok'"
+               x-text="credMsg"></p>
+            <div class="mf-actions !border-t-0 !mt-0 !pt-0">
+                <button type="button" @click="saveCredentials()" :disabled="credSaving" class="mf-btn mf-btn--teal">
+                    <i class="fas fa-spinner fa-spin" x-show="credSaving"></i>
+                    <i class="fas fa-save" x-show="!credSaving"></i>
+                    Save credentials
                 </button>
             </div>
         </div>
@@ -296,7 +421,7 @@ function darajaFinanceSettings() {
             <div class="min-w-0 flex-1">
                 <h2 class="mf-title">Environment checks</h2>
                 <p class="mf-subtitle">
-                    Daraja keys in <code class="text-xs px-1 py-0.5 rounded bg-[var(--mf-surface)] border border-[var(--mf-line)]">.env.local</code> or <code class="text-xs px-1 py-0.5 rounded bg-[var(--mf-surface)] border border-[var(--mf-line)]">.env</code> — restart after edits.
+                    Effective configuration from saved settings and optional environment variables.
                 </p>
             </div>
             <div class="flex flex-wrap items-center gap-2 shrink-0">

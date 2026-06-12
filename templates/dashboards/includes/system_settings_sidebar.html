@@ -52,6 +52,16 @@
         <span class="sys-settings-sidebar__label">Login Page</span>
     </a>
 
+    {% if is_technician %}
+    <a href="{{ employee_dash_url('system-settings') }}#finance-settings"
+       @click.prevent="currentHash = '#finance-settings'; window.location.hash = 'finance-settings'; window.dispatchEvent(new HashChangeEvent('hashchange')); if (typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
+       class="sidebar-item"
+       :class="currentHash === '#finance-settings' ? 'sidebar-item-active' : ''">
+        <i class="fas fa-coins w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Finance Settings</span>
+    </a>
+    {% endif %}
+
     <p class="sys-settings-sidebar__section sys-settings-sidebar__section--border">Advanced</p>
 
     <a href="{{ employee_dash_url('integration-settings') }}"

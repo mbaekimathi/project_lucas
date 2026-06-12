@@ -354,7 +354,7 @@
     var amount = amountInput ? amountInput.value.trim() : '';
 
     if (!CONFIG.darajaReady) {
-      setFeedback('M-Pesa is not enabled yet. Ask the school to turn it on under Integration → Finance and add Daraja keys to the server .env file.', 'error');
+      setFeedback('M-Pesa is not enabled yet. Ask the school to turn it on under System Settings → Finance Settings (or Integration → Finance) and add Daraja STK credentials.', 'error');
       return;
     }
     if (!phone) {

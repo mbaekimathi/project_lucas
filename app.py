@@ -32651,6 +32651,7 @@ def system_settings():
         'show_role_selector': True,
         'show_register_links': True
     }
+    daraja_finance = None
     if connection:
         try:
             with connection.cursor() as cursor:
@@ -32869,6 +32870,24 @@ def system_settings():
                     # Tables might not exist yet
                     print(f"Note: terms table may not exist yet: {e}")
                     terms = []
+
+                if is_technician:
+                    import daraja_mpesa as daraja
+                    stored = _read_mpesa_daraja_stored_raw(cursor)
+                    merged = daraja.merge_daraja_settings(stored)
+                    stk_url, stk_err = daraja.resolve_stk_callback_url(
+                        merged,
+                        fallback_url=url_for('mpesa_stk_callback', _external=True),
+                    )
+                    daraja_finance = {
+                        'enabled': bool(stored.get('enabled')),
+                        'credentials': daraja.daraja_credentials_ui(stored),
+                        'credentials_ready': daraja.credentials_configured(merged),
+                        'environment': merged.get('environment') or 'sandbox',
+                        'stk_callback_url': stk_url or url_for('mpesa_stk_callback', _external=True),
+                        'stk_callback_valid': bool(stk_url),
+                        'stk_callback_error': stk_err,
+                    }
         except Exception as e:
             print(f"Error fetching data: {e}")
             print(f"Error type: {type(e).__name__}")
@@ -32968,7 +32987,8 @@ def system_settings():
                          is_accountant=is_accountant,
                          theme_settings=theme_settings,
                          login_settings=login_settings,
-                         general_data=general_data)
+                         general_data=general_data,
+                         daraja_finance=daraja_finance)
 
 
 def _load_schedule_profiles_and_settings(cursor, selected_profile_id: str):
@@ -35633,8 +35653,10 @@ def exam_evaluation_registered_detail():
 
     records = []
     academic_levels = []
+    level_combinations = []
     subjects = []
     teachers = []
+    teacher_subject_pairs = []
     session_presets_ui = {k: {'start': v[0][:5], 'end': v[1][:5]} for k, v in _default_exam_session_presets().items()}
     try:
         with connection.cursor() as cursor:
@@ -35772,6 +35794,28 @@ def exam_evaluation_registered_detail():
                     'level_category': row.get('level_category', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
                 })
 
+            level_by_id = {
+                int(l['id']): l for l in academic_levels if l.get('id') is not None
+            }
+            for combo in fetch_academic_level_combinations(cursor):
+                disp = _level_combo_display_row(combo, level_by_id)
+                members = []
+                for mid, mname in zip(
+                    disp.get('level_ids') or [],
+                    disp.get('level_names') or [],
+                ):
+                    lv = level_by_id.get(int(mid), {})
+                    members.append({
+                        'id': int(mid),
+                        'level_name': mname,
+                        'level_category': lv.get('level_category') or '',
+                    })
+                level_combinations.append({
+                    'combo_id': disp.get('combo_id'),
+                    'level_name': disp.get('level_name') or '—',
+                    'members': members,
+                })
+
             cursor.execute("""
                 SELECT id, subject_name, subject_code
                 FROM subjects
@@ -35797,6 +35841,41 @@ def exam_evaluation_registered_detail():
                     'full_name': row.get('full_name', '') if isinstance(row, dict) else row[1],
                     'employee_id': row.get('employee_id', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
                 })
+
+            cursor.execute(f"""
+                SELECT tsa.academic_level_id, tsa.teacher_id, tsa.subject_id,
+                       e.full_name,
+                       {_employee_staff_identity_sql('e')} AS employee_id,
+                       s.subject_name, s.subject_code
+                FROM teacher_subject_assignments tsa
+                INNER JOIN employees e ON e.id = tsa.teacher_id
+                INNER JOIN subjects s ON s.id = tsa.subject_id
+                WHERE e.status = 'active'
+                  AND (e.role = 'teachers' OR e.role = 'teacher')
+                  AND COALESCE(s.status, 'active') = 'active'
+                ORDER BY tsa.academic_level_id ASC, e.full_name ASC, s.subject_name ASC
+            """)
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    teacher_subject_pairs.append({
+                        'academic_level_id': int(row.get('academic_level_id')),
+                        'teacher_id': int(row.get('teacher_id')),
+                        'subject_id': int(row.get('subject_id')),
+                        'teacher_name': row.get('full_name', ''),
+                        'employee_id': row.get('employee_id', ''),
+                        'subject_name': row.get('subject_name', ''),
+                        'subject_code': row.get('subject_code', '') or '',
+                    })
+                else:
+                    teacher_subject_pairs.append({
+                        'academic_level_id': int(row[0]),
+                        'teacher_id': int(row[1]),
+                        'subject_id': int(row[2]),
+                        'teacher_name': row[3] if len(row) > 3 else '',
+                        'employee_id': row[4] if len(row) > 4 else '',
+                        'subject_name': row[5] if len(row) > 5 else '',
+                        'subject_code': (row[6] if len(row) > 6 else '') or '',
+                    })
     except Exception as e:
         print(f"Error loading registered exam detail: {e}")
         import traceback
@@ -35907,8 +35986,10 @@ def exam_evaluation_registered_detail():
         allocation_count=len(records),
         exam_rows=records,
         academic_levels=academic_levels,
+        level_combinations=level_combinations,
         subjects=subjects,
         teachers=teachers,
+        teacher_subject_pairs=teacher_subject_pairs,
         erd_query=erd_query,
         analytics=analytics,
         erd_tab=erd_tab,
@@ -68824,7 +68905,7 @@ def allocate_requisition_supplier(requisition_id):
 
 # Integration Settings (technicians)
 def _read_mpesa_daraja_stored_raw(cursor):
-    """UI-only mpesa_daraja JSON from integration_settings (enabled + account presets)."""
+    """mpesa_daraja JSON from integration_settings (toggle, profiles, STK credentials)."""
     import daraja_mpesa as daraja
 
     try:
@@ -68834,27 +68915,21 @@ def _read_mpesa_daraja_stored_raw(cursor):
         )
         row = cursor.fetchone()
         if not row:
-            return daraja.mpesa_daraja_ui_payload(False)
+            return daraja.normalize_mpesa_daraja_stored({})
         raw = row.get('settings_json') if isinstance(row, dict) else row[0]
         stored = json.loads(raw) if raw else {}
         if not isinstance(stored, dict):
             stored = {}
-        return daraja.mpesa_daraja_ui_payload(
-            enabled=bool(stored.get('enabled')),
-            mpesa_accounts=stored.get('mpesa_accounts'),
-        )
+        return daraja.normalize_mpesa_daraja_stored(stored)
     except Exception as e:
         print(f"_read_mpesa_daraja_stored_raw: {e}")
-        return daraja.mpesa_daraja_ui_payload(False)
+        return daraja.normalize_mpesa_daraja_stored({})
 
 
 def _write_mpesa_daraja_stored_raw(cursor, stored_payload):
     import daraja_mpesa as daraja
 
-    payload = daraja.mpesa_daraja_ui_payload(
-        enabled=bool((stored_payload or {}).get('enabled')),
-        mpesa_accounts=(stored_payload or {}).get('mpesa_accounts'),
-    )
+    payload = daraja.normalize_mpesa_daraja_stored(stored_payload or {})
     cursor.execute(
         """
         INSERT INTO integration_settings (integration_type, settings_json)
@@ -69057,17 +69132,19 @@ def integration_settings_finance():
     import daraja_mpesa as daraja
 
     payload = _load_integration_settings_payload()
-    merged = daraja.merge_daraja_settings(payload.get('mpesa_daraja'))
+    stored = payload.get('mpesa_daraja') or {}
+    merged = daraja.merge_daraja_settings(stored)
     stk_url, stk_err = daraja.resolve_stk_callback_url(
         merged,
         fallback_url=url_for('mpesa_stk_callback', _external=True),
     )
-    mpesa_ui = daraja.merge_daraja_settings(payload.get('mpesa_daraja'))
+    mpesa_ui = daraja.merge_daraja_settings(stored)
     return render_template(
         'dashboards/integration_settings_finance.html',
         integration_data=payload,
         mpesa_account_presets=mpesa_ui.get('mpesa_accounts') or [],
-        daraja_env_status=daraja.daraja_env_status(),
+        daraja_credentials=daraja.daraja_credentials_ui(stored),
+        daraja_env_status=daraja.daraja_env_status(stored),
         daraja_credentials_ready=daraja.credentials_configured(merged),
         daraja_environment=merged.get('environment') or 'sandbox',
         stk_callback_url=stk_url or url_for('mpesa_stk_callback', _external=True),
@@ -69101,6 +69178,8 @@ def integration_settings_finance_save():
                 stored['mpesa_accounts'] = daraja.normalize_mpesa_account_presets(
                     payload.get('mpesa_accounts'),
                 )
+            if 'credentials' in payload:
+                stored = daraja.apply_daraja_credential_updates(stored, payload.get('credentials'))
             _write_mpesa_daraja_stored_raw(cursor, stored)
             connection.commit()
             ui_settings = _read_mpesa_daraja_stored_raw(cursor)
@@ -69108,12 +69187,18 @@ def integration_settings_finance_save():
         if 'mpesa_accounts' in payload:
             count = len(ui_settings.get('mpesa_accounts') or [])
             msg = f'Saved {count} school M-Pesa account profile{"s" if count != 1 else ""}.'
+        elif 'credentials' in payload:
+            msg = 'Daraja STK credentials saved.'
+            if ui_settings.get('enabled') and not daraja.credentials_configured(daraja.merge_daraja_settings(ui_settings)):
+                msg += ' Add consumer key, secret, and passkey to enable STK push.'
         elif ui_settings.get('enabled') and not daraja.credentials_configured(daraja.merge_daraja_settings(ui_settings)):
-            msg += f' Add Daraja credentials to {env_file_label()} and restart the app.'
+            msg += ' Add Daraja STK credentials below or in your environment file.'
         return jsonify({
             'success': True,
             'message': msg,
             'mpesa_accounts': ui_settings.get('mpesa_accounts') or [],
+            'credentials': daraja.daraja_credentials_ui(ui_settings),
+            'credentials_ready': daraja.credentials_configured(daraja.merge_daraja_settings(ui_settings)),
         })
     except Exception as e:
         print(f"integration_settings_finance_save: {e}")

@@ -1,8 +1,9 @@
 """
 Safaricom Daraja (M-Pesa) API client — STK Push, query, status, balance, reversal, B2C.
 
-Secrets and API config load from environment variables (.env.local locally, .env on server).
-Only the parent-portal on/off toggle is stored in integration_settings (mpesa_daraja).
+Secrets load from environment variables (.env.local locally, .env on server) with optional
+overrides saved in integration_settings (mpesa_daraja). The enabled toggle and school
+M-Pesa account profiles are also stored there.
 """
 from __future__ import annotations
 
@@ -78,11 +79,73 @@ def normalize_mpesa_account_presets(raw) -> list:
     return out
 
 
+# STK credential keys technicians may save via System Settings / Integration → Finance.
+_STK_STORED_CREDENTIAL_KEYS = (
+    'consumer_key', 'consumer_secret', 'passkey', 'environment', 'shortcode',
+    'stk_callback_url', 'callback_base_url',
+)
+
+
 def mpesa_daraja_ui_payload(enabled: bool = False, mpesa_accounts=None) -> dict:
-    """JSON stored in integration_settings — toggle + school M-Pesa account profiles."""
+    """Base JSON stored in integration_settings — toggle + school M-Pesa account profiles."""
     return {
         'enabled': bool(enabled),
         'mpesa_accounts': normalize_mpesa_account_presets(mpesa_accounts or []),
+    }
+
+
+def normalize_mpesa_daraja_stored(raw: Optional[dict]) -> dict:
+    """Canonical mpesa_daraja JSON persisted in integration_settings."""
+    src = raw if isinstance(raw, dict) else {}
+    out = mpesa_daraja_ui_payload(
+        enabled=bool(src.get('enabled')),
+        mpesa_accounts=src.get('mpesa_accounts'),
+    )
+    env_name = (src.get('environment') or '').strip().lower()
+    if env_name in ('sandbox', 'production'):
+        out['environment'] = env_name
+    for key in _STK_STORED_CREDENTIAL_KEYS:
+        if key == 'environment':
+            continue
+        val = (src.get(key) or '').strip()
+        if val:
+            out[key] = val
+    return out
+
+
+def apply_daraja_credential_updates(existing: Optional[dict], updates: Optional[dict]) -> dict:
+    """Merge credential form fields; blank secrets keep existing values."""
+    base = normalize_mpesa_daraja_stored(existing)
+    patch = updates if isinstance(updates, dict) else {}
+    env_name = (patch.get('environment') or '').strip().lower()
+    if env_name in ('sandbox', 'production'):
+        base['environment'] = env_name
+    for key in _STK_STORED_CREDENTIAL_KEYS:
+        if key == 'environment':
+            continue
+        if key not in patch:
+            continue
+        val = (patch.get(key) or '').strip()
+        if key in ('consumer_secret', 'passkey') and not val:
+            continue
+        if val:
+            base[key] = val
+        else:
+            base.pop(key, None)
+    return base
+
+
+def daraja_credentials_ui(stored: Optional[dict]) -> dict:
+    """Form defaults for STK credential fields (no raw secrets)."""
+    merged = merge_daraja_settings(stored if isinstance(stored, dict) else {})
+    return {
+        'environment': merged.get('environment') or 'sandbox',
+        'consumer_key': merged.get('consumer_key') or '',
+        'consumer_secret_set': bool((merged.get('consumer_secret') or '').strip()),
+        'passkey_set': bool((merged.get('passkey') or '').strip()),
+        'shortcode': merged.get('shortcode') or '',
+        'stk_callback_url': merged.get('stk_callback_url') or '',
+        'callback_base_url': merged.get('callback_base_url') or '',
     }
 
 
@@ -115,19 +178,29 @@ def load_daraja_config_from_env() -> dict:
 
 def merge_daraja_settings(stored: Optional[dict]) -> dict:
     """
-    Effective runtime settings: secrets from .env, enabled flag from DB (UI toggle).
-    Legacy secret keys in stored JSON are ignored.
+    Effective runtime settings: .env defaults with integration_settings overrides,
+    plus enabled flag and school M-Pesa account profiles from DB.
     """
     ui = stored if isinstance(stored, dict) else {}
-    enabled = bool(ui.get('enabled'))
     merged = load_daraja_config_from_env()
-    merged['enabled'] = enabled
+    merged['enabled'] = bool(ui.get('enabled'))
     merged['mpesa_accounts'] = normalize_mpesa_account_presets(ui.get('mpesa_accounts'))
+    for key in _DARAJA_SECRET_KEYS:
+        db_val = (ui.get(key) or '').strip()
+        if db_val:
+            merged[key] = db_val
+    for key in ('stk_callback_url', 'callback_base_url'):
+        db_val = (ui.get(key) or '').strip()
+        if db_val:
+            merged[key] = db_val
+    db_env = (ui.get('environment') or '').strip().lower()
+    if db_env in ('sandbox', 'production'):
+        merged['environment'] = db_env
     return merged
 
 
 def credentials_configured(settings: dict) -> bool:
-    """True when required STK credentials are present in env."""
+    """True when required STK credentials are present (env and/or saved settings)."""
     return bool(
         (settings.get('consumer_key') or '').strip()
         and (settings.get('consumer_secret') or '').strip()
@@ -135,7 +208,7 @@ def credentials_configured(settings: dict) -> bool:
     )
 
 
-def daraja_env_status() -> list[dict[str, Any]]:
+def daraja_env_status(stored: Optional[dict] = None) -> list[dict[str, Any]]:
     """Status rows for the integration settings UI (no secret values)."""
     rows = [
         ('DARAJA_CONSUMER_KEY', 'consumer_key', 'Consumer key', True),
@@ -151,7 +224,7 @@ def daraja_env_status() -> list[dict[str, Any]]:
         ('DARAJA_RESULT_URL', 'result_url', 'Result URL (async callbacks)', False),
         ('DARAJA_TIMEOUT_URL', 'timeout_url', 'Queue timeout URL', False),
     ]
-    cfg = load_daraja_config_from_env()
+    cfg = merge_daraja_settings(stored if isinstance(stored, dict) else {})
     out = []
     for env_var, key, label, required in rows:
         val = (cfg.get(key) or '').strip()
@@ -160,7 +233,7 @@ def daraja_env_status() -> list[dict[str, Any]]:
             display = val or 'sandbox (default)'
         else:
             configured = bool(val)
-            display = 'Set in .env' if configured else 'Not set'
+            display = 'Configured' if configured else 'Not set'
         out.append({
             'env_var': env_var,
             'label': label,

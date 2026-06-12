@@ -5,6 +5,9 @@
 {% block extra_head %}
 {% include 'dashboards/includes/system_settings_sidebar_styles.html' %}
 {% include 'dashboards/includes/theme_font_picker_styles.html' %}
+{% if is_technician %}
+{% include 'dashboards/includes/integration_settings_finance_styles.html' %}
+{% endif %}
 {% if portal_google_fonts_all_href %}
 <link href="{{ portal_google_fonts_all_href }}" rel="stylesheet">
 {% endif %}
@@ -1772,6 +1775,234 @@
             </div>
         </form>
     </div>
+
+    {% if is_technician and daraja_finance %}
+    <!-- Finance Settings (M-Pesa Daraja STK) -->
+    <div x-show="activeSection === 'finance-settings'" x-cloak style="display: none;"
+         class="mpesa-finance-page"
+         x-data="systemFinanceDarajaSettings()">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+            <i class="fas fa-coins text-green-600 mr-3"></i>
+            Finance Settings
+        </h2>
+        <p class="text-gray-600 dark:text-gray-400 mb-6">Enable M-Pesa Daraja STK push and configure Safaricom API credentials for parent and accountant payments.</p>
+
+        <section class="mf-panel mb-5">
+            <div class="mf-panel__head">
+                <div class="min-w-0 flex-1">
+                    <h3 class="mf-title">Daraja connection</h3>
+                    <p class="mf-subtitle">Turn M-Pesa STK push on after required credentials are saved below.</p>
+                </div>
+                <label class="mf-toggle shrink-0">
+                    <input type="checkbox" class="sr-only" x-model="enabled">
+                    <span class="mf-toggle__track" :class="enabled && 'is-on'">
+                        <span class="mf-toggle__thumb"></span>
+                    </span>
+                    <span class="mf-toggle__text" x-text="enabled ? 'On' : 'Off'"></span>
+                </label>
+            </div>
+            <div class="mf-panel__body space-y-4">
+                <div class="mf-stat-grid">
+                    <div class="mf-stat">
+                        <p class="mf-stat__label">Credentials</p>
+                        <p class="mf-stat__value">
+                            {% if daraja_finance.credentials_ready %}
+                            <span class="mf-badge mf-badge--ok"><i class="fas fa-check"></i> Ready</span>
+                            {% else %}
+                            <span class="mf-badge mf-badge--warn"><i class="fas fa-exclamation"></i> Incomplete</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="mf-stat">
+                        <p class="mf-stat__label">Environment</p>
+                        <p class="mf-stat__value font-mono text-sm">{{ daraja_finance.environment }}</p>
+                    </div>
+                    <div class="mf-stat mf-stat--wide lg:col-span-1">
+                        <p class="mf-stat__label">STK callback</p>
+                        <p class="mf-stat__value font-mono text-xs leading-relaxed">{{ daraja_finance.stk_callback_url }}</p>
+                        <p class="mt-1.5">
+                            {% if daraja_finance.stk_callback_valid %}
+                            <span class="mf-badge mf-badge--ok"><i class="fas fa-check"></i> Valid HTTPS</span>
+                            {% else %}
+                            <span class="mf-badge mf-badge--warn"><i class="fas fa-exclamation-triangle"></i> {{ daraja_finance.stk_callback_error or 'Invalid callback URL' }}</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                <p x-show="toggleMessage" x-cloak class="mf-alert"
+                   :class="toggleError ? 'mf-alert--err' : 'mf-alert--ok'"
+                   x-text="toggleMessage"></p>
+                <div class="mf-actions !border-t-0 !mt-0 !pt-0">
+                    <button type="button" @click="saveToggle()" :disabled="toggleSaving" class="mf-btn mf-btn--brand">
+                        <i class="fas fa-spinner fa-spin" x-show="toggleSaving"></i>
+                        <i class="fas fa-save" x-show="!toggleSaving"></i>
+                        Save connection
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="mf-panel">
+            <div class="mf-panel__head">
+                <div class="min-w-0 flex-1">
+                    <h3 class="mf-title">STK push credentials</h3>
+                    <p class="mf-subtitle">Consumer key, secret, and Lipa Na M-Pesa passkey from your Safaricom Daraja app.</p>
+                </div>
+            </div>
+            <div class="mf-panel__body space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="mf-field">
+                        <label class="mf-field__label">Environment</label>
+                        <select x-model="credentials.environment" class="mf-select w-full">
+                            <option value="sandbox">Sandbox (testing)</option>
+                            <option value="production">Production (live)</option>
+                        </select>
+                    </div>
+                    <div class="mf-field">
+                        <label class="mf-field__label">Paybill shortcode <span class="text-gray-400 font-normal">(optional fallback)</span></label>
+                        <input type="text" x-model="credentials.shortcode" class="mf-input w-full mf-input--mono" placeholder="e.g. 174379" maxlength="20">
+                    </div>
+                    <div class="mf-field md:col-span-2">
+                        <label class="mf-field__label">Consumer key <span class="text-red-500">*</span></label>
+                        <input type="text" x-model="credentials.consumer_key" class="mf-input w-full mf-input--mono" placeholder="Daraja app consumer key" autocomplete="off">
+                    </div>
+                    <div class="mf-field md:col-span-2">
+                        <label class="mf-field__label">Consumer secret <span class="text-red-500">*</span></label>
+                        <input type="password" x-model="credentials.consumer_secret" class="mf-input w-full mf-input--mono"
+                               :placeholder="credentials.consumer_secret_set ? 'Saved — leave blank to keep current' : 'Daraja app consumer secret'"
+                               autocomplete="new-password">
+                    </div>
+                    <div class="mf-field md:col-span-2">
+                        <label class="mf-field__label">Lipa Na M-Pesa passkey <span class="text-red-500">*</span></label>
+                        <input type="password" x-model="credentials.passkey" class="mf-input w-full mf-input--mono"
+                               :placeholder="credentials.passkey_set ? 'Saved — leave blank to keep current' : 'Online passkey from Daraja portal'"
+                               autocomplete="new-password">
+                    </div>
+                    <div class="mf-field md:col-span-2">
+                        <label class="mf-field__label">STK callback URL <span class="text-gray-400 font-normal">(public HTTPS)</span></label>
+                        <input type="url" x-model="credentials.stk_callback_url" class="mf-input w-full mf-input--mono"
+                               placeholder="https://your-school.example.com/api/mpesa/stk-callback">
+                    </div>
+                    <div class="mf-field md:col-span-2">
+                        <label class="mf-field__label">Public site URL <span class="text-gray-400 font-normal">(optional, builds callback when testing locally)</span></label>
+                        <input type="url" x-model="credentials.callback_base_url" class="mf-input w-full mf-input--mono"
+                               placeholder="https://your-school.example.com">
+                    </div>
+                </div>
+                <p class="mf-footnote">
+                    Required for STK push: consumer key, consumer secret, and passkey.
+                    Use sandbox shortcode <code class="text-[10px]">174379</code> with Daraja test credentials when testing.
+                </p>
+                <p x-show="credMessage" x-cloak class="mf-alert"
+                   :class="credError ? 'mf-alert--err' : 'mf-alert--ok'"
+                   x-text="credMessage"></p>
+                <div class="mf-actions !border-t-0 !mt-0 !pt-0">
+                    <button type="button" @click="saveCredentials()" :disabled="credSaving" class="mf-btn mf-btn--teal">
+                        <i class="fas fa-spinner fa-spin" x-show="credSaving"></i>
+                        <i class="fas fa-save" x-show="!credSaving"></i>
+                        Save credentials
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+    <script>
+    function systemFinanceDarajaSettings() {
+        var init = {{ {
+            'enabled': daraja_finance.enabled,
+            'credentials': daraja_finance.credentials,
+            'saveUrl': employee_dash_url('integration-settings/finance/save')
+        }|tojson }};
+        return {
+            enabled: !!init.enabled,
+            credentials: Object.assign({
+                environment: 'sandbox',
+                consumer_key: '',
+                consumer_secret: '',
+                passkey: '',
+                shortcode: '',
+                stk_callback_url: '',
+                callback_base_url: '',
+                consumer_secret_set: false,
+                passkey_set: false,
+            }, init.credentials || {}),
+            financeSaveUrl: init.saveUrl,
+            toggleSaving: false,
+            toggleMessage: '',
+            toggleError: false,
+            credSaving: false,
+            credMessage: '',
+            credError: false,
+            saveToggle: function () {
+                var self = this;
+                self.toggleSaving = true;
+                self.toggleMessage = '';
+                self.toggleError = false;
+                fetch(self.financeSaveUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ enabled: self.enabled }),
+                })
+                    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+                    .then(function (result) {
+                        var data = result.data || {};
+                        self.toggleError = !result.ok || !data.success;
+                        self.toggleMessage = data.message || (data.success ? 'Saved.' : 'Save failed.');
+                    })
+                    .catch(function () { self.toggleError = true; self.toggleMessage = 'Could not save.'; })
+                    .finally(function () { self.toggleSaving = false; });
+            },
+            saveCredentials: function () {
+                var self = this;
+                if (!String(self.credentials.consumer_key || '').trim()) {
+                    self.credError = true;
+                    self.credMessage = 'Consumer key is required.';
+                    return;
+                }
+                if (!self.credentials.consumer_secret_set && !String(self.credentials.consumer_secret || '').trim()) {
+                    self.credError = true;
+                    self.credMessage = 'Consumer secret is required.';
+                    return;
+                }
+                if (!self.credentials.passkey_set && !String(self.credentials.passkey || '').trim()) {
+                    self.credError = true;
+                    self.credMessage = 'Lipa Na M-Pesa passkey is required.';
+                    return;
+                }
+                self.credSaving = true;
+                self.credMessage = '';
+                self.credError = false;
+                fetch(self.financeSaveUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ credentials: self.credentials }),
+                })
+                    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+                    .then(function (result) {
+                        var data = result.data || {};
+                        self.credError = !result.ok || !data.success;
+                        self.credMessage = data.message || (data.success ? 'Saved.' : 'Save failed.');
+                        if (data.success && data.credentials) {
+                            self.credentials.consumer_secret = '';
+                            self.credentials.passkey = '';
+                            self.credentials.consumer_secret_set = !!data.credentials.consumer_secret_set;
+                            self.credentials.passkey_set = !!data.credentials.passkey_set;
+                            self.credentials.environment = data.credentials.environment || self.credentials.environment;
+                            self.credentials.consumer_key = data.credentials.consumer_key || self.credentials.consumer_key;
+                            self.credentials.shortcode = data.credentials.shortcode || '';
+                            self.credentials.stk_callback_url = data.credentials.stk_callback_url || '';
+                            self.credentials.callback_base_url = data.credentials.callback_base_url || '';
+                        }
+                    })
+                    .catch(function () { self.credError = true; self.credMessage = 'Could not save credentials.'; })
+                    .finally(function () { self.credSaving = false; });
+            },
+        };
+    }
+    </script>
+    {% endif %}
 
 </div>
 </div>

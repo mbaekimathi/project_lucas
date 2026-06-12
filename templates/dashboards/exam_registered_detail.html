@@ -203,6 +203,110 @@
         #erd-add-rows [data-row-idx] {
             padding: 0.5rem;
         }
+        #erd-add-modal .erd-add-chip {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 0.4rem;
+            padding: 0.45rem 0.6rem;
+            border-radius: 0.5rem;
+            border: 1px solid rgb(209 213 219);
+            background: rgb(255 255 255);
+            font-size: 0.75rem;
+            line-height: 1.2;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+            min-height: 2.125rem;
+        }
+        #erd-add-modal .erd-add-chip:hover {
+            border-color: rgb(16 185 129 / 0.45);
+        }
+        .dark #erd-add-modal .erd-add-chip {
+            border-color: rgb(75 85 99);
+            background: rgb(31 41 55);
+        }
+        .dark #erd-add-modal .erd-add-chip:hover {
+            border-color: rgb(52 211 153 / 0.45);
+        }
+        #erd-add-modal .erd-add-chip:has(input:checked) {
+            border-color: rgb(16 185 129);
+            background: rgb(236 253 245);
+            box-shadow: 0 0 0 1px rgb(16 185 129 / 0.25);
+        }
+        .dark #erd-add-modal .erd-add-chip:has(input:checked) {
+            background: rgb(6 78 59 / 0.35);
+            box-shadow: 0 0 0 1px rgb(52 211 153 / 0.2);
+        }
+        #erd-add-modal .erd-add-chip span {
+            font-weight: 600;
+            color: rgb(55 65 81);
+        }
+        .dark #erd-add-modal .erd-add-chip span {
+            color: rgb(229 231 235);
+        }
+        #erd-add-modal .erd-add-class-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(5.25rem, 1fr));
+            gap: 0.5rem;
+        }
+        @media (min-width: 640px) {
+            #erd-add-modal .erd-add-class-grid {
+                grid-template-columns: repeat(auto-fill, minmax(5.75rem, 1fr));
+            }
+        }
+        #erd-add-modal .erd-add-category__title {
+            font-size: 0.625rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: rgb(107 114 128);
+            margin-bottom: 0.4rem;
+        }
+        .dark #erd-add-modal .erd-add-category__title {
+            color: rgb(156 163 175);
+        }
+        #erd-add-modal .erd-add-ungrouped-panel {
+            border: 1px solid rgb(229 231 235);
+            border-radius: 0.75rem;
+            padding: 0.625rem;
+            background: rgb(249 250 251 / 0.9);
+        }
+        .dark #erd-add-modal .erd-add-ungrouped-panel {
+            border-color: rgb(55 65 81);
+            background: rgb(17 24 39 / 0.45);
+        }
+        #erd-add-modal .erd-add-group {
+            border: 1px solid rgb(229 231 235);
+            border-radius: 0.75rem;
+            padding: 0.625rem;
+            background: rgb(255 255 255);
+        }
+        .dark #erd-add-modal .erd-add-group {
+            border-color: rgb(55 65 81);
+            background: rgb(31 41 55 / 0.55);
+        }
+        #erd-add-modal .erd-add-group--shared {
+            border-color: rgb(16 185 129 / 0.45);
+            background: rgb(236 253 245 / 0.65);
+        }
+        .dark #erd-add-modal .erd-add-group--shared {
+            background: rgb(6 78 59 / 0.15);
+        }
+        #erd-add-modal .erd-add-class-picker {
+            max-height: 16rem;
+            overflow-y: auto;
+            padding-right: 0.15rem;
+        }
+        #erd-add-modal .erd-add-class-picker::-webkit-scrollbar {
+            width: 5px;
+        }
+        #erd-add-modal .erd-add-class-picker::-webkit-scrollbar-thumb {
+            background: rgb(209 213 219);
+            border-radius: 999px;
+        }
+        .dark #erd-add-modal .erd-add-class-picker::-webkit-scrollbar-thumb {
+            background: rgb(75 85 99);
+        }
         body.role-portal-layout:has(.erd-exam-page) .role-hero {
             margin-bottom: 0.75rem;
             border-radius: 0.75rem;
@@ -965,25 +1069,35 @@
     <div class="absolute inset-0 p-3 sm:p-6 flex items-center justify-center">
         <div class="w-full max-w-2xl max-h-[95vh] overflow-hidden rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col">
             <div class="px-3 sm:px-5 py-3 sm:py-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white flex items-center justify-between gap-2 sm:gap-3">
-                <h3 class="font-bold text-sm sm:text-lg">Allocate Another Class</h3>
+                <h3 class="font-bold text-sm sm:text-lg">Allocate Classes</h3>
                 <button id="erd-add-close-modal" type="button" class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white/20 hover:bg-white/30 text-sm">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <form id="erd-add-form" class="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 sm:space-y-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                <div class="grid grid-cols-1 gap-3 sm:gap-4">
                     <div>
-                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Academic Level</label>
-                        <select id="erd-add-level" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></select>
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Classes <span class="text-red-500">*</span></label>
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400 mb-2">Pick one standalone class, or check multiple in a combined group. Share timetable turns on automatically when 2+ combined classes are selected.</p>
+                        <div class="flex flex-wrap items-center gap-2 mb-2">
+                            <div class="relative flex-1 min-w-[10rem]">
+                                <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none" aria-hidden="true"></i>
+                                <input id="erd-add-class-search" type="search" autocomplete="off" placeholder="Search classes…" class="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400">
+                            </div>
+                            <span id="erd-add-class-count" class="shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">0 selected</span>
+                        </div>
+                        <div id="erd-add-class-picker" class="erd-add-class-picker space-y-2.5"></div>
+                        <p id="erd-add-class-empty" class="hidden mt-2 text-[11px] text-gray-500 dark:text-gray-400 text-center py-3 rounded-lg border border-dashed border-gray-200 dark:border-gray-600">No classes match your search.</p>
+                        <p id="erd-add-class-hint" class="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400 hidden"></p>
                     </div>
                     <div>
-                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Exam Date</label>
+                        <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Exam Date <span class="text-red-500">*</span></label>
                         <input id="erd-add-date" type="date" class="w-full px-3 py-2 sm:py-2.5 text-sm rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                     </div>
-                    <div class="md:col-span-2">
+                    <div id="erd-add-venue-wrap">
                         <label class="block text-xs sm:text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Venue</label>
-                        <input id="erd-add-venue" type="text" readonly class="w-full px-3 py-2.5 uppercase rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white">
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Defaulted from selected class (academic level).</p>
+                        <input id="erd-add-venue" type="text" class="w-full px-3 py-2.5 uppercase rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" placeholder="E.G., HALL A" style="text-transform: uppercase;">
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Defaulted from selected class. Edit if needed.</p>
                     </div>
                 </div>
                 <div class="rounded-lg sm:rounded-xl border border-gray-200 dark:border-gray-700 p-2.5 sm:p-4">
@@ -1013,6 +1127,8 @@
 <script type="application/json" id="erd-teachers">{{ teachers|tojson|safe }}</script>
 <script type="application/json" id="erd-exam-meta">{{ exam_meta|tojson|safe }}</script>
 <script type="application/json" id="erd-session-presets">{{ session_presets|default({})|tojson|safe }}</script>
+<script type="application/json" id="erd-level-combinations">{{ level_combinations|default([])|tojson|safe }}</script>
+<script type="application/json" id="erd-teacher-subject-pairs">{{ teacher_subject_pairs|default([])|tojson|safe }}</script>
 
 <script>
 (function () {
@@ -1321,6 +1437,7 @@
     const levels = JSON.parse(document.getElementById('erd-levels')?.textContent || '[]');
     const subjects = JSON.parse(document.getElementById('erd-subjects')?.textContent || '[]');
     const teachers = JSON.parse(document.getElementById('erd-teachers')?.textContent || '[]');
+    const teacherSubjectPairs = JSON.parse(document.getElementById('erd-teacher-subject-pairs')?.textContent || '[]');
     let sessionPresets = {};
     try {
         sessionPresets = JSON.parse(document.getElementById('erd-session-presets')?.textContent || '{}') || {};
@@ -1697,27 +1814,271 @@
 
     // Add-allocation modal
     const addModal = document.getElementById('erd-add-modal');
-    const addOpenBtn = document.getElementById('erd-open-add-modal');
     const addBackdrop = document.getElementById('erd-add-backdrop');
     const addCloseBtn = document.getElementById('erd-add-close-modal');
     const addCancelBtn = document.getElementById('erd-add-cancel-btn');
     const addForm = document.getElementById('erd-add-form');
     const addErrEl = document.getElementById('erd-add-error');
     const addSaveBtn = document.getElementById('erd-add-save-btn');
-    const addLevelEl = document.getElementById('erd-add-level');
+    const addClassPickerEl = document.getElementById('erd-add-class-picker');
+    const addClassSearchEl = document.getElementById('erd-add-class-search');
+    const addClassCountEl = document.getElementById('erd-add-class-count');
+    const addClassEmptyEl = document.getElementById('erd-add-class-empty');
+    const addClassHintEl = document.getElementById('erd-add-class-hint');
+    const addVenueWrapEl = document.getElementById('erd-add-venue-wrap');
     const addDateEl = document.getElementById('erd-add-date');
     const addVenueEl = document.getElementById('erd-add-venue');
     const addRowsWrap = document.getElementById('erd-add-rows');
     const addRowBtn = document.getElementById('erd-add-row-btn');
     const ALLOC_OPTIONS_URL = {{ employee_dash_url('exam-evaluation/allocation-options')|tojson }};
+    const CHECK_SUPERVISOR_URL = {{ employee_dash_url('exam-evaluation/check-supervisor-conflicts')|tojson }};
     const baseExamId = rows.length ? Number(rows[0].id || 0) : 0;
-    let addOptions = { subjects: [], teachers_by_subject: {}, supervisors_by_subject: {} };
+    const levelCombinations = JSON.parse(document.getElementById('erd-level-combinations')?.textContent || '[]');
+    let addOptions = { subjects: [], teachers_by_subject: {}, supervisors_by_subject: {}, supervisors_by_level: {} };
+    let addSelectedLevelIds = [];
+    let addComboShareEnabled = {};
+    let addClassSearchQuery = '';
 
-    if (addLevelEl) {
-        fillSelect(addLevelEl, levels, function(x) { return x.level_name + (x.level_category ? ' (' + x.level_category + ')' : ''); });
-        addLevelEl.addEventListener('change', async function () {
-            await loadAllocationOptionsForLevel();
-            seedVenueFromLevel();
+    function addEscapeHtml(text) {
+        return String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/"/g, '&quot;');
+    }
+    function addLevelMatchesSearch(level) {
+        const q = (addClassSearchQuery || '').trim().toLowerCase();
+        if (!q) return true;
+        const name = String(level.level_name || '').toLowerCase();
+        const cat = String(level.level_category || '').toLowerCase();
+        return name.indexOf(q) >= 0 || cat.indexOf(q) >= 0;
+    }
+    function addGroupLevelsByCategory(levelList) {
+        const grouped = {};
+        (levelList || []).forEach(function (l) {
+            const cat = String(l.level_category || '').trim() || 'Other';
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(l);
+        });
+        return Object.keys(grouped).sort(function (a, b) {
+            return a.localeCompare(b, undefined, { sensitivity: 'base' });
+        }).map(function (cat) {
+            return {
+                category: cat,
+                levels: grouped[cat].slice().sort(function (a, b) {
+                    return String(a.level_name || '').localeCompare(String(b.level_name || ''), undefined, { numeric: true, sensitivity: 'base' });
+                })
+            };
+        });
+    }
+    function addRenderLevelChip(level, attrs) {
+        const checked = addIsLevelIncluded(level.id) ? ' checked' : '';
+        return '<label class="erd-add-chip"><input type="checkbox" class="rounded border-gray-300 text-emerald-600 h-3.5 w-3.5 shrink-0" ' +
+            attrs + ' data-level-id="' + level.id + '"' + checked + '>' +
+            '<span>' + addEscapeHtml(level.level_name || '') + '</span></label>';
+    }
+
+    function addUngroupedLevels() {
+        const inCombo = new Set();
+        (levelCombinations || []).forEach(function (c) {
+            (c.members || []).forEach(function (m) { inCombo.add(String(m.id)); });
+        });
+        return (levels || []).filter(function (l) { return !inCombo.has(String(l.id)); });
+    }
+    function addIsLevelIncluded(levelId) {
+        return addSelectedLevelIds.indexOf(String(levelId)) >= 0;
+    }
+    function addIncludedCountForCombo(comboId) {
+        const combo = (levelCombinations || []).find(function (c) { return String(c.combo_id) === String(comboId); });
+        if (!combo) return 0;
+        return (combo.members || []).filter(function (m) { return addIsLevelIncluded(m.id); }).length;
+    }
+    function addIsComboShareEnabled(comboId) {
+        return !!addComboShareEnabled[String(comboId)];
+    }
+    function addIsSharedActive() {
+        return (levelCombinations || []).some(function (c) {
+            return addIsComboShareEnabled(c.combo_id) && addIncludedCountForCombo(c.combo_id) >= 2;
+        });
+    }
+    function addGetShareLevelIds() {
+        const ids = new Set();
+        (levelCombinations || []).forEach(function (c) {
+            if (!addIsComboShareEnabled(c.combo_id)) return;
+            if (addIncludedCountForCombo(c.combo_id) < 2) return;
+            (c.members || []).forEach(function (m) {
+                if (addIsLevelIncluded(m.id)) ids.add(String(m.id));
+            });
+        });
+        return Array.from(ids);
+    }
+    function addGetShareLevels() {
+        const out = [];
+        const seen = new Set();
+        (levelCombinations || []).forEach(function (c) {
+            if (!addIsComboShareEnabled(c.combo_id)) return;
+            if (addIncludedCountForCombo(c.combo_id) < 2) return;
+            (c.members || []).forEach(function (m) {
+                if (!addIsLevelIncluded(m.id)) return;
+                const s = String(m.id);
+                if (seen.has(s)) return;
+                seen.add(s);
+                out.push(m);
+            });
+        });
+        return out;
+    }
+    function addGetSingleLevelId() {
+        if (addIsSharedActive()) return 0;
+        if (addSelectedLevelIds.length === 1) return parseInt(addSelectedLevelIds[0], 10);
+        return 0;
+    }
+    function addInitComboShare() {
+        const share = {};
+        (levelCombinations || []).forEach(function (c) {
+            share[String(c.combo_id)] = false;
+        });
+        addComboShareEnabled = share;
+    }
+    function addBuildShareGroupsPayload() {
+        const groups = [];
+        (levelCombinations || []).forEach(function (c) {
+            const cid = String(c.combo_id);
+            if (!addComboShareEnabled[cid]) return;
+            const levelIds = (c.members || [])
+                .filter(function (m) { return addIsLevelIncluded(m.id); })
+                .map(function (m) { return parseInt(m.id, 10); });
+            if (levelIds.length >= 2) {
+                groups.push({ name: String(c.level_name || 'Combined group'), level_ids: levelIds });
+            }
+        });
+        return groups;
+    }
+    function addLevelNameById(levelId) {
+        const lv = levels.find(function (x) { return String(x.id) === String(levelId); });
+        return lv ? String(lv.level_name || '') : '';
+    }
+    function addSyncClassHint() {
+        if (addClassCountEl) {
+            const n = addSelectedLevelIds.length;
+            addClassCountEl.textContent = n === 1 ? '1 selected' : (n + ' selected');
+        }
+        if (!addClassHintEl) return;
+        if (addSelectedLevelIds.length === 0) {
+            addClassHintEl.textContent = 'Select at least one class.';
+            addClassHintEl.classList.remove('hidden');
+        } else if (addSelectedLevelIds.length > 1 && !addIsSharedActive()) {
+            addClassHintEl.textContent = 'Multiple classes selected: enable Share timetable on a combined group, or select only one standalone class.';
+            addClassHintEl.classList.remove('hidden');
+        } else {
+            addClassHintEl.classList.add('hidden');
+            addClassHintEl.textContent = '';
+        }
+    }
+    function addRenderClassPicker() {
+        if (!addClassPickerEl) return;
+        let html = '';
+        let visibleCount = 0;
+        (levelCombinations || []).forEach(function (combo) {
+            const cid = String(combo.combo_id);
+            const members = (combo.members || []).filter(addLevelMatchesSearch);
+            if (!members.length) return;
+            visibleCount += members.length;
+            const cnt = addIncludedCountForCombo(combo.combo_id);
+            const sharedOn = addIsComboShareEnabled(combo.combo_id) && cnt >= 2;
+            html += '<div class="erd-add-group' + (sharedOn ? ' erd-add-group--shared' : '') + '">';
+            html += '<div class="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-gray-100 dark:border-gray-700">';
+            html += '<span class="text-xs font-semibold text-gray-800 dark:text-gray-200">' + addEscapeHtml(combo.level_name || 'Combined group') + '</span>';
+            if (sharedOn) {
+                html += '<span class="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">Shared</span>';
+            }
+            html += '<span class="text-[10px] text-gray-500 ml-auto">' + cnt + '/' + (combo.members || []).length + ' classes</span>';
+            html += '</div>';
+            html += '<label class="flex items-center gap-2 mb-2' + (cnt < 2 ? ' opacity-50' : '') + '">';
+            html += '<input type="checkbox" class="rounded border-gray-300 text-emerald-600 h-3.5 w-3.5" data-add-combo-share="' + cid + '"' + (addIsComboShareEnabled(combo.combo_id) ? ' checked' : '') + (cnt < 2 ? ' disabled' : '') + '>';
+            html += '<span class="text-[11px] font-medium text-gray-700 dark:text-gray-300">Share timetable across checked classes';
+            if (cnt < 2) html += ' <span class="text-gray-400 font-normal">(pick 2+)</span>';
+            html += '</span></label>';
+            html += '<div class="erd-add-class-grid">';
+            members.forEach(function (m) {
+                html += addRenderLevelChip(m, 'data-add-combo-member data-combo-id="' + cid + '"');
+            });
+            html += '</div></div>';
+        });
+        const ungrouped = addUngroupedLevels().filter(addLevelMatchesSearch);
+        if (ungrouped.length) {
+            visibleCount += ungrouped.length;
+            const hasCombos = (levelCombinations || []).length > 0;
+            html += '<div class="erd-add-ungrouped-panel">';
+            html += '<div class="flex flex-wrap items-center justify-between gap-1 mb-2">';
+            html += '<p class="text-xs font-semibold text-gray-800 dark:text-gray-200">' + (hasCombos ? 'Other classes' : 'Select class') + '</p>';
+            html += '<span class="text-[10px] text-gray-500 dark:text-gray-400">One standalone class at a time</span>';
+            html += '</div>';
+            html += '<div class="space-y-3">';
+            addGroupLevelsByCategory(ungrouped).forEach(function (block) {
+                html += '<div class="erd-add-category">';
+                html += '<p class="erd-add-category__title">' + addEscapeHtml(block.category) + '</p>';
+                html += '<div class="erd-add-class-grid">';
+                block.levels.forEach(function (l) {
+                    html += addRenderLevelChip(l, 'data-add-ungrouped');
+                });
+                html += '</div></div>';
+            });
+            html += '</div></div>';
+        }
+        addClassPickerEl.innerHTML = html;
+        if (addClassEmptyEl) {
+            const showEmpty = !!addClassSearchQuery.trim() && visibleCount === 0;
+            addClassEmptyEl.classList.toggle('hidden', !showEmpty);
+            addClassPickerEl.classList.toggle('hidden', showEmpty);
+        }
+        addSyncClassHint();
+        if (addVenueWrapEl) addVenueWrapEl.classList.toggle('hidden', addIsSharedActive());
+    }
+    function addToggleComboMember(comboId, levelId) {
+        const cid = String(comboId);
+        const s = String(levelId);
+        const i = addSelectedLevelIds.indexOf(s);
+        const prevCount = addIncludedCountForCombo(comboId);
+        if (i >= 0) addSelectedLevelIds.splice(i, 1);
+        else addSelectedLevelIds.push(s);
+        const newCount = addIncludedCountForCombo(comboId);
+        if (newCount < 2) addComboShareEnabled[cid] = false;
+        else if (prevCount < 2 && newCount >= 2) addComboShareEnabled[cid] = true;
+    }
+    function addToggleUngrouped(levelId) {
+        const s = String(levelId);
+        const i = addSelectedLevelIds.indexOf(s);
+        if (i >= 0) {
+            addSelectedLevelIds.splice(i, 1);
+            return;
+        }
+        const ungroupedIds = new Set(addUngroupedLevels().map(function (l) { return String(l.id); }));
+        addSelectedLevelIds = addSelectedLevelIds.filter(function (id) { return !ungroupedIds.has(id); });
+        addSelectedLevelIds.push(s);
+    }
+    if (addClassSearchEl) {
+        addClassSearchEl.addEventListener('input', function () {
+            addClassSearchQuery = addClassSearchEl.value || '';
+            addRenderClassPicker();
+        });
+    }
+    if (addClassPickerEl) {
+        addClassPickerEl.addEventListener('change', async function (e) {
+            const t = e.target;
+            if (!t || !t.getAttribute) return;
+            if (t.hasAttribute('data-add-combo-member')) {
+                addToggleComboMember(t.getAttribute('data-combo-id'), t.getAttribute('data-level-id'));
+            } else if (t.hasAttribute('data-add-ungrouped')) {
+                addToggleUngrouped(t.getAttribute('data-level-id'));
+            } else if (t.hasAttribute('data-add-combo-share')) {
+                const cid = t.getAttribute('data-add-combo-share');
+                if (addIncludedCountForCombo(cid) < 2) addComboShareEnabled[cid] = false;
+                else addComboShareEnabled[cid] = !!t.checked;
+            }
+            addRenderClassPicker();
+            seedVenueFromSelection();
+            await loadAddOptions();
+            refreshAddSubjectRows();
         });
     }
 
@@ -1734,84 +2095,204 @@
         addModal.classList.remove('hidden');
         addDateEl.value = '';
         addVenueEl.value = '';
+        addSelectedLevelIds = [];
+        addClassSearchQuery = '';
+        if (addClassSearchEl) addClassSearchEl.value = '';
+        addInitComboShare();
+        addRenderClassPicker();
         if (addRowsWrap) addRowsWrap.innerHTML = '';
         try {
-            await loadAllocationOptionsForLevel();
-            seedVenueFromLevel();
+            await loadAddOptions();
+            seedVenueFromSelection();
             addAllocationRow();
         } catch (e) {
             console.error('Open add-allocation modal failed:', e);
         }
     }
 
-    function levelNameById(levelId) {
-        const lv = levels.find(function (x) { return String(x.id) === String(levelId); });
-        return lv ? String(lv.level_name || '') : '';
+    function seedVenueFromSelection() {
+        if (!addVenueEl || addIsSharedActive()) return;
+        const lid = addGetSingleLevelId();
+        addVenueEl.value = lid ? (addLevelNameById(lid) || '').toUpperCase() : '';
     }
-    function seedVenueFromLevel() {
-        addVenueEl.value = (levelNameById(addLevelEl.value) || '').toUpperCase();
+    function addGetSubjectsForLevel(levelId) {
+        const subjectIds = new Set();
+        (teacherSubjectPairs || []).forEach(function (p) {
+            if (String(p.academic_level_id) === String(levelId)) subjectIds.add(String(p.subject_id));
+        });
+        return (subjects || []).filter(function (s) { return subjectIds.has(String(s.id)); });
     }
-    async function loadAllocationOptionsForLevel() {
-        const levelId = parseInt(addLevelEl.value || '0', 10);
-        if (!levelId) {
-            addOptions = { subjects: [], teachers_by_subject: {} };
-            return;
-        }
+    function addBuildSupervisorsBySubjectForLevel(levelId) {
+        const assigned = {};
+        (teacherSubjectPairs || []).forEach(function (p) {
+            if (String(p.academic_level_id) !== String(levelId)) return;
+            const k = String(p.subject_id);
+            if (!assigned[k]) assigned[k] = new Set();
+            assigned[k].add(parseInt(p.teacher_id, 10));
+        });
+        const out = {};
+        addGetSubjectsForLevel(levelId).forEach(function (s) {
+            const excluded = assigned[String(s.id)] || new Set();
+            const pool = (teachers || []).filter(function (t) {
+                return !excluded.has(parseInt(t.id, 10));
+            });
+            out[String(s.id)] = pool.length ? pool : (teachers || []).slice();
+        });
+        return out;
+    }
+    function addBuildOptionsForLevel(levelId) {
+        return {
+            subjects: addGetSubjectsForLevel(levelId),
+            supervisors_by_subject: addBuildSupervisorsBySubjectForLevel(levelId)
+        };
+    }
+    async function fetchOptionsForLevel(levelId) {
+        const local = addBuildOptionsForLevel(levelId);
+        if (local.subjects.length) return local;
         try {
             const res = await fetch(ALLOC_OPTIONS_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ academic_level_id: levelId })
+                body: JSON.stringify({ academic_level_id: parseInt(levelId, 10) })
             });
             const j = await res.json();
-            addOptions = (j && j.success)
-                ? {
-                    subjects: j.subjects || [],
-                    teachers_by_subject: j.teachers_by_subject || {},
-                    supervisors_by_subject: j.supervisors_by_subject || {}
-                }
-                : { subjects: [], teachers_by_subject: {}, supervisors_by_subject: {} };
+            if (!j || !j.success) return local;
+            return {
+                subjects: j.subjects || [],
+                supervisors_by_subject: j.supervisors_by_subject || j.teachers_by_subject || {}
+            };
         } catch (e) {
-            addOptions = { subjects: [], teachers_by_subject: {}, supervisors_by_subject: {} };
+            return local;
         }
     }
+    function addLevelsReady() {
+        if (addIsSharedActive()) return addGetShareLevelIds().length > 0;
+        return addGetSingleLevelId() > 0;
+    }
+    function addSubjectOptionLabel(subject) {
+        const base = (subject.subject_name || '') + ((subject.subject_code || '') ? (' (' + subject.subject_code + ')') : '');
+        return base;
+    }
+    async function loadAddOptions() {
+        if (addIsSharedActive()) {
+            const shareIds = addGetShareLevelIds();
+            if (!shareIds.length) {
+                addOptions = { subjects: [], supervisors_by_subject: {}, supervisors_by_level: {} };
+                return;
+            }
+            const perLevel = await Promise.all(shareIds.map(function (lid) {
+                return fetchOptionsForLevel(lid).then(function (opts) {
+                    return { levelId: lid, opts: opts };
+                });
+            }));
+            let common = null;
+            const supervisorsByLevel = {};
+            perLevel.forEach(function (entry) {
+                const subs = new Set((entry.opts.subjects || []).map(function (s) { return String(s.id); }));
+                common = common === null ? subs : new Set([].slice.call(common).filter(function (x) { return subs.has(x); }));
+                supervisorsByLevel[String(entry.levelId)] = entry.opts.supervisors_by_subject || {};
+            });
+            const subjectMap = {};
+            perLevel.forEach(function (entry) {
+                (entry.opts.subjects || []).forEach(function (s) {
+                    if (common && common.has(String(s.id))) subjectMap[String(s.id)] = s;
+                });
+            });
+            addOptions = {
+                subjects: Object.keys(subjectMap).map(function (k) { return subjectMap[k]; }),
+                supervisors_by_subject: {},
+                supervisors_by_level: supervisorsByLevel
+            };
+            return;
+        }
+        const levelId = addGetSingleLevelId();
+        if (!levelId) {
+            addOptions = { subjects: [], teachers_by_subject: {}, supervisors_by_subject: {}, supervisors_by_level: {} };
+            return;
+        }
+        const opts = await fetchOptionsForLevel(levelId);
+        addOptions = {
+            subjects: opts.subjects,
+            teachers_by_subject: opts.supervisors_by_subject,
+            supervisors_by_subject: opts.supervisors_by_subject,
+            supervisors_by_level: {}
+        };
+    }
+    function refreshAddSubjectRows() {
+        if (!addRowsWrap) return;
+        let count = addRowsWrap.querySelectorAll('[data-row-idx]').length;
+        if (count === 0 && addLevelsReady()) count = 1;
+        addRowsWrap.innerHTML = '';
+        for (let i = 0; i < count; i++) addAllocationRow();
+    }
     function newAllocationRowHtml(idx) {
+        const shared = addIsSharedActive();
+        const shareLevels = addGetShareLevels();
         const subjOptions = ['<option value="">Select subject</option>'].concat((addOptions.subjects || []).map(function (s) {
-            const label = (s.subject_name || '') + ((s.subject_code || '') ? (' (' + s.subject_code + ')') : '');
-            return '<option value="' + String(s.id) + '">' + label + '</option>';
+            return '<option value="' + String(s.id) + '">' + addEscapeHtml(addSubjectOptionLabel(s)) + '</option>';
         })).join('');
+        let levelBlocks = '';
+        if (shared) {
+            shareLevels.forEach(function (lvl) {
+                levelBlocks += '<div class="rounded-lg border border-gray-200 dark:border-gray-600 p-2 mb-2 bg-gray-50/80 dark:bg-gray-800/40">';
+                levelBlocks += '<p class="text-[10px] font-bold text-gray-600 dark:text-gray-300 mb-1.5">' + (lvl.level_name || '') + '</p>';
+                levelBlocks += '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">';
+                levelBlocks += '<div><label class="block text-xs font-semibold mb-1">Venue</label><input type="text" value="' + (addLevelNameById(lvl.id) || '').toUpperCase().replace(/"/g, '&quot;') + '" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 uppercase" data-row-venue-level data-row-idx="' + idx + '" data-level-id="' + lvl.id + '" placeholder="E.G., HALL A" style="text-transform:uppercase"></div>';
+                levelBlocks += '<div><label class="block text-xs font-semibold mb-1">Supervisor *</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-teacher-level data-row-idx="' + idx + '" data-level-id="' + lvl.id + '"><option value="">Select supervisor</option></select></div>';
+                levelBlocks += '</div></div>';
+            });
+        }
         return '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3" data-row-idx="' + idx + '">' +
             '<div class="flex items-center justify-between mb-2"><p class="text-xs font-semibold text-gray-500">Subject row ' + (idx + 1) + '</p>' +
             '<button type="button" class="text-xs text-red-600 font-semibold" data-remove-row="' + idx + '">Remove</button></div>' +
-            '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">' +
-            '<div><label class="block text-xs font-semibold mb-1">Subject</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-subject="' + idx + '">' + subjOptions + '</select></div>' +
-            '<div><label class="block text-xs font-semibold mb-1">Session</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-session="' + idx + '"><option value="">Select session</option><option value="MORNING">Morning</option><option value="MIDDAY">Mid Day</option><option value="AFTERNOON">Afternoon</option><option value="EVENING">Evening</option><option value="CUSTOM">Custom</option></select></div>' +
-            '<div><label class="block text-xs font-semibold mb-1">Teacher</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-teacher="' + idx + '"><option value="">Select teacher</option></select></div>' +
+            '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+            '<div><label class="block text-xs font-semibold mb-1">Session *</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-session="' + idx + '"><option value="">Select session</option><option value="MORNING">Morning</option><option value="MIDDAY">Mid Day</option><option value="AFTERNOON">Afternoon</option><option value="EVENING">Evening</option><option value="CUSTOM">Custom</option></select></div>' +
+            '<div><label class="block text-xs font-semibold mb-1">Subject *</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-subject="' + idx + '">' + subjOptions + '</select></div>' +
             '</div>' +
+            (shared ? '' : '<div class="mt-3"><label class="block text-xs font-semibold mb-1">Supervisor *</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-teacher="' + idx + '"><option value="">Select supervisor</option></select></div>') +
+            (shared ? '<div class="mt-3">' + levelBlocks + '</div>' : '') +
             '<div class="hidden grid grid-cols-1 md:grid-cols-3 gap-3 mt-3" data-row-custom="' + idx + '">' +
             '<div><label class="block text-xs font-semibold mb-1">Start</label><input type="time" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-start="' + idx + '"></div>' +
             '<div><label class="block text-xs font-semibold mb-1">Duration</label><input type="number" min="1" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-duration="' + idx + '"></div>' +
             '<div><label class="block text-xs font-semibold mb-1">End</label><input type="text" readonly class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700" data-row-end="' + idx + '"></div>' +
             '</div>' +
-            '<p class="mt-2 text-xs text-amber-700 hidden" data-row-msg="' + idx + '"></p>' +
+            '<p class="mt-2 text-xs text-amber-700 dark:text-amber-300 hidden" data-row-msg="' + idx + '"></p>' +
             '</div>';
     }
-    function availableTeachersBySubject(subjectId) {
-        // Prefer eligible supervisors list; fall back to legacy teachers_by_subject.
+    function availableTeachersBySubject(subjectId, levelId) {
         const k = String(subjectId);
-        if (addOptions.supervisors_by_subject && addOptions.supervisors_by_subject[k]) return addOptions.supervisors_by_subject[k];
-        if (addOptions.teachers_by_subject && addOptions.teachers_by_subject[k]) return addOptions.teachers_by_subject[k];
-        return [];
+        if (!subjectId) return [];
+        let list = [];
+        if (levelId && addOptions.supervisors_by_level && addOptions.supervisors_by_level[String(levelId)]) {
+            list = addOptions.supervisors_by_level[String(levelId)][k] || [];
+        } else if (addOptions.supervisors_by_subject && addOptions.supervisors_by_subject[k]) {
+            list = addOptions.supervisors_by_subject[k];
+        } else if (addOptions.teachers_by_subject && addOptions.teachers_by_subject[k]) {
+            list = addOptions.teachers_by_subject[k];
+        }
+        return list.length ? list : (teachers || []).slice();
     }
     function addAllocationRow() {
         const idx = addRowsWrap.querySelectorAll('[data-row-idx]').length;
         addRowsWrap.insertAdjacentHTML('beforeend', newAllocationRowHtml(idx));
         wireRow(idx);
+        if (!addLevelsReady()) return;
+        const subjectEl = addRowsWrap.querySelector('[data-row-subject="' + idx + '"]');
+        if (subjectEl && subjectEl.options.length <= 1 && (addOptions.subjects || []).length) {
+            subjectEl.innerHTML = ['<option value="">Select subject</option>'].concat((addOptions.subjects || []).map(function (s) {
+                return '<option value="' + String(s.id) + '">' + addEscapeHtml(addSubjectOptionLabel(s)) + '</option>';
+            })).join('');
+        }
     }
-    function setRowTeacherOptions(idx, list, conflictsMap) {
-        const sel = addRowsWrap.querySelector('[data-row-teacher="' + idx + '"]');
+    function setRowTeacherOptions(idx, list, conflictsMap, levelId) {
+        let sel;
+        if (levelId != null) {
+            sel = addRowsWrap.querySelector('[data-row-teacher-level][data-row-idx="' + idx + '"][data-level-id="' + levelId + '"]');
+        } else {
+            sel = addRowsWrap.querySelector('[data-row-teacher="' + idx + '"]');
+        }
         if (!sel) return;
-        const opts = ['<option value="">Select teacher</option>'];
+        const opts = ['<option value="">Select supervisor</option>'];
         (list || []).forEach(function (t) {
             const busy = conflictsMap && conflictsMap[String(t.id)] && conflictsMap[String(t.id)].length;
             const label = (t.full_name || '') + (t.employee_id ? (' (' + t.employee_id + ')') : '') + (busy ? ' - busy at this time' : '');
@@ -1841,33 +2322,51 @@
         const durationEl = addRowsWrap.querySelector('[data-row-duration="' + idx + '"]');
         const msgEl = addRowsWrap.querySelector('[data-row-msg="' + idx + '"]');
         const subjectId = parseInt(subjectEl && subjectEl.value || '0', 10);
-        const teacherPool = availableTeachersBySubject(subjectId);
-        setRowTeacherOptions(idx, teacherPool, {});
-        if (!baseExamId || !subjectId || !addDateEl.value || !sessionEl || !sessionEl.value) {
+        const shared = addIsSharedActive();
+        const shareLevels = shared ? addGetShareLevels() : [];
+
+        if (shared) {
+            shareLevels.forEach(function (lvl) {
+                setRowTeacherOptions(idx, availableTeachersBySubject(subjectId, lvl.id), {}, lvl.id);
+            });
+        } else {
+            setRowTeacherOptions(idx, availableTeachersBySubject(subjectId), {});
+        }
+
+        if (!subjectId || !addDateEl.value || !sessionEl || !sessionEl.value) {
             if (msgEl) msgEl.classList.add('hidden');
             return;
         }
-        const payload = { exam_id: baseExamId, exam_date: addDateEl.value, session_type: sessionEl.value };
-        if (sessionEl.value === 'CUSTOM') {
-            payload.start_time = startEl ? startEl.value : '';
-            payload.duration_minutes = parseInt(durationEl && durationEl.value || '0', 10);
-            if (!payload.start_time || !(payload.duration_minutes > 0)) return;
-        }
-        try {
-            const res = await fetch(ELIGIBLE_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            const conflicts = (data && data.conflicts_by_supervisor_id) ? data.conflicts_by_supervisor_id : {};
-            setRowTeacherOptions(idx, teacherPool, conflicts);
-            if (msgEl) {
-                msgEl.textContent = 'Teachers marked "busy at this time" have overlapping sessions and may be rejected.';
-                msgEl.classList.remove('hidden');
+
+        let conflicts = {};
+        if (baseExamId) {
+            const payload = { exam_id: baseExamId, exam_date: addDateEl.value, session_type: sessionEl.value };
+            if (sessionEl.value === 'CUSTOM') {
+                payload.start_time = startEl ? startEl.value : '';
+                payload.duration_minutes = parseInt(durationEl && durationEl.value || '0', 10);
+                if (!payload.start_time || !(payload.duration_minutes > 0)) return;
             }
-        } catch (e) {
-            if (msgEl) msgEl.classList.add('hidden');
+            try {
+                const res = await fetch(ELIGIBLE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                conflicts = (data && data.conflicts_by_supervisor_id) ? data.conflicts_by_supervisor_id : {};
+            } catch (e) { /* ignore */ }
+        }
+
+        if (shared) {
+            shareLevels.forEach(function (lvl) {
+                setRowTeacherOptions(idx, availableTeachersBySubject(subjectId, lvl.id), conflicts, lvl.id);
+            });
+        } else {
+            setRowTeacherOptions(idx, availableTeachersBySubject(subjectId), conflicts);
+        }
+        if (msgEl) {
+            msgEl.textContent = 'Supervisors marked "busy at this time" have overlapping sessions and may be rejected.';
+            msgEl.classList.remove('hidden');
         }
     }
     function wireRow(idx) {
@@ -1881,7 +2380,13 @@
         const durationEl = row.querySelector('[data-row-duration="' + idx + '"]');
         const endEl = row.querySelector('[data-row-end="' + idx + '"]');
         if (removeBtn) removeBtn.addEventListener('click', function () { row.remove(); });
-        if (subjectSel) subjectSel.addEventListener('change', function () { checkRowAvailability(idx); });
+        if (subjectSel) {
+            subjectSel.addEventListener('change', function () { checkRowAvailability(idx); });
+            if (subjectSel.value) checkRowAvailability(idx);
+        }
+        row.querySelectorAll('[data-row-venue-level]').forEach(function (inp) {
+            inp.addEventListener('input', function () { inp.value = inp.value.toUpperCase(); });
+        });
         if (sessionSel) {
             sessionSel.addEventListener('change', function () {
                 customWrap.classList.toggle('hidden', sessionSel.value !== 'CUSTOM');
@@ -1924,9 +2429,21 @@
         addForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             addErrEl.classList.add('hidden');
-            const levelId = parseInt(addLevelEl.value || '0', 10);
-            if (!levelId || !addDateEl.value) {
-                addErrEl.textContent = 'Select class and exam date.';
+            const shared = addIsSharedActive();
+            const singleLevelId = addGetSingleLevelId();
+            if (!addDateEl.value) {
+                addErrEl.textContent = 'Select exam date.';
+                addErrEl.classList.remove('hidden');
+                return;
+            }
+            if (shared) {
+                if (!addGetShareLevelIds().length) {
+                    addErrEl.textContent = 'Select combined classes and enable Share timetable.';
+                    addErrEl.classList.remove('hidden');
+                    return;
+                }
+            } else if (!singleLevelId) {
+                addErrEl.textContent = 'Select exactly one class, or enable Share timetable for a combined group.';
                 addErrEl.classList.remove('hidden');
                 return;
             }
@@ -1941,11 +2458,10 @@
                 const idx = r.getAttribute('data-row-idx');
                 const subj = parseInt((r.querySelector('[data-row-subject="' + idx + '"]') || {}).value || '0', 10);
                 const session = ((r.querySelector('[data-row-session="' + idx + '"]') || {}).value || '').trim();
-                const teacher = parseInt((r.querySelector('[data-row-teacher="' + idx + '"]') || {}).value || '0', 10);
                 const start = ((r.querySelector('[data-row-start="' + idx + '"]') || {}).value || '').trim();
                 const duration = parseInt(((r.querySelector('[data-row-duration="' + idx + '"]') || {}).value || '0'), 10);
-                if (!subj || !session || !teacher) {
-                    addErrEl.textContent = 'Each row needs subject, session and teacher.';
+                if (!subj || !session) {
+                    addErrEl.textContent = 'Each row needs subject and session.';
                     addErrEl.classList.remove('hidden');
                     return;
                 }
@@ -1954,28 +2470,69 @@
                     addErrEl.classList.remove('hidden');
                     return;
                 }
-                allocations.push({
-                    academic_level_id: levelId,
-                    subject_id: subj,
-                    teacher_id: teacher,
-                    exam_date: addDateEl.value,
-                    venue: (addVenueEl.value || '').trim().toUpperCase(),
-                    session_type: session,
-                    start_time: session === 'CUSTOM' ? start : null,
-                    duration_minutes: session === 'CUSTOM' ? duration : null
-                });
+                if (shared) {
+                    const levelAssignments = [];
+                    addGetShareLevels().forEach(function (lvl) {
+                        const teacherEl = r.querySelector('[data-row-teacher-level][data-row-idx="' + idx + '"][data-level-id="' + lvl.id + '"]');
+                        const venueEl = r.querySelector('[data-row-venue-level][data-row-idx="' + idx + '"][data-level-id="' + lvl.id + '"]');
+                        const teacher = parseInt(teacherEl && teacherEl.value || '0', 10);
+                        if (!teacher) return;
+                        levelAssignments.push({
+                            academic_level_id: parseInt(lvl.id, 10),
+                            teacher_id: teacher,
+                            venue: ((venueEl && venueEl.value) || addLevelNameById(lvl.id) || '').trim().toUpperCase()
+                        });
+                    });
+                    if (levelAssignments.length !== addGetShareLevels().length) {
+                        addErrEl.textContent = 'Each combined class needs a supervisor on every row.';
+                        addErrEl.classList.remove('hidden');
+                        return;
+                    }
+                    allocations.push({
+                        subject_id: subj,
+                        exam_date: addDateEl.value,
+                        session_type: session,
+                        start_time: session === 'CUSTOM' ? start : null,
+                        duration_minutes: session === 'CUSTOM' ? duration : null,
+                        level_assignments: levelAssignments
+                    });
+                } else {
+                    const teacher = parseInt((r.querySelector('[data-row-teacher="' + idx + '"]') || {}).value || '0', 10);
+                    if (!teacher) {
+                        addErrEl.textContent = 'Each row needs a supervisor.';
+                        addErrEl.classList.remove('hidden');
+                        return;
+                    }
+                    allocations.push({
+                        academic_level_id: singleLevelId,
+                        subject_id: subj,
+                        teacher_id: teacher,
+                        exam_date: addDateEl.value,
+                        venue: (addVenueEl.value || addLevelNameById(singleLevelId) || '').trim().toUpperCase(),
+                        session_type: session,
+                        start_time: session === 'CUSTOM' ? start : null,
+                        duration_minutes: session === 'CUSTOM' ? duration : null
+                    });
+                }
+            }
+            const shareGroups = shared ? addBuildShareGroupsPayload() : [];
+            const payload = {
+                exam_name: (examMeta.exam_name || '').toUpperCase(),
+                exam_type: (examMeta.exam_type || 'OPENING EXAM').toUpperCase(),
+                academic_year_id: Number(examMeta.academic_year_id || 0),
+                term_id: Number(examMeta.term_id || 0),
+                allocations: allocations
+            };
+            if (shared) {
+                payload.share_timetable = true;
+                payload.share_groups = shareGroups;
+                payload.level_ids = addGetShareLevelIds().map(function (x) { return parseInt(x, 10); });
             }
             addSaveBtn.disabled = true;
             fetch(SAVE_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    exam_name: (examMeta.exam_name || '').toUpperCase(),
-                    exam_type: (examMeta.exam_type || 'OPENING EXAM').toUpperCase(),
-                    academic_year_id: Number(examMeta.academic_year_id || 0),
-                    term_id: Number(examMeta.term_id || 0),
-                    allocations: allocations
-                })
+                body: JSON.stringify(payload)
             })
                 .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
                 .then(function (x) {
