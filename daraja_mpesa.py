@@ -695,6 +695,8 @@ def parse_stk_callback(body: dict) -> dict:
         'result_code': None,
         'result_desc': None,
         'mpesa_receipt': None,
+        'mpesa_code_reference': None,
+        'account_reference': None,
         'amount': None,
         'phone': None,
         'transaction_date': None,
@@ -707,17 +709,36 @@ def parse_stk_callback(body: dict) -> dict:
     out['result_code'] = stk.get('ResultCode')
     out['result_desc'] = stk.get('ResultDesc')
     meta = stk.get('CallbackMetadata', {}).get('Item') or []
+    if not isinstance(meta, list):
+        meta = []
     for item in meta:
-        name = item.get('Name')
+        if not isinstance(item, dict):
+            continue
+        name = (item.get('Name') or '').strip()
         val = item.get('Value')
-        if name == 'MpesaReceiptNumber':
-            out['mpesa_receipt'] = str(val) if val is not None else None
+        lname = name.lower()
+        if lname in ('mpesareceiptnumber', 'mpesareceipt', 'receiptno', 'receiptnumber'):
+            code = str(val).strip() if val is not None else ''
+            if code:
+                out['mpesa_receipt'] = code
+                out['mpesa_code_reference'] = code
+        elif lname in ('accountreference', 'billreferencenumber', 'billrefnumber'):
+            ref = str(val).strip() if val is not None else ''
+            if ref:
+                out['account_reference'] = ref
         elif name == 'Amount':
             out['amount'] = val
         elif name == 'PhoneNumber':
             out['phone'] = str(val) if val is not None else None
         elif name == 'TransactionDate':
             out['transaction_date'] = str(val) if val is not None else None
+    if not out['mpesa_code_reference']:
+        for key in ('MpesaReceiptNumber', 'mpesa_receipt', 'ReceiptNumber'):
+            val = stk.get(key)
+            if val is not None and str(val).strip():
+                out['mpesa_receipt'] = str(val).strip()
+                out['mpesa_code_reference'] = out['mpesa_receipt']
+                break
     return out
 
 
@@ -733,6 +754,8 @@ def parse_stk_query_response(raw: dict) -> dict:
         'result_code': None,
         'result_desc': None,
         'mpesa_receipt': None,
+        'mpesa_code_reference': None,
+        'account_reference': None,
         'amount': None,
         'phone': None,
         'error_code': None,
@@ -747,16 +770,46 @@ def parse_stk_query_response(raw: dict) -> dict:
     out['result_code'] = raw.get('ResultCode')
     out['result_desc'] = raw.get('ResultDesc')
     meta = raw.get('CallbackMetadata', {}).get('Item') or []
+    if not isinstance(meta, list):
+        meta = []
     for item in meta:
-        name = item.get('Name')
+        if not isinstance(item, dict):
+            continue
+        name = (item.get('Name') or '').strip()
         val = item.get('Value')
-        if name == 'MpesaReceiptNumber':
-            out['mpesa_receipt'] = str(val) if val is not None else None
+        lname = name.lower()
+        if lname in ('mpesareceiptnumber', 'mpesareceipt', 'receiptno', 'receiptnumber'):
+            code = str(val).strip() if val is not None else ''
+            if code:
+                out['mpesa_receipt'] = code
+                out['mpesa_code_reference'] = code
+        elif lname in ('accountreference', 'billreferencenumber', 'billrefnumber'):
+            ref = str(val).strip() if val is not None else ''
+            if ref:
+                out['account_reference'] = ref
         elif name == 'Amount':
             out['amount'] = val
         elif name == 'PhoneNumber':
             out['phone'] = str(val) if val is not None else None
+    if not out['mpesa_code_reference']:
+        for key in ('MpesaReceiptNumber', 'mpesa_receipt', 'ReceiptNumber'):
+            val = raw.get(key)
+            if val is not None and str(val).strip():
+                out['mpesa_receipt'] = str(val).strip()
+                out['mpesa_code_reference'] = out['mpesa_receipt']
+                break
     return out
+
+
+def stk_code_reference(parsed: Optional[dict]) -> str:
+    """Best M-Pesa confirmation code from parsed callback/query payload."""
+    if not isinstance(parsed, dict):
+        return ''
+    for key in ('mpesa_code_reference', 'mpesa_receipt'):
+        val = (parsed.get(key) or '').strip()
+        if val:
+            return val
+    return ''
 
 
 def stk_query_result_status(result_code) -> str:

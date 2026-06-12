@@ -42,11 +42,11 @@
             </div>
             <p id="parent-mpesa-feedback" class="hidden text-sm rounded-lg px-3 py-2" role="status"></p>
             <p id="parent-mpesa-receipt-row" class="hidden text-xs font-mono text-slate-500">
-                Receipt: <span id="parent-mpesa-receipt"></span>
+                M-Pesa code reference: <span id="parent-mpesa-receipt" class="font-semibold text-emerald-700 dark:text-emerald-400"></span>
             </p>
             <div id="parent-mpesa-confirm-row" class="hidden space-y-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3">
                 <p class="text-xs text-amber-900 dark:text-amber-100">Paid on your phone but still waiting? Sandbox: confirm to record the payment locally.</p>
-                <input type="text" id="parent-mpesa-receipt-input" placeholder="M-Pesa receipt (optional)"
+                <input type="text" id="parent-mpesa-receipt-input" placeholder="M-Pesa code reference (optional)"
                        class="w-full rounded-lg border border-amber-200 dark:border-amber-700 px-3 py-2 text-sm dark:bg-slate-800 dark:text-white" />
                 <button type="button" id="parent-mpesa-confirm-btn"
                         class="w-full rounded-lg bg-amber-600 hover:bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white">
@@ -192,15 +192,23 @@
     else conceal(confirmRow);
   }
 
+  function mpesaCodeReference(data) {
+    if (!data) return '';
+    return String(data.mpesa_code_reference || data.mpesa_receipt || '').trim();
+  }
+
+  function showMpesaCodeReference(codeRef) {
+    if (!codeRef || !receiptEl || !receiptRow) return;
+    receiptEl.textContent = codeRef;
+    reveal(receiptRow);
+  }
+
   function handleCompleted(data) {
     stopPolling();
     setBusy(false);
     showConfirmRow(false);
     setFeedback(data.message || 'Payment successful. The school has been notified.', 'ok');
-    if (data.mpesa_receipt && receiptEl && receiptRow) {
-      receiptEl.textContent = data.mpesa_receipt;
-      reveal(receiptRow);
-    }
+    showMpesaCodeReference(mpesaCodeReference(data));
     setTimeout(function () { window.location.reload(); }, 2500);
   }
 
@@ -218,6 +226,7 @@
       body: JSON.stringify({
         checkout_request_id: session.checkoutId,
         mpesa_receipt: receiptInput ? receiptInput.value.trim() : '',
+        mpesa_code_reference: receiptInput ? receiptInput.value.trim() : '',
       }),
     })
       .then(function (res) { return res.json(); })
@@ -312,6 +321,8 @@
           if (data.confirm_available || CONFIG.sandboxConfirm) {
             if (session.pollCount >= 4) showConfirmRow(true);
           }
+          var codeRef = mpesaCodeReference(data);
+          if (codeRef) showMpesaCodeReference(codeRef);
           var status = String(data.status || '').toLowerCase();
           if (status === 'completed') {
             handleCompleted(data);

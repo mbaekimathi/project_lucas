@@ -528,11 +528,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         <i class="fas fa-id-card mt-0.5 shrink-0 opacity-80" aria-hidden="true"></i>
                         <span>M-Pesa account reference sent to Safaricom: <strong class="font-mono" x-text="mpesaAccountRef"></strong></span>
                     </p>
+                    <p x-show="mpesaCodeReference" x-cloak
+                       class="flex items-start gap-2 text-xs text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/50 rounded-xl px-3 py-2">
+                        <i class="fas fa-receipt mt-0.5 shrink-0 opacity-80" aria-hidden="true"></i>
+                        <span>M-Pesa code reference: <strong class="font-mono" x-text="mpesaCodeReference"></strong></span>
+                    </p>
                     <p x-show="mpesaPolling" class="flex items-center gap-2 text-xs text-teal-700 dark:text-teal-300 px-0.5">
                         <i class="fas fa-spinner fa-spin"></i><span x-text="mpesaStatusMsg || 'Waiting for PIN on phone…'"></span>
                     </p>
                     <div x-show="mpesaSandboxConfirm && mpesaCheckoutId" x-cloak class="flex gap-2">
-                        <input type="text" x-model="mpesaReceiptInput" placeholder="Receipt (optional)" class="sf-pay-field flex-1 min-w-0 font-mono text-xs">
+                        <input type="text" x-model="mpesaReceiptInput" placeholder="M-Pesa code reference (optional)" class="sf-pay-field flex-1 min-w-0 font-mono text-xs">
                         <button type="button" @click="confirmMpesaSandbox()"
                                 class="shrink-0 px-3 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-700 text-white">Confirm</button>
                     </div>
@@ -973,6 +978,7 @@ function paymentModal() {
         mpesaStatusMsg: '',
         mpesaReceiptInput: '',
         mpesaAccountRef: '',
+        mpesaCodeReference: '',
         mpesaSandboxConfirm: SF_MPESA_CFG.sandboxConfirm,
         paymentDate: new Date().toISOString().split('T')[0],
         proofOfPayment: null,
@@ -1080,7 +1086,11 @@ function paymentModal() {
         handleMpesaCompleted(data) {
             this.stopMpesaPolling();
             this.loading = false;
-            this.success = data.message || 'M-Pesa payment recorded successfully.';
+            var codeRef = String((data && (data.mpesa_code_reference || data.mpesa_receipt)) || '').trim();
+            this.mpesaCodeReference = codeRef;
+            this.success = data.message || (codeRef
+                ? ('M-Pesa payment recorded. Code reference: ' + codeRef)
+                : 'M-Pesa payment recorded successfully.');
             this.mpesaCheckoutId = null;
             setTimeout(() => {
                 this.close();
@@ -1101,6 +1111,8 @@ function paymentModal() {
                         if (!data || !data.success) return;
                         if (data.sync_warning) self.mpesaStatusMsg = data.sync_warning;
                         else if (data.message) self.mpesaStatusMsg = data.message;
+                        var codeRef = String((data.mpesa_code_reference || data.mpesa_receipt) || '').trim();
+                        if (codeRef) self.mpesaCodeReference = codeRef;
                         var st = String(data.status || '').toLowerCase();
                         if (st === 'completed') self.handleMpesaCompleted(data);
                         else if (st === 'failed' || st === 'cancelled') {
@@ -1130,7 +1142,11 @@ function paymentModal() {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    body: JSON.stringify({ checkout_request_id: this.mpesaCheckoutId, mpesa_receipt: this.mpesaReceiptInput || '' }),
+                    body: JSON.stringify({
+                        checkout_request_id: this.mpesaCheckoutId,
+                        mpesa_receipt: this.mpesaReceiptInput || '',
+                        mpesa_code_reference: this.mpesaReceiptInput || '',
+                    }),
                 });
                 var data = await res.json();
                 if (data && data.success && String(data.status || '').toLowerCase() === 'completed') this.handleMpesaCompleted(data);
@@ -1173,6 +1189,7 @@ function paymentModal() {
             this.mpesaCheckoutId = null;
             this.mpesaReceiptInput = '';
             this.mpesaAccountRef = '';
+            this.mpesaCodeReference = '';
             this.mpesaStatusMsg = '';
             this.paymentDate = new Date().toISOString().split('T')[0];
             this.proofOfPayment = null;
@@ -1200,6 +1217,7 @@ function paymentModal() {
             this.stopMpesaPolling();
             this.mpesaCheckoutId = null;
             this.mpesaAccountRef = '';
+            this.mpesaCodeReference = '';
             if (this.paymentMethod === 'Supplier Offset') {
                 var digits = String(this.supplierPhone || '').replace(/\D/g, '');
                 if (digits.length >= 9) {

@@ -21947,7 +21947,7 @@ def accountant_mpesa_stk_status(checkout_request_id):
                     'success': True,
                     'status': 'completed',
                     'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
-                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                    **_mpesa_stk_status_fields(txn_row),
                 })
             if status in ('failed', 'cancelled'):
                 connection.commit()
@@ -21955,7 +21955,7 @@ def accountant_mpesa_stk_status(checkout_request_id):
                     'success': True,
                     'status': status,
                     'message': txn_row.get('result_desc') or 'Payment was not completed.',
-                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                    **_mpesa_stk_status_fields(txn_row),
                 })
 
             daraja_settings = _get_daraja_settings(cursor)
@@ -21974,6 +21974,7 @@ def accountant_mpesa_stk_status(checkout_request_id):
                 'success': True,
                 'status': 'pending',
                 'message': 'Waiting for M-Pesa PIN on the phone…',
+                **_mpesa_stk_status_fields(txn_row),
             }
             sync_warning = _mpesa_stk_sync_warning_from_row(txn_row)
             if sync_warning:
@@ -22003,7 +22004,7 @@ def accountant_mpesa_confirm_payment():
 
     data = request.get_json(silent=True) or request.form
     checkout_id = (data.get('checkout_request_id') or '').strip()
-    mpesa_receipt = (data.get('mpesa_receipt') or '').strip()
+    mpesa_receipt = (data.get('mpesa_code_reference') or data.get('mpesa_receipt') or '').strip()
     if not checkout_id:
         return jsonify({'success': False, 'message': 'Missing payment session.'}), 400
 
@@ -22030,7 +22031,7 @@ def accountant_mpesa_confirm_payment():
                     'success': True,
                     'status': 'completed',
                     'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
-                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                    **_mpesa_stk_status_fields(txn_row),
                 })
 
             receipt = mpesa_receipt or checkout_id
@@ -22038,6 +22039,7 @@ def accountant_mpesa_confirm_payment():
                 'result_code': 0,
                 'result_desc': 'Sandbox payment confirmed by accountant.',
                 'mpesa_receipt': receipt,
+                'mpesa_code_reference': receipt,
             }
             ok, msg, recorded_receipt = _mpesa_stk_finalize_success(
                 cursor, txn_row, callback_data,
@@ -22052,6 +22054,7 @@ def accountant_mpesa_confirm_payment():
                 'status': 'completed',
                 'message': msg,
                 'mpesa_receipt': recorded_receipt,
+                'mpesa_code_reference': recorded_receipt,
             })
     except Exception as e:
         print(f"accountant_mpesa_confirm_payment: {e}")
@@ -30791,7 +30794,8 @@ def _mpesa_stk_try_complete_from_remote_sync(cursor, txn_row):
             callback_data = {
                 'result_code': 0,
                 'result_desc': remote.get('message'),
-                'mpesa_receipt': remote.get('mpesa_receipt'),
+                'mpesa_receipt': remote.get('mpesa_receipt') or remote.get('mpesa_code_reference'),
+                'mpesa_code_reference': remote.get('mpesa_code_reference') or remote.get('mpesa_receipt'),
             }
             ok, msg, receipt = _mpesa_stk_finalize_success(
                 cursor, txn_row, callback_data, raw_json=remote.get('raw_callback_json'),
@@ -30807,12 +30811,15 @@ def _mpesa_stk_try_complete_from_remote_sync(cursor, txn_row):
                 'status': 'completed',
                 'message': msg,
                 'mpesa_receipt': receipt,
+                'mpesa_code_reference': receipt,
             }
+        remote_receipt = remote.get('mpesa_code_reference') or remote.get('mpesa_receipt')
         return {
             'success': True,
             'status': 'completed',
-            'message': remote.get('message') or _mpesa_parent_success_message(txn_row, remote.get('mpesa_receipt')),
-            'mpesa_receipt': remote.get('mpesa_receipt'),
+            'message': remote.get('message') or _mpesa_parent_success_message(txn_row, remote_receipt),
+            'mpesa_receipt': remote_receipt,
+            'mpesa_code_reference': remote_receipt,
         }
     if st in ('failed', 'cancelled'):
         if (txn_row.get('status') or '').lower() not in ('failed', 'cancelled', 'completed'):
@@ -31026,7 +31033,7 @@ def parent_mpesa_stk_status(checkout_request_id):
                     'success': True,
                     'status': 'completed',
                     'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
-                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                    **_mpesa_stk_status_fields(txn_row),
                 })
             if status in ('failed', 'cancelled'):
                 connection.commit()
@@ -31034,7 +31041,7 @@ def parent_mpesa_stk_status(checkout_request_id):
                     'success': True,
                     'status': status,
                     'message': txn_row.get('result_desc') or 'Payment was not completed.',
-                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                    **_mpesa_stk_status_fields(txn_row),
                 })
 
             daraja_settings = _get_daraja_settings(cursor)
@@ -31053,6 +31060,7 @@ def parent_mpesa_stk_status(checkout_request_id):
                 'success': True,
                 'status': 'pending',
                 'message': 'Check your phone and enter your M-Pesa PIN…',
+                **_mpesa_stk_status_fields(txn_row),
             }
             sync_warning = _mpesa_stk_sync_warning_from_row(txn_row)
             if sync_warning:
@@ -31088,7 +31096,7 @@ def parent_mpesa_confirm_payment():
 
     data = request.get_json(silent=True) or request.form
     checkout_id = (data.get('checkout_request_id') or '').strip()
-    mpesa_receipt = (data.get('mpesa_receipt') or '').strip()
+    mpesa_receipt = (data.get('mpesa_code_reference') or data.get('mpesa_receipt') or '').strip()
     if not checkout_id:
         return jsonify({'success': False, 'message': 'Missing payment session.'}), 400
 
@@ -31119,7 +31127,7 @@ def parent_mpesa_confirm_payment():
                     'success': True,
                     'status': 'completed',
                     'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
-                    'mpesa_receipt': txn_row.get('mpesa_receipt'),
+                    **_mpesa_stk_status_fields(txn_row),
                 })
             if status in ('failed', 'cancelled'):
                 return jsonify({'success': False, 'message': txn_row.get('result_desc') or 'Payment was not completed.'}), 400
@@ -31129,6 +31137,7 @@ def parent_mpesa_confirm_payment():
                 'result_code': 0,
                 'result_desc': 'Sandbox payment confirmed by parent.',
                 'mpesa_receipt': receipt,
+                'mpesa_code_reference': receipt,
             }
             ok, msg, recorded_receipt = _mpesa_stk_finalize_success(
                 cursor, txn_row, callback_data,
@@ -31143,6 +31152,7 @@ def parent_mpesa_confirm_payment():
                 'status': 'completed',
                 'message': msg,
                 'mpesa_receipt': recorded_receipt,
+                'mpesa_code_reference': recorded_receipt,
             })
     except Exception as e:
         print(f"parent_mpesa_confirm_payment: {e}")
@@ -31160,7 +31170,11 @@ def mpesa_stk_callback():
     body = request.get_json(silent=True) or {}
     parsed = daraja.parse_stk_callback(body)
     checkout_id = parsed.get('checkout_request_id')
-    print(f"mpesa_stk_callback: checkout={checkout_id} result={parsed.get('result_code')} desc={parsed.get('result_desc')}")
+    code_ref = daraja.stk_code_reference(parsed)
+    print(
+        f"mpesa_stk_callback: checkout={checkout_id} result={parsed.get('result_code')} "
+        f"code_ref={code_ref or '—'} desc={parsed.get('result_desc')}"
+    )
     if not checkout_id:
         return jsonify({'ResultCode': 0, 'ResultDesc': 'Accepted'})
 
@@ -31199,7 +31213,8 @@ def mpesa_stk_callback():
                         status='completed',
                         result_code='0',
                         result_desc=result_desc or 'Success',
-                        mpesa_receipt=parsed.get('mpesa_receipt'),
+                        mpesa_receipt=code_ref or parsed.get('mpesa_receipt'),
+                        mpesa_code_reference=code_ref or parsed.get('mpesa_receipt'),
                         raw_callback_json=raw_json,
                     )
                 else:
@@ -31323,9 +31338,9 @@ def mpesa_stk_status_sync(checkout_request_id):
                 'success': True,
                 'status': st,
                 'message': txn_row.get('result_desc') or 'Pending',
-                'mpesa_receipt': txn_row.get('mpesa_receipt'),
                 'result_code': txn_row.get('result_code'),
                 'raw_callback_json': txn_row.get('raw_callback_json'),
+                **_mpesa_stk_status_fields(txn_row),
             }
             if st == 'completed':
                 payload['message'] = txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row)
@@ -41851,6 +41866,7 @@ def ensure_mpesa_stk_transactions_table(cursor):
                 result_code VARCHAR(16) NULL,
                 result_desc VARCHAR(500) NULL,
                 mpesa_receipt VARCHAR(64) NULL,
+                mpesa_code_reference VARCHAR(64) NULL,
                 student_payment_id INT NULL,
                 raw_request_json TEXT NULL,
                 raw_callback_json TEXT NULL,
@@ -41861,10 +41877,53 @@ def ensure_mpesa_stk_transactions_table(cursor):
                 INDEX idx_mpesa_stk_status (status)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        cursor.execute("SHOW COLUMNS FROM mpesa_stk_transactions LIKE 'mpesa_code_reference'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "ALTER TABLE mpesa_stk_transactions "
+                "ADD COLUMN mpesa_code_reference VARCHAR(64) NULL AFTER mpesa_receipt"
+            )
     except Exception as e:
         print(f"ensure_mpesa_stk_transactions_table: {e}")
     finally:
         _mpesa_stk_schema_ensuring = False
+
+
+def _mpesa_stk_code_reference_from_parsed(parsed):
+    """M-Pesa confirmation code from Daraja callback/query parse result."""
+    import daraja_mpesa as daraja
+    return daraja.stk_code_reference(parsed if isinstance(parsed, dict) else {})
+
+
+def _mpesa_stk_resolve_code_reference(txn_row):
+    """Return saved or callback-derived M-Pesa code reference for a txn row."""
+    import daraja_mpesa as daraja
+
+    if not isinstance(txn_row, dict):
+        return ''
+    for key in ('mpesa_code_reference', 'mpesa_receipt'):
+        val = (txn_row.get(key) or '').strip()
+        if val:
+            return val
+    raw = txn_row.get('raw_callback_json')
+    if not raw:
+        return ''
+    try:
+        body = json.loads(raw) if isinstance(raw, str) else raw
+        parsed = daraja.parse_stk_callback(body if isinstance(body, dict) else {})
+        return daraja.stk_code_reference(parsed)
+    except Exception:
+        return ''
+
+
+def _mpesa_stk_status_fields(txn_row):
+    """Common M-Pesa status fields for polling/API responses."""
+    code_ref = _mpesa_stk_resolve_code_reference(txn_row)
+    return {
+        'mpesa_receipt': code_ref or None,
+        'mpesa_code_reference': code_ref or None,
+        'account_reference': (txn_row.get('account_reference') or '').strip() or None,
+    }
 
 
 def _get_daraja_settings(cursor):
@@ -42031,7 +42090,12 @@ def _complete_mpesa_stk_success(cursor, txn_row, callback_data):
     purpose = (txn_row.get('purpose') or '').strip()
     student_id = txn_row.get('student_id')
     amount = Decimal(str(txn_row.get('amount') or 0))
-    receipt = callback_data.get('mpesa_receipt') or txn_row.get('checkout_request_id') or ''
+    receipt = (
+        _mpesa_stk_code_reference_from_parsed(callback_data)
+        or (callback_data.get('mpesa_receipt') or '').strip()
+        or (txn_row.get('mpesa_code_reference') or txn_row.get('mpesa_receipt') or '').strip()
+        or (txn_row.get('checkout_request_id') or '')
+    )
     finance_account_id = txn_row.get('finance_account_id')
     fee_structure_id = txn_row.get('fee_structure_id')
     meta = _mpesa_stk_txn_meta(txn_row)
@@ -42229,7 +42293,8 @@ def _mpesa_stk_is_sync_relay_only(txn_row):
 
 
 def _mpesa_stk_mark_terminal(cursor, checkout_id, *, status, result_code, result_desc,
-                             mpesa_receipt=None, raw_callback_json=None):
+                             mpesa_receipt=None, mpesa_code_reference=None, raw_callback_json=None):
+    code_ref = (mpesa_code_reference or mpesa_receipt or '').strip() or None
     cursor.execute(
         """
         UPDATE mpesa_stk_transactions SET
@@ -42237,6 +42302,7 @@ def _mpesa_stk_mark_terminal(cursor, checkout_id, *, status, result_code, result
             result_code = %s,
             result_desc = %s,
             mpesa_receipt = COALESCE(%s, mpesa_receipt),
+            mpesa_code_reference = COALESCE(%s, mpesa_code_reference),
             raw_callback_json = COALESCE(%s, raw_callback_json),
             completed_at = NOW()
         WHERE checkout_request_id = %s
@@ -42245,7 +42311,8 @@ def _mpesa_stk_mark_terminal(cursor, checkout_id, *, status, result_code, result
             status,
             result_code,
             result_desc[:500] if result_desc else None,
-            mpesa_receipt,
+            code_ref,
+            code_ref,
             raw_callback_json,
             checkout_id,
         ),
@@ -42259,7 +42326,12 @@ def _mpesa_stk_finalize_success(cursor, txn_row, callback_data, raw_json=None):
         return True, _mpesa_parent_success_message(txn_row), txn_row.get('mpesa_receipt')
 
     ok, msg, _extra = _complete_mpesa_stk_success(cursor, txn_row, callback_data)
-    receipt = callback_data.get('mpesa_receipt') or txn_row.get('mpesa_receipt')
+    receipt = (
+        _mpesa_stk_code_reference_from_parsed(callback_data)
+        or (callback_data.get('mpesa_receipt') or '').strip()
+        or _mpesa_stk_resolve_code_reference(txn_row)
+        or ''
+    )
     if ok:
         user_msg = _mpesa_parent_success_message(txn_row, receipt)
         _mpesa_stk_mark_terminal(
@@ -42361,6 +42433,7 @@ def _mpesa_stk_try_complete_from_query(cursor, txn_row, daraja_settings):
             'result_code': 0,
             'result_desc': desc,
             'mpesa_receipt': parsed.get('mpesa_receipt'),
+            'mpesa_code_reference': parsed.get('mpesa_code_reference') or parsed.get('mpesa_receipt'),
             'amount': parsed.get('amount'),
             'phone': parsed.get('phone'),
         }
@@ -42373,6 +42446,8 @@ def _mpesa_stk_try_complete_from_query(cursor, txn_row, daraja_settings):
                 'status': 'completed',
                 'message': msg,
                 'mpesa_receipt': receipt,
+                'mpesa_code_reference': receipt,
+                'account_reference': txn_row.get('account_reference'),
             }
         return {
             'success': True,
