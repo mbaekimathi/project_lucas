@@ -45,6 +45,7 @@ window.feeStructureCreateModal = function() {
         conflictingAcademicLevels: [],
         existingFeeItems: [],
         showExistingItems: false,
+        selectedLibraryIndices: [],
         academicLevelsWithStructure: [], // Array of academic level IDs that have fee structures for selected term
         academicLevels: [],
         levelsByCategoryStandalone: [],
@@ -57,7 +58,8 @@ window.feeStructureCreateModal = function() {
             {% for year in academic_years %}
             {
                 id: {{ year.id }},
-                year_name: '{{ year.year_name|replace("'", "\\'")|replace('"', '\\"') }}'
+                year_name: '{{ year.year_name|replace("'", "\\'")|replace('"', '\\"') }}',
+                is_current: {% if year.is_current %}true{% else %}false{% endif %}
             }{% if not loop.last %},{% endif %}
             {% endfor %}
             {% endif %}
@@ -94,6 +96,24 @@ window.feeStructureCreateModal = function() {
         formatTermDisplay(term) {
             if (!term) return '';
             return term.term_name + (term.is_current ? ' · Current' : '');
+        },
+        applyDefaultYearTerm() {
+            const currentYear = this.academicYears.find(y => y.is_current);
+            const fallbackYear = currentYear || this.academicYears[0];
+            if (!fallbackYear) return;
+
+            this.academicYearId = String(fallbackYear.id);
+
+            const yearId = parseInt(this.academicYearId, 10);
+            const yearTerms = this.terms.filter(t =>
+                parseInt(t.academic_year_id, 10) === yearId &&
+                (!t.is_locked || t.is_locked === false)
+            );
+            const currentTerm = yearTerms.find(t => t.is_current);
+            const fallbackTerm = currentTerm || yearTerms[0];
+            if (fallbackTerm) {
+                this.termId = String(fallbackTerm.id);
+            }
         },
         get selectedAcademicLevelIds() {
             if (this.levelSelectionMode === 'all') {
@@ -165,6 +185,18 @@ window.feeStructureCreateModal = function() {
             return (this.feeItems || []).filter(item =>
                 item.itemName && (item.itemDescription || '').trim() && item.amount
             ).length;
+        },
+        get selectableLibraryIndices() {
+            return this.existingFeeItems
+                .map((item, index) => ({ item, index }))
+                .filter(({ item }) => !this.isFeeItemDuplicate(item))
+                .map(({ index }) => index);
+        },
+        get libraryToolbarLabel() {
+            const selectable = this.selectableLibraryIndices;
+            if (!selectable.length) return 'Select all';
+            const allSelected = selectable.every(index => this.isLibraryItemSelected(index));
+            return allSelected ? 'Clear all' : 'Select all';
         },
         addFirstFeeItem() {
             if (!this.feeItems.length) this.addNewItem();
@@ -423,12 +455,35 @@ window.feeStructureCreateModal = function() {
                 const data = await response.json();
                 if (data.success && data.items) {
                     this.existingFeeItems = data.items;
+                    this.selectedLibraryIndices = [];
                 }
             } catch (error) {
                 console.error('Error fetching existing fee items:', error);
             }
         },
+        isLibraryItemSelected(index) {
+            return this.selectedLibraryIndices.includes(index);
+        },
+        toggleLibrarySelection(index) {
+            if (this.isLibraryItemSelected(index)) {
+                this.selectedLibraryIndices = this.selectedLibraryIndices.filter(i => i !== index);
+            } else {
+                this.selectedLibraryIndices.push(index);
+            }
+        },
+        toggleAllLibraryItems() {
+            const selectable = this.selectableLibraryIndices;
+            const allSelected = selectable.length > 0 &&
+                selectable.every(index => this.isLibraryItemSelected(index));
+            this.selectedLibraryIndices = allSelected ? [] : [...selectable];
+        },
+        isFeeItemDuplicate(item) {
+            const name = (item.item_name || item.itemName || '').toUpperCase().trim();
+            if (!name) return false;
+            return this.feeItems.some(fi => (fi.itemName || '').toUpperCase().trim() === name);
+        },
         addExistingItem(item) {
+            if (this.isFeeItemDuplicate(item)) return;
             this.feeItems.push({
                 itemName: (item.item_name || '').toUpperCase(),
                 itemDescription: (item.item_description || '').toUpperCase(),
@@ -436,7 +491,24 @@ window.feeStructureCreateModal = function() {
                 isExisting: true
             });
             this.calculateTotal();
-            this.showExistingItems = false;
+        },
+        addSelectedLibraryItems() {
+            if (!this.selectedLibraryIndices.length) return;
+
+            const sorted = [...this.selectedLibraryIndices].sort((a, b) => a - b);
+            let added = 0;
+            for (const index of sorted) {
+                const item = this.existingFeeItems[index];
+                if (!item || this.isFeeItemDuplicate(item)) continue;
+                this.addExistingItem(item);
+                added++;
+            }
+
+            this.selectedLibraryIndices = [];
+            this.calculateTotal();
+            if (added > 0) {
+                this.showExistingItems = false;
+            }
         },
         addNewItem() {
             this.feeItems.push({ itemName: '', itemDescription: '', amount: '', isExisting: false });
@@ -592,6 +664,7 @@ window.feeStructureCreateModal = function() {
      x-init="
         $watch('$store.feeStructure.isOpen', (value) => {
             if (value) {
+                applyDefaultYearTerm();
                 calculateTotal();
             } else {
                 // Reset form when modal closes
@@ -613,6 +686,7 @@ window.feeStructureCreateModal = function() {
                 feeItems = [];
                 existingFeeItems = [];
                 showExistingItems = false;
+                selectedLibraryIndices = [];
                 totalAmount = 0;
                 error = '';
                 success = '';

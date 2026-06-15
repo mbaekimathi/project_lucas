@@ -505,14 +505,66 @@
 }
 .fsm-btn-ghost-sm:hover { background: var(--fsm-body-bg); }
 
-.fsm-library {
+.fsm-library-panel {
     margin-bottom: 0.65rem;
-    padding: 0.35rem;
     border-radius: var(--fsm-radius-sm);
     background: var(--fsm-body-bg);
     border: 1px solid var(--fsm-line);
-    max-height: 7rem;
+    overflow: hidden;
+}
+.fsm-library-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--fsm-line);
+    background: var(--fsm-surface);
+}
+.fsm-btn-add--sm {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.72rem;
+}
+.fsm-library {
+    padding: 0.35rem;
+    max-height: 10rem;
     overflow-y: auto;
+}
+.fsm-library-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    color: var(--fsm-ink);
+    cursor: pointer;
+}
+.fsm-library-row:hover:not(.is-added) { background: rgba(20, 184, 166, 0.1); }
+.fsm-library-row.is-selected { background: rgba(20, 184, 166, 0.14); }
+.fsm-library-row.is-added {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.fsm-library-row input[type="checkbox"] {
+    width: 0.9rem;
+    height: 0.9rem;
+    flex-shrink: 0;
+    accent-color: var(--fsm-accent, #14b8a6);
+}
+.fsm-library-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.fsm-library-amount {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--fsm-muted, #64748b);
 }
 .fsm-library button {
     display: flex;

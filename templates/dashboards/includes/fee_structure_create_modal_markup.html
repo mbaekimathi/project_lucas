@@ -156,18 +156,36 @@
                         <div class="fsm-items-actions">
                             <button type="button" class="fsm-btn-add" @click="addNewItem()"><i class="fas fa-plus"></i> Add vote</button>
                             <button type="button" class="fsm-btn-ghost-sm"
-                                    @click="showExistingItems = !showExistingItems; if (!existingFeeItems.length) fetchExistingFeeItems()">
+                                    @click="showExistingItems = !showExistingItems; selectedLibraryIndices = []; if (!existingFeeItems.length) fetchExistingFeeItems()">
                                 <i class="fas fa-book"></i> Library
                             </button>
                         </div>
-                        <div x-show="showExistingItems" x-cloak class="fsm-library">
-                            <template x-for="(item, index) in existingFeeItems" :key="'lib-' + index">
-                                <button type="button" @click="addExistingItem(item)">
-                                    <span x-text="item.item_name"></span>
-                                    <span x-text="'KES ' + parseFloat(item.amount).toLocaleString()"></span>
+                        <div x-show="showExistingItems" x-cloak class="fsm-library-panel">
+                            <div class="fsm-library-toolbar" x-show="existingFeeItems.length">
+                                <button type="button" class="fsm-btn-text"
+                                        @click="toggleAllLibraryItems()"
+                                        x-text="libraryToolbarLabel"></button>
+                                <button type="button" class="fsm-btn-add fsm-btn-add--sm"
+                                        @click="addSelectedLibraryItems()"
+                                        :disabled="!selectedLibraryIndices.length">
+                                    <i class="fas fa-plus"></i>
+                                    <span x-text="selectedLibraryIndices.length ? ('Add ' + selectedLibraryIndices.length + ' vote' + (selectedLibraryIndices.length === 1 ? '' : 's')) : 'Add selected'"></span>
                                 </button>
-                            </template>
-                            <p x-show="!existingFeeItems.length" class="fsm-hint">No saved votes.</p>
+                            </div>
+                            <div class="fsm-library">
+                                <template x-for="(item, index) in existingFeeItems" :key="'lib-' + index + '-' + (item.item_name || '')">
+                                    <label class="fsm-library-row"
+                                           :class="{ 'is-selected': isLibraryItemSelected(index), 'is-added': isFeeItemDuplicate(item) }">
+                                        <input type="checkbox"
+                                               :checked="isLibraryItemSelected(index)"
+                                               :disabled="isFeeItemDuplicate(item)"
+                                               @change="toggleLibrarySelection(index)">
+                                        <span class="fsm-library-name" x-text="item.item_name"></span>
+                                        <span class="fsm-library-amount" x-text="'KES ' + parseFloat(item.amount).toLocaleString()"></span>
+                                    </label>
+                                </template>
+                                <p x-show="!existingFeeItems.length" class="fsm-hint">No saved votes.</p>
+                            </div>
                         </div>
                         <div x-show="!feeItems.length" class="fsm-empty">
                             <button type="button" class="fsm-btn-add mt-2" @click="addFirstFeeItem()">Add first vote</button>
