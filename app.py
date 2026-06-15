@@ -3737,6 +3737,89 @@ def ensure_student_marks_foreign_keys(cursor):
             print(f"Migration note (student_marks {constraint_name}): {e}")
 
 
+def ensure_exam_marks_audit_table(cursor):
+    """Audit log for exam marks changes (used to surface non-allocated-teacher edits)."""
+    cursor.execute("SHOW TABLES LIKE 'exam_marks_audit'")
+    if cursor.fetchone():
+        return
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS exam_marks_audit (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            student_id VARCHAR(20) NOT NULL,
+            subject_id INT NOT NULL,
+            exam_id INT NOT NULL,
+            academic_level_id INT NOT NULL,
+            exam_name VARCHAR(255),
+            action_type ENUM('INSERT', 'UPDATE', 'DELETE') NOT NULL,
+            old_marks DECIMAL(10, 2),
+            new_marks DECIMAL(10, 2),
+            changed_by INT,
+            changed_by_role VARCHAR(80),
+            changed_by_name VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_student_id (student_id),
+            INDEX idx_subject_id (subject_id),
+            INDEX idx_exam_id (exam_id),
+            INDEX idx_academic_level_id (academic_level_id),
+            INDEX idx_changed_by (changed_by),
+            INDEX idx_created_at (created_at)
+        ) ENGINE=InnoDB
+    """)
+
+
+def _exam_marks_audit_actor():
+    """Employee id, role label, and display name for the current session."""
+    user_role = (session.get('role') or '').lower()
+    viewing_as_role = (session.get('viewing_as_employee_role') or '').lower()
+    is_technician = user_role == 'technician'
+    if is_technician and session.get('viewing_as_employee_id'):
+        changed_by = session.get('viewing_as_employee_id')
+        role = viewing_as_role or user_role
+    else:
+        changed_by = session.get('employee_id') or session.get('user_id')
+        role = viewing_as_role or user_role
+    name = (session.get('full_name') or session.get('username') or 'Staff').strip()
+    return changed_by, role, name
+
+
+def _log_exam_marks_audit(
+    cursor,
+    *,
+    student_id,
+    subject_id,
+    exam_id,
+    academic_level_id,
+    exam_name,
+    action_type,
+    old_marks,
+    new_marks,
+    changed_by,
+    changed_by_role,
+    changed_by_name,
+):
+    ensure_exam_marks_audit_table(cursor)
+    cursor.execute("""
+        INSERT INTO exam_marks_audit
+        (student_id, subject_id, exam_id, academic_level_id, exam_name, action_type,
+         old_marks, new_marks, changed_by, changed_by_role, changed_by_name)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        student_id, subject_id, exam_id, academic_level_id, exam_name, action_type,
+        old_marks, new_marks, changed_by, changed_by_role, changed_by_name,
+    ))
+
+
+def _marks_audit_values_equal(a, b):
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    try:
+        return abs(float(a) - float(b)) < 1e-9
+    except (TypeError, ValueError):
+        return str(a) == str(b)
+
+
 _library_books_schema_ensuring = False
 
 
@@ -39588,6 +39671,13 @@ def ensure_store_stock_movements_table(cursor):
                 ADD COLUMN stock_out_purpose VARCHAR(120) NULL AFTER notes
             """)
             print("OK: Added store_stock_movements.stock_out_purpose")
+        cursor.execute("SHOW COLUMNS FROM store_stock_movements LIKE 'delivery_note'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_stock_movements
+                ADD COLUMN delivery_note VARCHAR(120) NULL AFTER notes
+            """)
+            print("OK: Added store_stock_movements.delivery_note")
         cursor.execute("SHOW COLUMNS FROM store_stock_movements LIKE 'amount_paid'")
         if not cursor.fetchone():
             cursor.execute("""
@@ -47561,7 +47651,7 @@ def _fetch_store_stock_movements_recent(cursor, limit=40):
             """
             SELECT m.id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.notes,
-                   m.stock_out_purpose,
+                   m.delivery_note, m.stock_out_purpose,
                    m.quantity_before, m.quantity_after, m.created_at,
                    si.reference_code AS item_ref, si.item_name, si.measure,
                    sup.company_name AS supplier_name, sup.phone AS supplier_phone
@@ -47584,6 +47674,7 @@ def _fetch_store_stock_movements_recent(cursor, limit=40):
                     'total_amount': row.get('total_amount'),
                     'payment_status': (row.get('payment_status') or '').strip(),
                     'notes': (row.get('notes') or '').strip() or None,
+                    'delivery_note': (row.get('delivery_note') or '').strip() or None,
                     'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
                     'quantity_before': int(row.get('quantity_before') or 0),
                     'quantity_after': int(row.get('quantity_after') or 0),
@@ -47604,15 +47695,16 @@ def _fetch_store_stock_movements_recent(cursor, limit=40):
                     'total_amount': row[5] if len(row) > 5 else None,
                     'payment_status': (row[6] or '').strip() if len(row) > 6 else '',
                     'notes': (row[7] or '').strip() or None if len(row) > 7 else None,
-                    'stock_out_purpose': (row[8] or '').strip() or None if len(row) > 8 else None,
-                    'quantity_before': int(row[9] or 0) if len(row) > 9 else 0,
-                    'quantity_after': int(row[10] or 0) if len(row) > 10 else 0,
-                    'created_at': row[11] if len(row) > 11 else None,
-                    'item_ref': (row[12] or '').strip() if len(row) > 12 else '',
-                    'item_name': (row[13] or '').strip() if len(row) > 13 else '',
-                    'measure': (row[14] or '').strip() if len(row) > 14 else '',
-                    'supplier_name': (row[15] or '').strip() or None if len(row) > 15 else None,
-                    'supplier_phone': (row[16] or '').strip() or None if len(row) > 16 else None,
+                    'delivery_note': (row[8] or '').strip() or None if len(row) > 8 else None,
+                    'stock_out_purpose': (row[9] or '').strip() or None if len(row) > 9 else None,
+                    'quantity_before': int(row[10] or 0) if len(row) > 10 else 0,
+                    'quantity_after': int(row[11] or 0) if len(row) > 11 else 0,
+                    'created_at': row[12] if len(row) > 12 else None,
+                    'item_ref': (row[13] or '').strip() if len(row) > 13 else '',
+                    'item_name': (row[14] or '').strip() if len(row) > 14 else '',
+                    'measure': (row[15] or '').strip() if len(row) > 15 else '',
+                    'supplier_name': (row[16] or '').strip() or None if len(row) > 16 else None,
+                    'supplier_phone': (row[17] or '').strip() or None if len(row) > 17 else None,
                 })
     except Exception as e:
         print(f"_fetch_store_stock_movements_recent: {e}")
@@ -47632,6 +47724,7 @@ def _store_stock_movement_audit_row(row):
             'payment_status': (row.get('payment_status') or '').strip(),
             'amount_paid': row.get('amount_paid'),
             'notes': (row.get('notes') or '').strip() or None,
+            'delivery_note': (row.get('delivery_note') or '').strip() or None,
             'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
             'quantity_before': int(row.get('quantity_before') or 0),
             'quantity_after': int(row.get('quantity_after') or 0),
@@ -47655,17 +47748,18 @@ def _store_stock_movement_audit_row(row):
             'payment_status': (row[6] or '').strip() if len(row) > 6 else '',
             'amount_paid': row[7] if len(row) > 7 else 0,
             'notes': (row[8] or '').strip() or None if len(row) > 8 else None,
-            'stock_out_purpose': (row[9] or '').strip() or None if len(row) > 9 else None,
-            'quantity_before': int(row[10] or 0) if len(row) > 10 else 0,
-            'quantity_after': int(row[11] or 0) if len(row) > 11 else 0,
-            'created_at': row[12] if len(row) > 12 else None,
-            'performed_by_name': (row[13] or '').strip() or None if len(row) > 13 else None,
-            'item_ref': (row[14] or '').strip() if len(row) > 14 else '',
-            'item_name': (row[15] or '').strip() if len(row) > 15 else '',
-            'item_category': (row[16] or '').strip() if len(row) > 16 else '',
-            'measure': (row[17] or '').strip() if len(row) > 17 else '',
-            'supplier_name': (row[18] or '').strip() or None if len(row) > 18 else None,
-            'supplier_phone': (row[19] or '').strip() or None if len(row) > 19 else None,
+            'delivery_note': (row[9] or '').strip() or None if len(row) > 9 else None,
+            'stock_out_purpose': (row[10] or '').strip() or None if len(row) > 10 else None,
+            'quantity_before': int(row[11] or 0) if len(row) > 11 else 0,
+            'quantity_after': int(row[12] or 0) if len(row) > 12 else 0,
+            'created_at': row[13] if len(row) > 13 else None,
+            'performed_by_name': (row[14] or '').strip() or None if len(row) > 14 else None,
+            'item_ref': (row[15] or '').strip() if len(row) > 15 else '',
+            'item_name': (row[16] or '').strip() if len(row) > 16 else '',
+            'item_category': (row[17] or '').strip() if len(row) > 17 else '',
+            'measure': (row[18] or '').strip() if len(row) > 18 else '',
+            'supplier_name': (row[19] or '').strip() or None if len(row) > 19 else None,
+            'supplier_phone': (row[20] or '').strip() or None if len(row) > 20 else None,
         }
     ca = data.get('created_at')
     if ca and hasattr(ca, 'strftime'):
@@ -47701,7 +47795,7 @@ def _fetch_store_stock_movements_audit(cursor, limit=2000):
             """
             SELECT m.id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
-                   m.notes, m.stock_out_purpose,
+                   m.notes, m.delivery_note, m.stock_out_purpose,
                    m.quantity_before, m.quantity_after, m.created_at,
                    m.performed_by_name,
                    si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
@@ -47735,6 +47829,7 @@ def _stock_in_row_to_dict(row):
             'paid_to_company_name': (row.get('paid_to_company_name') or '').strip() or None,
             'paid_to_company_phone': (row.get('paid_to_company_phone') or '').strip() or None,
             'notes': (row.get('notes') or '').strip() or None,
+            'delivery_note': (row.get('delivery_note') or '').strip() or None,
             'created_at': row.get('created_at'),
             'performed_by_name': (row.get('performed_by_name') or '').strip() or None,
             'item_ref': (row.get('item_ref') or '').strip(),
@@ -47756,14 +47851,15 @@ def _stock_in_row_to_dict(row):
             'paid_to_company_name': (row[7] or '').strip() or None if len(row) > 7 else None,
             'paid_to_company_phone': (row[8] or '').strip() or None if len(row) > 8 else None,
             'notes': (row[9] or '').strip() or None if len(row) > 9 else None,
-            'created_at': row[10] if len(row) > 10 else None,
-            'performed_by_name': (row[11] or '').strip() or None if len(row) > 11 else None,
-            'item_ref': (row[12] or '').strip() if len(row) > 12 else '',
-            'item_name': (row[13] or '').strip() if len(row) > 13 else '',
-            'item_category': (row[14] or '').strip() if len(row) > 14 else '',
-            'measure': (row[15] or '').strip() if len(row) > 15 else '',
-            'supplier_name': (row[16] or '').strip() or None if len(row) > 16 else None,
-            'supplier_phone': (row[17] or '').strip() or None if len(row) > 17 else None,
+            'delivery_note': (row[10] or '').strip() or None if len(row) > 10 else None,
+            'created_at': row[11] if len(row) > 11 else None,
+            'performed_by_name': (row[12] or '').strip() or None if len(row) > 12 else None,
+            'item_ref': (row[13] or '').strip() if len(row) > 13 else '',
+            'item_name': (row[14] or '').strip() if len(row) > 14 else '',
+            'item_category': (row[15] or '').strip() if len(row) > 15 else '',
+            'measure': (row[16] or '').strip() if len(row) > 16 else '',
+            'supplier_name': (row[17] or '').strip() or None if len(row) > 17 else None,
+            'supplier_phone': (row[18] or '').strip() or None if len(row) > 18 else None,
         }
     ca = data.get('created_at')
     if ca and hasattr(ca, 'strftime'):
@@ -47829,7 +47925,7 @@ def _fetch_store_stock_in_list(cursor, payment_filter='all', limit=500):
             SELECT m.id, m.reference_number, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status,
                    m.amount_paid, m.paid_to_company_name, m.paid_to_company_phone,
-                   m.notes, m.created_at, m.performed_by_name,
+                   m.notes, m.delivery_note, m.created_at, m.performed_by_name,
                    si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
                    sup.company_name AS supplier_name, sup.phone AS supplier_phone
             FROM store_stock_movements m
@@ -47859,6 +47955,15 @@ def _supplier_payable_phone_key(row):
     return f"__no_phone_{row.get('id')}"
 
 
+def _stock_in_invoice_dropdown_label(row):
+    """Display label for invoice picker: delivery note — reference."""
+    ref = (row.get('reference_number') or '').strip() or '—'
+    dn = (row.get('delivery_note') or '').strip()
+    if dn:
+        return f'{dn} — {ref}'
+    return ref
+
+
 def _slim_payable_movement(row):
     """Movement fields needed by the pay modal (JSON-safe)."""
     if not row:
@@ -47866,6 +47971,9 @@ def _slim_payable_movement(row):
     return {
         'id': row.get('id'),
         'reference_number': row.get('reference_number'),
+        'delivery_note': row.get('delivery_note'),
+        'invoice_label': _stock_in_invoice_dropdown_label(row),
+        'item_name': row.get('item_name'),
         'balance_due': row.get('balance_due'),
         'balance_due_display': row.get('balance_due_display'),
         'total_amount_display': row.get('total_amount_display'),
@@ -47968,6 +48076,9 @@ def _aggregate_supplier_payables_by_phone(records, status_filter='all'):
             'total_paid': bucket['total_paid'],
             'invoice_count': bucket['invoice_count'],
             'payable_invoice_count': len(payable_movements),
+            'payable_invoices': [
+                _slim_payable_movement(m) for m in payable_movements if _slim_payable_movement(m)
+            ],
             'can_pay': (
                 pay_record is not None
                 and balance > 0.005
@@ -48528,6 +48639,104 @@ def _record_supplier_pay_all(
     return True, summary
 
 
+def _record_supplier_pay_selected_invoices(
+    cursor, movement_ids, company_name, company_phone, paid_by_name,
+    payment_method=None, finance_account_id=None, payment_reference=None,
+    expected_amount=None,
+):
+    """Pay selected outstanding stock-in invoices in full (one payment line per invoice)."""
+    from decimal import Decimal, InvalidOperation
+
+    ids = []
+    for raw in movement_ids or []:
+        try:
+            mid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if mid > 0 and mid not in ids:
+            ids.append(mid)
+    if not ids:
+        return False, 'Select at least one invoice to pay.'
+
+    movements = []
+    pay_total = Decimal('0')
+    for mid in ids:
+        cursor.execute(
+            """
+            SELECT id, reference_number, movement_type, total_amount, amount_paid,
+                   payment_status
+            FROM store_stock_movements WHERE id = %s
+            """,
+            (mid,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False, f'Invoice #{mid} not found.'
+        if isinstance(row, dict):
+            movement_type = (row.get('movement_type') or '').strip()
+            ref_no = (row.get('reference_number') or '').strip()
+            total_amount = row.get('total_amount')
+            current_paid = row.get('amount_paid') or 0
+            payment_status = (row.get('payment_status') or '').strip()
+        else:
+            movement_type = (row[2] or '').strip() if len(row) > 2 else ''
+            ref_no = (row[1] or '').strip() if len(row) > 1 else ''
+            total_amount = row[3] if len(row) > 3 else None
+            current_paid = row[4] if len(row) > 4 else 0
+            payment_status = (row[5] or '').strip() if len(row) > 5 else ''
+        if movement_type != 'in':
+            return False, f'{ref_no or mid} is not a stock-in invoice.'
+        if payment_status not in ('pending', 'partial'):
+            return False, f'{ref_no or mid} is already fully paid.'
+        try:
+            total_dec = Decimal(str(total_amount or 0)).quantize(Decimal('0.01'))
+            paid_dec = Decimal(str(current_paid or 0)).quantize(Decimal('0.01'))
+        except (InvalidOperation, ValueError):
+            total_dec = Decimal('0')
+            paid_dec = Decimal('0')
+        balance = (total_dec - paid_dec).quantize(Decimal('0.01'))
+        if balance <= 0:
+            return False, f'{ref_no or mid} has no balance due.'
+        movements.append({'id': mid, 'ref_no': ref_no, 'balance': balance})
+        pay_total += balance
+
+    if expected_amount is not None:
+        try:
+            expected_dec = Decimal(str(expected_amount)).quantize(Decimal('0.01'))
+        except (InvalidOperation, ValueError):
+            return False, 'Invalid payment amount.'
+        if expected_dec != pay_total:
+            return False, (
+                f'Payment amount must match the selected invoice total '
+                f'(KES {pay_total.quantize(Decimal("0.01")):,.2f}).'
+            )
+
+    if finance_account_id and payment_method:
+        ok_funds, _, fund_err = _validate_disbursement_finance_account(
+            cursor, finance_account_id, payment_method, pay_total,
+        )
+        if not ok_funds:
+            return False, fund_err or 'Insufficient funds in the selected account.'
+
+    applied = 0
+    for m in movements:
+        ok, msg = _apply_stock_in_payment(
+            cursor, m['id'], m['balance'], company_name, company_phone, paid_by_name,
+            payment_method=payment_method,
+            finance_account_id=finance_account_id,
+            payment_reference=payment_reference,
+            skip_account_debit=False,
+        )
+        if not ok:
+            return False, msg
+        applied += 1
+
+    return True, (
+        f'Payment of KES {pay_total:,.2f} recorded for {applied} selected invoice(s) '
+        f'for {company_name}.'
+    )
+
+
 def _fetch_store_stock_movement_detail(cursor, movement_id):
     ensure_store_stock_movements_table(cursor)
     try:
@@ -48535,7 +48744,7 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
             """
             SELECT m.id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
-                   m.notes, m.stock_out_purpose,
+                   m.notes, m.delivery_note, m.stock_out_purpose,
                    m.quantity_before, m.quantity_after, m.created_at,
                    m.performed_by_name,
                    si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
@@ -48561,6 +48770,7 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
                 'payment_status': (row.get('payment_status') or '').strip(),
                 'amount_paid': row.get('amount_paid'),
                 'notes': (row.get('notes') or '').strip() or None,
+                'delivery_note': (row.get('delivery_note') or '').strip() or None,
                 'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
                 'quantity_before': int(row.get('quantity_before') or 0),
                 'quantity_after': int(row.get('quantity_after') or 0),
@@ -48583,17 +48793,18 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
             'payment_status': (row[6] or '').strip() if len(row) > 6 else '',
             'amount_paid': row[7] if len(row) > 7 else 0,
             'notes': (row[8] or '').strip() or None if len(row) > 8 else None,
-            'stock_out_purpose': (row[9] or '').strip() or None if len(row) > 9 else None,
-            'quantity_before': int(row[10] or 0) if len(row) > 10 else 0,
-            'quantity_after': int(row[11] or 0) if len(row) > 11 else 0,
-            'created_at': row[12] if len(row) > 12 else None,
-            'performed_by_name': (row[13] or '').strip() or None if len(row) > 13 else None,
-            'item_ref': (row[14] or '').strip() if len(row) > 14 else '',
-            'item_name': (row[15] or '').strip() if len(row) > 15 else '',
-            'item_category': (row[16] or '').strip() if len(row) > 16 else '',
-            'measure': (row[17] or '').strip() if len(row) > 17 else '',
-            'supplier_name': (row[18] or '').strip() or None if len(row) > 18 else None,
-            'supplier_phone': (row[19] or '').strip() or None if len(row) > 19 else None,
+            'delivery_note': (row[9] or '').strip() or None if len(row) > 9 else None,
+            'stock_out_purpose': (row[10] or '').strip() or None if len(row) > 10 else None,
+            'quantity_before': int(row[11] or 0) if len(row) > 11 else 0,
+            'quantity_after': int(row[12] or 0) if len(row) > 12 else 0,
+            'created_at': row[13] if len(row) > 13 else None,
+            'performed_by_name': (row[14] or '').strip() or None if len(row) > 14 else None,
+            'item_ref': (row[15] or '').strip() if len(row) > 15 else '',
+            'item_name': (row[16] or '').strip() if len(row) > 16 else '',
+            'item_category': (row[17] or '').strip() if len(row) > 17 else '',
+            'measure': (row[18] or '').strip() if len(row) > 18 else '',
+            'supplier_name': (row[19] or '').strip() or None if len(row) > 19 else None,
+            'supplier_phone': (row[20] or '').strip() or None if len(row) > 20 else None,
         }
     except Exception as e:
         print(f"_fetch_store_stock_movement_detail: {e}")
@@ -49482,7 +49693,7 @@ def _fetch_store_item_usage_analytics(cursor, item_id, period='all', date_val=''
             f"""
             SELECT m.id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
-                   m.notes, m.stock_out_purpose,
+                   m.notes, m.delivery_note, m.stock_out_purpose,
                    m.quantity_before, m.quantity_after, m.created_at,
                    m.performed_by_name,
                    sup.company_name AS supplier_name, sup.phone AS supplier_phone
@@ -49711,7 +49922,7 @@ def _fetch_store_stock_analytics(cursor, period='all', date_val='', date_from=''
             f"""
             SELECT m.id, m.store_item_id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
-                   m.notes, m.stock_out_purpose,
+                   m.notes, m.delivery_note, m.stock_out_purpose,
                    m.quantity_before, m.quantity_after, m.created_at,
                    m.performed_by_name,
                    si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
@@ -53259,6 +53470,8 @@ def store_stock():
                     qty_raw = (request.form.get('quantity') or '').strip()
                     notes_raw = (request.form.get('notes') or '').strip()
                     notes = notes_raw.upper()[:500] if notes_raw else None
+                    delivery_note_raw = (request.form.get('delivery_note') or '').strip()
+                    delivery_note = delivery_note_raw.upper()[:120] if delivery_note_raw else None
 
                     try:
                         quantity = int(qty_raw)
@@ -53323,14 +53536,14 @@ def store_stock():
                                             INSERT INTO store_stock_movements
                                                 (reference_number, store_item_id, movement_type, quantity,
                                                  buying_price, total_amount, supplier_id, payment_status,
-                                                 notes, quantity_before, quantity_after,
+                                                 notes, delivery_note, quantity_before, quantity_after,
                                                  performed_by, performed_by_name)
                                             VALUES (%s, %s, 'in', %s, %s, %s, %s, 'pending',
-                                                    %s, %s, %s, %s, %s)
+                                                    %s, %s, %s, %s, %s, %s)
                                             """,
                                             (
                                                 ref_no, store_item_id, quantity, buying_price, total_amount,
-                                                supplier_id, notes, qty_before, qty_after,
+                                                supplier_id, notes, delivery_note, qty_before, qty_after,
                                                 performed_by, performed_name or None,
                                             ),
                                         )
@@ -58386,6 +58599,7 @@ def students_by_academic_level(level_id):
     academic_level = None
     students = []
     subjects = []
+    subjects_for_edit = []
     exams = []
     student_marks = {}
     academic_years = []
@@ -58510,6 +58724,7 @@ def students_by_academic_level(level_id):
                     })
 
                 subjects_flat = [{**s} for s in subjects]
+                subjects_for_edit = list(subjects_flat)
                 id_to_gc, section_order = sort_subjects_list_for_exam_columns(cursor, subjects_flat)
                 combinations_loaded = fetch_subject_exam_combinations(cursor)
                 subject_exam_max_map_base = {
@@ -58739,8 +58954,21 @@ def students_by_academic_level(level_id):
             exams, registered_current_exam_pick, current_year_id, current_term_id,
         )
 
-    # Teachers and principals may enter/edit marks. Curriculum coordinators (and secretary, etc.)
-    # can view the sheet and analytics-style totals but must not change marks here.
+    year_q = request.args.get('year', type=int)
+    term_q = request.args.get('term', type=int)
+    exam_q = request.args.get('exam', type=int)
+    if year_q is not None:
+        current_year_id = year_q
+    if term_q is not None:
+        current_term_id = term_q
+    if exam_q is not None:
+        selected_exam_id = exam_q
+
+    marks_filters_from_url = year_q is not None or term_q is not None or exam_q is not None
+
+    # Teachers and principals may enter/edit marks inline on the full sheet.
+    # Curriculum coordinators edit one subject at a time on a dedicated page.
+    is_cc = is_academic_coordinator
     can_edit = is_teacher or is_principal
 
     subject_exam_max_map = dict(subject_exam_max_map_base)
@@ -58813,10 +59041,391 @@ def students_by_academic_level(level_id):
                          combination_column_members=combination_column_members,
                          initial_grade_code_remarks={(f"{k[0]}::{k[1]}"): v for k, v in (initial_grade_code_remarks or {}).items()},
                          can_edit=can_edit,
+                         is_cc=is_cc,
+                         subjects_for_edit=subjects_for_edit,
                          marks_summary_column=marks_summary_column,
                          marks_display_scaled=marks_display_scaled,
                          is_teacher=is_teacher,
-                         registered_current_exam=registered_current_exam_pick)
+                         registered_current_exam=registered_current_exam_pick,
+                         marks_filters_from_url=marks_filters_from_url)
+
+
+@app.route('/dashboard/employee/exams-assessments/level/<int:level_id>/subject/<int:subject_id>/edit')
+@login_required
+def students_by_level_subject_edit(level_id, subject_id):
+    """Curriculum coordinator: edit marks for one subject on a dedicated page."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_cc = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    if not is_cc:
+        flash('You do not have permission to edit marks on this page.', 'error')
+        return redirect(employee_dashboard_path(f'exams-assessments/level/{level_id}/students'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection failed.', 'error')
+        return redirect(employee_dashboard_path(f'exams-assessments/level/{level_id}/students'))
+
+    academic_level = None
+    subject = None
+    students = []
+    exams = []
+    academic_years = []
+    terms = []
+    student_marks = {}
+    current_year_id = None
+    current_term_id = None
+    selected_exam_id = None
+    registered_current_exam_pick = None
+    selected_subject_id = None
+    subject_exam_max = 100.0
+
+    year_q = request.args.get('year', type=int)
+    term_q = request.args.get('term', type=int)
+    exam_q = request.args.get('exam', type=int)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_subject_exam_total_marks_column(cursor)
+            ensure_subject_exam_display_order_columns(cursor)
+            ensure_exams_marks_lock_at_column(cursor)
+            registered_current_exam_pick = load_registered_current_exam_dict(cursor)
+
+            cursor.execute(
+                "SELECT id, level_category, level_name, level_description, level_status FROM academic_levels WHERE id = %s",
+                (level_id,),
+            )
+            level_result = cursor.fetchone()
+            if not level_result:
+                flash('Academic level not found.', 'error')
+                return redirect(employee_dashboard_path('exams-assessments'))
+            level_name = level_result.get('level_name') if isinstance(level_result, dict) else level_result[2]
+            academic_level = {
+                'id': level_result.get('id') if isinstance(level_result, dict) else level_result[0],
+                'level_category': level_result.get('level_category') if isinstance(level_result, dict) else level_result[1],
+                'level_name': level_name,
+                'level_description': level_result.get('level_description') if isinstance(level_result, dict) else level_result[3],
+                'level_status': level_result.get('level_status') if isinstance(level_result, dict) else level_result[4],
+            }
+
+            cursor.execute(
+                """
+                SELECT id, subject_name, subject_code, description, status, exam_total_marks, exam_display_order
+                FROM subjects
+                WHERE id = %s AND status = 'active'
+                """,
+                (subject_id,),
+            )
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                flash('Subject not found.', 'error')
+                return redirect(employee_dashboard_path(f'exams-assessments/level/{level_id}/students'))
+            subject = {
+                'id': sub_row.get('id') if isinstance(sub_row, dict) else sub_row[0],
+                'subject_name': sub_row.get('subject_name') if isinstance(sub_row, dict) else sub_row[1],
+                'subject_code': sub_row.get('subject_code') if isinstance(sub_row, dict) else sub_row[2],
+                'description': sub_row.get('description') if isinstance(sub_row, dict) else sub_row[3],
+                'status': sub_row.get('status') if isinstance(sub_row, dict) else sub_row[4],
+                'exam_total_marks': sub_row.get('exam_total_marks') if isinstance(sub_row, dict) else sub_row[5],
+                'exam_display_order': sub_row.get('exam_display_order') if isinstance(sub_row, dict) else (sub_row[6] if len(sub_row) > 6 else None),
+            }
+            subjects = [subject]
+            subject_exam_max = subject_exam_max_raw_marks(subject.get('exam_total_marks'))
+            subject_exam_max_map = {int(subject_id): subject_exam_max}
+            combination_column_members = {}
+            subjects_for_edit = []
+
+            cursor.execute(
+                """
+                SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status,
+                       s.exam_total_marks, s.exam_display_order
+                FROM subjects s
+                INNER JOIN exams e ON e.subject_id = s.id AND e.academic_level_id = %s
+                WHERE s.status = 'active'
+                ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC, s.subject_name ASC
+                """,
+                (level_id,),
+            )
+            subjects_for_edit_results = cursor.fetchall() or []
+            if not subjects_for_edit_results:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status,
+                           s.exam_total_marks, s.exam_display_order
+                    FROM subjects s
+                    INNER JOIN teacher_subject_assignments tsa ON s.id = tsa.subject_id
+                    WHERE tsa.academic_level_id = %s AND s.status = 'active'
+                    ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC, s.subject_name ASC
+                    """,
+                    (level_id,),
+                )
+                subjects_for_edit_results = cursor.fetchall() or []
+            for row in subjects_for_edit_results:
+                subjects_for_edit.append({
+                    'id': row.get('id') if isinstance(row, dict) else row[0],
+                    'subject_name': row.get('subject_name') if isinstance(row, dict) else row[1],
+                    'subject_code': row.get('subject_code') if isinstance(row, dict) else row[2],
+                    'description': row.get('description') if isinstance(row, dict) else row[3],
+                    'status': row.get('status') if isinstance(row, dict) else row[4],
+                    'exam_total_marks': row.get('exam_total_marks') if isinstance(row, dict) else row[5],
+                    'exam_display_order': row.get('exam_display_order') if isinstance(row, dict) else (row[6] if len(row) > 6 else None),
+                })
+
+            cursor.execute(
+                """
+                SELECT 1 FROM exams
+                WHERE academic_level_id = %s AND subject_id = %s
+                LIMIT 1
+                """,
+                (level_id, subject_id),
+            )
+            if not cursor.fetchone():
+                cursor.execute(
+                    """
+                    SELECT 1 FROM teacher_subject_assignments
+                    WHERE academic_level_id = %s AND subject_id = %s
+                    LIMIT 1
+                    """,
+                    (level_id, subject_id),
+                )
+                if not cursor.fetchone():
+                    flash('This subject is not registered for this class.', 'error')
+                    return redirect(employee_dashboard_path(f'exams-assessments/level/{level_id}/students'))
+
+            cursor.execute(
+                """
+                SELECT s.id, s.student_id, s.full_name
+                FROM students s
+                WHERE s.current_grade = %s
+                ORDER BY s.full_name ASC
+                """,
+                (level_name,),
+            )
+            for row in cursor.fetchall() or []:
+                students.append({
+                    'id': row.get('id') if isinstance(row, dict) else row[0],
+                    'student_id': row.get('student_id') if isinstance(row, dict) else row[1],
+                    'full_name': row.get('full_name') if isinstance(row, dict) else row[2],
+                })
+
+            cursor.execute(
+                """
+                SELECT id, year_name, is_current FROM academic_years
+                WHERE status = 'active'
+                ORDER BY is_current DESC, start_date DESC
+                """
+            )
+            for yrow in cursor.fetchall() or []:
+                year_obj = {
+                    'id': yrow.get('id') if isinstance(yrow, dict) else yrow[0],
+                    'year_name': yrow.get('year_name', '') if isinstance(yrow, dict) else (yrow[1] if len(yrow) > 1 else ''),
+                    'is_current': bool(yrow.get('is_current')) if isinstance(yrow, dict) else bool(yrow[2] if len(yrow) > 2 else False),
+                }
+                academic_years.append(year_obj)
+                if year_obj['is_current'] and not current_year_id:
+                    current_year_id = year_obj['id']
+
+            cursor.execute(
+                """
+                SELECT id, term_name, academic_year_id, is_current FROM terms
+                WHERE status = 'active'
+                ORDER BY academic_year_id DESC, is_current DESC, start_date DESC
+                """
+            )
+            for trow in cursor.fetchall() or []:
+                term_obj = {
+                    'id': trow.get('id') if isinstance(trow, dict) else trow[0],
+                    'term_name': trow.get('term_name', '') if isinstance(trow, dict) else (trow[1] if len(trow) > 1 else ''),
+                    'academic_year_id': trow.get('academic_year_id') if isinstance(trow, dict) else (trow[2] if len(trow) > 2 else None),
+                    'is_current': bool(trow.get('is_current')) if isinstance(trow, dict) else bool(trow[3] if len(trow) > 3 else False),
+                }
+                terms.append(term_obj)
+                if term_obj['is_current'] and not current_term_id:
+                    current_term_id = term_obj['id']
+
+            try:
+                cursor.execute(
+                    """
+                    SELECT exam_name, MIN(id) AS id, academic_year_id, term_id, MAX(exam_date) AS exam_date,
+                           MAX(COALESCE(is_locked, 0)) AS is_locked,
+                           MAX(marks_lock_at) AS marks_lock_at,
+                           MAX(exam_type) AS exam_type
+                    FROM exams
+                    WHERE academic_level_id = %s
+                    GROUP BY exam_name, academic_year_id, term_id
+                    ORDER BY academic_year_id DESC, term_id DESC, exam_name ASC
+                    """,
+                    (level_id,),
+                )
+            except Exception:
+                cursor.execute(
+                    """
+                    SELECT exam_name, MIN(id) AS id, academic_year_id, term_id, MAX(exam_date) AS exam_date,
+                           0 AS is_locked, NULL AS marks_lock_at, NULL AS exam_type
+                    FROM exams
+                    WHERE academic_level_id = %s
+                    GROUP BY exam_name, academic_year_id, term_id
+                    ORDER BY academic_year_id DESC, term_id DESC, exam_name ASC
+                    """,
+                    (level_id,),
+                )
+            for row in cursor.fetchall() or []:
+                exam_name = (row.get('exam_name', '') or '').strip() if isinstance(row, dict) else (row[0] or '').strip()
+                if not exam_name:
+                    continue
+                mla_raw = row.get('marks_lock_at') if isinstance(row, dict) else (row[6] if len(row) > 6 else None)
+                if mla_raw and hasattr(mla_raw, 'strftime'):
+                    marks_lock_at_str = mla_raw.strftime('%Y-%m-%dT%H:%M:%S')
+                else:
+                    marks_lock_at_str = str(mla_raw) if mla_raw else None
+                exams.append({
+                    'id': row.get('id') if isinstance(row, dict) else row[1],
+                    'exam_name': exam_name,
+                    'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else (row[2] if len(row) > 2 else None),
+                    'term_id': row.get('term_id') if isinstance(row, dict) else (row[3] if len(row) > 3 else None),
+                    'exam_date': str(row.get('exam_date')) if isinstance(row, dict) and row.get('exam_date') else (str(row[4]) if len(row) > 4 and row[4] else ''),
+                    'is_locked': bool(row.get('is_locked')) if isinstance(row, dict) else bool(row[5] if len(row) > 5 else False),
+                    'marks_lock_at': marks_lock_at_str,
+                    'exam_type': (row.get('exam_type') if isinstance(row, dict) else (row[7] if len(row) > 7 else None)) or '',
+                })
+
+            try:
+                cursor.execute(
+                    """
+                    SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id
+                    FROM student_marks sm
+                    INNER JOIN students s ON sm.student_id = s.student_id
+                    WHERE s.current_grade = %s AND sm.subject_id = %s
+                    """,
+                    (level_name, subject_id),
+                )
+                for mark_row in cursor.fetchall() or []:
+                    sid = mark_row.get('student_id') if isinstance(mark_row, dict) else mark_row[0]
+                    sub_id = mark_row.get('subject_id') if isinstance(mark_row, dict) else mark_row[1]
+                    marks_val = mark_row.get('marks') if isinstance(mark_row, dict) else mark_row[2]
+                    ex_id = mark_row.get('exam_id') if isinstance(mark_row, dict) else mark_row[3]
+                    if sid not in student_marks:
+                        student_marks[sid] = {}
+                    if sub_id not in student_marks[sid]:
+                        student_marks[sid][sub_id] = {}
+                    student_marks[sid][sub_id][ex_id] = marks_val
+            except Exception as e:
+                print(f"subject edit marks load: {e}")
+    except Exception as e:
+        print(f"students_by_level_subject_edit: {e}")
+        flash('Error loading marks editor.', 'error')
+        return redirect(employee_dashboard_path(f'exams-assessments/level/{level_id}/students'))
+    finally:
+        connection.close()
+
+    if not current_year_id and academic_years:
+        current_year_id = academic_years[0].get('id')
+    if not current_term_id:
+        if current_year_id:
+            year_terms = [t for t in terms if str(t.get('academic_year_id')) == str(current_year_id)]
+            current_term = next((t for t in year_terms if t.get('is_current')), None)
+            current_term_id = (current_term or (year_terms[0] if year_terms else {})).get('id')
+        if not current_term_id and terms:
+            current_term_id = terms[0].get('id')
+
+    if exams or registered_current_exam_pick:
+        current_year_id, current_term_id, selected_exam_id = _resolve_marks_sheet_filter_defaults(
+            exams, registered_current_exam_pick, current_year_id, current_term_id,
+        )
+
+    if year_q is not None:
+        current_year_id = year_q
+    if term_q is not None:
+        current_term_id = term_q
+    if exam_q is not None:
+        selected_exam_id = exam_q
+
+    marks_filters_from_url = year_q is not None or term_q is not None or exam_q is not None
+
+    sheet_back_url = employee_dashboard_path(f'exams-assessments/level/{level_id}/students')
+    sheet_back_qs = []
+    if current_year_id is not None:
+        sheet_back_qs.append(f'year={current_year_id}')
+    if current_term_id is not None:
+        sheet_back_qs.append(f'term={current_term_id}')
+    if selected_exam_id is not None:
+        sheet_back_qs.append(f'exam={selected_exam_id}')
+    if sheet_back_qs:
+        sheet_back_url += '?' + '&'.join(sheet_back_qs)
+
+    (
+        active_grade_bands,
+        default_grade_bands,
+        subject_grade_bands,
+        class_grade_bands,
+        uses_class_grading_setting,
+        grading_setting_name,
+    ) = fetch_grade_bands_for_marks_sheet(level_id)
+
+    initial_grade_code_remarks = {}
+    try:
+        selected_exam_name = ''
+        if selected_exam_id and exams:
+            for ex in exams:
+                if str(ex.get('id')) == str(selected_exam_id):
+                    selected_exam_name = (ex.get('exam_name') or '').strip()
+                    break
+        if selected_exam_name:
+            connection2 = get_db_connection()
+            if connection2:
+                try:
+                    with connection2.cursor() as cur2:
+                        ensure_grade_code_remarks_table(cur2)
+                        initial_grade_code_remarks = fetch_grade_code_remarks_map(
+                            cur2,
+                            academic_year_id=current_year_id,
+                            term_id=current_term_id,
+                            academic_level_ids=[level_id],
+                            exam_name=selected_exam_name,
+                        )
+                finally:
+                    connection2.close()
+    except Exception as e:
+        print(f"Note: initial grade remarks skipped: {e}")
+
+    return render_template(
+        'dashboards/students_by_level.html',
+        role=user_role,
+        viewing_as_employee_role=viewing_as_role,
+        academic_level=academic_level,
+        students=students,
+        subjects=subjects,
+        exams=exams,
+        academic_years=academic_years,
+        terms=terms,
+        selected_academic_year_id=current_year_id,
+        selected_term_id=current_term_id,
+        selected_exam_id=selected_exam_id,
+        student_marks=student_marks,
+        default_grade_bands=default_grade_bands,
+        active_grade_bands=active_grade_bands,
+        subject_grade_bands=subject_grade_bands,
+        class_grade_bands=class_grade_bands,
+        uses_class_grading_setting=uses_class_grading_setting,
+        grading_setting_name=grading_setting_name,
+        academic_level_id=level_id,
+        subject_exam_max_map=subject_exam_max_map,
+        combination_column_members=combination_column_members,
+        initial_grade_code_remarks={(f"{k[0]}::{k[1]}"): v for k, v in (initial_grade_code_remarks or {}).items()},
+        can_edit=True,
+        is_cc=True,
+        is_teacher=False,
+        subjects_for_edit=subjects_for_edit,
+        marks_summary_column='avg_pct',
+        marks_display_scaled=False,
+        registered_current_exam=registered_current_exam_pick,
+        cc_single_subject_edit=True,
+        cc_selected_subject_id=subject_id,
+        edit_subject=subject,
+        edit_subject_exam_max=subject_exam_max,
+        sheet_back_url=sheet_back_url,
+        marks_filters_from_url=marks_filters_from_url,
+    )
 
 
 @app.route('/dashboard/employee/exams-assessments/grade-remarks/get', methods=['POST'])
@@ -58869,10 +59478,11 @@ def exams_assessments_save_grade_remarks():
     """Upsert grade-code remarks for a given exam context."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
-    if not (is_technician or is_principal or is_teacher):
+    if not (is_technician or is_principal or is_teacher or is_academic_coordinator):
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -59282,6 +59892,115 @@ def get_exams_for_filters():
         return jsonify({'success': False, 'message': 'An error occurred while fetching exams.'}), 500
 
 # API Endpoint to save marks
+@app.route('/dashboard/employee/exams-assessments/exam-audits')
+@login_required
+def exam_audits():
+    """Show exam marks changes made by staff who are not the allocated teacher for that subject."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+
+    if not (is_academic_coordinator or is_technician or is_principal or is_secretary):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    audit_logs = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_exam_marks_audit_table(cursor)
+                connection.commit()
+                cursor.execute("""
+                    SELECT
+                        a.id,
+                        a.student_id,
+                        s.full_name AS student_name,
+                        a.subject_id,
+                        sub.subject_name,
+                        sub.subject_code,
+                        a.academic_level_id,
+                        al.level_name,
+                        a.exam_id,
+                        a.exam_name,
+                        a.action_type,
+                        a.old_marks,
+                        a.new_marks,
+                        a.changed_by,
+                        a.changed_by_role,
+                        a.changed_by_name,
+                        a.created_at,
+                        (
+                            SELECT GROUP_CONCAT(DISTINCT e.full_name ORDER BY e.full_name SEPARATOR ', ')
+                            FROM teacher_subject_assignments tsa2
+                            JOIN employees e ON e.id = tsa2.teacher_id
+                            WHERE tsa2.subject_id = a.subject_id
+                              AND tsa2.academic_level_id = a.academic_level_id
+                        ) AS allocated_teachers
+                    FROM exam_marks_audit a
+                    LEFT JOIN students s ON s.student_id = a.student_id
+                    LEFT JOIN subjects sub ON sub.id = a.subject_id
+                    LEFT JOIN academic_levels al ON al.id = a.academic_level_id
+                    LEFT JOIN teacher_subject_assignments tsa_match
+                        ON tsa_match.subject_id = a.subject_id
+                        AND tsa_match.academic_level_id = a.academic_level_id
+                        AND tsa_match.teacher_id = a.changed_by
+                    WHERE tsa_match.id IS NULL
+                    ORDER BY a.created_at DESC
+                    LIMIT 1000
+                """)
+                results = cursor.fetchall()
+                for row in results:
+                    created_at = row.get('created_at')
+                    if created_at and hasattr(created_at, 'strftime'):
+                        created_at_str = created_at.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        created_at_str = str(created_at) if created_at else ''
+
+                    subject_name = row.get('subject_name') or row.get('subject_code') or ''
+                    old_marks = row.get('old_marks')
+                    new_marks = row.get('new_marks')
+
+                    audit_logs.append({
+                        'id': row.get('id'),
+                        'student_id': row.get('student_id'),
+                        'student_name': row.get('student_name') or 'Unknown',
+                        'subject_id': row.get('subject_id'),
+                        'subject_name': subject_name,
+                        'level_name': row.get('level_name') or '',
+                        'exam_id': row.get('exam_id'),
+                        'exam_name': row.get('exam_name') or '',
+                        'action_type': row.get('action_type') or '',
+                        'old_marks': float(old_marks) if old_marks is not None else None,
+                        'new_marks': float(new_marks) if new_marks is not None else None,
+                        'changed_by_name': row.get('changed_by_name') or 'Unknown',
+                        'changed_by_role': row.get('changed_by_role') or '',
+                        'allocated_teachers': row.get('allocated_teachers') or '',
+                        'created_at': created_at_str,
+                    })
+        except Exception as e:
+            print(f"Error loading exam audits: {e}")
+            import traceback
+            traceback.print_exc()
+            flash('Could not load exam audit log.', 'error')
+        finally:
+            connection.close()
+
+    return render_template(
+        'dashboards/exam_audits.html',
+        audit_logs=audit_logs,
+        dashboard_content_role='curriculum coordinator' if is_academic_coordinator else (
+            'head of institution' if is_principal else (
+                'secretary' if is_secretary else session.get('role')
+            )
+        ),
+    )
+
+
 @app.route('/dashboard/employee/exams-assessments/save-marks', methods=['POST'])
 @login_required
 def save_marks():
@@ -59291,9 +60010,9 @@ def save_marks():
     
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_cc = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     
-    # Teachers and principals can save marks. Curriculum coordinators are view-only on this workflow.
-    if not (is_teacher or is_principal):
+    if not (is_teacher or is_principal or is_cc):
         return jsonify({'success': False, 'message': 'You do not have permission to save marks.'}), 403
     
     # Get teacher ID (only used when user is a teacher, for assignment check)
@@ -59344,7 +60063,7 @@ def save_marks():
                         'marks_period_closed': True,
                     }), 403
 
-                # Teachers must be assigned to this subject and level; principals can save any
+                # Teachers must be assigned to this subject and level; coordinators and principals can save any
                 if is_teacher and teacher_id:
                     cursor.execute("""
                         SELECT id FROM teacher_subject_assignments
@@ -59413,25 +60132,61 @@ def save_marks():
                 
                 # Check if mark already exists
                 cursor.execute("""
-                    SELECT id FROM student_marks
+                    SELECT id, marks FROM student_marks
                     WHERE student_id = %s AND subject_id = %s AND exam_id = %s
                 """, (student_id, subject_id, resolved_exam_id))
                 existing = cursor.fetchone()
-                
+                old_marks = None
+                if existing:
+                    old_marks = existing.get('marks') if isinstance(existing, dict) else existing[1]
+
+                changed_by, changed_by_role, changed_by_name = _exam_marks_audit_actor()
+                audit_level_id = exam_scope_level_id or level_id
+                audit_exam_name = exam_scope_name or ''
+
                 if existing:
                     # Update existing mark
                     if marks_value is not None:
-                        cursor.execute("""
-                            UPDATE student_marks
-                            SET marks = %s, updated_at = CURRENT_TIMESTAMP
-                            WHERE student_id = %s AND subject_id = %s AND exam_id = %s
-                        """, (marks_value, student_id, subject_id, resolved_exam_id))
+                        if not _marks_audit_values_equal(old_marks, marks_value):
+                            cursor.execute("""
+                                UPDATE student_marks
+                                SET marks = %s, updated_at = CURRENT_TIMESTAMP
+                                WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                            """, (marks_value, student_id, subject_id, resolved_exam_id))
+                            _log_exam_marks_audit(
+                                cursor,
+                                student_id=student_id,
+                                subject_id=subject_id,
+                                exam_id=resolved_exam_id,
+                                academic_level_id=audit_level_id,
+                                exam_name=audit_exam_name,
+                                action_type='UPDATE',
+                                old_marks=old_marks,
+                                new_marks=marks_value,
+                                changed_by=changed_by,
+                                changed_by_role=changed_by_role,
+                                changed_by_name=changed_by_name,
+                            )
                     else:
                         # Delete mark if empty
                         cursor.execute("""
                             DELETE FROM student_marks
                             WHERE student_id = %s AND subject_id = %s AND exam_id = %s
                         """, (student_id, subject_id, resolved_exam_id))
+                        _log_exam_marks_audit(
+                            cursor,
+                            student_id=student_id,
+                            subject_id=subject_id,
+                            exam_id=resolved_exam_id,
+                            academic_level_id=audit_level_id,
+                            exam_name=audit_exam_name,
+                            action_type='DELETE',
+                            old_marks=old_marks,
+                            new_marks=None,
+                            changed_by=changed_by,
+                            changed_by_role=changed_by_role,
+                            changed_by_name=changed_by_name,
+                        )
                 else:
                     # Insert new mark (only if marks value is provided)
                     if marks_value is not None:
@@ -59439,6 +60194,20 @@ def save_marks():
                             INSERT INTO student_marks (student_id, subject_id, exam_id, marks, created_at, updated_at)
                             VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         """, (student_id, subject_id, resolved_exam_id, marks_value))
+                        _log_exam_marks_audit(
+                            cursor,
+                            student_id=student_id,
+                            subject_id=subject_id,
+                            exam_id=resolved_exam_id,
+                            academic_level_id=audit_level_id,
+                            exam_name=audit_exam_name,
+                            action_type='INSERT',
+                            old_marks=None,
+                            new_marks=marks_value,
+                            changed_by=changed_by,
+                            changed_by_role=changed_by_role,
+                            changed_by_name=changed_by_name,
+                        )
                 
                 connection.commit()
                 return jsonify({
@@ -59564,6 +60333,10 @@ def save_combination_marks():
                     except ValueError:
                         return jsonify({'success': False, 'message': 'Invalid percentage.'}), 400
 
+                changed_by, changed_by_role, changed_by_name = _exam_marks_audit_actor()
+                audit_level_id = exam_scope_level_id or level_id
+                audit_exam_name = exam_scope_name or ''
+
                 for subject_id in member_ids:
                     if is_teacher and teacher_id:
                         cursor.execute("""
@@ -59602,28 +60375,74 @@ def save_combination_marks():
                         marks_value = round((pct_val / 100.0) * max_raw, 2)
 
                     cursor.execute("""
-                        SELECT id FROM student_marks
+                        SELECT id, marks FROM student_marks
                         WHERE student_id = %s AND subject_id = %s AND exam_id = %s
                     """, (student_id, subject_id, resolved_exam_id))
                     existing = cursor.fetchone()
+                    old_marks = None
+                    if existing:
+                        old_marks = existing.get('marks') if isinstance(existing, dict) else existing[1]
 
                     if existing:
                         if marks_value is not None:
-                            cursor.execute("""
-                                UPDATE student_marks
-                                SET marks = %s, updated_at = CURRENT_TIMESTAMP
-                                WHERE student_id = %s AND subject_id = %s AND exam_id = %s
-                            """, (marks_value, student_id, subject_id, resolved_exam_id))
+                            if not _marks_audit_values_equal(old_marks, marks_value):
+                                cursor.execute("""
+                                    UPDATE student_marks
+                                    SET marks = %s, updated_at = CURRENT_TIMESTAMP
+                                    WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                                """, (marks_value, student_id, subject_id, resolved_exam_id))
+                                _log_exam_marks_audit(
+                                    cursor,
+                                    student_id=student_id,
+                                    subject_id=subject_id,
+                                    exam_id=resolved_exam_id,
+                                    academic_level_id=audit_level_id,
+                                    exam_name=audit_exam_name,
+                                    action_type='UPDATE',
+                                    old_marks=old_marks,
+                                    new_marks=marks_value,
+                                    changed_by=changed_by,
+                                    changed_by_role=changed_by_role,
+                                    changed_by_name=changed_by_name,
+                                )
                         else:
                             cursor.execute("""
                                 DELETE FROM student_marks
                                 WHERE student_id = %s AND subject_id = %s AND exam_id = %s
                             """, (student_id, subject_id, resolved_exam_id))
+                            _log_exam_marks_audit(
+                                cursor,
+                                student_id=student_id,
+                                subject_id=subject_id,
+                                exam_id=resolved_exam_id,
+                                academic_level_id=audit_level_id,
+                                exam_name=audit_exam_name,
+                                action_type='DELETE',
+                                old_marks=old_marks,
+                                new_marks=None,
+                                changed_by=changed_by,
+                                changed_by_role=changed_by_role,
+                                changed_by_name=changed_by_name,
+                            )
                     elif marks_value is not None:
                         cursor.execute("""
                             INSERT INTO student_marks (student_id, subject_id, exam_id, marks, created_at, updated_at)
                             VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         """, (student_id, subject_id, resolved_exam_id, marks_value))
+                        _log_exam_marks_audit(
+                            cursor,
+                            student_id=student_id,
+                            subject_id=subject_id,
+                            exam_id=resolved_exam_id,
+                            academic_level_id=audit_level_id,
+                            exam_name=audit_exam_name,
+                            action_type='INSERT',
+                            old_marks=None,
+                            new_marks=marks_value,
+                            changed_by=changed_by,
+                            changed_by_role=changed_by_role,
+                            changed_by_name=changed_by_name,
+                        )
 
                 connection.commit()
                 return jsonify({
@@ -68132,6 +68951,7 @@ def _fetch_payments_invoices_live_payload(cursor, payment_filter='outstanding'):
         'analytics': analytics,
         'finance_accounts': finance_accounts,
         'supplier_payables': supplier_payables,
+        'stock_in_records': stock_in_records,
         'record_count': len(supplier_payables),
     }
 
@@ -68444,7 +69264,8 @@ def record_supplier_pay_all():
         return _pay_fail('Enter a valid payment amount greater than zero.')
     if not company_name:
         return _pay_fail('Enter the company name paid to.')
-    if not phone_norm or phone_norm.startswith('__no_phone_'):
+    movement_ids = request.form.getlist('movement_ids')
+    if not movement_ids and (not phone_norm or phone_norm.startswith('__no_phone_')):
         return _pay_fail('A valid supplier phone number is required to pay all invoices.')
     if not company_phone:
         return _pay_fail('Enter a valid company contact number (at least 9 digits).')
@@ -68464,12 +69285,21 @@ def record_supplier_pay_all():
             paid_by = (
                 session.get('full_name') or session.get('username') or ''
             ).strip()
-            ok, message = _record_supplier_pay_all(
-                cursor, phone_norm, pay_amount, company_name, company_phone, paid_by,
-                payment_method=funding['payment_method'],
-                finance_account_id=funding['finance_account_id'],
-                payment_reference=funding['payment_reference'],
-            )
+            if movement_ids:
+                ok, message = _record_supplier_pay_selected_invoices(
+                    cursor, movement_ids, company_name, company_phone, paid_by,
+                    payment_method=funding['payment_method'],
+                    finance_account_id=funding['finance_account_id'],
+                    payment_reference=funding['payment_reference'],
+                    expected_amount=pay_amount,
+                )
+            else:
+                ok, message = _record_supplier_pay_all(
+                    cursor, phone_norm, pay_amount, company_name, company_phone, paid_by,
+                    payment_method=funding['payment_method'],
+                    finance_account_id=funding['finance_account_id'],
+                    payment_reference=funding['payment_reference'],
+                )
             if ok:
                 connection.commit()
                 return _pay_ok(message, cursor)

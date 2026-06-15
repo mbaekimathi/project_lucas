@@ -331,6 +331,12 @@
                         <label>Stock after</label>
                         <span>{{ movement.quantity_after }} {{ movement.measure }}</span>
                     </div>
+                    {% if movement.delivery_note %}
+                    <div class="doc__field doc__field--full">
+                        <label>Delivery note</label>
+                        <span>{{ movement.delivery_note }}</span>
+                    </div>
+                    {% endif %}
                     {% if movement.notes %}
                     <div class="doc__field doc__field--full">
                         <label>Notes</label>

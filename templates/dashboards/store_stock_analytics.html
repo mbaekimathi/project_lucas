@@ -600,7 +600,6 @@ document.addEventListener('alpine:init', function () {
                                     <tr>
                                         <th>Date &amp; time</th>
                                         <th>Reference</th>
-                                        <th>Type</th>
                                         <th>Item</th>
                                         <th>Expense category</th>
                                         <th class="text-right">Qty</th>
@@ -612,6 +611,7 @@ document.addEventListener('alpine:init', function () {
                                         <th>Payment</th>
                                         <th>Supplier / purpose</th>
                                         <th>Recorded by</th>
+                                        <th>Delivery note</th>
                                         <th>Notes</th>
                                         <th class="text-center">Print</th>
                                     </tr>
@@ -620,12 +620,12 @@ document.addEventListener('alpine:init', function () {
                                     <template x-for="m in movements" :key="m.id">
                                         <tr :class="m.movement_type === 'in' ? 'ss-row--in' : 'ss-row--out'">
                                             <td class="whitespace-nowrap text-[0.6875rem] si-normal" x-text="m.created_at_display"></td>
-                                            <td><span class="si-ref" x-text="m.reference_number"></span></td>
-                                            <td>
+                                            <td class="whitespace-nowrap">
                                                 <span class="ss-type-badge" :class="m.movement_type === 'in' ? 'ss-type-badge--in' : 'ss-type-badge--out'">
                                                     <i class="fas" :class="m.movement_type === 'in' ? 'fa-arrow-down' : 'fa-arrow-up'"></i>
                                                     <span x-text="m.movement_type === 'in' ? 'In' : 'Out'"></span>
                                                 </span>
+                                                <span class="si-ref block mt-1" x-text="m.reference_number"></span>
                                             </td>
                                             <td>
                                                 <a :href="itemAnalyticsUrl(m.store_item_id)" class="font-semibold block hover:text-[var(--sinv-accent)]" x-text="m.item_name"></a>
@@ -666,6 +666,10 @@ document.addEventListener('alpine:init', function () {
                                                 </template>
                                             </td>
                                             <td class="max-w-[8rem] truncate si-normal" x-text="m.performed_by_name || '—'"></td>
+                                            <td class="max-w-[10rem] truncate si-normal">
+                                                <span x-show="m.movement_type === 'in'" :title="m.delivery_note || ''" x-text="m.delivery_note || '—'"></span>
+                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                            </td>
                                             <td class="max-w-[10rem] truncate si-normal" x-text="m.notes || '—'"></td>
                                             <td class="text-center">
                                                 <a :href="printUrl(m.id)" target="_blank" rel="noopener" class="si-btn si-btn--icon" title="Print receipt"><i class="fas fa-print"></i></a>

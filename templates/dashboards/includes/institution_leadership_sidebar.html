@@ -78,6 +78,12 @@
     <span>Exams &amp; results</span>
     {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or request.path.endswith('/exams-assessments') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('exams-assessments/exam-audits') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_audits' or '/exam-audits' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-shield w-5"></i>
+    <span>Exam audits</span>
+    {% if request.endpoint == 'exam_audits' or '/exam-audits' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 {% endif %}
 
 {% if _lead_nav in ('all', 'finance') %}

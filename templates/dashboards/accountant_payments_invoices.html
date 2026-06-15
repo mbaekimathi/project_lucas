@@ -20,6 +20,8 @@ document.addEventListener('alpine:init', function () {
       registerModalOpen: false,
       selectedRecord: null,
       selectedSupplier: null,
+      selectedInvoiceIds: [],
+      invoiceDropdownOpen: false,
       amountPaid: '',
       paidToCompanyName: '',
       paidToCompanyPhone: '',
@@ -154,6 +156,7 @@ document.addEventListener('alpine:init', function () {
         if (data.analytics) this.analytics = data.analytics;
         if (data.finance_accounts) this.financeAccounts = data.finance_accounts;
         if (data.supplier_payables) this.supplierPayables = data.supplier_payables;
+        if (data.stock_in_records) this.stockInRecords = data.stock_in_records;
         if (data.record_count != null) this.recordCount = data.record_count;
       },
       showFlash: function (message, type) {
@@ -200,7 +203,14 @@ document.addEventListener('alpine:init', function () {
         var body = new URLSearchParams();
         Object.keys(fields || {}).forEach(function (k) {
           var v = fields[k];
-          if (v != null && v !== '') body.append(k, String(v));
+          if (v == null || v === '') return;
+          if (Array.isArray(v)) {
+            v.forEach(function (item) {
+              if (item != null && item !== '') body.append(k, String(item));
+            });
+          } else {
+            body.append(k, String(v));
+          }
         });
         body.append('ajax', '1');
         return fetch(url, {
@@ -239,10 +249,73 @@ document.addEventListener('alpine:init', function () {
           });
       },
       get payPostUrl() {
-        if (this.selectedSupplier) return this.payAllPostUrl;
-        if (!this.selectedRecord || !this.selectedRecord.id) return '';
-        return this.payPostBase.replace('/0/', '/' + this.selectedRecord.id + '/')
-          + '?payment=' + encodeURIComponent(this.paymentFilter || 'outstanding');
+        if (this.selectedSupplier && this.selectedInvoiceIds.length) {
+          return this.payAllPostUrl;
+        }
+        if (this.selectedRecord && this.selectedRecord.id && !this.selectedSupplier) {
+          return this.payPostBase.replace('/0/', '/' + this.selectedRecord.id + '/')
+            + '?payment=' + encodeURIComponent(this.paymentFilter || 'outstanding');
+        }
+        return '';
+      },
+      invoiceOptionLabel: function (inv) {
+        if (!inv) return '';
+        var label = inv.invoice_label
+          || ((inv.delivery_note ? inv.delivery_note + ' — ' : '') + (inv.reference_number || '—'));
+        if (inv.balance_due_display && inv.balance_due_display !== '—') {
+          return label + ' · KES ' + inv.balance_due_display;
+        }
+        return label;
+      },
+      isPayInvoiceSelected: function (id) {
+        return this.selectedInvoiceIds.indexOf(String(id)) !== -1;
+      },
+      togglePayInvoice: function (id) {
+        id = String(id);
+        var idx = this.selectedInvoiceIds.indexOf(id);
+        if (idx === -1) this.selectedInvoiceIds.push(id);
+        else this.selectedInvoiceIds.splice(idx, 1);
+        this.syncPayAmountFromInvoices();
+      },
+      get invoiceDropdownSummary() {
+        var ids = this.selectedInvoiceIds || [];
+        if (!ids.length) return 'Select delivery note / reference';
+        if (ids.length === 1) {
+          var inv = (this.supplierInvoiceOptions || []).find(function (x) {
+            return String(x.id) === String(ids[0]);
+          });
+          return inv ? this.invoiceOptionLabel(inv) : '1 invoice selected';
+        }
+        return ids.length + ' invoices selected · KES ' + this.selectedInvoicesTotalDisplay;
+      },
+      selectAllPayInvoices: function () {
+        this.selectedInvoiceIds = (this.supplierInvoiceOptions || []).map(function (inv) {
+          return String(inv.id);
+        });
+        this.syncPayAmountFromInvoices();
+      },
+      clearPayInvoices: function () {
+        this.selectedInvoiceIds = [];
+        this.syncPayAmountFromInvoices();
+      },
+      syncPayAmountFromInvoices: function () {
+        if (!this.selectedSupplier) return;
+        var total = this.selectedInvoicesTotal;
+        this.amountPaid = total > 0 ? total.toFixed(2) : '';
+      },
+      get selectedInvoicesTotal() {
+        var total = 0;
+        var self = this;
+        (this.selectedInvoiceIds || []).forEach(function (id) {
+          var inv = (self.supplierInvoiceOptions || []).find(function (x) {
+            return String(x.id) === String(id);
+          });
+          if (inv && inv.balance_due != null) total += parseFloat(inv.balance_due) || 0;
+        });
+        return total;
+      },
+      get selectedInvoicesTotalDisplay() {
+        return this.selectedInvoicesTotal.toFixed(2);
       },
       get filteredFinanceAccounts() {
         var mode = this.paymentModeMap[this.paymentMethod] || '';
@@ -296,6 +369,55 @@ document.addEventListener('alpine:init', function () {
       get filteredSupplierCount() {
         return this.filteredSupplierPayables.length;
       },
+      stockInPhoneKey: function (row) {
+        if (!row) return '';
+        var raw = String(row.paid_to_company_phone || row.supplier_phone || '').replace(/\D/g, '');
+        if (!raw) return '__no_phone_' + row.id;
+        if (raw.charAt(0) === '0' && raw.length >= 10) raw = '254' + raw.slice(1);
+        else if (raw.length === 9 && /^[789]/.test(raw)) raw = '254' + raw;
+        return raw;
+      },
+      resolveSupplierPayableInvoices: function (supplier) {
+        if (!supplier) return [];
+        if (supplier.payable_invoices && supplier.payable_invoices.length) {
+          return supplier.payable_invoices;
+        }
+        var key = String(supplier.phone_key || '');
+        var records = (this.stockInRecords || []).filter(function (r) {
+          if (this.stockInPhoneKey(r) !== key) return false;
+          var st = String(r.payment_status || '').toLowerCase();
+          return st === 'pending' || st === 'partial';
+        }.bind(this));
+        records.sort(function (a, b) {
+          var ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+          var tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return ta - tb;
+        });
+        return records.map(function (r) {
+          var ref = r.reference_number || '—';
+          var dn = (r.delivery_note || '').trim();
+          return {
+            id: r.id,
+            reference_number: ref,
+            delivery_note: r.delivery_note || null,
+            invoice_label: dn ? (dn + ' — ' + ref) : ref,
+            item_name: r.item_name,
+            balance_due: r.balance_due,
+            balance_due_display: r.balance_due_display,
+            total_amount_display: r.total_amount_display,
+            amount_paid_display: r.amount_paid_display,
+            paid_to_company_name: r.paid_to_company_name,
+            supplier_name: r.supplier_name,
+            paid_to_company_phone: r.paid_to_company_phone,
+            supplier_phone: r.supplier_phone,
+          };
+        });
+      },
+      get supplierInvoiceOptions() {
+        return this.selectedSupplier
+          ? this.resolveSupplierPayableInvoices(this.selectedSupplier)
+          : [];
+      },
       onPaymentMethodChange: function () {
         var id = String(this.financeAccountId || '');
         if (!id) return;
@@ -319,7 +441,9 @@ document.addEventListener('alpine:init', function () {
         }
         this.selectedSupplier = supplier;
         this.selectedRecord = null;
-        this.amountPaid = supplier.balance_due != null ? String(supplier.balance_due) : '';
+        this.selectedInvoiceIds = [];
+        this.invoiceDropdownOpen = false;
+        this.amountPaid = '';
         this.paidToCompanyName = supplier.supplier_name || '';
         var displayPhone = supplier.supplier_phone || '';
         if (!displayPhone || displayPhone === '—' || phoneKey.startsWith('__no_phone_')) {
@@ -328,6 +452,10 @@ document.addEventListener('alpine:init', function () {
           displayPhone = displayPhone || phoneKey;
         }
         this.paidToCompanyPhone = displayPhone;
+        var invoices = this.resolveSupplierPayableInvoices(supplier);
+        if (!supplier.payable_invoices || !supplier.payable_invoices.length) {
+          supplier.payable_invoices = invoices;
+        }
         this.payModalOpen = true;
         this.$nextTick(function () {
           var panel = this.$refs.payModalPanel;
@@ -336,6 +464,7 @@ document.addEventListener('alpine:init', function () {
       },
       openPay: function (rec) {
         this.selectedSupplier = null;
+        this.selectedInvoiceIds = [];
         this.selectedRecord = rec;
         this.amountPaid = rec.balance_due_display && rec.balance_due_display !== '—'
           ? String(rec.balance_due) : '';
@@ -351,6 +480,8 @@ document.addEventListener('alpine:init', function () {
         this.payModalOpen = false;
         this.selectedRecord = null;
         this.selectedSupplier = null;
+        this.selectedInvoiceIds = [];
+        this.invoiceDropdownOpen = false;
       },
       resetPayForm: function () {
         this.amountPaid = '';
@@ -359,6 +490,8 @@ document.addEventListener('alpine:init', function () {
         this.paymentMethod = '';
         this.financeAccountId = '';
         this.paymentReference = '';
+        this.selectedInvoiceIds = [];
+        this.invoiceDropdownOpen = false;
       },
       openRegister: function () {
         this.resetRegisterForm();
@@ -652,11 +785,16 @@ document.addEventListener('alpine:init', function () {
           this.showFlash('Enter a valid payment amount greater than zero.', 'error');
           return;
         }
-        if (this.selectedSupplier && this.selectedSupplier.balance_due != null) {
-          if (amt > this.selectedSupplier.balance_due + 0.005) {
+        if (this.selectedSupplier) {
+          if (!this.selectedInvoiceIds.length) {
+            this.showFlash('Select at least one invoice to pay.', 'error');
+            return;
+          }
+          var expectedTotal = this.selectedInvoicesTotal;
+          if (Math.abs(amt - expectedTotal) > 0.005) {
             this.showFlash(
-              'Payment cannot exceed total balance due (KES '
-              + this.selectedSupplier.balance_due_display + ').',
+              'Amount must match the selected invoice total (KES '
+              + this.selectedInvoicesTotalDisplay + ').',
               'error'
             );
             return;
@@ -712,6 +850,7 @@ document.addEventListener('alpine:init', function () {
           paid_to_company_name: (this.paidToCompanyName || '').trim().toUpperCase(),
           paid_to_company_phone: this.paidToCompanyPhone,
           supplier_phone: this.selectedSupplier ? this.selectedSupplier.phone_key : '',
+          movement_ids: this.selectedSupplier ? this.selectedInvoiceIds.slice() : [],
           payment_method: this.paymentMethod,
           finance_account_id: this.financeAccountId,
           payment_reference: (this.paymentReference || '').trim(),
@@ -1010,7 +1149,7 @@ document.addEventListener('alpine:init', function () {
                                         </a>
                                         <button type="button" x-show="s.can_pay" @click="openPaySupplier(s)"
                                                 class="accounts-btn-primary inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-semibold uppercase text-white ml-1"
-                                                :title="String(s.phone_key || '').startsWith('__no_phone_') ? 'Settle this invoice' : 'Pay total outstanding balance across all invoices'">
+                                                :title="String(s.phone_key || '').startsWith('__no_phone_') ? 'Settle this invoice' : 'Settle payable — select invoice'">
                                             <i class="fas fa-money-bill-wave"></i> Pay
                                         </button>
                                         <a :href="supplierStatementPrintUrl(s)"
@@ -1166,9 +1305,13 @@ document.addEventListener('alpine:init', function () {
                                     · Total balance
                                     <span class="font-semibold text-amber-300" x-text="'KES ' + selectedSupplier.balance_due_display"></span>
                                 </p>
-                                <p class="mt-1 text-[10px] text-teal-200/80 normal-case">
-                                    Payment is applied oldest invoice first until the amount is used.
-                                </p>
+                                <template x-if="selectedInvoiceIds.length">
+                                    <p class="mt-1 text-xs text-teal-100 normal-case tabular-nums">
+                                        <span x-text="selectedInvoiceIds.length"></span> invoice(s) selected
+                                        · Total
+                                        <span class="font-semibold text-amber-300" x-text="'KES ' + selectedInvoicesTotalDisplay"></span>
+                                    </p>
+                                </template>
                             </div>
                         </template>
                         <template x-if="selectedRecord && !selectedSupplier">
@@ -1189,6 +1332,68 @@ document.addEventListener('alpine:init', function () {
                 </div>
 
                 <form method="post" :action="payPostUrl" @submit="submitPay($event)" class="p-5 sm:p-6 space-y-4">
+                    <div x-show="selectedSupplier" x-cloak class="relative" @click.outside="invoiceDropdownOpen = false">
+                        <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                            <label for="pay_invoices_trigger" class="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Invoices to pay</label>
+                            <div class="flex gap-2 text-[10px] font-semibold uppercase" x-show="supplierInvoiceOptions.length && invoiceDropdownOpen">
+                                <button type="button" @click="selectAllPayInvoices()"
+                                        class="text-teal-700 hover:text-teal-900 dark:text-teal-400">Select all</button>
+                                <span class="text-slate-300">|</span>
+                                <button type="button" @click="clearPayInvoices()"
+                                        class="text-slate-500 hover:text-slate-700 dark:text-slate-400">Clear</button>
+                            </div>
+                        </div>
+                        <button type="button"
+                                id="pay_invoices_trigger"
+                                @click="invoiceDropdownOpen = !invoiceDropdownOpen"
+                                class="accounts-field flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm dark:text-white normal-case"
+                                :disabled="!supplierInvoiceOptions.length"
+                                :aria-expanded="invoiceDropdownOpen">
+                            <span class="min-w-0 truncate"
+                                  :class="selectedInvoiceIds.length ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500'"
+                                  x-text="invoiceDropdownSummary"></span>
+                            <i class="fas fa-chevron-down shrink-0 text-xs text-slate-400 transition-transform"
+                               :class="invoiceDropdownOpen ? 'rotate-180' : ''"></i>
+                        </button>
+                        <div x-show="invoiceDropdownOpen && supplierInvoiceOptions.length"
+                             x-cloak
+                             class="accounts-dropdown absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                            <div class="max-h-52 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                                <template x-for="inv in supplierInvoiceOptions" :key="inv.id">
+                                    <label class="flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                                        <input type="checkbox"
+                                               class="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                               :checked="isPayInvoiceSelected(inv.id)"
+                                               @change="togglePayInvoice(inv.id)" />
+                                        <span class="min-w-0 flex-1">
+                                            <span class="block text-sm font-medium text-slate-800 dark:text-slate-100 normal-case"
+                                                  x-text="invoiceOptionLabel(inv)"></span>
+                                            <span class="block text-[11px] text-slate-500 normal-case truncate"
+                                                  x-show="inv.item_name" x-text="inv.item_name"></span>
+                                        </span>
+                                        <span class="shrink-0 text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-400 whitespace-nowrap"
+                                              x-text="'KES ' + (inv.balance_due_display || '0.00')"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                        <p class="mt-2 text-sm font-medium text-slate-700 dark:text-slate-200 normal-case"
+                           x-show="selectedInvoiceIds.length" x-cloak>
+                            Selected total:
+                            <span class="tabular-nums text-teal-700 dark:text-teal-400" x-text="'KES ' + selectedInvoicesTotalDisplay"></span>
+                            <span class="text-slate-500 font-normal">
+                                (<span x-text="selectedInvoiceIds.length"></span> invoice<span x-show="selectedInvoiceIds.length !== 1">s</span>)
+                            </span>
+                        </p>
+                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="supplierInvoiceOptions.length">
+                            Open the list and tick invoices to pay. Delivery note — reference · balance. Amount updates automatically.
+                        </p>
+                        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
+                           x-show="selectedSupplier && !supplierInvoiceOptions.length" x-cloak>
+                            No outstanding invoices found for this supplier. Refresh the page and try again.
+                        </p>
+                    </div>
+
                     <input type="hidden" name="supplier_phone"
                            :value="selectedSupplier && !String(selectedSupplier.phone_key || '').startsWith('__no_phone_') ? selectedSupplier.phone_key : ''" />
 
@@ -1260,15 +1465,19 @@ document.addEventListener('alpine:init', function () {
                         <label for="pay_amount" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Amount paid (KES)</label>
                         <input type="number" name="amount_paid" id="pay_amount" min="0.01" step="0.01" required
                                x-model="amountPaid"
-                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
+                               :readonly="!!selectedSupplier"
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white"
+                               :class="selectedSupplier ? 'bg-slate-100 dark:bg-slate-800 cursor-default' : ''" />
+                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedSupplier">
+                            Auto-calculated from selected invoices.
+                        </p>
                         <p class="mt-1 text-xs text-red-600 dark:text-red-400 font-semibold normal-case"
                            x-show="payAmountExceedsBalance" x-cloak>
                             Insufficient funds in the selected account. Reduce the amount or choose another account.
                         </p>
-                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedSupplier">
-                            Total outstanding:
-                            <span class="font-semibold tabular-nums" x-text="'KES ' + selectedSupplier.balance_due_display"></span>
-                            · pays all invoices when amount matches balance
+                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedSupplier && selectedInvoiceIds.length">
+                            Paying <span x-text="selectedInvoiceIds.length"></span> invoice(s) —
+                            total <span class="font-semibold tabular-nums" x-text="'KES ' + selectedInvoicesTotalDisplay"></span>
                         </p>
                         <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedRecord && !selectedSupplier">
                             Maximum:
@@ -1281,11 +1490,12 @@ document.addEventListener('alpine:init', function () {
                                 class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
                             Cancel
                         </button>
-                        <button type="submit" :disabled="paySubmitting || payAmountExceedsBalance"
+                        <button type="submit"
+                                :disabled="paySubmitting || payAmountExceedsBalance || (selectedSupplier && !selectedInvoiceIds.length)"
                                 class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
                             <i class="fas fa-spinner fa-spin" x-show="paySubmitting"></i>
                             <i class="fas fa-check" x-show="!paySubmitting"></i>
-                            <span x-text="paySubmitting ? 'Processing…' : (selectedSupplier ? 'Pay all outstanding' : 'Record payment')"></span>
+                            <span x-text="paySubmitting ? 'Processing…' : 'Record payment'"></span>
                         </button>
                     </div>
                 </form>

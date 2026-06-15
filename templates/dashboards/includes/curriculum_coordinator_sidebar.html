@@ -98,6 +98,12 @@
     <span>Exam analytics</span>
     {% if request.endpoint in ('exam_analytics', 'exam_analytics_detail', 'exam_analytics_slot') or request.path.endswith('/exam-analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('exams-assessments/exam-audits') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_audits' or '/exam-audits' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-shield w-5"></i>
+    <span>Exam audits</span>
+    {% if request.endpoint == 'exam_audits' or '/exam-audits' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 <a href="{{ employee_dash_url('exam-timetable') }}"
    class="sidebar-item {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}sidebar-item-active{% endif %}">
     <i class="fas fa-calendar-alt w-5"></i>
