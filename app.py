@@ -720,6 +720,57 @@ def ensure_student_profile_image_column(cursor):
         return False
 
 
+def ensure_student_parent_info_verified_columns(cursor):
+    """Track when a parent has reviewed and confirmed student records during portal setup."""
+    ok = True
+    if not _table_has_column(cursor, 'students', 'parent_info_verified'):
+        try:
+            after_col = 'profile_image' if _table_has_column(cursor, 'students', 'profile_image') else 'special_needs'
+            cursor.execute(
+                f"""
+                ALTER TABLE students
+                ADD COLUMN parent_info_verified TINYINT(1) NOT NULL DEFAULT 0
+                AFTER {after_col}
+                """
+            )
+        except Exception as e:
+            print(f"ensure_student_parent_info_verified_columns verified: {e}")
+            ok = False
+    if not _table_has_column(cursor, 'students', 'parent_info_verified_at'):
+        try:
+            cursor.execute(
+                """
+                ALTER TABLE students
+                ADD COLUMN parent_info_verified_at DATETIME NULL
+                AFTER parent_info_verified
+                """
+            )
+        except Exception as e:
+            print(f"ensure_student_parent_info_verified_columns verified_at: {e}")
+            ok = False
+    return ok
+
+
+def _format_date_input_value(value):
+    if not value:
+        return ''
+    if hasattr(value, 'strftime'):
+        return value.strftime('%Y-%m-%d')
+    return str(value)[:10]
+
+
+def _serialize_parent_setup_student_row(row):
+    """Normalize DB row for parent student-info forms (dates as YYYY-MM-DD strings)."""
+    if not row:
+        return None
+    out = dict(row)
+    out['date_of_birth_input'] = _format_date_input_value(out.get('date_of_birth'))
+    out['parent_info_verified'] = bool(int(out.get('parent_info_verified') or 0))
+    prof = (out.get('profile_image') or '').strip()
+    out['profile_image_url'] = _student_profile_image_url(prof) if prof else ''
+    return out
+
+
 def _student_profile_image_static_path(relative_path):
     """Return static-relative path (uploads/student_photos/...) or empty string."""
     if not relative_path:
@@ -5379,17 +5430,12 @@ def _library_level_teacher_row_dict(
 
 def _library_level_teacher_subject_assignments(cursor, academic_level_id, book_id=None, highlight_subject_id=None):
     """
-    Teachers for library allocation at an academic level:
-    - subject assignments at this class, and
-    - all other active employees with teacher role (book subject when book_id given).
+    Teachers for library allocation at an academic level: only those assigned to
+    subjects in this class via Subject & Class Allocation.
     """
     rows = []
     book_subject_id = None
     highlight_sid = None
-    level_name = ''
-    level_category = ''
-    book_subject_name = ''
-    book_subject_code = ''
     try:
         ensure_library_books_table(cursor)
         ensure_employee_roles_schema(cursor)
@@ -5399,11 +5445,8 @@ def _library_level_teacher_subject_assignments(cursor, academic_level_id, book_i
         if book_id:
             cursor.execute(
                 """
-                SELECT lb.subject_id,
-                       UPPER(TRIM(COALESCE(s.subject_name, ''))) AS subject_name,
-                       UPPER(TRIM(COALESCE(s.subject_code, ''))) AS subject_code
+                SELECT lb.subject_id
                 FROM library_books lb
-                LEFT JOIN subjects s ON s.id = lb.subject_id
                 WHERE lb.id = %s
                 """,
                 (int(book_id),),
@@ -5412,33 +5455,12 @@ def _library_level_teacher_subject_assignments(cursor, academic_level_id, book_i
             if br:
                 if isinstance(br, dict):
                     raw_sid = br.get('subject_id')
-                    book_subject_name = (br.get('subject_name') or '').strip()
-                    book_subject_code = (br.get('subject_code') or '').strip()
                 else:
                     raw_sid = br[0] if len(br) > 0 else None
-                    book_subject_name = (br[1] or '').strip() if len(br) > 1 else ''
-                    book_subject_code = (br[2] or '').strip() if len(br) > 2 else ''
                 if raw_sid is not None:
                     book_subject_id = int(raw_sid)
         if highlight_sid is None:
             highlight_sid = book_subject_id
-        cursor.execute(
-            """
-            SELECT UPPER(TRIM(level_name)) AS level_name,
-                   UPPER(TRIM(level_category)) AS level_category
-            FROM academic_levels
-            WHERE id = %s
-            """,
-            (academic_level_id,),
-        )
-        lr = cursor.fetchone()
-        if lr:
-            if isinstance(lr, dict):
-                level_name = (lr.get('level_name') or '').strip()
-                level_category = (lr.get('level_category') or '').strip()
-            else:
-                level_name = (lr[0] or '').strip()
-                level_category = (lr[1] or '').strip() if len(lr) > 1 else ''
     except (TypeError, ValueError):
         return rows
 
@@ -5501,34 +5523,6 @@ def _library_level_teacher_subject_assignments(cursor, academic_level_id, book_i
                     row[6] if len(row) > 6 else '', row[7] if len(row) > 7 else '',
                     row[8] if len(row) > 8 else '', row[9] if len(row) > 9 else '',
                     book_subject_id, highlight_sid, from_class_assignment=True,
-                ))
-
-        if book_subject_id:
-            cursor.execute(
-                f"""
-                SELECT e.id AS teacher_id,
-                       UPPER(TRIM(e.full_name)) AS teacher_name,
-                       UPPER(TRIM(COALESCE(e.employee_id, ''))) AS staff_number
-                FROM employees e
-                WHERE {_sql_employee_is_teacher('e')}
-                  AND {_sql_employee_is_active_staff('e')}
-                ORDER BY e.full_name ASC, e.id ASC
-                """,
-            )
-            for row in cursor.fetchall() or []:
-                if isinstance(row, dict):
-                    tid = row.get('teacher_id')
-                    tname = row.get('teacher_name')
-                    staff = row.get('staff_number')
-                else:
-                    tid = row[0] if len(row) > 0 else None
-                    tname = row[1] if len(row) > 1 else ''
-                    staff = row[2] if len(row) > 2 else ''
-                _append_row(_library_level_teacher_row_dict(
-                    None, tid, book_subject_id, academic_level_id,
-                    tname, staff, book_subject_name, book_subject_code,
-                    level_name, level_category, book_subject_id, highlight_sid,
-                    from_class_assignment=False,
                 ))
     except Exception as e:
         print(f"_library_level_teacher_subject_assignments: {e}")
@@ -10313,6 +10307,260 @@ def _fetch_student_parent_by_admission(cursor, admission_raw):
         return _run_left()
 
 
+def _fetch_student_parent_setup_details(cursor, admission_raw):
+    """Full student + parent row for portal setup / verification forms."""
+    ak = _normalize_parent_admission(admission_raw)
+    if not _parent_admission_pattern_ok(ak):
+        return None
+
+    ensure_student_profile_image_column(cursor)
+    ensure_student_parent_info_verified_columns(cursor)
+
+    join_on = (
+        "UPPER(TRIM(CAST(p.student_id AS CHAR(64)))) = UPPER(TRIM(CAST(s.student_id AS CHAR(64))))"
+    )
+    where_student = "UPPER(TRIM(CAST(s.student_id AS CHAR(64)))) = %s"
+    has_assessment = _table_has_column(cursor, 'students', 'assessment_number')
+
+    assessment_sel = ', s.assessment_number' if has_assessment else ', NULL AS assessment_number'
+    sql = f"""
+        SELECT s.student_id, s.full_name, s.date_of_birth, s.gender, s.current_grade,
+               s.previous_school{assessment_sel}, s.address, s.medical_info, s.special_needs,
+               s.student_category, s.sponsor_name, s.sponsor_phone, s.sponsor_email,
+               s.profile_image, s.parent_info_verified,
+               p.full_name AS parent_name, p.phone AS parent_phone, p.email AS parent_email,
+               p.relationship, p.emergency_contact, p.id AS parent_id
+        FROM students s
+        LEFT JOIN parents p ON {join_on}
+        WHERE {where_student}
+        LIMIT 1
+    """
+    cursor.execute(sql, (ak,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if row.get('parent_id') is None:
+        ensured = _fetch_student_parent_by_admission(cursor, admission_raw)
+        if not ensured:
+            return None
+        cursor.execute(sql, (ak,))
+        row = cursor.fetchone()
+    return _serialize_parent_setup_student_row(row)
+
+
+def _parent_portal_user_student_id(cursor, user_id):
+    if not user_id:
+        return ''
+    cursor.execute(
+        "SELECT student_id FROM users WHERE id = %s AND role = 'parent' LIMIT 1",
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return ''
+    return (row.get('student_id') or '').strip()
+
+
+def _student_parent_info_is_verified(cursor, student_id):
+    sid = (student_id or '').strip()
+    if not sid:
+        return False
+    ensure_student_parent_info_verified_columns(cursor)
+    cursor.execute(
+        "SELECT parent_info_verified FROM students WHERE student_id = %s LIMIT 1",
+        (sid,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return False
+    return bool(int(row.get('parent_info_verified') or 0))
+
+
+def _parent_requires_student_info_verification(cursor, user_id):
+    """True when a logged-in parent must complete the student information review."""
+    sid = _parent_portal_user_student_id(cursor, user_id)
+    if not sid:
+        return False
+    return not _student_parent_info_is_verified(cursor, sid)
+
+
+def _apply_parent_verified_student_info(cursor, student_id, form, *, profile_image_file=None, require_dob_match=True):
+    """
+    Save parent-reviewed student + guardian details and mark parent_info_verified.
+    Returns (ok, error_message).
+    """
+    sid = (student_id or '').strip()
+    if not sid:
+        return False, 'Student record not found.'
+
+    ensure_student_profile_image_column(cursor)
+    ensure_student_parent_info_verified_columns(cursor)
+
+    row = _fetch_student_parent_setup_details(cursor, sid)
+    if not row:
+        return False, 'Student record not found.'
+
+    dob_in = _parse_dob_submitted(form.get('date_of_birth'))
+    if dob_in is None:
+        return False, 'Enter a valid date of birth.'
+
+    db_dob = row.get('date_of_birth')
+    if db_dob is not None and hasattr(db_dob, 'date'):
+        db_dob = db_dob.date()
+    if require_dob_match and db_dob is not None and dob_in != db_dob:
+        return False, 'That date of birth does not match our records. Try again or contact the school.'
+
+    full_name = (form.get('full_name') or '').strip()
+    gender = (form.get('gender') or '').strip()
+    current_grade = (form.get('current_grade') or '').strip()
+    previous_school = (form.get('previous_school') or '').strip()
+    assessment_number = (form.get('assessment_number') or '').strip()
+    address = (form.get('address') or '').strip()
+    medical_info = (form.get('medical_info') or '').strip()
+    special_needs = (form.get('special_needs') or '').strip()
+    student_category = (form.get('student_category') or '').strip().lower() or None
+    sponsor_name = (form.get('sponsor_name') or '').strip()
+    sponsor_phone = (form.get('sponsor_phone') or '').strip()
+    sponsor_email = (form.get('sponsor_email') or '').strip().lower()
+    parent_name = (form.get('parent_name') or '').strip()
+    parent_phone = (form.get('parent_phone') or '').strip()
+    relationship = (form.get('relationship') or '').strip()
+    emergency_contact = (form.get('emergency_contact') or '').strip()
+
+    if not full_name:
+        return False, 'Student full name is required.'
+    if not address:
+        return False, 'Home address is required.'
+    if not parent_name:
+        return False, 'Parent/guardian name is required.'
+    if not parent_phone:
+        return False, 'Parent/guardian phone is required.'
+    if not relationship:
+        return False, 'Relationship to student is required.'
+    if not student_category:
+        return False, 'Student category is required.'
+    if student_category in ('sponsored', 'both') and not sponsor_name:
+        return False, 'Sponsor name is required for sponsored students.'
+
+    if not form.get('confirm_accurate'):
+        return False, 'Please confirm that the information provided is accurate.'
+
+    profile_image_path = None
+    if profile_image_file and getattr(profile_image_file, 'filename', None):
+        profile_image_path = _save_student_profile_image(profile_image_file, sid)
+        if not profile_image_path:
+            return False, 'Invalid profile photo. Use PNG, JPG, JPEG, or GIF.'
+
+    old_profile_image = None
+    if profile_image_path:
+        cursor.execute("SELECT profile_image FROM students WHERE student_id = %s", (sid,))
+        old_row = cursor.fetchone()
+        if old_row:
+            old_profile_image = old_row.get('profile_image')
+
+    has_assessment = _table_has_column(cursor, 'students', 'assessment_number')
+    if profile_image_path:
+        if has_assessment:
+            cursor.execute(
+                """
+                UPDATE students
+                SET full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s,
+                    previous_school = %s, assessment_number = %s, address = %s,
+                    medical_info = %s, special_needs = %s, profile_image = %s,
+                    student_category = %s, sponsor_name = %s, sponsor_phone = %s, sponsor_email = %s,
+                    parent_info_verified = 1, parent_info_verified_at = NOW(),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE student_id = %s
+                """,
+                (
+                    full_name, dob_in, gender, current_grade, previous_school, assessment_number,
+                    address, medical_info, special_needs, profile_image_path,
+                    student_category, sponsor_name, sponsor_phone, sponsor_email, sid,
+                ),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE students
+                SET full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s,
+                    previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
+                    profile_image = %s, student_category = %s, sponsor_name = %s,
+                    sponsor_phone = %s, sponsor_email = %s,
+                    parent_info_verified = 1, parent_info_verified_at = NOW(),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE student_id = %s
+                """,
+                (
+                    full_name, dob_in, gender, current_grade, previous_school, address,
+                    medical_info, special_needs, profile_image_path, student_category,
+                    sponsor_name, sponsor_phone, sponsor_email, sid,
+                ),
+            )
+    elif has_assessment:
+        cursor.execute(
+            """
+            UPDATE students
+            SET full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s,
+                previous_school = %s, assessment_number = %s, address = %s,
+                medical_info = %s, special_needs = %s,
+                student_category = %s, sponsor_name = %s, sponsor_phone = %s, sponsor_email = %s,
+                parent_info_verified = 1, parent_info_verified_at = NOW(),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE student_id = %s
+            """,
+            (
+                full_name, dob_in, gender, current_grade, previous_school, assessment_number,
+                address, medical_info, special_needs, student_category,
+                sponsor_name, sponsor_phone, sponsor_email, sid,
+            ),
+        )
+    else:
+        cursor.execute(
+            """
+            UPDATE students
+            SET full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s,
+                previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
+                student_category = %s, sponsor_name = %s, sponsor_phone = %s, sponsor_email = %s,
+                parent_info_verified = 1, parent_info_verified_at = NOW(),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE student_id = %s
+            """,
+            (
+                full_name, dob_in, gender, current_grade, previous_school, address,
+                medical_info, special_needs, student_category, sponsor_name,
+                sponsor_phone, sponsor_email, sid,
+            ),
+        )
+
+    if row.get('parent_id'):
+        cursor.execute(
+            """
+            UPDATE parents
+            SET full_name = %s, phone = %s, relationship = %s, emergency_contact = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE student_id = %s
+            """,
+            (parent_name, parent_phone, relationship, emergency_contact, sid),
+        )
+    else:
+        cursor.execute(
+            """
+            INSERT INTO parents (student_id, full_name, phone, email, relationship, emergency_contact)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                sid, parent_name, parent_phone,
+                (row.get('parent_email') or '').strip() or None,
+                relationship, emergency_contact or parent_phone,
+            ),
+        )
+
+    if profile_image_path and old_profile_image and old_profile_image != profile_image_path:
+        _remove_student_profile_image_file(old_profile_image)
+
+    return True, None
+
+
 def _mask_email_for_display(email):
     """Partially hide email for parent reset hints (e.g. j***n@school.com)."""
     em = (email or '').strip().lower()
@@ -10742,24 +10990,29 @@ def _parent_dashboard_spotlight_student(
         return None
 
     has_img_col = False
+    has_verified_col = False
     try:
         cursor.execute("SHOW COLUMNS FROM students LIKE 'profile_image'")
         has_img_col = bool(cursor.fetchone())
+        cursor.execute("SHOW COLUMNS FROM students LIKE 'parent_info_verified'")
+        has_verified_col = bool(cursor.fetchone())
     except Exception:
         has_img_col = False
+        has_verified_col = False
 
+    verified_sel = ', parent_info_verified' if has_verified_col else ', 0 AS parent_info_verified'
     if has_img_col:
         cursor.execute(
-            """
-            SELECT student_id, full_name, current_grade, gender, date_of_birth, status, profile_image
+            f"""
+            SELECT student_id, full_name, current_grade, gender, date_of_birth, status, profile_image{verified_sel}
             FROM students WHERE student_id = %s LIMIT 1
             """,
             (target_sid,),
         )
     else:
         cursor.execute(
-            """
-            SELECT student_id, full_name, current_grade, gender, date_of_birth, status
+            f"""
+            SELECT student_id, full_name, current_grade, gender, date_of_birth, status{verified_sel}
             FROM students WHERE student_id = %s LIMIT 1
             """,
             (target_sid,),
@@ -10789,6 +11042,7 @@ def _parent_dashboard_spotlight_student(
         'date_of_birth_formatted': dob_str,
         'profile_image': prof or None,
         'initials': _student_display_initials(full_name),
+        'parent_info_verified': bool(int(srow.get('parent_info_verified') or 0)),
     }
 
 
@@ -12892,11 +13146,12 @@ def parent_forgot_password():
 @app.route('/parent/portal-setup', methods=['GET', 'POST'])
 @app.route('/dashboard/parent/portal-setup', methods=['GET', 'POST'])
 def parent_portal_setup():
-    """First-time parent portal: admission ID → verify child DOB → email + password (creates users row)."""
+    """First-time parent portal: admission ID → review student info → email + password (creates users row)."""
     admission_prefill = (request.args.get('admission') or '').strip()
 
     if request.method == 'POST':
         action = (request.form.get('setup_action') or '').strip()
+        error = None
         connection = get_db_connection()
         if not connection:
             flash('Database connection error. Please try again later.', 'error')
@@ -12917,7 +13172,7 @@ def parent_portal_setup():
                         else:
                             if _fetch_parent_portal_user(cursor, raw):
                                 session.pop('parent_portal_student_id', None)
-                                session.pop('parent_portal_dob_ok', None)
+                                session.pop('parent_portal_student_info_ok', None)
                                 flash(
                                     'A parent portal account already exists for this admission. Sign in with your admission ID and password, or use Forgot password.',
                                     'info',
@@ -12925,40 +13180,30 @@ def parent_portal_setup():
                                 return redirect(url_for('login', role='parent', admission=row.get('student_id') or ak))
                             canonical_sid = (row.get('student_id') or ak).strip()
                             session['parent_portal_student_id'] = canonical_sid
-                            session.pop('parent_portal_dob_ok', None)
+                            session.pop('parent_portal_student_info_ok', None)
                             return redirect(url_for('parent_portal_setup'))
-                elif action == 'dob':
+                elif action == 'student_info':
                     sid = session.get('parent_portal_student_id')
                     if not sid:
                         error = 'Session expired. Enter the admission ID again.'
                     else:
-                        dob_in = _parse_dob_submitted(request.form.get('date_of_birth'))
-                        if dob_in is None:
-                            error = 'Enter a valid date of birth.'
+                        ok, err = _apply_parent_verified_student_info(
+                            cursor,
+                            sid,
+                            request.form,
+                            profile_image_file=request.files.get('profile_image'),
+                            require_dob_match=True,
+                        )
+                        if not ok:
+                            error = err
                         else:
-                            row = _fetch_student_parent_by_admission(cursor, sid)
-                            if not row:
-                                error = 'Record not found. Start again with the admission ID.'
-                                session.pop('parent_portal_student_id', None)
-                                session.pop('parent_portal_dob_ok', None)
-                            else:
-                                db_dob = row.get('date_of_birth')
-                                if db_dob is None:
-                                    error = 'Date of birth is not on file for this student. Please contact the school.'
-                                else:
-                                    if hasattr(db_dob, 'date'):
-                                        db_dob = db_dob.date()
-                                    if dob_in != db_dob:
-                                        error = (
-                                            'That date of birth does not match our records. Try again or contact the school.'
-                                        )
-                                    else:
-                                        session['parent_portal_dob_ok'] = '1'
-                                        return redirect(url_for('parent_portal_setup'))
+                            connection.commit()
+                            session['parent_portal_student_info_ok'] = '1'
+                            return redirect(url_for('parent_portal_setup'))
                 elif action == 'account':
                     sid = session.get('parent_portal_student_id')
-                    if not sid or session.get('parent_portal_dob_ok') != '1':
-                        error = 'Session expired or date of birth not verified. Start again from the admission step.'
+                    if not sid or session.get('parent_portal_student_info_ok') != '1':
+                        error = 'Session expired or student information not verified. Start again from the admission step.'
                     else:
                         email = normalize_login_email(request.form.get('email', ''))
                         pw = request.form.get('new_password', '')
@@ -12974,10 +13219,10 @@ def parent_portal_setup():
                             if not row:
                                 error = 'Record not found. Start again with the admission ID.'
                                 session.pop('parent_portal_student_id', None)
-                                session.pop('parent_portal_dob_ok', None)
+                                session.pop('parent_portal_student_info_ok', None)
                             elif _fetch_parent_portal_user(cursor, sid):
                                 session.pop('parent_portal_student_id', None)
-                                session.pop('parent_portal_dob_ok', None)
+                                session.pop('parent_portal_student_info_ok', None)
                                 flash('An account already exists for this admission. Please sign in.', 'info')
                                 return redirect(url_for('login', role='parent', admission=sid))
                             else:
@@ -13009,7 +13254,7 @@ def parent_portal_setup():
                                     error = 'Could not create your account. Please try again or contact the school.'
                                 else:
                                     session.pop('parent_portal_student_id', None)
-                                    session.pop('parent_portal_dob_ok', None)
+                                    session.pop('parent_portal_student_info_ok', None)
                                     flash(
                                         'Your parent portal account is ready. Sign in with your child\'s admission ID and the password you chose.',
                                         'success',
@@ -13028,8 +13273,23 @@ def parent_portal_setup():
             return redirect(url_for('parent_portal_setup'))
 
     student_id_sess = session.get('parent_portal_student_id')
-    dob_ok = session.get('parent_portal_dob_ok') == '1'
-    if student_id_sess and dob_ok:
+    student_info_ok = session.get('parent_portal_student_info_ok') == '1'
+    setup_student = None
+    if student_id_sess and not student_info_ok:
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    setup_student = _fetch_student_parent_setup_details(cursor, student_id_sess)
+            except Exception as e:
+                print(f"parent_portal_setup load student: {e}")
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    if student_id_sess and student_info_ok:
         step = 3
     elif student_id_sess:
         step = 2
@@ -13041,7 +13301,104 @@ def parent_portal_setup():
         step=step,
         admission_prefill=admission_prefill,
         student_id_display=student_id_sess or '',
+        setup_student=setup_student,
     )
+
+
+@app.route('/parent/verify-student-info', methods=['GET', 'POST'])
+@app.route('/dashboard/parent/verify-student-info', methods=['GET', 'POST'])
+@login_required
+def parent_verify_student_info():
+    """Logged-in parents who registered without the full setup wizard must review student details once."""
+    user_role = (session.get('role') or '').lower()
+    if user_role != 'parent':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error. Please try again later.', 'error')
+        return redirect(parent_dashboard_path())
+
+    user_id = session.get('user_id')
+    try:
+        with connection.cursor() as cursor:
+            sid = _parent_portal_user_student_id(cursor, user_id)
+            if not sid:
+                flash('No student is linked to your parent account. Contact the school.', 'error')
+                return redirect(parent_dashboard_path())
+            if _student_parent_info_is_verified(cursor, sid):
+                return redirect(parent_dashboard_path())
+
+            if request.method == 'POST':
+                ok, err = _apply_parent_verified_student_info(
+                    cursor,
+                    sid,
+                    request.form,
+                    profile_image_file=request.files.get('profile_image'),
+                    require_dob_match=True,
+                )
+                if not ok:
+                    flash(err, 'error')
+                else:
+                    connection.commit()
+                    flash('Student information verified. Welcome to your parent portal.', 'success')
+                    return redirect(parent_dashboard_path())
+
+            setup_student = _fetch_student_parent_setup_details(cursor, sid)
+    except Exception as e:
+        print(f"parent_verify_student_info: {e}")
+        flash('Could not load student information. Please try again.', 'error')
+        return redirect(parent_dashboard_path())
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+    if not setup_student:
+        flash('Student record not found. Contact the school.', 'error')
+        return redirect(parent_dashboard_path())
+
+    return render_template(
+        'parent_verify_student_info.html',
+        setup_student=setup_student,
+        student_id_display=sid,
+    )
+
+
+@app.before_request
+def _parent_require_verified_student_info():
+    """Parents must complete student information review before using the portal."""
+    if request.method == 'OPTIONS':
+        return None
+    if (session.get('role') or '').lower() != 'parent':
+        return None
+    path = (request.path or '').rstrip('/') or '/'
+    if path.endswith('/verify-student-info') or path.endswith('/portal-setup') or path.endswith('portal-setup'):
+        return None
+    if not (
+        path == '/parent'
+        or path.startswith('/parent/')
+        or path == '/dashboard/parent'
+        or path.startswith('/dashboard/parent/')
+    ):
+        return None
+    connection = get_db_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            if _parent_requires_student_info_verification(cursor, session.get('user_id')):
+                return redirect(parent_dashboard_path('verify-student-info'))
+    except Exception as e:
+        print(f"_parent_require_verified_student_info: {e}")
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+    return None
 
 
 @app.route('/login/parent-register', methods=['POST'])
@@ -13151,7 +13508,7 @@ def login_parent_register():
         session['full_name'] = parent_name
         session['role'] = 'parent'
         flash(f'Welcome, {parent_name}! Your parent portal is ready.', 'success')
-        return redirect(parent_dashboard_path())
+        return redirect(parent_dashboard_path('verify-student-info'))
     finally:
         try:
             connection.close()
@@ -13336,6 +13693,8 @@ def login():
                         session['full_name'] = user['full_name']
                         session['role'] = user['role']
                         flash(f'Welcome back, {user["full_name"]}!', 'success')
+                        if _parent_requires_student_info_verification(cursor, user['id']):
+                            return redirect(parent_dashboard_path('verify-student-info'))
                         return redirect(parent_dashboard_path())
                     else:
                         cursor.execute(

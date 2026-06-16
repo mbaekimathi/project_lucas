@@ -1,0 +1,237 @@
+{% set st = setup_student or {} %}
+{% set polished = polished|default(false) %}
+
+<div class="parent-student-info-fields space-y-6 sm:space-y-8 {% if polished %}parent-student-info-fields--polished{% endif %}">
+
+    <!-- Student information -->
+    <section class="{% if polished %}parent-info-section rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden{% endif %}">
+        {% if polished %}
+        <div class="parent-info-section__head flex items-center gap-3 px-5 sm:px-6 py-4 border-b border-white/10 bg-white/[0.02]">
+            <span class="parent-info-section__icon bg-gradient-to-br from-sky-500 to-blue-600"><i class="fas fa-user-graduate" aria-hidden="true"></i></span>
+            <div>
+                <h3 class="text-sm font-bold text-white m-0">Student information</h3>
+                <p class="text-xs text-white/45 m-0 mt-0.5">Personal, academic, and sponsorship details</p>
+            </div>
+        </div>
+        <div class="px-5 sm:px-6 py-5 sm:py-6">
+        {% else %}
+        <div>
+            <p class="text-xs font-bold uppercase tracking-wider text-white/45 mb-4">Student information</p>
+        {% endif %}
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="sm:col-span-2">
+                <label for="psi_full_name">Full name <span class="text-red-400">*</span></label>
+                <input type="text" id="psi_full_name" name="full_name" required maxlength="255"
+                       value="{{ st.full_name|default('', true)|e }}"
+                       autocomplete="name" placeholder="Student full name">
+            </div>
+            <div>
+                <label for="psi_dob">Date of birth <span class="text-red-400">*</span></label>
+                <input type="date" id="psi_dob" name="date_of_birth" required
+                       value="{{ st.date_of_birth_input|default('', true)|e }}"
+                       autocomplete="bday">
+                <p class="mt-1.5 text-xs text-white/40 flex items-start gap-1.5">
+                    <i class="fas fa-info-circle mt-0.5 shrink-0 opacity-60" aria-hidden="true"></i>
+                    <span>Must match the date on file to verify your identity.</span>
+                </p>
+            </div>
+            <div>
+                <label for="psi_gender">Gender</label>
+                <select id="psi_gender" name="gender">
+                    <option value="">Select gender</option>
+                    {% for g in ['Male', 'Female', 'Other', 'Prefer not to say'] %}
+                    <option value="{{ g }}" {% if (st.gender or '') == g %}selected{% endif %}>{{ g }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="psi_grade">Academic level</label>
+                <select id="psi_grade" name="current_grade">
+                    <option value="">Select academic level</option>
+                    {% for level in academic_levels %}
+                    <option value="{{ level.level_name }}" {% if (st.current_grade or '') == level.level_name %}selected{% endif %}>
+                        {{ level.level_name }}{% if level.level_description %} — {{ level.level_description }}{% endif %}
+                    </option>
+                    {% endfor %}
+                    {% if st.current_grade and st.current_grade not in (academic_levels|map(attribute='level_name')|list) %}
+                    <option value="{{ st.current_grade }}" selected>{{ st.current_grade }}</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div>
+                <label for="psi_previous_school">Previous school</label>
+                <input type="text" id="psi_previous_school" name="previous_school" maxlength="255"
+                       value="{{ st.previous_school|default('', true)|e }}"
+                       placeholder="Name of previous school">
+            </div>
+            <div>
+                <label for="psi_assessment_number">Assessment number</label>
+                <input type="text" id="psi_assessment_number" name="assessment_number" maxlength="100"
+                       value="{{ st.assessment_number|default('', true)|e }}"
+                       placeholder="If applicable">
+            </div>
+            <div class="sm:col-span-2">
+                <label for="psi_category">Student category <span class="text-red-400">*</span></label>
+                <select id="psi_category" name="student_category" required onchange="window._parentSetupToggleSponsor && window._parentSetupToggleSponsor(this.value)">
+                    <option value="">Select category</option>
+                    {% for cat, label in [('self sponsored', 'Self sponsored'), ('sponsored', 'Sponsored'), ('both', 'Both')] %}
+                    <option value="{{ cat }}" {% if (st.student_category or '')|lower == cat %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div id="psi_sponsor_fields" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-4 sm:p-5 {% if (st.student_category or '')|lower not in ('sponsored', 'both') %}hidden{% endif %}">
+            <p class="sm:col-span-2 text-xs font-semibold text-violet-200/90 m-0 flex items-center gap-2">
+                <i class="fas fa-hand-holding-heart" aria-hidden="true"></i> Sponsor details
+            </p>
+            <div>
+                <label for="psi_sponsor_name">Sponsor name <span class="text-red-400">*</span></label>
+                <input type="text" id="psi_sponsor_name" name="sponsor_name" maxlength="255"
+                       value="{{ st.sponsor_name|default('', true)|e }}">
+            </div>
+            <div>
+                <label for="psi_sponsor_phone">Sponsor phone</label>
+                <input type="tel" id="psi_sponsor_phone" name="sponsor_phone" maxlength="50"
+                       value="{{ st.sponsor_phone|default('', true)|e }}">
+            </div>
+            <div class="sm:col-span-2">
+                <label for="psi_sponsor_email">Sponsor email</label>
+                <input type="email" id="psi_sponsor_email" name="sponsor_email" maxlength="255"
+                       value="{{ st.sponsor_email|default('', true)|e }}">
+            </div>
+        </div>
+
+        <div class="mt-5 grid grid-cols-1 gap-4">
+            <div>
+                <label for="psi_address">Home address <span class="text-red-400">*</span></label>
+                <textarea id="psi_address" name="address" rows="3" required placeholder="Street, town, county…">{{ st.address|default('', true) }}</textarea>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="psi_medical">Medical information</label>
+                    <textarea id="psi_medical" name="medical_info" rows="3" placeholder="Allergies, conditions, medications…">{{ st.medical_info|default('', true) }}</textarea>
+                </div>
+                <div>
+                    <label for="psi_special_needs">Special needs</label>
+                    <textarea id="psi_special_needs" name="special_needs" rows="3" placeholder="Learning or support needs…">{{ st.special_needs|default('', true) }}</textarea>
+                </div>
+            </div>
+            <div class="parent-info-photo-upload">
+                <label for="psi_profile_image">Profile photo <span class="text-xs font-normal text-white/40">(optional)</span></label>
+                <div class="parent-info-photo-upload__box mt-2 flex flex-col sm:flex-row sm:items-center gap-4 rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-4">
+                    {% if st.profile_image_url %}
+                    <img src="{{ st.profile_image_url }}" alt="" class="w-16 h-16 rounded-xl object-cover border-2 border-white/20 shadow-md shrink-0">
+                    {% else %}
+                    <span class="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-white text-lg font-bold shrink-0" aria-hidden="true">
+                        {{ (st.full_name or 'ST')[:1]|upper }}
+                    </span>
+                    {% endif %}
+                    <div class="min-w-0 flex-1">
+                        <label for="psi_profile_image" class="!mb-0 inline-flex items-center gap-2 cursor-pointer rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 px-4 py-2.5 text-sm font-semibold text-white/90 transition-colors">
+                            <i class="fas fa-camera text-white/60" aria-hidden="true"></i>
+                            <span>{% if st.profile_image_url %}Replace photo{% else %}Upload photo{% endif %}</span>
+                        </label>
+                        <input type="file" id="psi_profile_image" name="profile_image" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp" class="sr-only">
+                        <p class="mt-2 text-xs text-white/40 m-0">PNG, JPG or GIF. A clear face photo helps staff identify your child.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if polished %}</div>{% else %}</div>{% endif %}
+    </section>
+
+    <!-- Parent / guardian -->
+    <section class="{% if polished %}parent-info-section rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden{% else %}border-t border-white/10 pt-6{% endif %}">
+        {% if polished %}
+        <div class="parent-info-section__head flex items-center gap-3 px-5 sm:px-6 py-4 border-b border-white/10 bg-white/[0.02]">
+            <span class="parent-info-section__icon bg-gradient-to-br from-emerald-500 to-teal-600"><i class="fas fa-users" aria-hidden="true"></i></span>
+            <div>
+                <h3 class="text-sm font-bold text-white m-0">Parent / guardian</h3>
+                <p class="text-xs text-white/45 m-0 mt-0.5">Primary contact on your child&rsquo;s file</p>
+            </div>
+        </div>
+        <div class="px-5 sm:px-6 py-5 sm:py-6">
+        {% else %}
+        <p class="text-xs font-bold uppercase tracking-wider text-white/45 mb-4">Parent / guardian</p>
+        {% endif %}
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label for="psi_parent_name">Full name <span class="text-red-400">*</span></label>
+                <input type="text" id="psi_parent_name" name="parent_name" required maxlength="255"
+                       value="{{ st.parent_name|default('', true)|e }}" autocomplete="name" placeholder="Your full name">
+            </div>
+            <div>
+                <label for="psi_relationship">Relationship <span class="text-red-400">*</span></label>
+                <select id="psi_relationship" name="relationship" required>
+                    <option value="">Select relationship</option>
+                    {% for rel in ['Father', 'Mother', 'Guardian', 'Other'] %}
+                    <option value="{{ rel }}" {% if (st.relationship or '') == rel %}selected{% endif %}>{{ rel }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="psi_parent_phone">Phone <span class="text-red-400">*</span></label>
+                <input type="tel" id="psi_parent_phone" name="parent_phone" required maxlength="50"
+                       value="{{ st.parent_phone|default('', true)|e }}" autocomplete="tel" placeholder="e.g. 07…">
+            </div>
+            <div>
+                <label for="psi_emergency">Emergency contact</label>
+                <input type="text" id="psi_emergency" name="emergency_contact" maxlength="255"
+                       value="{{ st.emergency_contact|default('', true)|e }}"
+                       placeholder="Name and phone">
+            </div>
+        </div>
+
+        {% if polished %}</div>{% endif %}
+    </section>
+
+    <!-- Confirmation -->
+    <label class="parent-info-confirm flex items-start gap-4 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.07] px-5 py-4 sm:px-6 sm:py-5 cursor-pointer transition-colors hover:bg-emerald-500/[0.1]">
+        <input type="checkbox" name="confirm_accurate" value="1" required class="mt-1 w-5 h-5 rounded border-white/30 bg-white/5 text-emerald-500 focus:ring-emerald-500/40 shrink-0">
+        <span class="text-sm text-white/85 leading-relaxed">
+            <strong class="block text-white font-semibold mb-1">I confirm this information is accurate</strong>
+            All details above are correct and up to date for my child&rsquo;s school records.
+        </span>
+    </label>
+</div>
+
+<script>
+window._parentSetupToggleSponsor = function (val) {
+    var box = document.getElementById('psi_sponsor_fields');
+    var name = document.getElementById('psi_sponsor_name');
+    if (!box) return;
+    var show = val === 'sponsored' || val === 'both';
+    box.classList.toggle('hidden', !show);
+    if (name) name.required = show;
+};
+document.addEventListener('DOMContentLoaded', function () {
+    var sel = document.getElementById('psi_category');
+    if (sel) window._parentSetupToggleSponsor(sel.value);
+
+    var fileInput = document.getElementById('psi_profile_image');
+    if (fileInput) {
+        fileInput.addEventListener('change', function () {
+            var box = fileInput.closest('.parent-info-photo-upload__box');
+            if (!box || !fileInput.files || !fileInput.files[0]) return;
+            var file = fileInput.files[0];
+            if (!file.type.startsWith('image/')) return;
+            var img = box.querySelector('img');
+            var placeholder = box.querySelector('span.w-16');
+            var url = URL.createObjectURL(file);
+            if (img) {
+                img.src = url;
+            } else if (placeholder) {
+                var newImg = document.createElement('img');
+                newImg.src = url;
+                newImg.alt = '';
+                newImg.className = 'w-16 h-16 rounded-xl object-cover border-2 border-white/20 shadow-md shrink-0';
+                placeholder.replaceWith(newImg);
+            }
+        });
+    }
+});
+</script>

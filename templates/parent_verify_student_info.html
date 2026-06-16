@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Verify student information — {{ school_settings.school_name or 'School portal' }}{% endblock %}
+{% block body_class %}public-site cbc-saas cbc-saas--premium login-page-public parent-verify-page{% endblock %}
+{% block content %}
+{% set st = setup_student or {} %}
+{% set student_name = st.full_name|default('Your child', true) %}
+
+<div class="cbc-premium-page parent-verify-page__wrap py-8 md:py-12 px-4 sm:px-6">
+    <div class="parent-verify-page__inner max-w-5xl mx-auto w-full min-w-0">
+
+        <!-- Hero: student identity + progress -->
+        <header class="parent-verify-hero rounded-2xl md:rounded-3xl overflow-hidden border border-white/10 shadow-2xl mb-6 md:mb-8">
+            <div class="parent-verify-hero__bg" aria-hidden="true"></div>
+            <div class="relative z-10 p-6 sm:p-8 md:p-10">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                    <div class="flex items-start sm:items-center gap-4 sm:gap-5 min-w-0">
+                        {% if st.profile_image_url %}
+                        <img src="{{ st.profile_image_url }}" alt="" class="parent-verify-hero__avatar object-cover shrink-0">
+                        {% else %}
+                        <span class="parent-verify-hero__avatar parent-verify-hero__avatar--initials shrink-0" aria-hidden="true">{% for word in student_name.split()[:2] %}{% if word %}{{ word[0]|upper }}{% endif %}{% endfor %}</span>
+                        {% endif %}
+                        <div class="min-w-0">
+                            <p class="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-orange-200/90">Parent portal setup</p>
+                            <h1 class="mt-1 text-xl sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight break-words">
+                                Confirm {{ student_name }}&rsquo;s details
+                            </h1>
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                <span class="inline-flex items-center gap-1.5 rounded-lg bg-black/30 border border-white/15 px-2.5 py-1 text-xs font-mono font-semibold text-white/90">
+                                    <i class="fas fa-id-card text-[10px] text-orange-300/90" aria-hidden="true"></i>
+                                    {{ student_id_display }}
+                                </span>
+                                <span class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/20 border border-amber-400/30 px-2.5 py-1 text-[11px] font-bold text-amber-100">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" aria-hidden="true"></span>
+                                    Verification pending
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <ol class="parent-verify-steps flex flex-wrap gap-2 sm:gap-3 list-none p-0 m-0 lg:max-w-xs xl:max-w-sm" aria-label="Setup progress">
+                        <li class="parent-verify-steps__item parent-verify-steps__item--done">
+                            <span class="parent-verify-steps__dot" aria-hidden="true"><i class="fas fa-check text-[9px]"></i></span>
+                            <span>Account created</span>
+                        </li>
+                        <li class="parent-verify-steps__item parent-verify-steps__item--current" aria-current="step">
+                            <span class="parent-verify-steps__dot" aria-hidden="true">2</span>
+                            <span>Verify student info</span>
+                        </li>
+                        <li class="parent-verify-steps__item">
+                            <span class="parent-verify-steps__dot" aria-hidden="true">3</span>
+                            <span>Portal access</span>
+                        </li>
+                    </ol>
+                </div>
+                <p class="mt-5 text-sm text-white/70 leading-relaxed max-w-3xl">
+                    Review every field below and correct anything that is missing or outdated. When you save, your child&rsquo;s profile will show as
+                    <strong class="text-emerald-300 font-semibold">verified</strong> on your parent dashboard.
+                </p>
+            </div>
+        </header>
+
+        <!-- Tips strip -->
+        <ul class="parent-verify-tips grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 md:mb-8 list-none p-0 m-0" role="list">
+            <li class="parent-verify-tips__card">
+                <i class="fas fa-pen-to-square text-sky-400" aria-hidden="true"></i>
+                <span>Update any incorrect details before submitting.</span>
+            </li>
+            <li class="parent-verify-tips__card">
+                <i class="fas fa-calendar-check text-violet-400" aria-hidden="true"></i>
+                <span>Date of birth must match school records.</span>
+            </li>
+            <li class="parent-verify-tips__card">
+                <i class="fas fa-shield-check text-emerald-400" aria-hidden="true"></i>
+                <span>Verified profiles unlock full portal access.</span>
+            </li>
+        </ul>
+
+        <!-- Form card -->
+        <div class="cbc-premium-surface parent-verify-card rounded-2xl md:rounded-3xl border border-white/10 shadow-xl overflow-hidden">
+            <div class="parent-verify-card__header px-6 sm:px-8 md:px-10 py-5 sm:py-6 border-b border-white/10">
+                <h2 class="text-lg sm:text-xl font-extrabold text-white m-0">Student &amp; guardian record</h2>
+                <p class="mt-1 text-sm text-white/50 m-0">Fields marked with <span class="text-red-400">*</span> are required.</p>
+            </div>
+
+            <div class="px-6 sm:px-8 md:px-10 py-6 sm:py-8">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="space-y-3 mb-6" role="status" aria-live="polite">
+                            {% for category, message in messages %}
+                            <div class="rounded-xl border px-4 py-3 text-sm font-medium {% if category == 'error' %}border-red-400/40 bg-red-500/10 text-red-100{% elif category == 'success' %}border-emerald-400/40 bg-emerald-500/10 text-emerald-100{% else %}border-sky-400/40 bg-sky-500/10 text-sky-100{% endif %}">
+                                {{ message }}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                <form method="post" action="{{ url_for('parent_verify_student_info') }}" enctype="multipart/form-data" class="cbc-premium-form parent-verify-form" id="parent_verify_form" data-skip-global-validate="true">
+                    {% with polished=true %}
+                    {% include 'includes/parent_student_info_fields.html' %}
+                    {% endwith %}
+                </form>
+            </div>
+
+            <div class="parent-verify-card__footer px-6 sm:px-8 md:px-10 py-5 sm:py-6 border-t border-white/10 bg-black/20">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <p class="text-xs text-white/45 m-0 max-w-md leading-relaxed">
+                        <i class="fas fa-lock text-[10px] mr-1 opacity-70" aria-hidden="true"></i>
+                        Your updates are saved securely to {{ school_settings.school_name or 'the school' }}&rsquo;s records.
+                    </p>
+                    <button type="submit" form="parent_verify_form" class="cbc-cta-red justify-center py-3.5 px-8 text-base font-bold shadow-lg shadow-black/25 shrink-0 w-full sm:w-auto min-h-[48px]">
+                        <i class="fas fa-check-circle mr-2 opacity-90" aria-hidden="true"></i>
+                        Save &amp; verify information
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <p class="mt-8 text-center text-sm text-white/40">
+            Need help? Contact the school office with admission ID <strong class="text-white/60 font-mono">{{ student_id_display }}</strong>.
+        </p>
+    </div>
+</div>
+{% endblock %}

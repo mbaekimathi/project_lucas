@@ -114,7 +114,7 @@
             <form method="POST" action="{{ url_for('login_parent_register') }}" id="login_parent_register_form" class="cbc-premium-form mt-6 hidden space-y-4 border-t border-white/10 pt-6" data-skip-global-validate="true" novalidate>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <p class="text-sm font-semibold text-white/90">Create your parent portal</p>
-                <p class="text-xs text-white/55">Admission <strong class="text-white/80" id="parent_reg_admission_display"></strong> — confirm your child’s date of birth, then set email and password.</p>
+                <p class="text-xs text-white/55">Admission <strong class="text-white/80" id="parent_reg_admission_display"></strong> — confirm your child’s date of birth, then you’ll review their full student record before finishing registration.</p>
                 <input type="hidden" name="admission" id="parent_reg_admission_hidden" value="">
                 <div>
                     <label for="parent_reg_dob">Child’s date of birth</label>

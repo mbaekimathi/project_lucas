@@ -71,6 +71,11 @@
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mt-1">
                 {% if stu %}{{ stu.full_name }}{% else %}Dashboard{% endif %}
             </h1>
+            {% if stu and stu.parent_info_verified %}
+            <p class="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-3 py-1 text-xs font-bold">
+                <i class="fas fa-check-circle" aria-hidden="true"></i> Student information verified
+            </p>
+            {% endif %}
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {% if current_term_name %}Current term: {{ current_term_name }}{% else %}Overview of your child's school progress{% endif %}
             </p>
@@ -102,6 +107,11 @@
                     <p class="text-[10px] font-bold uppercase tracking-wider text-orange-100/90">Student profile</p>
                     <p class="font-bold text-base mt-0.5">{{ stu.full_name }}</p>
                     <p class="text-xs text-orange-100 font-mono">{{ stu.student_id }}</p>
+                    {% if stu.parent_info_verified %}
+                    <p class="mt-2 inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                        <i class="fas fa-check-circle text-emerald-200"></i> Verified
+                    </p>
+                    {% endif %}
                 </div>
                 <dl class="px-4 py-3 space-y-2 text-sm border-b border-gray-100 dark:border-gray-700">
                     <div class="flex justify-between gap-2">

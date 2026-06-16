@@ -8,7 +8,7 @@
             <p class="text-xs font-bold uppercase tracking-[0.2em] text-white/70">First-time setup</p>
             <h1 class="mt-4 text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight">Activate your parent portal</h1>
             <p class="mt-4 text-white/75 text-sm leading-relaxed max-w-md">
-                Use your child’s admission ID from the school confirmation, confirm their date of birth, then set the email and password you will use to sign in.
+                Use your child’s admission ID from the school confirmation, review and update their full student record, then set the email and password you will use to sign in.
             </p>
         </aside>
         <div class="cbc-premium-surface login-auth-card p-8 md:p-10">
@@ -187,15 +187,12 @@
             })();
             </script>
             {% elif step == 2 %}
-            <h2 class="text-xl font-extrabold text-white">Confirm date of birth</h2>
-            <p class="mt-1 text-sm text-white/55">Admission ID on file: <strong class="text-white">{{ student_id_display }}</strong></p>
-            <form method="post" action="{{ url_for('parent_portal_setup') }}" class="cbc-premium-form mt-6 space-y-4" data-skip-global-validate="true">
-                <input type="hidden" name="setup_action" value="dob">
-                <div>
-                    <label for="date_of_birth">Child’s date of birth</label>
-                    <input type="date" id="date_of_birth" name="date_of_birth" required autocomplete="bday">
-                </div>
-                <button type="submit" class="w-full cbc-cta-red justify-center py-3.5">Verify</button>
+            <h2 class="text-xl font-extrabold text-white">Review student information</h2>
+            <p class="mt-1 text-sm text-white/55">Admission ID: <strong class="text-white">{{ student_id_display }}</strong>. Update any details that are missing or incorrect, then confirm to continue.</p>
+            <form method="post" action="{{ url_for('parent_portal_setup') }}" enctype="multipart/form-data" class="cbc-premium-form mt-6 space-y-4" data-skip-global-validate="true">
+                <input type="hidden" name="setup_action" value="student_info">
+                {% include 'includes/parent_student_info_fields.html' %}
+                <button type="submit" class="w-full cbc-cta-red justify-center py-3.5">Save &amp; verify information</button>
             </form>
             {% else %}
             <h2 class="text-xl font-extrabold text-white">Email and password</h2>
