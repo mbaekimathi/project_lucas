@@ -1,0 +1,257 @@
+{# Student fingerprint enrollment — guided wizard on finger select.
+   Params: mode ('live'|'queue'), student_id (live only), hidden_input_id (queue for admission) #}
+{% set _fp_mode = fingerprint_mode|default('live') %}
+{% set _fp_student_id = fingerprint_student_id|default('') %}
+{% set _fp_hidden_id = fingerprint_hidden_input_id|default('admission_fingerprints_json') %}
+<style>
+  .fp-wizard-finger { fill: #e2e8f0; stroke: #94a3b8; stroke-width: 1.5; transition: fill 0.25s, stroke 0.25s; }
+  .dark .fp-wizard-finger { fill: #334155; stroke: #64748b; }
+  .fp-wizard-finger--active { fill: #8b5cf6; stroke: #6d28d9; stroke-width: 2.5; }
+  .dark .fp-wizard-finger--active { fill: #a78bfa; stroke: #c4b5fd; }
+  .fp-wizard-palm { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.5; }
+  .dark .fp-wizard-palm { fill: #1e293b; stroke: #64748b; }
+  @keyframes fp-scan-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.85; }
+    50% { transform: scale(1.06); opacity: 1; }
+  }
+  .fp-scan-pulse { animation: fp-scan-pulse 1.4s ease-in-out infinite; }
+</style>
+<div class="student-fingerprint-enrollment rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/40 p-4 sm:p-5"
+     x-data="studentFingerprintEnrollment({
+         mode: {{ _fp_mode|tojson }},
+         studentId: {{ _fp_student_id|tojson }},
+         hiddenInputId: {{ _fp_hidden_id|tojson }},
+         apiPrefix: typeof _studentEmpPrefix !== 'undefined' ? _studentEmpPrefix : ''
+     })"
+     x-init="init()">
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+        <div class="min-w-0">
+            <h4 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fas fa-fingerprint text-violet-600 dark:text-violet-400"></i>
+                Fingerprint enrollment
+            </h4>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                Select a finger — the scanner listens automatically when you place it on the sensor. Run
+                <code class="text-[11px] bg-slate-200/80 dark:bg-slate-800 px-1 rounded">python fingerprint_local_service.py</code>
+                on this PC with the USB scanner connected.
+            </p>
+        </div>
+        <span class="inline-flex items-center gap-1.5 shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full"
+              :class="scannerReady ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200'">
+            <span class="w-2 h-2 rounded-full" :class="scannerReady ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+            <span x-text="scannerReady ? 'Scanner ready' : 'Scanner offline'"></span>
+        </span>
+    </div>
+
+    <template x-if="mode === 'queue'">
+        <input type="hidden" name="fingerprints_json" :id="hiddenInputId" :value="queuedJson()">
+    </template>
+
+    <div class="mb-4 max-w-md">
+        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Finger to register</label>
+        <select x-model="fingerCode"
+                @change="onFingerSelected()"
+                name="fingerprint_finger_code"
+                class="w-full modern-input px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white min-h-[44px] cursor-pointer">
+            <option value="">Select finger to start…</option>
+            <option value="right_thumb">Right thumb</option>
+            <option value="right_index">Right index</option>
+            <option value="right_middle">Right middle</option>
+            <option value="right_ring">Right ring</option>
+            <option value="right_little">Right little</option>
+            <option value="left_thumb">Left thumb</option>
+            <option value="left_index">Left index</option>
+            <option value="left_middle">Left middle</option>
+            <option value="left_ring">Left ring</option>
+            <option value="left_little">Left little</option>
+        </select>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">Choosing a finger starts listening — place it on the scanner to register.</p>
+    </div>
+
+    <p x-show="captureMessage && !wizardOpen" x-text="captureMessage" class="text-xs text-emerald-700 dark:text-emerald-300 mb-3"></p>
+
+    <div x-show="enrollments.length > 0">
+        <p class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Enrolled fingers</p>
+        <ul class="space-y-2">
+            <template x-for="item in enrollments" :key="item.key">
+                <li class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5">
+                    <div class="min-w-0">
+                        <p class="text-sm font-semibold text-slate-800 dark:text-slate-100" x-text="item.finger_label || item.finger_code"></p>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                            <span x-text="item.quality_score != null ? ('Quality ' + item.quality_score + '%') : 'Enrolled'"></span>
+                            <span x-show="item.simulated" class="text-amber-600 dark:text-amber-400"> · simulated</span>
+                        </p>
+                    </div>
+                    <button type="button"
+                            @click="removeEnrollment(item)"
+                            class="shrink-0 min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                            title="Remove fingerprint"
+                            aria-label="Remove fingerprint">
+                        <i class="fas fa-trash-alt text-sm"></i>
+                    </button>
+                </li>
+            </template>
+        </ul>
+    </div>
+    <p x-show="enrollments.length === 0" class="text-xs text-slate-400 dark:text-slate-500 italic">No fingerprints registered yet.</p>
+
+    <!-- Guided registration wizard -->
+    <div x-show="wizardOpen"
+         x-cloak
+         class="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-3 sm:p-4"
+         role="dialog"
+         aria-modal="true"
+         :aria-label="'Register ' + (fingerLabel(fingerCode) || 'fingerprint')"
+         @keydown.escape.window="closeWizard(true)">
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeWizard(true)"></div>
+
+        <div class="relative z-[121] w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 shadow-2xl overflow-hidden max-h-[92dvh] flex flex-col"
+             @click.stop>
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-violet-600 to-indigo-600 px-4 sm:px-6 py-4 shrink-0">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0 text-left">
+                        <p class="text-xs font-semibold text-violet-100 uppercase tracking-wider">Fingerprint registration</p>
+                        <h3 class="text-lg font-bold text-white mt-0.5" x-text="fingerLabel(fingerCode) || 'Selected finger'"></h3>
+                    </div>
+                    <button type="button" @click="closeWizard(true)"
+                            class="shrink-0 min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg text-white/90 hover:bg-white/10"
+                            aria-label="Close">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+                <!-- Progress steps -->
+                <div class="flex items-center gap-2 mt-4">
+                    <template x-for="(step, idx) in wizardSteps" :key="step.id">
+                        <div class="flex items-center gap-2 flex-1 min-w-0">
+                            <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors"
+                                 :class="wizardStepIndex() >= idx ? 'bg-white text-violet-700' : 'bg-white/25 text-white'">
+                                <span x-show="wizardStepIndex() > idx"><i class="fas fa-check text-[10px]"></i></span>
+                                <span x-show="wizardStepIndex() <= idx" x-text="idx + 1"></span>
+                            </div>
+                            <span class="text-[10px] sm:text-xs font-medium text-white/90 truncate hidden sm:inline" x-text="step.label"></span>
+                            <div x-show="idx < wizardSteps.length - 1" class="h-0.5 flex-1 bg-white/30 rounded min-w-[8px]">
+                                <div class="h-full bg-white rounded transition-all duration-300"
+                                     :style="'width:' + (wizardStepIndex() > idx ? '100%' : '0%')"></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="p-4 sm:p-6 overflow-y-auto flex-1">
+                <!-- Hand diagram -->
+                <div class="flex justify-center mb-4">
+                    <svg viewBox="0 0 320 200" class="w-full max-w-[280px] h-auto" aria-hidden="true">
+                        <text x="78" y="18" text-anchor="middle" class="fill-slate-500 dark:fill-slate-400" font-size="11" font-weight="600">LEFT HAND</text>
+                        <text x="242" y="18" text-anchor="middle" class="fill-slate-500 dark:fill-slate-400" font-size="11" font-weight="600">RIGHT HAND</text>
+                        <!-- Left palm -->
+                        <ellipse cx="78" cy="118" rx="36" ry="48" class="fp-wizard-palm"/>
+                        <!-- Right palm -->
+                        <ellipse cx="242" cy="118" rx="36" ry="48" class="fp-wizard-palm"/>
+                        <!-- Left fingers (pinky to index, top) -->
+                        <rect x="48" y="28" width="14" height="52" rx="7" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('left_little') }"/>
+                        <rect x="64" y="22" width="14" height="58" rx="7" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('left_ring') }"/>
+                        <rect x="80" y="18" width="14" height="62" rx="7" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('left_middle') }"/>
+                        <rect x="96" y="22" width="14" height="58" rx="7" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('left_index') }"/>
+                        <rect x="28" y="72" width="22" height="40" rx="10" transform="rotate(-35 39 92)" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('left_thumb') }"/>
+                        <!-- Right fingers -->
+                        <rect x="208" y="22" width="14" height="58" rx="7" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('right_index') }"/>
+                        <rect x="224" y="18" width="14" height="62" rx="7" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('right_middle') }"/>
+                        <rect x="240" y="22" width="14" height="58" rx="7" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('right_ring') }"/>
+                        <rect x="256" y="28" width="14" height="52" rx="7" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('right_little') }"/>
+                        <rect x="268" y="72" width="22" height="40" rx="10" transform="rotate(35 279 92)" class="fp-wizard-finger" :class="{ 'fp-wizard-finger--active': isFingerHighlighted('right_thumb') }"/>
+                    </svg>
+                </div>
+
+                <!-- Step: Waiting / scanning -->
+                <div x-show="wizardStep === 'scanning'" class="space-y-4 text-center py-2">
+                    <div class="relative inline-flex items-center justify-center w-24 h-24 rounded-full bg-violet-100 dark:bg-violet-900/50 mx-auto fp-scan-pulse">
+                        <i class="fas fa-fingerprint text-5xl text-violet-600 dark:text-violet-300"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-slate-900 dark:text-white">Place finger on scanner</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed max-w-sm mx-auto">
+                            Rest your <span class="font-semibold text-violet-600 dark:text-violet-300" x-text="fingerLabel(fingerCode)"></span>
+                            flat on the scanner — registration starts as soon as the sensor detects it.
+                        </p>
+                    </div>
+                    <div class="flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <i class="fas fa-spinner fa-spin text-violet-500"></i>
+                        <span x-text="capturing ? 'Listening for finger on sensor…' : 'Starting scanner…'"></span>
+                    </div>
+                    <p x-show="!scannerReady" class="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 max-w-sm mx-auto">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        Scanner offline — run <code class="text-[10px]">python fingerprint_local_service.py</code> first.
+                    </p>
+                </div>
+
+                <!-- Step: Success -->
+                <div x-show="wizardStep === 'success'" class="space-y-4 text-center py-2">
+                    <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-emerald-100 dark:bg-emerald-900/40 mx-auto">
+                        <i class="fas fa-check text-4xl text-emerald-600 dark:text-emerald-400"></i>
+                    </div>
+                    <div>
+                        <p class="text-base font-bold text-emerald-700 dark:text-emerald-300">Registration successful!</p>
+                        <p class="text-sm text-slate-600 dark:text-slate-300 mt-1" x-text="fingerLabel(fingerCode) + ' has been saved.'"></p>
+                        <p x-show="lastQuality != null" class="text-xs text-slate-500 mt-1">
+                            Scan quality: <span class="font-semibold" x-text="lastQuality + '%'"></span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Step: Error -->
+                <div x-show="wizardStep === 'error'" class="space-y-4 text-center py-2">
+                    <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-rose-100 dark:bg-rose-900/40 mx-auto">
+                        <i class="fas fa-times text-4xl text-rose-600 dark:text-rose-400"></i>
+                    </div>
+                    <div>
+                        <p class="text-base font-bold text-rose-700 dark:text-rose-300">Scan not successful</p>
+                        <p class="text-xs text-slate-600 dark:text-slate-300 mt-2 max-w-sm mx-auto" x-text="captureError || 'Please try again with a clean finger.'"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer actions -->
+            <div class="px-4 sm:px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 shrink-0">
+                <template x-if="wizardStep === 'scanning'">
+                    <div class="flex flex-col-reverse sm:flex-row gap-2 w-full sm:w-auto sm:ml-auto">
+                        <button type="button" @click="closeWizard(true)"
+                                class="min-h-[44px] px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200">
+                            Cancel
+                        </button>
+                        <button type="button" disabled
+                                class="min-h-[44px] px-5 py-2.5 text-sm font-semibold rounded-xl bg-violet-400 text-white cursor-wait border-0">
+                            <i class="fas fa-spinner fa-spin mr-1.5"></i>
+                            <span x-text="capturing ? 'Waiting for finger…' : 'Starting…'"></span>
+                        </button>
+                    </div>
+                </template>
+                <template x-if="wizardStep === 'success'">
+                    <div class="flex flex-col-reverse sm:flex-row gap-2 w-full sm:w-auto sm:ml-auto">
+                        <button type="button" @click="registerAnotherFinger()"
+                                class="min-h-[44px] px-4 py-2.5 text-sm font-semibold rounded-xl border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-200">
+                            Register another finger
+                        </button>
+                        <button type="button" @click="closeWizard(true)"
+                                class="min-h-[44px] px-5 py-2.5 text-sm font-semibold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 border-0">
+                            Done
+                        </button>
+                    </div>
+                </template>
+                <template x-if="wizardStep === 'error'">
+                    <div class="flex flex-col-reverse sm:flex-row gap-2 w-full sm:w-auto sm:ml-auto">
+                        <button type="button" @click="closeWizard(true)"
+                                class="min-h-[44px] px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200">
+                            Cancel
+                        </button>
+                        <button type="button" @click="retryWizardScan()"
+                                class="min-h-[44px] px-5 py-2.5 text-sm font-semibold rounded-xl bg-violet-600 text-white hover:bg-violet-700 border-0">
+                            <i class="fas fa-redo mr-1.5"></i> Try again
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>

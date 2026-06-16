@@ -5,6 +5,7 @@
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
 
 {% block extra_head %}
+<script src="{{ url_for('static', filename='js/student_fingerprint_enrollment.js') }}?v=3"></script>
 <style>
   .student-mgmt-table-scroll {
     -webkit-overflow-scrolling: touch;
@@ -17,6 +18,21 @@
       font-size: 1rem;
       min-height: 2.75rem;
     }
+  }
+  .student-mgmt-avatar {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.625rem;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .student-mgmt-avatar--placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0ea5e9, #6366f1);
+    color: #fff;
+    font-size: 0.875rem;
   }
 </style>
 {% endblock %}
@@ -90,6 +106,16 @@
          sortBy: 'registered_desc',
          displayStudents() {
              return this.studentsList;
+         },
+         studentPhotoUrl(student) {
+             if (!student) return '';
+             const url = (student.profile_image_url || '').trim();
+             if (url) return url;
+             let path = (student.profile_image || '').trim().replace(/\\/g, '/');
+             if (!path) return '';
+             if (path.startsWith('/static/')) return path;
+             if (path.toLowerCase().startsWith('static/')) path = path.slice(7);
+             return '/static/' + path.replace(/^\//, '');
          },
          listQueryParams(page) {
              const p = new URLSearchParams();
@@ -185,6 +211,15 @@
              this.studentIdError = '';
              this.viewModalOpen = false;
              this.editModalOpen = true;
+             window.dispatchEvent(new CustomEvent('student-photo-set', {
+                 detail: {
+                     inputId: 'edit-student-profile-image',
+                     url: this.selectedStudent.profile_image_url || '',
+                 },
+             }));
+             window.dispatchEvent(new CustomEvent('student-fingerprint-reload', {
+                 detail: { studentId: this.selectedStudent.student_id },
+             }));
          },
          originalStudentId: null,
          studentIdError: '',
@@ -228,12 +263,28 @@
              
              this.loading = true;
              try {
+                 const formData = new FormData();
+                 const fields = [
+                     'student_id', 'full_name', 'date_of_birth', 'gender', 'current_grade',
+                     'previous_school', 'address', 'medical_info', 'special_needs',
+                     'student_category', 'sponsor_name', 'sponsor_phone', 'sponsor_email',
+                     'status', 'parent_name', 'parent_phone', 'parent_email',
+                     'relationship', 'emergency_contact',
+                 ];
+                 fields.forEach((key) => {
+                     const val = this.selectedStudent[key];
+                     if (val !== null && val !== undefined) {
+                         formData.append(key, val);
+                     }
+                 });
+                 const photoInput = document.getElementById('edit-student-profile-image');
+                 if (photoInput && photoInput.files && photoInput.files[0]) {
+                     formData.append('profile_image', photoInput.files[0]);
+                 }
                  const response = await fetch(`${_studentEmpPrefix}/update-student/${this.originalStudentId}`, {
                      method: 'POST',
-                     headers: {
-                         'Content-Type': 'application/json',
-                     },
-                     body: JSON.stringify(this.selectedStudent)
+                     body: formData,
+                     credentials: 'same-origin',
                  });
                  const data = await response.json();
                  if (data.success) {
@@ -433,9 +484,25 @@
         <template x-for="student in displayStudents()" :key="'mob-' + student.student_id">
             <article class="rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 shadow-sm p-4 sm:p-4">
                 <div class="flex gap-3 justify-between items-start">
+                    <div class="shrink-0">
+                        <img x-show="studentPhotoUrl(student)"
+                             :src="studentPhotoUrl(student)"
+                             :alt="(student.full_name || 'Student') + ' photo'"
+                             class="student-mgmt-avatar border border-slate-200 dark:border-slate-600 shadow-sm"
+                             loading="lazy" decoding="async" width="40" height="40">
+                        <div x-show="!studentPhotoUrl(student)"
+                             class="student-mgmt-avatar student-mgmt-avatar--placeholder border border-slate-200/50 dark:border-slate-600"
+                             aria-hidden="true">
+                            <i class="fas fa-user-graduate"></i>
+                        </div>
+                    </div>
                     <div class="min-w-0 flex-1">
                         <h2 class="text-base font-semibold text-slate-900 dark:text-white leading-snug break-words" x-text="student.full_name || '—'"></h2>
                         <p class="mt-0.5 text-xs font-mono text-slate-500 dark:text-slate-400 tracking-tight" x-text="student.student_id || ''"></p>
+                        <p class="mt-1 text-[10px] text-violet-600 dark:text-violet-400" x-show="student.fingerprint_count > 0">
+                            <i class="fas fa-fingerprint" aria-hidden="true"></i>
+                            <span x-text="student.fingerprint_count + ' finger(s)'"></span>
+                        </p>
                     </div>
                     <div class="shrink-0 flex flex-wrap justify-end gap-1 max-w-[45%]">
                         <template x-if="student.status === 'in session'">
@@ -522,6 +589,7 @@
             <table class="w-full min-w-[40rem] xl:min-w-[52rem] text-left border-collapse">
                 <thead>
                     <tr class="border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-slate-100/80 dark:from-slate-800/90 dark:to-slate-800/60">
+                        <th scope="col" class="px-2 py-3 sm:px-3 w-[3.25rem] text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Photo</th>
                         <th scope="col" class="px-2.5 py-3 sm:px-4 md:px-5 min-w-[8.5rem] text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Student</th>
                         <th scope="col" class="px-2 py-3 sm:px-3 min-w-[3.5rem] text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Grade</th>
                         <th scope="col" class="px-2 py-3 sm:px-3 min-w-[4.5rem] text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Assessment</th>
@@ -534,9 +602,24 @@
                     <template x-for="student in displayStudents()" :key="student.student_id">
                         <tr class="student-row align-middle transition-colors duration-150 hover:bg-slate-50/90 dark:hover:bg-slate-800/50"
                             :data-status="student.status">
+                            <td class="px-2 py-2.5 sm:px-3 sm:py-3 align-middle w-[3.25rem]">
+                                <img x-show="studentPhotoUrl(student)"
+                                     :src="studentPhotoUrl(student)"
+                                     :alt="(student.full_name || 'Student') + ' photo'"
+                                     class="student-mgmt-avatar border border-slate-200 dark:border-slate-600 shadow-sm"
+                                     loading="lazy" decoding="async" width="40" height="40">
+                                <div x-show="!studentPhotoUrl(student)"
+                                     class="student-mgmt-avatar student-mgmt-avatar--placeholder border border-slate-200/50 dark:border-slate-600"
+                                     aria-hidden="true">
+                                    <i class="fas fa-user-graduate"></i>
+                                </div>
+                            </td>
                             <td class="px-2.5 py-2.5 sm:px-4 md:px-5 sm:py-3 min-w-0">
                                 <p class="text-[13px] sm:text-[15px] font-semibold text-slate-900 dark:text-white leading-snug break-words" :title="student.full_name || ''" x-text="student.full_name || '—'"></p>
                                 <p class="mt-0.5 text-[11px] sm:text-xs font-mono font-medium text-slate-500 dark:text-slate-400 tracking-tight" x-text="student.student_id || ''"></p>
+                                <p class="mt-0.5 text-[10px] text-violet-600 dark:text-violet-400" x-show="student.fingerprint_count > 0" title="Fingerprint enrolled">
+                                    <i class="fas fa-fingerprint"></i>
+                                </p>
                             </td>
                             <td class="px-2 py-2.5 sm:px-3 sm:py-3 min-w-0 align-middle">
                                 <p class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap" x-text="student.current_grade ? student.current_grade : '—'"></p>
@@ -596,14 +679,14 @@
                         </tr>
                     </template>
                     <tr x-show="!listLoading && totalCount === 0 && stats.total === 0 && !listError">
-                        <td colspan="6" class="px-4 py-14 text-center text-slate-500 dark:text-slate-400">
+                        <td colspan="7" class="px-4 py-14 text-center text-slate-500 dark:text-slate-400">
                             <i class="fas fa-user-graduate text-slate-300 dark:text-slate-600 text-4xl mb-3 block"></i>
                             <p class="text-sm font-medium text-slate-600 dark:text-slate-300">No students found</p>
                             <p class="text-xs mt-1 text-slate-400 dark:text-slate-500">Register students to see them here</p>
                         </td>
                     </tr>
                     <tr x-show="!listLoading && totalCount === 0 && stats.total > 0 && !listError">
-                        <td colspan="6" class="px-4 py-14 text-center text-slate-500 dark:text-slate-400">
+                        <td colspan="7" class="px-4 py-14 text-center text-slate-500 dark:text-slate-400">
                             <i class="fas fa-filter text-slate-300 dark:text-slate-600 text-4xl mb-3 block"></i>
                             <p class="text-sm font-medium text-slate-600 dark:text-slate-300">No students match your search or filters</p>
                             <p class="text-xs mt-1 text-slate-400 dark:text-slate-500">Try different keywords, status, or list order</p>
@@ -648,6 +731,33 @@
                 <div class="bg-white dark:bg-gray-800 px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-6 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y max-h-[calc(88dvh-8rem)] sm:max-h-[min(70vh,40rem)]">
                     <template x-if="selectedStudent">
                         <div class="space-y-4">
+                            <div class="flex flex-col sm:flex-row items-center gap-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+                                <template x-if="selectedStudent.profile_image_url">
+                                    <img :src="selectedStudent.profile_image_url" alt="Student profile"
+                                         class="w-24 h-24 rounded-2xl object-cover border-4 border-gray-200 dark:border-gray-600 shadow-md shrink-0"
+                                         loading="lazy" decoding="async" width="96" height="96">
+                                </template>
+                                <template x-if="!selectedStudent.profile_image_url">
+                                    <div class="w-24 h-24 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center border-4 border-gray-200 dark:border-gray-600 shadow-md shrink-0">
+                                        <i class="fas fa-user-graduate text-white text-3xl"></i>
+                                    </div>
+                                </template>
+                                <div class="text-center sm:text-left min-w-0">
+                                    <p class="text-lg font-bold text-gray-900 dark:text-white break-words" x-text="selectedStudent.full_name"></p>
+                                    <p class="text-sm font-mono text-gray-500 dark:text-gray-400" x-text="selectedStudent.student_id"></p>
+                                    <p class="text-xs text-violet-600 dark:text-violet-400 mt-1" x-show="selectedStudent.fingerprint_count > 0">
+                                        <i class="fas fa-fingerprint mr-1"></i>
+                                        <span x-text="selectedStudent.fingerprint_count + ' fingerprint(s) enrolled'"></span>
+                                    </p>
+                                </div>
+                            </div>
+                            <template x-if="selectedStudent.fingerprints && selectedStudent.fingerprints.length">
+                                <div class="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/20 px-3 py-2">
+                                    <p class="text-xs font-bold text-violet-800 dark:text-violet-200 mb-1">Enrolled fingers</p>
+                                    <p class="text-xs text-violet-700 dark:text-violet-300"
+                                       x-text="selectedStudent.fingerprints.map(f => f.finger_label).join(', ')"></p>
+                                </div>
+                            </template>
                             <!-- Student Information -->
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -972,6 +1082,29 @@
                                             <input type="text" x-model="selectedStudent.emergency_contact"
                                                    class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
                                         </div>
+                                    </div>
+                                </div>
+
+                                <!-- Profile photo & fingerprint (bottom of form) -->
+                                <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700 space-y-6">
+                                    <div class="flex items-center space-x-2 pb-3 border-b-2 border-gray-200 dark:border-gray-700">
+                                        <div class="w-8 h-8 bg-gradient-to-br from-sky-500 to-violet-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-id-card text-white text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <h4 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white">Photo &amp; fingerprint</h4>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Optional — student profile picture and biometric enrollment</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        {% with input_id='edit-student-profile-image' %}
+                                        {% include 'dashboards/includes/student_profile_photo_picker.html' %}
+                                        {% endwith %}
+                                    </div>
+                                    <div>
+                                        {% with fingerprint_mode='live', fingerprint_student_id='' %}
+                                        {% include 'dashboards/includes/student_fingerprint_enrollment.html' %}
+                                        {% endwith %}
                                     </div>
                                 </div>
                             </div>

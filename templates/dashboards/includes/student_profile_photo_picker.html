@@ -1,0 +1,211 @@
+{# Student profile photo: upload from device or capture with camera.
+   Params: input_id, input_name (optional, default profile_image) #}
+{% set _photo_input_id = input_id|default('student-profile-image') %}
+{% set _photo_input_name = input_name|default('profile_image') %}
+<div class="student-profile-photo-picker"
+     x-data="studentProfilePhotoPicker()"
+     x-init="bindInput('{{ _photo_input_id }}')">
+    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+        Profile picture <span class="text-xs font-normal text-gray-500 dark:text-gray-400">(optional)</span>
+    </label>
+    <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div class="relative shrink-0 mx-auto sm:mx-0">
+            <template x-if="previewUrl">
+                <img :src="previewUrl" alt="Student profile preview"
+                     class="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl object-cover border-4 border-gray-200 dark:border-gray-600 shadow-lg"
+                     loading="lazy" decoding="async">
+            </template>
+            <template x-if="!previewUrl">
+                <div class="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center border-4 border-gray-200 dark:border-gray-600 shadow-lg">
+                    <i class="fas fa-user-graduate text-white text-4xl sm:text-5xl"></i>
+                </div>
+            </template>
+        </div>
+        <div class="flex-1 flex flex-col gap-2 min-w-0">
+            <input type="file"
+                   id="{{ _photo_input_id }}"
+                   name="{{ _photo_input_name }}"
+                   accept="image/*"
+                   class="hidden"
+                   @change="onFileChosen($event)">
+            <div class="flex flex-col xs:flex-row flex-wrap gap-2">
+                <button type="button"
+                        @click="document.getElementById('{{ _photo_input_id }}').click()"
+                        class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 text-sm font-semibold rounded-xl border-2 border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors touch-manipulation">
+                    <i class="fas fa-upload"></i>
+                    <span>Upload photo</span>
+                </button>
+                <button type="button"
+                        @click="openCamera()"
+                        class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 text-sm font-semibold rounded-xl border-2 border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/40 text-violet-800 dark:text-violet-200 hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors touch-manipulation">
+                    <i class="fas fa-camera"></i>
+                    <span>Take photo</span>
+                </button>
+                <button type="button"
+                        x-show="previewUrl"
+                        @click="clearPhoto()"
+                        class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 text-sm font-semibold rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors touch-manipulation">
+                    <i class="fas fa-times"></i>
+                    <span>Remove</span>
+                </button>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                PNG, JPG, JPEG, or GIF. Max 10 MB. Used on reports and the parent portal.
+            </p>
+        </div>
+    </div>
+
+    <!-- Camera capture modal -->
+    <div x-show="cameraOpen"
+         x-cloak
+         class="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-3 sm:p-4"
+         @keydown.escape.window="closeCamera()">
+        <div class="fixed inset-0 bg-black/70" @click="closeCamera()"></div>
+        <div class="relative z-[81] w-full max-w-lg rounded-2xl bg-white dark:bg-gray-800 shadow-2xl overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h4 class="text-sm font-bold text-gray-900 dark:text-white">Take profile photo</h4>
+                <button type="button" @click="closeCamera()" class="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close camera">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="p-4 bg-black">
+                <video x-ref="cameraVideo" autoplay playsinline muted class="w-full max-h-[50vh] object-contain rounded-lg bg-black"></video>
+                <canvas x-ref="cameraCanvas" class="hidden"></canvas>
+            </div>
+            <div class="px-4 py-3 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 border-t border-gray-200 dark:border-gray-700">
+                <button type="button" @click="closeCamera()"
+                        class="min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">
+                    Cancel
+                </button>
+                <button type="button" @click="capturePhoto()"
+                        class="min-h-[44px] px-4 py-2 text-sm font-semibold rounded-xl bg-violet-600 text-white hover:bg-violet-700">
+                    <i class="fas fa-camera mr-1"></i> Capture
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    if (window._studentProfilePhotoPickerRegistered) return;
+    window._studentProfilePhotoPickerRegistered = true;
+
+    Alpine.data('studentProfilePhotoPicker', () => ({
+        inputId: null,
+        previewUrl: null,
+        cameraOpen: false,
+        _stream: null,
+        _existingUrl: null,
+
+        bindInput(id) {
+            this.inputId = id;
+            if (!this._photoSetListener) {
+                this._photoSetListener = (e) => {
+                    const detail = e.detail || {};
+                    if (detail.inputId && detail.inputId !== this.inputId) return;
+                    this.setExistingUrl(detail.url || '');
+                };
+                window.addEventListener('student-photo-set', this._photoSetListener);
+            }
+        },
+
+        setExistingUrl(url) {
+            if (this.previewUrl && this.previewUrl.startsWith('blob:')) {
+                try { URL.revokeObjectURL(this.previewUrl); } catch (e) {}
+            }
+            const input = this._fileInput();
+            if (input) input.value = '';
+            this._existingUrl = url || null;
+            this.previewUrl = this._existingUrl;
+        },
+
+        _fileInput() {
+            return this.inputId ? document.getElementById(this.inputId) : null;
+        },
+
+        onFileChosen(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            if (!file.type || !file.type.startsWith('image/')) {
+                alert('Please choose an image file (PNG, JPG, JPEG, or GIF).');
+                event.target.value = '';
+                return;
+            }
+            if (this.previewUrl && this.previewUrl.startsWith('blob:')) {
+                try { URL.revokeObjectURL(this.previewUrl); } catch (e) {}
+            }
+            this.previewUrl = URL.createObjectURL(file);
+        },
+
+        clearPhoto() {
+            const input = this._fileInput();
+            if (input) input.value = '';
+            if (this.previewUrl && this.previewUrl.startsWith('blob:')) {
+                try { URL.revokeObjectURL(this.previewUrl); } catch (e) {}
+            }
+            this.previewUrl = null;
+        },
+
+        async openCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Camera is not available on this device. Please upload a photo instead.');
+                return;
+            }
+            this.cameraOpen = true;
+            await this.$nextTick();
+            try {
+                this._stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user' },
+                    audio: false,
+                });
+                if (this.$refs.cameraVideo) {
+                    this.$refs.cameraVideo.srcObject = this._stream;
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Could not access the camera. Check permissions or upload a photo instead.');
+                this.closeCamera();
+            }
+        },
+
+        closeCamera() {
+            this.cameraOpen = false;
+            if (this._stream) {
+                this._stream.getTracks().forEach((t) => t.stop());
+                this._stream = null;
+            }
+            if (this.$refs.cameraVideo) {
+                this.$refs.cameraVideo.srcObject = null;
+            }
+        },
+
+        capturePhoto() {
+            const video = this.$refs.cameraVideo;
+            const canvas = this.$refs.cameraCanvas;
+            if (!video || !canvas) return;
+            const w = video.videoWidth || 640;
+            const h = video.videoHeight || 480;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, w, h);
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+                const file = new File([blob], 'student-photo.jpg', { type: 'image/jpeg' });
+                const input = this._fileInput();
+                if (input) {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    input.files = dt.files;
+                }
+                if (this.previewUrl && this.previewUrl.startsWith('blob:')) {
+                    try { URL.revokeObjectURL(this.previewUrl); } catch (e) {}
+                }
+                this.previewUrl = URL.createObjectURL(blob);
+                this.closeCamera();
+            }, 'image/jpeg', 0.82);
+        },
+    }));
+});
+</script>

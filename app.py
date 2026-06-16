@@ -47,6 +47,16 @@ from school_data_backup import (
     record_backup_history,
 )
 import google_drive_backup as gdrive_backup
+from image_optimizer import is_image_filename, optimize_and_save, static_relative_path
+from student_biometrics import (
+    count_student_fingerprints,
+    delete_student_fingerprint,
+    ensure_student_fingerprints_table,
+    fetch_student_fingerprints,
+    find_student_by_fingerprint_template,
+    save_fingerprints_from_json,
+    save_student_fingerprint,
+)
 try:
     from dateutil.relativedelta import relativedelta
 except ImportError:
@@ -641,6 +651,7 @@ mail = Mail(app)
 
 # File upload configuration
 UPLOAD_FOLDER = 'static/uploads/profiles'
+STUDENT_PHOTO_FOLDER = 'static/uploads/student_photos'
 PAYMENT_PROOF_FOLDER = 'static/uploads/payment_proofs'
 COMMUNICATION_ATTACHMENT_FOLDER = 'static/uploads/communication'
 STORE_INVENTORY_FOLDER = 'static/uploads/store_inventory'
@@ -657,6 +668,7 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
 
 # Create upload directories if they don't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(STUDENT_PHOTO_FOLDER, exist_ok=True)
 os.makedirs(PAYMENT_PROOF_FOLDER, exist_ok=True)
 os.makedirs(COMMUNICATION_ATTACHMENT_FOLDER, exist_ok=True)
 os.makedirs(STORE_INVENTORY_FOLDER, exist_ok=True)
@@ -670,6 +682,96 @@ def allowed_communication_attachment(filename):
 def allowed_file(filename):
     """Check if file extension is allowed"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _save_optimized_image(file_storage, folder, filename_stem, preset='profile'):
+    """
+    Save an uploaded image with resize/compress. folder is e.g. static/uploads/profiles.
+    Returns static-relative path (uploads/...) or None.
+    """
+    if not file_storage or not getattr(file_storage, 'filename', None):
+        return None
+    filename = (file_storage.filename or '').strip()
+    if not filename or not allowed_file(filename):
+        return None
+    stem = secure_filename(filename_stem or 'image') or 'image'
+    dest_path = os.path.join(folder, f'{stem}.jpg')
+    saved_path = optimize_and_save(file_storage, dest_path, preset=preset)
+    if not saved_path:
+        return None
+    return static_relative_path(saved_path)
+
+
+def ensure_student_profile_image_column(cursor):
+    """Ensure students.profile_image exists (reports, parent portal, student management)."""
+    if _table_has_column(cursor, 'students', 'profile_image'):
+        return True
+    try:
+        cursor.execute(
+            """
+            ALTER TABLE students
+            ADD COLUMN profile_image VARCHAR(500) NULL
+            AFTER special_needs
+            """
+        )
+        return True
+    except Exception as e:
+        print(f"ensure_student_profile_image_column: {e}")
+        return False
+
+
+def _student_profile_image_static_path(relative_path):
+    """Return static-relative path (uploads/student_photos/...) or empty string."""
+    if not relative_path:
+        return ''
+    rel = str(relative_path).strip().replace('\\', '/').lstrip('/')
+    if rel.lower().startswith('static/'):
+        rel = rel[7:]
+    return rel
+
+
+def _student_profile_image_url(relative_path):
+    """Build a URL for a stored student profile image."""
+    rel = _student_profile_image_static_path(relative_path)
+    if not rel:
+        return ''
+    try:
+        return url_for('static', filename=rel)
+    except Exception:
+        return ''
+
+
+def _remove_student_profile_image_file(relative_path):
+    """Delete a student photo file from disk if it exists."""
+    rel = _student_profile_image_static_path(relative_path)
+    if not rel or not rel.startswith('uploads/student_photos/'):
+        return
+    file_path = os.path.join('static', rel)
+    if os.path.isfile(file_path):
+        try:
+            os.remove(file_path)
+        except OSError as e:
+            print(f"_remove_student_profile_image_file: {e}")
+
+
+def _save_student_profile_image(file_storage, student_id):
+    """
+    Save uploaded student profile image. Returns static-relative path
+    (uploads/student_photos/...) or None if no valid file.
+    """
+    if not file_storage or not getattr(file_storage, 'filename', None):
+        return None
+    filename = (file_storage.filename or '').strip()
+    if not filename or not allowed_file(filename):
+        return None
+    safe_id = secure_filename(str(student_id or 'student').strip()) or 'student'
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    return _save_optimized_image(
+        file_storage,
+        STUDENT_PHOTO_FOLDER,
+        f'{safe_id}_{timestamp}',
+        preset='student_photo',
+    )
 
 def allowed_payment_file(filename):
     """Check if payment proof file extension is allowed"""
@@ -11934,6 +12036,9 @@ def _insert_admission_application(
     student_fields,
     parent_fields,
     send_confirmation,
+    profile_image_file=None,
+    fingerprints_json=None,
+    enrolled_by_employee_id=None,
 ):
     """
     Insert student + parent with retry on duplicate student_id (concurrent admissions).
@@ -11942,9 +12047,9 @@ def _insert_admission_application(
     student_sql = """
         INSERT INTO students
         (student_id, full_name, date_of_birth, gender, current_grade, previous_school,
-         assessment_number, address, medical_info, special_needs, student_category,
-         sponsor_name, sponsor_phone, sponsor_email, status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending approval')
+         assessment_number, address, medical_info, special_needs, profile_image,
+         student_category, sponsor_name, sponsor_phone, sponsor_email, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending approval')
     """
     parent_sql = """
         INSERT INTO parents
@@ -11955,9 +12060,15 @@ def _insert_admission_application(
     for _attempt in range(6):
         try:
             with connection.cursor() as cursor:
+                ensure_student_profile_image_column(cursor)
                 student_id = generate_student_id(connection)
                 sf = dict(student_fields)
                 sf['student_id'] = student_id
+                profile_image_path = sf.get('profile_image')
+                if profile_image_file:
+                    saved = _save_student_profile_image(profile_image_file, student_id)
+                    if saved:
+                        profile_image_path = saved
                 cursor.execute(
                     student_sql,
                     (
@@ -11971,6 +12082,7 @@ def _insert_admission_application(
                         sf['address'],
                         sf['medical_info'],
                         sf['special_needs'],
+                        profile_image_path,
                         sf['student_category'],
                         sf['sponsor_name'],
                         sf['sponsor_phone'],
@@ -11990,6 +12102,15 @@ def _insert_admission_application(
                         pf['emergency_contact'],
                     ),
                 )
+                if fingerprints_json:
+                    _saved_fp, fp_err = save_fingerprints_from_json(
+                        cursor,
+                        student_id,
+                        fingerprints_json,
+                        enrolled_by_employee_id=enrolled_by_employee_id,
+                    )
+                    if fp_err:
+                        print(f'_insert_admission_application fingerprints: {fp_err}')
             connection.commit()
             if send_confirmation:
                 try:
@@ -12165,11 +12286,17 @@ def admission():
         connection = get_db_connection()
         if connection:
             try:
+                profile_image_file = request.files.get('profile_image')
+                fingerprints_json = (request.form.get('fingerprints_json') or '').strip() or None
+                enrolled_by = session.get('employee_id') if session.get('user_id') else None
                 ok, student_id, err_msg = _insert_admission_application(
                     connection,
                     student_fields,
                     parent_fields,
                     send_confirmation,
+                    profile_image_file=profile_image_file,
+                    fingerprints_json=fingerprints_json,
+                    enrolled_by_employee_id=enrolled_by,
                 )
                 if ok:
                     flash(
@@ -12310,12 +12437,13 @@ def register_employee():
         if 'profile_picture' in request.files:
             file = request.files['profile_picture']
             if file and file.filename != '' and allowed_file(file.filename):
-                # Generate unique filename
                 timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-                filename = secure_filename(f"{employee_id}_{timestamp}_{file.filename}")
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(filepath)
-                profile_picture = f"uploads/profiles/{filename}"
+                profile_picture = _save_optimized_image(
+                    file,
+                    UPLOAD_FOLDER,
+                    f'{employee_id}_{timestamp}',
+                    preset='profile',
+                )
         
         # Hash password
         password_hash = generate_password_hash(password)
@@ -17683,6 +17811,9 @@ def _student_row_to_detail_dict(student):
         'parent_email': student.get('parent_email'),
         'relationship': student.get('relationship'),
         'emergency_contact': student.get('emergency_contact'),
+        'profile_image': student.get('profile_image'),
+        'profile_image_url': _student_profile_image_url(student.get('profile_image')),
+        'fingerprint_count': student.get('fingerprint_count'),
         'created_at': str(student.get('created_at')) if student.get('created_at') else None,
         'updated_at': str(student.get('updated_at')) if student.get('updated_at') else None,
     }
@@ -17695,6 +17826,7 @@ def _fetch_student_detail_row(cursor, student_id):
                s.current_grade, s.previous_school, s.assessment_number, s.address,
                s.medical_info, s.special_needs, s.student_category, s.sponsor_name,
                s.sponsor_phone, s.sponsor_email, s.status, s.created_at, s.updated_at,
+               s.profile_image,
                p.full_name as parent_name, p.phone as parent_phone,
                p.email as parent_email, p.relationship, p.emergency_contact
         FROM students s
@@ -22188,10 +22320,18 @@ def record_payment():
             file = request.files['proof_of_payment']
             if file and file.filename != '' and allowed_payment_file(file.filename):
                 timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-                filename = secure_filename(f"payment_{student_id}_{timestamp}_{file.filename}")
-                filepath = os.path.join(app.config['PAYMENT_PROOF_FOLDER'], filename)
-                file.save(filepath)
-                proof_of_payment = f"uploads/payment_proofs/{filename}"
+                if is_image_filename(file.filename):
+                    proof_of_payment = _save_optimized_image(
+                        file,
+                        PAYMENT_PROOF_FOLDER,
+                        f'payment_{student_id}_{timestamp}',
+                        preset='payment_proof',
+                    )
+                else:
+                    filename = secure_filename(f"payment_{student_id}_{timestamp}_{file.filename}")
+                    filepath = os.path.join(app.config['PAYMENT_PROOF_FOLDER'], filename)
+                    file.save(filepath)
+                    proof_of_payment = f"uploads/payment_proofs/{filename}"
         
         # Validate payment method specific fields
         if payment_method == 'Bank Transfer' and not reference_number:
@@ -26234,6 +26374,7 @@ def _student_management_list_row_dict(row):
             d[k] = val.isoformat() if val else None
         elif val is not None and not isinstance(val, (bool, int, float, str)):
             d[k] = str(val)
+    d['profile_image_url'] = _student_profile_image_url(d.get('profile_image'))
     return d
 
 
@@ -26292,10 +26433,13 @@ def _fetch_student_management_page(cursor, page=1, per_page=50, q='', status='al
     count_row = cursor.fetchone()
     total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
 
+    ensure_student_fingerprints_table(cursor)
+    ensure_student_profile_image_column(cursor)
     cursor.execute(
         f"""
         SELECT s.student_id, s.full_name, s.current_grade, s.assessment_number,
-               s.student_category, s.status, s.created_at
+               s.student_category, s.status, s.created_at, s.profile_image,
+               (SELECT COUNT(*) FROM student_fingerprints sf WHERE sf.student_id = s.student_id) AS fingerprint_count
         {sql_from}{where_sql}
         ORDER BY {order_col} {order_dir}, s.student_id ASC
         LIMIT %s OFFSET %s
@@ -26415,14 +26559,19 @@ def get_student(student_id):
     
     try:
         with connection.cursor() as cursor:
+            ensure_student_profile_image_column(cursor)
             student = _fetch_student_detail_row(cursor, student_id)
 
             if not student:
                 return jsonify({'success': False, 'message': 'Student not found.'}), 404
 
+            detail = _student_row_to_detail_dict(student)
+            detail['fingerprint_count'] = count_student_fingerprints(cursor, student_id)
+            detail['fingerprints'] = fetch_student_fingerprints(cursor, student_id)
+
             return jsonify({
                 'success': True,
-                'student': _student_row_to_detail_dict(student),
+                'student': detail,
             })
     except Exception as e:
         print(f"Error fetching student: {e}")
@@ -26469,8 +26618,14 @@ def update_student(student_id):
     
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to update students.'}), 403
-    
-    data = request.get_json()
+
+    profile_image_file = None
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        data = request.form
+        profile_image_file = request.files.get('profile_image')
+    else:
+        data = request.get_json() or {}
+
     new_student_id = (data.get('student_id') or '').strip().upper()
     full_name = (data.get('full_name') or '').strip().upper()
     date_of_birth = (data.get('date_of_birth') or '').strip() or None
@@ -26505,6 +26660,28 @@ def update_student(student_id):
     
     try:
         with connection.cursor() as cursor:
+            ensure_student_profile_image_column(cursor)
+
+            profile_image_path = None
+            if profile_image_file and profile_image_file.filename:
+                profile_image_path = _save_student_profile_image(profile_image_file, student_id)
+                if not profile_image_path:
+                    return jsonify({'success': False, 'message': 'Invalid profile image. Use PNG, JPG, JPEG, or GIF.'}), 400
+
+            old_profile_image = None
+            if profile_image_path:
+                cursor.execute(
+                    "SELECT profile_image FROM students WHERE student_id = %s",
+                    (student_id,),
+                )
+                old_row = cursor.fetchone()
+                if old_row:
+                    old_profile_image = (
+                        old_row.get('profile_image')
+                        if isinstance(old_row, dict)
+                        else old_row[0]
+                    )
+
             # Check if new student_id is different and if it already exists
             if new_student_id != student_id:
                 cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (new_student_id,))
@@ -26516,9 +26693,21 @@ def update_student(student_id):
             if new_student_id != student_id:
                 # Disable foreign key checks temporarily to allow student_id update
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
-                
-                # Update student first (including student_id)
-                cursor.execute("""
+
+                if profile_image_path:
+                    cursor.execute("""
+                    UPDATE students 
+                    SET student_id = %s, full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s, 
+                        previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
+                        profile_image = %s,
+                        student_category = %s, sponsor_name = %s, sponsor_phone = %s, sponsor_email = %s,
+                        status = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE student_id = %s
+                """, (new_student_id, full_name, date_of_birth, gender, current_grade, previous_school, address, 
+                      medical_info, special_needs, profile_image_path, student_category, sponsor_name, sponsor_phone, 
+                      sponsor_email, status, student_id))
+                else:
+                    cursor.execute("""
                     UPDATE students 
                     SET student_id = %s, full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s, 
                         previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
@@ -26539,8 +26728,20 @@ def update_student(student_id):
                 # Re-enable foreign key checks
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
             else:
-                # If student_id is not changing, just update normally
-                cursor.execute("""
+                if profile_image_path:
+                    cursor.execute("""
+                    UPDATE students 
+                    SET full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s, 
+                        previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
+                        profile_image = %s,
+                        student_category = %s, sponsor_name = %s, sponsor_phone = %s, sponsor_email = %s,
+                        status = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE student_id = %s
+                """, (full_name, date_of_birth, gender, current_grade, previous_school, address, 
+                      medical_info, special_needs, profile_image_path, student_category, sponsor_name, sponsor_phone, 
+                      sponsor_email, status, student_id))
+                else:
+                    cursor.execute("""
                     UPDATE students 
                     SET full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s, 
                         previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
@@ -26571,12 +26772,183 @@ def update_student(student_id):
                         VALUES (%s, %s, %s, %s, %s, %s)
                     """, (new_student_id, parent_name, parent_phone, parent_email, relationship, emergency_contact))
             
+            if profile_image_path and old_profile_image and old_profile_image != profile_image_path:
+                _remove_student_profile_image_file(old_profile_image)
+
             connection.commit()
             return jsonify({'success': True, 'message': 'Student updated successfully.'})
     except Exception as e:
         print(f"Error updating student: {e}")
         connection.rollback()
         return jsonify({'success': False, 'message': 'Error updating student details.'}), 500
+    finally:
+        connection.close()
+
+
+def _student_fingerprint_api_access():
+    return check_permission_or_role(
+        'edit_students',
+        allowed_roles=[
+            'employee', 'super admin', 'head of institution', 'deputy head of institution',
+            'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
+            'warden', 'transport manager', 'store manager', 'technician',
+        ],
+    )
+
+
+@app.route('/student-management/fingerprints/<student_id>', methods=['GET'])
+@login_required
+def student_management_fingerprints_list(student_id):
+    """List enrolled fingerprints for a student (metadata only)."""
+    if not _student_fingerprint_api_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'message': 'Student not found.'}), 404
+            fps = fetch_student_fingerprints(cursor, student_id)
+            return jsonify({
+                'success': True,
+                'fingerprints': fps,
+                'count': len(fps),
+            })
+    except Exception as e:
+        print(f'student_management_fingerprints_list: {e}')
+        return jsonify({'success': False, 'message': 'Could not load fingerprints.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/student-management/fingerprints/<student_id>', methods=['POST'])
+@login_required
+def student_management_fingerprints_enroll(student_id):
+    """Enroll or replace a fingerprint template for a student."""
+    if not _student_fingerprint_api_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'message': 'Student not found.'}), 404
+            enrolled_by = session.get('employee_id') or session.get('user_id')
+            ok, err = save_student_fingerprint(
+                cursor,
+                student_id,
+                data.get('finger_code'),
+                data.get('template_base64'),
+                template_format=data.get('template_format') or 'binary_v1',
+                quality_score=data.get('quality_score'),
+                device_id=data.get('device_id'),
+                enrolled_by_employee_id=enrolled_by,
+            )
+            if not ok:
+                return jsonify({'success': False, 'message': err or 'Could not save fingerprint.'}), 400
+            connection.commit()
+            return jsonify({
+                'success': True,
+                'message': 'Fingerprint enrolled successfully.',
+                'count': count_student_fingerprints(cursor, student_id),
+            })
+    except Exception as e:
+        print(f'student_management_fingerprints_enroll: {e}')
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not save fingerprint.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/student-management/fingerprints/<student_id>/<int:fingerprint_id>', methods=['DELETE'])
+@login_required
+def student_management_fingerprints_delete(student_id, fingerprint_id):
+    """Remove one enrolled fingerprint."""
+    if not _student_fingerprint_api_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            if not delete_student_fingerprint(cursor, fingerprint_id, student_id):
+                return jsonify({'success': False, 'message': 'Fingerprint not found.'}), 404
+            connection.commit()
+            return jsonify({'success': True, 'message': 'Fingerprint removed.'})
+    except Exception as e:
+        print(f'student_management_fingerprints_delete: {e}')
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not remove fingerprint.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/api/student-fingerprint/verify', methods=['POST'])
+@login_required
+def api_student_fingerprint_verify():
+    """
+    Match a scanned template to a student (for attendance, library, exams, etc.).
+    Body JSON: { template_base64, template_format? }
+    """
+    if not _student_fingerprint_api_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    template_b64 = (data.get('template_base64') or '').strip()
+    if not template_b64:
+        return jsonify({'success': False, 'message': 'template_base64 is required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            match, err = find_student_by_fingerprint_template(
+                cursor,
+                template_b64,
+                template_format=data.get('template_format'),
+            )
+            if err:
+                return jsonify({'success': False, 'message': err}), 400
+            if not match:
+                return jsonify({'success': True, 'matched': False, 'student': None})
+            return jsonify({'success': True, 'matched': True, 'student': match})
+    except Exception as e:
+        print(f'api_student_fingerprint_verify: {e}')
+        return jsonify({'success': False, 'message': 'Verification failed.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/api/student-fingerprint/<student_id>/templates', methods=['GET'])
+@login_required
+def api_student_fingerprint_templates(student_id):
+    """Export fingerprint templates for device sync (attendance hardware integrations)."""
+    if not _student_fingerprint_api_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT student_id, full_name FROM students WHERE student_id = %s", (student_id,))
+            stu = cursor.fetchone()
+            if not stu:
+                return jsonify({'success': False, 'message': 'Student not found.'}), 404
+            templates = fetch_student_fingerprints(cursor, student_id, include_templates=True)
+            full_name = stu.get('full_name') if isinstance(stu, dict) else stu[1]
+            return jsonify({
+                'success': True,
+                'student_id': student_id,
+                'full_name': full_name,
+                'templates': templates,
+            })
+    except Exception as e:
+        print(f'api_student_fingerprint_templates: {e}')
+        return jsonify({'success': False, 'message': 'Could not load templates.'}), 500
     finally:
         connection.close()
 
@@ -32547,17 +32919,14 @@ def update_employee_profile():
     if 'profile_picture' in request.files:
         file = request.files['profile_picture']
         if file and file.filename != '' and allowed_file(file.filename):
-            # Generate unique filename
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
             employee_id = session.get('employee_id') or session.get('user_id')
-            filename = secure_filename(file.filename)
-            file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'jpg'
-            unique_filename = f"{employee_id}_{timestamp}_{filename}"
-            
-            # Save file
-            file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
-            file.save(file_path)
-            profile_picture = f"uploads/profiles/{unique_filename}"
+            profile_picture = _save_optimized_image(
+                file,
+                UPLOAD_FOLDER,
+                f'{employee_id}_{timestamp}',
+                preset='profile',
+            )
     
     connection = get_db_connection()
     if connection:
@@ -49783,11 +50152,12 @@ def _save_store_item_image(file_storage):
     if file_storage.filename == '' or not allowed_file(file_storage.filename):
         return None
     timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-    filename = secure_filename(file_storage.filename)
-    unique_filename = f"store_{timestamp}_{filename}"
-    file_path = os.path.join(STORE_INVENTORY_FOLDER, unique_filename)
-    file_storage.save(file_path)
-    return f"uploads/store_inventory/{unique_filename}"
+    return _save_optimized_image(
+        file_storage,
+        STORE_INVENTORY_FOLDER,
+        f'store_{timestamp}',
+        preset='store',
+    )
 
 
 def _delete_store_item_image_file(image_path):
@@ -65989,6 +66359,11 @@ def _build_academic_report_payload(cursor, report_type, f):
     """Return dict with title, columns, rows, meta; or {'error': str}."""
     from collections import defaultdict
 
+    try:
+        ensure_student_profile_image_column(cursor)
+    except Exception:
+        pass
+
     def _float_marks(x):
         if x is None:
             return None
@@ -66612,11 +66987,10 @@ def _build_academic_report_payload(cursor, report_type, f):
         grouped = {}
         subject_names_set = set()
         subject_meta = {}
-        include_profile_image = True
-        try:
+        include_profile_image = _table_has_column(cursor, 'students', 'profile_image')
+        if include_profile_image:
             cursor.execute(q, params)
-        except Exception:
-            include_profile_image = False
+        else:
             cursor.execute(q_no_image, params)
 
         def _student_class_key(cur_grade, level_nm):
@@ -66735,6 +67109,26 @@ def _build_academic_report_payload(cursor, report_type, f):
             grouped, combo_plan_by_lid, level_name_to_id, exam_total_by_sid
         )
 
+        student_photo_urls = {}
+        if grouped and include_profile_image:
+            student_ids = list(grouped.keys())
+            if student_ids:
+                ph = ','.join(['%s'] * len(student_ids))
+                cursor.execute(
+                    f"SELECT student_id, profile_image FROM students WHERE student_id IN ({ph})",
+                    tuple(student_ids),
+                )
+                for pr in cursor.fetchall() or []:
+                    if isinstance(pr, dict):
+                        sid_key = pr.get('student_id')
+                        prof_path = pr.get('profile_image')
+                    else:
+                        sid_key = pr[0] if len(pr) > 0 else None
+                        prof_path = pr[1] if len(pr) > 1 else None
+                    photo_u = _student_profile_image_url(prof_path)
+                    if sid_key and photo_u:
+                        student_photo_urls[sid_key] = photo_u
+
         subject_columns_by_class = {}
         for ln, level_id in level_name_to_id.items():
             labels = reg_labels_by_lid.get(level_id, [])
@@ -66845,12 +67239,10 @@ def _build_academic_report_payload(cursor, report_type, f):
                 level_id=student_level_id, class_bands=class_grade_bands,
             )
             raw_pf = str(student.get('profile_raw') or '').strip()
-            photo_url = ''
-            if raw_pf:
-                try:
-                    photo_url = url_for('static', filename=str(raw_pf))
-                except Exception:
-                    photo_url = ''
+            photo_url = (
+                student_photo_urls.get(student['admission_number'])
+                or _student_profile_image_url(raw_pf)
+            )
             home_class = student.get('current_grade') or student.get('level_name') or ''
             pre_rows.append({
                 'admission_number': student['admission_number'],
@@ -67269,10 +67661,10 @@ def _build_academic_report_payload(cursor, report_type, f):
             q += " AND st.student_id = %s"
             params.append(student_id)
         q += " ORDER BY st.full_name, e.exam_date, COALESCE(sub.exam_display_order, 1000000000), sub.subject_name LIMIT 3000"
-        try:
+        include_profile_image = _table_has_column(cursor, 'students', 'profile_image')
+        if include_profile_image:
             cursor.execute(q, params)
-            include_profile_image = True
-        except Exception:
+        else:
             # Backward-compatible fallback for databases without students.profile_image.
             q_no_image = """
                 SELECT st.student_id, st.full_name, TRIM(COALESCE(st.current_grade, '')) AS current_grade,
@@ -67307,7 +67699,6 @@ def _build_academic_report_payload(cursor, report_type, f):
                 q_no_image += " AND st.student_id = %s"
             q_no_image += " ORDER BY st.full_name, e.exam_date, COALESCE(sub.exam_display_order, 1000000000), sub.subject_name LIMIT 3000"
             cursor.execute(q_no_image, params)
-            include_profile_image = False
         rows = []
         default_grade_meaning_by_code = {}
         try:
@@ -67372,12 +67763,23 @@ def _build_academic_report_payload(cursor, report_type, f):
                 level_id_val = r[4] if len(r) > 4 else None
                 subject_code_out = r[6] if len(r) > 6 else ''
                 exam_nm = r[7] if len(r) > 7 else None
-            photo_url = ''
-            if raw_profile:
+            photo_url = _student_profile_image_url(raw_profile) if raw_profile else ''
+            if not photo_url and include_profile_image and student_id_out:
                 try:
-                    photo_url = url_for('static', filename=str(raw_profile))
+                    cursor.execute(
+                        "SELECT profile_image FROM students WHERE student_id = %s LIMIT 1",
+                        (student_id_out,),
+                    )
+                    prof_row = cursor.fetchone()
+                    if prof_row:
+                        prof_val = (
+                            prof_row.get('profile_image')
+                            if isinstance(prof_row, dict)
+                            else (prof_row[0] if prof_row else None)
+                        )
+                        photo_url = _student_profile_image_url(prof_val)
                 except Exception:
-                    photo_url = ''
+                    pass
             scaled_marks = raw_mark_to_percentage(raw_marks_val, exam_total_marks)
             if scaled_marks is not None:
                 scaled_marks = round_mark_display(scaled_marks)
@@ -68178,6 +68580,18 @@ def _save_communication_attachment(upload_file):
     if not fn or not allowed_communication_attachment(fn):
         return None, None, 'Invalid attachment type. Use PDF, Word, Excel, image, or text files.'
     ext = fn.rsplit('.', 1)[1].lower()
+    if is_image_filename(fn):
+        rel = _save_optimized_image(
+            upload_file,
+            COMMUNICATION_ATTACHMENT_FOLDER,
+            f'comm_{secrets.token_hex(8)}',
+            preset='attachment',
+        )
+        if not rel:
+            return None, None, 'Could not save image attachment.'
+        path = os.path.join('static', rel)
+        mime = 'image/png' if rel.lower().endswith('.png') else 'image/jpeg'
+        return path, fn, mime
     stored = f"comm_{secrets.token_hex(8)}.{ext}"
     path = os.path.join(COMMUNICATION_ATTACHMENT_FOLDER, stored)
     upload_file.save(path)
@@ -72615,12 +73029,13 @@ def update_school_profile():
     if 'school_logo' in request.files:
         file = request.files['school_logo']
         if file and file.filename != '' and allowed_file(file.filename):
-            # Generate unique filename
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-            filename = secure_filename(f"school_logo_{timestamp}_{file.filename}")
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            school_logo = f"uploads/profiles/{filename}"
+            school_logo = _save_optimized_image(
+                file,
+                UPLOAD_FOLDER,
+                f'school_logo_{timestamp}',
+                preset='logo',
+            )
 
     # Main campus / marketing image (public home hero, CTA — optional)
     school_hero_image_new = None
@@ -72628,10 +73043,12 @@ def update_school_profile():
         hf = request.files['school_hero_image']
         if hf and hf.filename != '' and allowed_file(hf.filename):
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-            filename = secure_filename(f"school_hero_{timestamp}_{hf.filename}")
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            hf.save(filepath)
-            school_hero_image_new = f"uploads/profiles/{filename}"
+            school_hero_image_new = _save_optimized_image(
+                hf,
+                UPLOAD_FOLDER,
+                f'school_hero_{timestamp}',
+                preset='hero',
+            )
     
     # Update database
     connection = get_db_connection()

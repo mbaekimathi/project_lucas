@@ -6,6 +6,10 @@
 
 {% block header_subtitle %}{% endblock %}
 
+{% block extra_head %}
+<script src="{{ url_for('static', filename='js/student_fingerprint_enrollment.js') }}?v=3"></script>
+{% endblock %}
+
 {% block content %}
 {% set admission_hero_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1600&q=80&auto=format&fit=crop' %}
 <section class="auth-portal auth-portal--wide auth-portal--admission relative py-10 md:py-14">
@@ -50,7 +54,7 @@
 
             <!-- Form Card -->
             <div class="modern-card rounded-2xl overflow-hidden">
-                <form method="POST" action="/admission" class="p-6 sm:p-8 md:p-10 lg:p-12 space-y-8 sm:space-y-10">
+                <form method="POST" action="/admission" enctype="multipart/form-data" class="p-6 sm:p-8 md:p-10 lg:p-12 space-y-8 sm:space-y-10">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     
                     <!-- Student Information Section -->
@@ -275,6 +279,29 @@
                                 <textarea id="special_needs" name="special_needs" rows="3"
                                           class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400 resize-none"></textarea>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Profile photo & fingerprint (bottom of form) -->
+                    <div class="space-y-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <div class="flex items-center space-x-3 pb-4">
+                            <div class="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-sky-500 to-violet-600 rounded-lg flex items-center justify-center shadow-md">
+                                <i class="fas fa-id-card text-white text-lg sm:text-xl"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-900 dark:text-white">Photo &amp; fingerprint</h2>
+                                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">Optional — profile picture and biometric enrollment for the student</p>
+                            </div>
+                        </div>
+                        <div>
+                            {% with input_id='admission-student-profile-image' %}
+                            {% include 'dashboards/includes/student_profile_photo_picker.html' %}
+                            {% endwith %}
+                        </div>
+                        <div>
+                            {% with fingerprint_mode='queue', fingerprint_hidden_input_id='admission_fingerprints_json' %}
+                            {% include 'dashboards/includes/student_fingerprint_enrollment.html' %}
+                            {% endwith %}
                         </div>
                     </div>
 

@@ -103,6 +103,7 @@ def create_tables():
                     address TEXT,
                     medical_info TEXT,
                     special_needs TEXT,
+                    profile_image VARCHAR(500),
                     status ENUM('pending approval', 'in session', 'suspended', 'expelled', 'alumni') DEFAULT 'pending approval',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
