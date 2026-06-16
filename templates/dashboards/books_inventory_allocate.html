@@ -1,4 +1,114 @@
 {# Allocate in-stock books to class levels — form shown only after selecting a book. #}
+<style>
+  .lib-stock-panel {
+    border-radius: 1rem;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.04);
+  }
+  .dark .lib-stock-panel {
+    border-color: rgba(51, 65, 85, 0.8);
+    background: rgba(15, 23, 42, 0.92);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  }
+  .lib-stock-panel-head {
+    border-bottom: 1px solid #f1f5f9;
+    background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+  }
+  .dark .lib-stock-panel-head {
+    border-color: #1e293b;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.75) 100%);
+  }
+  .lib-stock-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    padding: 0.45rem 0.9rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #334155;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  .dark .lib-stock-stat {
+    border-color: #334155;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  .lib-stock-book-icon {
+    display: inline-flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.625rem;
+    background: linear-gradient(135deg, #ecfdf5 0%, #ccfbf1 100%);
+    color: #0f766e;
+    border: 1px solid #99f6e4;
+  }
+  .dark .lib-stock-book-icon {
+    background: linear-gradient(135deg, rgba(6, 78, 59, 0.35) 0%, rgba(15, 118, 110, 0.2) 100%);
+    color: #5eead4;
+    border-color: rgba(45, 212, 191, 0.25);
+  }
+  .lib-stock-qty-pill {
+    display: inline-flex;
+    min-width: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .lib-stock-qty-pill--avail {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+  }
+  .dark .lib-stock-qty-pill--avail {
+    background: rgba(6, 95, 70, 0.25);
+    color: #6ee7b7;
+    border-color: rgba(52, 211, 153, 0.3);
+  }
+  .lib-stock-qty-pill--alloc {
+    background: #f5f3ff;
+    color: #6d28d9;
+    border: 1px solid #ddd6fe;
+  }
+  .dark .lib-stock-qty-pill--alloc {
+    background: rgba(91, 33, 182, 0.2);
+    color: #c4b5fd;
+    border-color: rgba(167, 139, 250, 0.3);
+  }
+  .lib-stock-hint {
+    border: 1px dashed #cbd5e1;
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  }
+  .dark .lib-stock-hint {
+    border-color: #334155;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.6) 0%, rgba(15, 23, 42, 0.85) 100%);
+  }
+  .lib-stock-form-panel {
+    border: 1px solid #a7f3d0;
+    box-shadow: 0 4px 24px rgba(5, 150, 105, 0.08);
+  }
+  .dark .lib-stock-form-panel {
+    border-color: rgba(16, 185, 129, 0.25);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  }
+  .lib-stock-modal-head {
+    background: linear-gradient(135deg, #0f766e 0%, #047857 55%, #0e7490 100%);
+  }
+  .lib-stock-modal-overlay {
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(4px);
+  }
+</style>
 <script type="application/json" id="stock-allocate-page-data">{{ {
     'books': books_stock|default([]),
     'levels': inventory_academic_levels|default([]),
@@ -6,68 +116,108 @@
     'postUrl': url_for('books_inventory_allocate_stock'),
     'stockUrl': employee_dash_url('books-inventory/stock'),
     'allocationApiPrefix': employee_dash_url('books-inventory/allocations'),
-    'recentAllocations': library_stock_in_records|default([]),
+    'stockInRecordsApi': employee_dash_url('books-inventory/stock-in-records'),
 }|tojson }}</script>
 
-<section class="normal-case space-y-6" x-data="stockAllocatePage()" x-cloak>
-    <div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-        <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">
-                Books in stock
-                <span class="font-normal text-gray-500">({{ stock_page_meta.total|default(books_stock|length) }})</span>
-            </h2>
-            <form method="get" action="{{ employee_dash_url('books-inventory/stock') }}" class="w-full sm:max-w-xs">
+<section class="normal-case space-y-5" x-data="stockAllocatePage()" x-cloak>
+
+    <div class="flex flex-wrap gap-2.5" x-show="books.length">
+        <span class="lib-stock-stat">
+            <i class="fas fa-book text-teal-600 dark:text-teal-400" aria-hidden="true"></i>
+            <span x-text="books.length"></span> title<span x-show="books.length !== 1">s</span> on this page
+        </span>
+        <span class="lib-stock-stat">
+            <i class="fas fa-layer-group text-emerald-600 dark:text-emerald-400" aria-hidden="true"></i>
+            <span x-text="stockSummaryAvailable()"></span> available
+        </span>
+        <span class="lib-stock-stat">
+            <i class="fas fa-chalkboard-teacher text-violet-600 dark:text-violet-400" aria-hidden="true"></i>
+            <span x-text="stockSummaryAllocated()"></span> allocated
+        </span>
+    </div>
+
+    <div class="lib-stock-panel overflow-hidden">
+        <div class="lib-stock-panel-head flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
+            <div class="min-w-0">
+                <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">Books in stock</h2>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    <span class="tabular-nums font-medium text-gray-700 dark:text-gray-300">{{ stock_page_meta.total|default(books_stock|length) }}</span>
+                    configured title{% if stock_page_meta.total|default(books_stock|length) != 1 %}s{% endif %} in catalog
+                </p>
+            </div>
+            <form method="get" action="{{ employee_dash_url('books-inventory/stock') }}" class="w-full sm:max-w-sm">
                 <label for="stock_book_search" class="sr-only">Search books</label>
                 <div class="relative">
                     <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400" aria-hidden="true"></i>
                     <input type="search" id="stock_book_search" name="q" value="{{ request.args.get('q', '') }}"
-                           placeholder="Search book name…"
-                           class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm normal-case text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                           placeholder="Search by book name…"
+                           class="w-full rounded-xl border border-gray-200/90 bg-white py-2.5 pl-10 pr-4 text-sm normal-case text-gray-900 shadow-sm transition focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
                 </div>
             </form>
         </div>
 
         {% if books_stock %}
         <div class="overflow-x-auto">
-            <table class="min-w-[640px] w-full border-collapse text-left text-sm">
+            <table class="min-w-[680px] w-full border-collapse text-left text-sm">
                 <thead>
-                    <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
-                        <th class="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Book</th>
-                        <th class="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Subject</th>
-                        <th class="px-4 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Available</th>
-                        <th class="px-4 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">At classes</th>
-                        <th class="sticky right-0 z-[2] w-[6.5rem] border-l border-gray-100 bg-gray-50/95 px-2 py-3.5 text-center text-[10px] font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-950/95">Allocate</th>
+                    <tr class="border-b border-gray-100 bg-gray-50/80 dark:border-gray-800 dark:bg-gray-950/60">
+                        <th class="px-4 py-3.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Book</th>
+                        <th class="px-4 py-3.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Subject</th>
+                        <th class="px-4 py-3.5 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Available</th>
+                        <th class="px-4 py-3.5 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Allocated</th>
+                        <th class="sticky right-0 z-[2] w-[8.5rem] border-l border-gray-100 bg-gray-50/95 px-2 py-3.5 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 dark:border-gray-800 dark:bg-gray-950/95">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
                     <template x-for="b in books" :key="b.id">
-                        <tr class="hover:bg-brand-primary/[0.04] transition-colors"
+                        <tr class="transition-colors hover:bg-teal-50/40 dark:hover:bg-teal-950/15"
                             :class="{
-                              'bg-emerald-50/80 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/30 dark:ring-emerald-800': selectedBook && selectedBook.id === b.id,
-                              'opacity-75': (b.available_to_allocate || 0) < 1
+                              'bg-emerald-50/70 ring-1 ring-inset ring-emerald-200/80 dark:bg-emerald-950/25 dark:ring-emerald-800/60': selectedBook && selectedBook.id === b.id,
+                              'opacity-70': (b.available_to_allocate || 0) < 1 && bookAllocatedTotal(b) < 1
                             }">
-                            <td class="px-4 py-3.5 sm:px-5">
-                                <span class="font-semibold text-gray-900 dark:text-white" x-text="b.book_name"></span>
-                                <span class="mt-0.5 block text-xs text-gray-500" x-text="b.book_category"></span>
-                                <span class="text-[10px] font-medium text-sky-700 dark:text-sky-300" x-show="b.store_item_id">Store stock</span>
+                            <td class="px-4 py-4 sm:px-6">
+                                <div class="flex items-start gap-3">
+                                    <span class="lib-stock-book-icon mt-0.5" aria-hidden="true">
+                                        <i class="fas fa-book-open text-sm"></i>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <span class="block font-semibold leading-snug text-gray-900 dark:text-white" x-text="b.book_name"></span>
+                                        <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400" x-text="b.book_category"></span>
+                                        <span class="mt-1 inline-flex items-center gap-1 rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/50 dark:text-sky-300" x-show="b.store_item_id">
+                                            <i class="fas fa-warehouse text-[9px]" aria-hidden="true"></i> Store stock
+                                        </span>
+                                    </div>
+                                </div>
                             </td>
-                            <td class="px-4 py-3.5 text-gray-600 dark:text-gray-300 sm:px-5">
-                                <span x-text="b.subject_name || '—'"></span>
-                                <span class="text-gray-400" x-show="b.subject_code" x-text="' (' + b.subject_code + ')'"></span>
+                            <td class="px-4 py-4 text-gray-600 dark:text-gray-300 sm:px-6">
+                                <span class="text-sm" x-text="b.subject_name || '—'"></span>
+                                <span class="block text-xs text-gray-400" x-show="b.subject_code" x-text="b.subject_code"></span>
                             </td>
-                            <td class="px-4 py-3.5 text-right tabular-nums font-bold text-emerald-800 dark:text-emerald-200 sm:px-5"
-                                x-text="b.available_to_allocate || 0"></td>
-                            <td class="px-4 py-3.5 text-right tabular-nums text-gray-600 dark:text-gray-300 sm:px-5"
-                                x-text="b.quantity_in_stock || 0"></td>
-                            <td class="sticky right-0 z-[1] border-l border-gray-100 bg-white px-2 py-2 text-center dark:border-gray-800 dark:bg-gray-900 sm:px-3"
-                                :class="selectedBook && selectedBook.id === b.id ? 'bg-emerald-50/80 dark:bg-emerald-950/30' : ''">
-                                <button type="button" @click="selectBook(b)"
-                                        x-show="(b.available_to_allocate || 0) > 0"
-                                        class="inline-flex h-9 items-center justify-center rounded-lg px-3 text-xs font-semibold text-white"
-                                        :class="selectedBook && selectedBook.id === b.id ? 'bg-emerald-800 hover:bg-emerald-900' : 'bg-emerald-600 hover:bg-emerald-700'">
-                                    <span x-text="selectedBook && selectedBook.id === b.id ? 'Selected' : 'Allocate'"></span>
-                                </button>
-                                <span class="text-xs text-gray-400" x-show="(b.available_to_allocate || 0) < 1">—</span>
+                            <td class="px-4 py-4 text-right sm:px-6">
+                                <span class="lib-stock-qty-pill lib-stock-qty-pill--avail" x-text="b.available_to_allocate || 0"></span>
+                            </td>
+                            <td class="px-4 py-4 text-right sm:px-6">
+                                <span class="lib-stock-qty-pill lib-stock-qty-pill--alloc" x-text="bookAllocatedTotal(b)"></span>
+                            </td>
+                            <td class="sticky right-0 z-[1] border-l border-gray-100 bg-white px-2 py-2.5 text-center dark:border-gray-800 dark:bg-gray-900 sm:px-3"
+                                :class="selectedBook && selectedBook.id === b.id ? 'bg-emerald-50/70 dark:bg-emerald-950/25' : ''">
+                                <div class="inline-flex items-center justify-center gap-1.5">
+                                    <button type="button" @click="openViewAllocations(b)"
+                                            x-show="bookAllocatedTotal(b) > 0"
+                                            class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200/90 bg-white text-gray-500 shadow-sm transition hover:border-teal-400 hover:bg-teal-50 hover:text-teal-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-teal-600 dark:hover:bg-teal-950/40 dark:hover:text-teal-300"
+                                            title="View teacher allocations"
+                                            aria-label="View teacher allocations">
+                                        <i class="fas fa-eye text-sm"></i>
+                                    </button>
+                                    <button type="button" @click="selectBook(b)"
+                                            x-show="(b.available_to_allocate || 0) > 0"
+                                            class="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-white shadow-sm transition"
+                                            :class="selectedBook && selectedBook.id === b.id ? 'bg-emerald-800 hover:bg-emerald-900 ring-2 ring-emerald-300/50' : 'bg-teal-600 hover:bg-teal-700'">
+                                        <i class="fas fa-share-square text-[10px]" aria-hidden="true"></i>
+                                        <span x-text="selectedBook && selectedBook.id === b.id ? 'Selected' : 'Allocate'"></span>
+                                    </button>
+                                    <span class="text-xs text-gray-400" x-show="(b.available_to_allocate || 0) < 1 && bookAllocatedTotal(b) < 1">—</span>
+                                </div>
                             </td>
                         </tr>
                     </template>
@@ -76,55 +226,76 @@
         </div>
         {% set spm = stock_page_meta|default({}) %}
         {% if spm.pages and spm.pages > 1 %}
-        <nav class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-4 dark:border-gray-800 sm:px-5">
-            <p class="text-xs text-gray-500">Page {{ spm.page }} of {{ spm.pages }}</p>
+        <nav class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-4 dark:border-gray-800 sm:px-6">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Page <span class="font-semibold text-gray-700 dark:text-gray-300">{{ spm.page }}</span> of {{ spm.pages }}</p>
             <div class="flex gap-2">
                 {% if spm.page > 1 %}
-                <a href="{{ employee_dash_url('books-inventory/stock') }}?{% if request.args.get('q') %}q={{ request.args.get('q')|urlencode }}&amp;{% endif %}page={{ spm.page - 1 }}" class="rounded-lg border px-3 py-2 text-xs font-semibold">Previous</a>
+                <a href="{{ employee_dash_url('books-inventory/stock') }}?{% if request.args.get('q') %}q={{ request.args.get('q')|urlencode }}&amp;{% endif %}page={{ spm.page - 1 }}"
+                   class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800">
+                    <i class="fas fa-chevron-left text-[10px]" aria-hidden="true"></i> Previous
+                </a>
                 {% endif %}
                 {% if spm.page < spm.pages %}
-                <a href="{{ employee_dash_url('books-inventory/stock') }}?{% if request.args.get('q') %}q={{ request.args.get('q')|urlencode }}&amp;{% endif %}page={{ spm.page + 1 }}" class="rounded-lg border px-3 py-2 text-xs font-semibold">Next</a>
+                <a href="{{ employee_dash_url('books-inventory/stock') }}?{% if request.args.get('q') %}q={{ request.args.get('q')|urlencode }}&amp;{% endif %}page={{ spm.page + 1 }}"
+                   class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800">
+                    Next <i class="fas fa-chevron-right text-[10px]" aria-hidden="true"></i>
+                </a>
                 {% endif %}
             </div>
         </nav>
         {% endif %}
         {% else %}
-        <p class="px-4 py-12 text-center text-sm text-gray-600 dark:text-gray-400 sm:px-5">
+        <div class="px-4 py-14 text-center sm:px-6">
+            <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                <i class="fas fa-book text-xl" aria-hidden="true"></i>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-400">
             {% if request.args.get('q') %}
             No configured books match your search.
             {% else %}
             No configured books yet. Complete setup in the
-            <a href="{{ employee_dash_url('books-inventory') }}" class="font-semibold text-brand-primary underline">books catalog</a>.
+            <a href="{{ employee_dash_url('books-inventory') }}" class="font-semibold text-teal-700 underline decoration-teal-700/30 hover:decoration-teal-700 dark:text-teal-300">books catalog</a>.
             {% endif %}
-        </p>
+            </p>
+        </div>
         {% endif %}
     </div>
 
-    <p class="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-8 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400"
+    <div class="lib-stock-hint rounded-2xl px-5 py-8 text-center"
        x-show="!selectedBook">
-        <i class="fas fa-hand-pointer text-2xl text-gray-300 dark:text-gray-600 mb-2 block" aria-hidden="true"></i>
-        Select a book from the table above, then click <strong>Allocate</strong> to assign copies to a class and teacher.
-    </p>
+        <div class="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-white text-teal-600 shadow-sm dark:bg-gray-900 dark:text-teal-400">
+            <i class="fas fa-hand-pointer" aria-hidden="true"></i>
+        </div>
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+            Select a book from the table, then choose <strong class="text-gray-800 dark:text-gray-200">Allocate</strong> to assign copies to a class and teacher.
+        </p>
+    </div>
 
-    <div id="allocate-form" class="scroll-mt-24 rounded-xl border border-emerald-200/80 bg-white shadow-sm dark:border-emerald-900/40 dark:bg-gray-900"
+    <div id="allocate-form" class="lib-stock-panel lib-stock-form-panel scroll-mt-24 overflow-hidden"
          x-show="selectedBook" x-transition>
-        <div class="border-b border-emerald-100 bg-emerald-50/60 px-4 py-4 dark:border-emerald-900/30 dark:bg-emerald-950/25 sm:px-5">
+        <div class="border-b border-emerald-100/80 bg-gradient-to-r from-emerald-50/90 via-teal-50/50 to-white px-4 py-4 dark:border-emerald-900/30 dark:from-emerald-950/40 dark:via-teal-950/20 dark:to-gray-900 sm:px-6 sm:py-5">
             <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h2 class="text-base font-semibold text-gray-900 dark:text-white">Allocate to class &amp; teacher</h2>
-                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" x-show="selectedBook">
-                        <span class="font-semibold text-gray-900 dark:text-white" x-text="selectedBook.book_name"></span>
-                        · <span x-text="(selectedBook.available_to_allocate || 0) + ' available in stock'"></span>
-                    </p>
+                <div class="flex items-start gap-3 min-w-0">
+                    <span class="lib-stock-book-icon mt-0.5" aria-hidden="true">
+                        <i class="fas fa-share-square text-sm"></i>
+                    </span>
+                    <div class="min-w-0">
+                        <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">Allocate to class &amp; teacher</h2>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" x-show="selectedBook">
+                            <span class="font-semibold text-gray-900 dark:text-white" x-text="selectedBook.book_name"></span>
+                            <span class="text-gray-400"> · </span>
+                            <span x-text="(selectedBook.available_to_allocate || 0) + ' available in stock'"></span>
+                        </p>
+                    </div>
                 </div>
                 <button type="button" @click="clearSelection()"
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300">
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300">
                     <i class="fas fa-times" aria-hidden="true"></i> Close
                 </button>
             </div>
         </div>
         <div x-show="selectedBook && (selectedBook.available_to_allocate || 0) > 0">
-            <form method="post" :action="postUrl" class="space-y-5 px-4 py-5 sm:px-5">
+            <form method="post" :action="postUrl" class="space-y-5 px-4 py-5 sm:px-6 sm:py-6">
                 <input type="hidden" name="book_id" :value="selectedBook.id" />
                 <input type="hidden" name="teacher_id" :value="teacherId" />
                 <input type="hidden" name="teacher_subject_id" :value="teacherSubjectId" />
@@ -172,82 +343,118 @@
                                class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
                     </div>
                 </div>
-                <div class="flex flex-wrap gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+                <div class="flex flex-wrap gap-3 border-t border-gray-200/80 pt-5 dark:border-gray-700">
                     <button type="submit"
                             :disabled="!levelId || !teacherKey || loadingTeachers"
-                            class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
-                        <i class="fas fa-school"></i> Confirm allocation
+                            class="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50">
+                        <i class="fas fa-check-circle" aria-hidden="true"></i> Confirm allocation
                     </button>
                     <button type="button" @click="clearSelection()"
-                            class="inline-flex items-center rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 dark:border-gray-600 dark:text-gray-300">
+                            class="inline-flex items-center rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300">
                         Cancel
                     </button>
                 </div>
             </form>
         </div>
-        <p class="px-4 py-6 text-sm text-amber-800 dark:text-amber-200 sm:px-5"
+        <p class="px-4 py-6 text-sm text-amber-800 dark:text-amber-200 sm:px-6"
            x-show="selectedBook && (selectedBook.available_to_allocate || 0) < 1">
             No copies left in stock for this title.
         </p>
     </div>
 
-    <div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900" x-show="recentAllocations.length">
-        <div class="border-b border-gray-100 px-4 py-4 dark:border-gray-800 sm:px-5">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">Recent class allocations</h2>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">View teacher assignments and edit notes or assigned teacher.</p>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-[720px] w-full border-collapse text-left text-sm">
-                <thead>
-                    <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
-                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Date</th>
-                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Book</th>
-                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Class</th>
-                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Teacher allocated</th>
-                        <th class="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Qty</th>
-                        <th class="sticky right-0 z-[2] w-24 border-l border-gray-100 bg-gray-50/95 px-2 py-3.5 text-center text-[10px] font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-950/95 sm:px-3">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                    <template x-for="row in recentAllocations" :key="row.id">
-                        <tr class="hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
-                            <td class="px-4 py-3 text-xs tabular-nums text-gray-500 sm:px-5" x-text="row.created_at_display || row.created_at || '—'"></td>
-                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white sm:px-5" x-text="row.book_name"></td>
-                            <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 sm:px-5">
-                                <span x-text="(row.level_category || '') + ' · ' + (row.level_name || '')"></span>
-                            </td>
-                            <td class="px-4 py-3 text-xs text-gray-700 dark:text-gray-300 sm:px-5 max-w-[14rem]">
-                                <span x-show="row.teacher_summary" class="font-medium text-teal-800 dark:text-teal-200" x-text="row.teacher_summary"></span>
-                                <span x-show="!row.teacher_summary" class="italic text-gray-400">Not assigned</span>
-                            </td>
-                            <td class="px-4 py-3 text-right tabular-nums font-semibold sm:px-5" x-text="row.quantity"></td>
-                            <td class="sticky right-0 z-[1] border-l border-gray-100 bg-white px-2 py-2 text-center dark:border-gray-800 dark:bg-gray-900 sm:px-3">
-                                <button type="button" @click="openEditAllocation(row)"
-                                        class="inline-flex h-8 items-center justify-center rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800">
-                                    Edit
-                                </button>
-                            </td>
-                        </tr>
-                    </template>
-                </tbody>
-            </table>
+    <div x-show="viewAllocationsOpen" x-cloak
+         class="lib-stock-modal-overlay fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4"
+         @keydown.escape.window="closeViewAllocations()">
+        <div class="lib-stock-panel flex w-full max-w-3xl max-h-[90vh] flex-col overflow-hidden shadow-2xl"
+             @click.outside="closeViewAllocations()" role="dialog" aria-labelledby="view-allocations-title">
+            <div class="lib-stock-modal-head shrink-0 px-5 py-4 sm:px-6 sm:py-5">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-100/90">Allocation history</p>
+                        <h3 id="view-allocations-title" class="mt-0.5 text-base font-semibold text-white sm:text-lg">Teacher allocations</h3>
+                        <p class="mt-1 text-sm text-teal-50/90" x-show="viewAllocationsBook">
+                            <span class="font-semibold text-white" x-text="viewAllocationsBook ? viewAllocationsBook.book_name : ''"></span>
+                            <span x-show="viewAllocationsBook && viewAllocationsBook.subject_name"> · </span>
+                            <span x-text="viewAllocationsBook ? viewAllocationsBook.subject_name : ''"></span>
+                        </p>
+                    </div>
+                    <button type="button" @click="closeViewAllocations()"
+                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                            aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-y-auto px-5 py-4 flex-1 min-h-0 bg-white dark:bg-gray-900">
+                <p class="flex items-center justify-center gap-2 py-10 text-sm text-gray-500" x-show="viewAllocationsLoading">
+                    <i class="fas fa-spinner fa-spin"></i> Loading allocations…
+                </p>
+                <p class="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-8 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400"
+                   x-show="!viewAllocationsLoading && !viewAllocationsRows.length">
+                    No teacher allocations for this book yet.
+                </p>
+                <div class="overflow-x-auto" x-show="!viewAllocationsLoading && viewAllocationsRows.length">
+                    <table class="min-w-[560px] w-full border-collapse text-left text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-100 bg-gray-50/80 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 dark:border-gray-800 dark:bg-gray-950/50">
+                                <th class="pb-3 pr-4 pl-1">Date</th>
+                                <th class="pb-3 pr-4">Class</th>
+                                <th class="pb-3 pr-4">Teacher</th>
+                                <th class="pb-3 pr-4 text-right">Qty</th>
+                                <th class="pb-3 pr-1 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                            <template x-for="row in viewAllocationsRows" :key="row.id">
+                                <tr class="text-gray-800 transition hover:bg-gray-50/80 dark:text-gray-200 dark:hover:bg-gray-800/40">
+                                    <td class="py-3.5 pr-4 pl-1 whitespace-nowrap text-xs tabular-nums text-gray-500" x-text="row.created_at_display || row.created_at || '—'"></td>
+                                    <td class="py-3.5 pr-4 text-xs text-gray-600 dark:text-gray-300">
+                                        <span class="font-medium" x-text="row.level_category"></span>
+                                        <span class="text-gray-400"> · </span>
+                                        <span x-text="row.level_name"></span>
+                                    </td>
+                                    <td class="py-3.5 pr-4 text-xs max-w-[16rem]">
+                                        <span x-show="row.teacher_summary" class="font-medium text-teal-800 dark:text-teal-200" x-text="row.teacher_summary"></span>
+                                        <span x-show="!row.teacher_summary" class="italic text-gray-400">Not assigned</span>
+                                    </td>
+                                    <td class="py-3.5 pr-4 text-right">
+                                        <span class="lib-stock-qty-pill lib-stock-qty-pill--alloc" x-text="row.quantity"></span>
+                                    </td>
+                                    <td class="py-3.5 pr-1 text-right">
+                                        <button type="button" @click="openEditAllocation(row)"
+                                                class="inline-flex h-8 items-center justify-center rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
+                                            Edit
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="border-t border-gray-100 bg-gray-50/80 px-5 py-3 dark:border-gray-800 dark:bg-gray-950/50 shrink-0">
+                <p class="text-xs text-gray-500 dark:text-gray-400" x-show="!viewAllocationsLoading && viewAllocationsRows.length">
+                    <span class="font-semibold text-gray-700 dark:text-gray-300" x-text="viewAllocationsRows.length"></span> allocation<span x-show="viewAllocationsRows.length !== 1">s</span>
+                    · <span class="font-semibold text-gray-700 dark:text-gray-300" x-text="viewAllocationsTotalQty()"></span> cop<span x-show="viewAllocationsTotalQty() !== 1">ies</span> total
+                </p>
+            </div>
         </div>
     </div>
 
     <div x-show="editAllocation" x-cloak
-         class="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4 bg-black/40"
+         class="lib-stock-modal-overlay fixed inset-0 z-[60] flex items-end justify-center sm:items-center p-4"
          @keydown.escape.window="closeEditAllocation()">
-        <div class="w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
+        <div class="lib-stock-panel w-full max-w-lg overflow-hidden shadow-2xl"
              @click.outside="closeEditAllocation()" role="dialog" aria-labelledby="edit-allocation-title">
-            <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
-                <h3 id="edit-allocation-title" class="text-base font-semibold text-gray-900 dark:text-white">Edit allocation</h3>
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" x-show="editAllocation">
-                    <span class="font-semibold text-gray-900 dark:text-white" x-text="editAllocation.book_name"></span>
+            <div class="lib-stock-modal-head px-5 py-4 sm:px-6">
+                <h3 id="edit-allocation-title" class="text-base font-semibold text-white">Edit allocation</h3>
+                <p class="mt-1 text-sm text-teal-50/90" x-show="editAllocation">
+                    <span class="font-semibold text-white" x-text="editAllocation.book_name"></span>
                     · <span x-text="(editAllocation.level_category || '') + ' · ' + (editAllocation.level_name || '')"></span>
                     · <span x-text="editAllocation.quantity + ' copies'"></span>
                 </p>
             </div>
-            <div class="space-y-4 px-5 py-5">
+            <div class="space-y-4 bg-white px-5 py-5 dark:bg-gray-900">
                 <div>
                     <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Notes</label>
                     <input type="text" x-model="editNotes" maxlength="500"
@@ -267,13 +474,13 @@
                     <span x-text="editAllocation.students_allocated_count"></span> copy/copies already issued to students — class and quantity cannot be changed here.
                 </p>
             </div>
-            <div class="flex flex-wrap justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-gray-800">
+            <div class="flex flex-wrap justify-end gap-2 border-t border-gray-100 bg-gray-50/80 px-5 py-4 dark:border-gray-800 dark:bg-gray-950/50">
                 <button type="button" @click="closeEditAllocation()"
-                        class="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 dark:border-gray-600 dark:text-gray-300">
+                        class="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300">
                     Cancel
                 </button>
                 <button type="button" @click="saveEditAllocation()" :disabled="editSaving"
-                        class="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+                        class="rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:opacity-50">
                     <span x-text="editSaving ? 'Saving…' : 'Save changes'"></span>
                 </button>
             </div>
@@ -299,7 +506,11 @@
         postUrl: payload.postUrl || '',
         stockUrl: payload.stockUrl || '',
         allocationApiPrefix: payload.allocationApiPrefix || '',
-        recentAllocations: (payload.recentAllocations || []).slice(0, 30),
+        stockInRecordsApi: payload.stockInRecordsApi || '',
+        viewAllocationsOpen: false,
+        viewAllocationsBook: null,
+        viewAllocationsRows: [],
+        viewAllocationsLoading: false,
         editAllocation: null,
         editNotes: '',
         editTeacherKey: '',
@@ -317,6 +528,86 @@
         teachers: [],
         loadingTeachers: false,
         teacherError: '',
+        bookAllocatedTotal: function (book) {
+          if (!book) return 0;
+          return parseInt(book.quantity_in_stock, 10) || parseInt(book.allocated_copies_sum, 10) || 0;
+        },
+        stockSummaryAvailable: function () {
+          var total = 0;
+          (this.books || []).forEach(function (b) {
+            total += parseInt(b.available_to_allocate, 10) || 0;
+          });
+          return total;
+        },
+        stockSummaryAllocated: function () {
+          var self = this;
+          var total = 0;
+          (this.books || []).forEach(function (b) {
+            total += self.bookAllocatedTotal(b);
+          });
+          return total;
+        },
+        viewAllocationsTotalQty: function () {
+          var total = 0;
+          (this.viewAllocationsRows || []).forEach(function (row) {
+            total += parseInt(row.quantity, 10) || 0;
+          });
+          return total;
+        },
+        openViewAllocations: function (book) {
+          if (!book || !book.id) return;
+          this.viewAllocationsBook = book;
+          this.viewAllocationsOpen = true;
+          this.viewAllocationsRows = [];
+          this.fetchBookAllocations(book.id);
+        },
+        closeViewAllocations: function () {
+          this.viewAllocationsOpen = false;
+          this.viewAllocationsBook = null;
+          this.viewAllocationsRows = [];
+          this.viewAllocationsLoading = false;
+        },
+        fetchBookAllocations: function (bookId) {
+          if (!bookId || !this.stockInRecordsApi) return;
+          var self = this;
+          this.viewAllocationsLoading = true;
+          var url = this.stockInRecordsApi + '?book_id=' + encodeURIComponent(bookId) + '&per_page=100&page=1';
+          fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              self.viewAllocationsLoading = false;
+              if (!data || !data.success) {
+                self.viewAllocationsRows = [];
+                return;
+              }
+              self.viewAllocationsRows = data.records || [];
+              var meta = data.meta || {};
+              if (meta.pages > 1) {
+                self.fetchRemainingBookAllocations(bookId, 2, meta.pages);
+              }
+            })
+            .catch(function () {
+              self.viewAllocationsLoading = false;
+              self.viewAllocationsRows = [];
+            });
+        },
+        fetchRemainingBookAllocations: function (bookId, page, pages) {
+          if (!bookId || page > pages) return;
+          var self = this;
+          var url = this.stockInRecordsApi + '?book_id=' + encodeURIComponent(bookId)
+            + '&per_page=100&page=' + encodeURIComponent(page);
+          fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              if (data && data.success && data.records && data.records.length) {
+                self.viewAllocationsRows = (self.viewAllocationsRows || []).concat(data.records);
+              }
+              if (page < pages) {
+                self.fetchRemainingBookAllocations(bookId, page + 1, pages);
+              }
+            })
+            .catch(function () {});
+        },
         levelsForBook: function () {
           if (!this.selectedBook) return [];
           var cat = (this.selectedBook.academic_category || '').toUpperCase();
@@ -556,10 +847,10 @@
               }
               var rec = res.data.record;
               if (rec) {
-                var idx = self.recentAllocations.findIndex(function (x) { return x.id === rec.id; });
+                var idx = (self.viewAllocationsRows || []).findIndex(function (x) { return x.id === rec.id; });
                 if (idx >= 0) {
-                  self.recentAllocations[idx] = rec;
-                  self.recentAllocations = self.recentAllocations.slice();
+                  self.viewAllocationsRows[idx] = rec;
+                  self.viewAllocationsRows = self.viewAllocationsRows.slice();
                 }
               }
               self.closeEditAllocation();

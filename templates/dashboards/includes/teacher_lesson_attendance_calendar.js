@@ -133,7 +133,7 @@
       '</div>' +
       (pctText ? '<div class="tlc-cell-pct">' + esc(pctText) + '</div>' : '') +
       (ratio ? '<div class="tlc-cell-ratio">' + esc(ratio) + '</div>' : '');
-    var title = formatDayTitle(day.date) + (clickable ? ' — open attendance register' : '');
+    var title = formatDayTitle(day.date) + (clickable ? ' — open subject attendance' : '');
     if (ratio) title += ' (' + ratio + ' lessons)';
     if (clickable) {
       return (

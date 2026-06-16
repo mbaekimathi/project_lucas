@@ -11,7 +11,7 @@
     {% if is_parent_view|default(false) %}
     <div id="attendance-form">
     {% else %}
-    <form id="attendance-form" method="POST" action="{{ employee_dash_url('student-management/student-attendance') }}">
+    <form id="attendance-form" method="POST" action="{{ attendance_form_action|default(employee_dash_url('student-management/student-attendance')) }}">
         <input type="hidden" name="term_id" value="{{ selected_term_id }}">
         <input type="hidden" name="academic_year_id" value="{{ selected_academic_year_id }}">
         <input type="hidden" name="filter_type" value="{{ selected_filter_type }}">
@@ -34,6 +34,13 @@
                     class="touch-btn att-bulk-btn att-bulk-btn--absent pointer-events-auto">
                 <i class="fas fa-times pointer-events-none" aria-hidden="true"></i><span>All absent</span>
             </button>
+            <div class="att-save-bar att-save-bar--top">
+                <p class="att-level-save-status att-level-save-status--top hidden" role="status" aria-live="polite"></p>
+                <button type="button" class="att-level-save-btn att-level-save-btn--top touch-btn">
+                    <i class="fas fa-save pointer-events-none" aria-hidden="true"></i>
+                    <span class="att-save-label-full">{% if is_class_teacher_view|default(false) %}Save student attendance{% elif is_teacher_view|default(false) %}Save subject attendance{% else %}Save attendance{% endif %}</span><span class="att-save-label-short">Save</span>
+                </button>
+            </div>
         </div>
         {% endif %}
 
@@ -42,6 +49,11 @@
         {% set level_id = level_group.id|default(none) %}
         {% if use_subject_attendance_columns|default(false) and level_id %}
         {% set register_columns = attendance_columns_by_level.get(level_id, []) %}
+        {% elif use_class_session_slots|default(false) %}
+        {% set register_columns = class_session_columns|default([]) %}
+        {% if not register_columns|length and level_id %}
+        {% set register_columns = attendance_columns_by_level.get(level_id, attendance_columns_by_level.get(level_id|string, [])) %}
+        {% endif %}
         {% else %}
         {% set register_columns = none %}
         {% endif %}
@@ -54,30 +66,40 @@
             </div>
             {% if use_subject_attendance_columns|default(false) and register_columns is not none and register_columns|length == 0 %}
             <p class="px-4 py-4 text-sm text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 border-t border-amber-200/60 dark:border-amber-800/40 m-0">
-                No periods in this range. <a href="{{ employee_dash_url('timetable-management') }}" class="font-semibold underline">Timetable</a>
+                No subject periods in this range for your timetable. <a href="{{ employee_dash_url('timetable-management') }}" class="font-semibold underline">Timetable</a>
+            </p>
+            {% elif use_class_session_slots|default(false) and register_columns is not none and register_columns|length == 0 %}
+            <p class="px-4 py-4 text-sm text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 border-t border-amber-200/60 dark:border-amber-800/40 m-0">
+                {% if selected_week_days|default([])|length == 0 %}
+                Choose a term and date within the term range to mark morning, afternoon, and evening attendance.
+                {% else %}
+                No attendance columns for this date. Pick a study day (Mon–Fri) that falls inside the selected term.
+                {% endif %}
             </p>
             {% else %}
             <p class="att-scroll-hint md:hidden"><i class="fas fa-arrows-alt-h" aria-hidden="true"></i> Swipe for dates</p>
             <div class="att-register-scroll-wrap">
-            <div class="att-register-scroll" tabindex="0" role="region" aria-label="Attendance register for {{ level_group.level_name }}">
+            <div class="att-register-scroll" tabindex="0" role="region" aria-label="{% if use_subject_attendance_columns|default(false) %}Subject attendance register for {{ level_group.level_name }}{% else %}Attendance register for {{ level_group.level_name }}{% endif %}">
                 <table class="att-register-table">
                     <thead>
                         <tr>
                             <th class="att-col-num hidden sm:table-cell">#</th>
                             <th class="att-sticky-student att-col-student">Student</th>
                             {% for col in (register_columns if register_columns is not none else selected_week_days) %}
-                            <th class="att-col-date" title="{% if col.date_str is defined %}{{ col.date_str }}{% else %}{{ col.date_str }}{% endif %}{% if col.subject_name %} — {{ col.subject_name }}{% endif %}">
+                            <th class="att-col-date{% if col.session_slot|default('') %} att-col-date--slot{% endif %}" title="{% if col.date_str is defined %}{{ col.date_str }}{% else %}{{ col.date_str }}{% endif %}{% if col.subject_name %} — {{ col.subject_name }}{% elif col.session_slot|default('') %} — {{ col.session_slot|capitalize }}{% endif %}">
                                 <div class="att-col-date__inner">
                                     <span class="att-col-date__label">{{ col.header_label|default(col.label) }}</span>
                                     {% if use_subject_attendance_columns|default(false) and col.subject_code %}
                                     <span class="att-col-date__sub">{{ col.subject_code or col.subject_name }}</span>
+                                    {% elif use_class_session_slots|default(false) and col.session_slot|default('') %}
+                                    <span class="att-col-date__sub">{{ col.session_slot|capitalize }}</span>
                                     {% endif %}
                                     {% if not is_parent_view|default(false) %}
                                     <div class="att-col-date__actions">
                                         <button type="button" class="att-day-all-present att-col-pa-btn pointer-events-auto"
-                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" title="All present">P</button>
+                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" data-session-slot="{{ col.session_slot|default('') }}" title="All present">P</button>
                                         <button type="button" class="att-day-all-absent att-col-pa-btn pointer-events-auto"
-                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" title="All absent">A</button>
+                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" data-session-slot="{{ col.session_slot|default('') }}" title="All absent">A</button>
                                     </div>
                                     {% endif %}
                                 </div>
@@ -101,13 +123,15 @@
                             </td>
                             {% for col in (register_columns if register_columns is not none else selected_week_days) %}
                             {% set subj_id = col.subject_id|default(0) %}
-                            {% set att_key = (student.student_id, col.date_str, subj_id) %}
+                            {% set slot_id = col.session_slot|default('') %}
+                            {% set att_key = (student.student_id, col.date_str, subj_id, slot_id) %}
                             <td class="att-col-check">
                                 <label class="att-check-wrap">
                                 <input type="checkbox"
-                                       name="att_{{ student.student_id }}_{{ col.date_str }}{% if subj_id > 0 %}_{{ subj_id }}{% endif %}"
+                                       name="att_{{ student.student_id }}_{{ col.date_str }}{% if slot_id %}_{{ slot_id }}{% elif subj_id > 0 %}_{{ subj_id }}{% endif %}"
                                        data-date="{{ col.date_str }}"
                                        data-subject-id="{{ subj_id }}"
+                                       data-session-slot="{{ slot_id }}"
                                        {% if attendance_records.get(att_key) %}checked{% endif %}
                                        {% if is_parent_view|default(false) %}disabled{% endif %}
                                        class="attendance-cb{% if is_parent_view|default(false) %} attendance-cb--readonly{% endif %}"
@@ -126,7 +150,7 @@
                 <p class="att-level-save-status hidden" role="status" aria-live="polite"></p>
                 <button type="button" class="att-level-save-btn touch-btn">
                     <i class="fas fa-save pointer-events-none" aria-hidden="true"></i>
-                    <span class="att-save-label-full">Save attendance</span><span class="att-save-label-short">Save</span>
+                    <span class="att-save-label-full">{% if is_class_teacher_view|default(false) %}Save student attendance{% elif is_teacher_view|default(false) %}Save subject attendance{% else %}Save attendance{% endif %}</span><span class="att-save-label-short">Save</span>
                 </button>
             </div>
             {% endif %}

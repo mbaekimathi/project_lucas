@@ -20,6 +20,12 @@
     <span>Subject allocation</span>
     {% if request.endpoint == 'subject_class_allocation' or request.path.endswith('/subject-class-allocation') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('class-teacher-allocation') }}"
+   class="sidebar-item {% if request.endpoint == 'class_teacher_allocation' or request.path.endswith('/class-teacher-allocation') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chalkboard-teacher w-5"></i>
+    <span>Class teachers</span>
+    {% if request.endpoint == 'class_teacher_allocation' or request.path.endswith('/class-teacher-allocation') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 <a href="{{ employee_dash_url('academic-subject-registration') }}"
    class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-list w-5"></i>
@@ -37,10 +43,10 @@
     {% if request.endpoint == 'student_management' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('student-management/student-attendance') }}"
-   class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
-    <i class="fas fa-check-circle w-5"></i>
-    <span>Attendance</span>
-    {% if request.endpoint == 'student_attendance' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+   class="sidebar-item {% if request.endpoint == 'student_attendance' or (request.path.endswith('/student-attendance') and '/class-student-attendance' not in request.path) %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-check w-5"></i>
+    <span>Student attendance register</span>
+    {% if request.endpoint == 'student_attendance' or (request.path.endswith('/student-attendance') and '/class-student-attendance' not in request.path) %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('student-management/students-progress') }}"
    class="sidebar-item {% if request.endpoint in ('students_progress', 'student_progress_detail') %}sidebar-item-active{% endif %}">

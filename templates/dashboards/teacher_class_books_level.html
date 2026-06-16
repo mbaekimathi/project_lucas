@@ -91,9 +91,10 @@
             <div class="mx-auto w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center mb-4">
                 <i class="fas fa-book text-2xl text-amber-600 dark:text-amber-400" aria-hidden="true"></i>
             </div>
-            <h2 class="text-lg font-bold text-amber-950 dark:text-amber-100">No books allocated for this class</h2>
+            <h2 class="text-lg font-bold text-amber-950 dark:text-amber-100">No books allocated to you</h2>
             <p class="mt-2 text-sm text-amber-900/85 dark:text-amber-200/90 max-w-md mx-auto leading-relaxed">
-                Ask the librarian to stock books and allocate copies to you from <strong>Book inventory</strong>.
+                The librarian must allocate copies <strong>to you</strong> for this class under <strong>Allocate books</strong> in the library.
+                Class assignment alone does not include book copies.
             </p>
             <a href="{{ employee_dash_url('class-books') }}"
                class="mt-6 inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 shadow-sm hover:bg-amber-50 dark:border-amber-700 dark:bg-gray-900 dark:text-amber-100">
@@ -133,36 +134,57 @@
                 </p>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <template x-for="book in books" :key="book.book_id">
+                {% for book in books_for_issue %}
+                <div role="button" tabindex="0"
+                     @click="selectBookForActiveTab('{{ book.book_id }}')"
+                     @keydown.enter.prevent="selectBookForActiveTab('{{ book.book_id }}')"
+                     class="text-left rounded-2xl border p-4 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2 cursor-pointer"
+                     :class="isBookSelected('{{ book.book_id }}')
+                         ? 'border-brand-primary bg-gradient-to-br from-brand-primary/8 to-brand-secondary/5 shadow-md ring-1 ring-brand-primary/25 dark:from-brand-primary/15 dark:to-brand-secondary/10'
+                         : 'border-gray-200 bg-white hover:border-brand-primary/40 hover:shadow-sm dark:border-gray-700 dark:bg-gray-900/90 dark:hover:border-brand-primary/50'">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0 flex-1">
+                            <p class="font-bold text-gray-900 dark:text-white truncate">{{ book.book_name }}</p>
+                            {% if book.subject_name %}
+                            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 truncate">{{ book.subject_name }}</p>
+                            {% endif %}
+                            {% if book.available|default(0) > 0 %}
+                            <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                                <span class="font-semibold text-emerald-700 dark:text-emerald-300">{{ book.available }}</span>
+                                cop{% if book.available != 1 %}ies{% else %}y{% endif %} ready to issue
+                            </p>
+                            {% endif %}
+                        </div>
+                        <span class="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg"
+                              :class="isBookSelected('{{ book.book_id }}') ? 'bg-brand-primary text-white' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'">
+                            <i class="fas fa-book text-sm" aria-hidden="true"></i>
+                        </span>
+                    </div>
+                    <div class="mt-3 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                        <span class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                            {{ book.allocated|default(0) }} alloc.
+                        </span>
+                        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                            {{ book.active_issues|default(0) }} issued
+                        </span>
+                        <span class="rounded-full bg-sky-50 px-2 py-0.5 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
+                            {{ book.available|default(0) }} free
+                        </span>
+                    </div>
+                    {% if book.available|default(0) > 0 %}
                     <button type="button"
-                            @click="selectBookForActiveTab(book.book_id)"
-                            class="text-left rounded-2xl border p-4 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2"
-                            :class="isBookSelected(book.book_id)
-                                ? 'border-brand-primary bg-gradient-to-br from-brand-primary/8 to-brand-secondary/5 shadow-md ring-1 ring-brand-primary/25 dark:from-brand-primary/15 dark:to-brand-secondary/10'
-                                : 'border-gray-200 bg-white hover:border-brand-primary/40 hover:shadow-sm dark:border-gray-700 dark:bg-gray-900/90 dark:hover:border-brand-primary/50'">
-                        <div class="flex items-start justify-between gap-2">
-                            <div class="min-w-0 flex-1">
-                                <p class="font-bold text-gray-900 dark:text-white truncate" x-text="book.book_name"></p>
-                                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400 truncate" x-show="book.subject_name" x-text="book.subject_name"></p>
-                            </div>
-                            <span class="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg"
-                                  :class="isBookSelected(book.book_id) ? 'bg-brand-primary text-white' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'">
-                                <i class="fas fa-book text-sm" aria-hidden="true"></i>
-                            </span>
-                        </div>
-                        <div class="mt-3 flex flex-wrap gap-1.5 text-[11px] font-semibold">
-                            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                                <span x-text="book.allocated"></span> alloc.
-                            </span>
-                            <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-                                <span x-text="book.active_issues"></span> issued
-                            </span>
-                            <span class="rounded-full bg-sky-50 px-2 py-0.5 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
-                                <span x-text="book.available"></span> free
-                            </span>
-                        </div>
+                            @click.stop="startIssueBook('{{ book.book_id }}')"
+                            class="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-primary px-3 py-2 text-xs font-semibold text-white shadow-sm hover:opacity-95">
+                        <i class="fas fa-arrow-right text-[10px]" aria-hidden="true"></i>
+                        Issue to students
                     </button>
-                </template>
+                    {% else %}
+                    <p class="mt-3 text-center text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                        <i class="fas fa-check-circle mr-1" aria-hidden="true"></i>All copies issued
+                    </p>
+                    {% endif %}
+                </div>
+                {% endfor %}
             </div>
         </section>
         {% endif %}
@@ -196,9 +218,12 @@
                 <div class="grid gap-4 lg:grid-cols-12 lg:items-end">
                     <div class="lg:col-span-4">
                         <label for="teacher_issue_book_select" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Book</label>
-                        <select id="teacher_issue_book_select" x-ref="bookSelect" x-model="selectedBookId" @change="onBookChange()"
+                        <select id="teacher_issue_book_select" x-model="selectedBookId" @change="onBookChange()"
                                 class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
                             <option value="">Select a book…</option>
+                            {% for book in books_for_issue %}
+                            <option value="{{ book.book_id }}">{{ book.book_name }} ({{ book.available|default(0) }} available)</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="lg:col-span-5" x-show="selectedBook" x-cloak>
@@ -222,18 +247,75 @@
                 </div>
 
                 <div x-show="selectedBook" x-cloak class="space-y-4">
+                    <div x-show="selectedBook && selectedBook.available < 1" x-cloak
+                         class="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+                        <p class="font-semibold"><i class="fas fa-check-circle mr-1.5" aria-hidden="true"></i>All copies issued</p>
+                        <p class="mt-1 text-xs">Every copy in your allocation for this book has been issued. Use the <strong>Return</strong> tab when a student brings a book back.</p>
+                    </div>
+                    <div class="rounded-xl border border-sky-200/80 bg-sky-50/60 px-4 py-3 text-sm dark:border-sky-900/40 dark:bg-sky-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-300">Your copy references</p>
+                        <p class="mt-1 text-sky-950 dark:text-sky-100">
+                            <span class="font-bold tabular-nums" x-text="remainingCopyCodes().length"></span> of
+                            <span class="tabular-nums" x-text="selectedBook.available"></span> available
+                            <span class="text-sky-700 dark:text-sky-400"> — pick a ref for each student, then save.</span>
+                        </p>
+                        <p class="mt-2 text-xs text-sky-800 dark:text-sky-300">
+                            If a reference is not in the system yet, you will be notified and it can be registered automatically when you save (multiple refs at once).
+                        </p>
+                        <div class="mt-2 flex flex-wrap gap-1.5 max-h-20 overflow-y-auto" x-show="remainingCopyCodes().length">
+                            <template x-for="code in remainingCopyCodes().slice(0, 24)" :key="code">
+                                <span class="inline-flex rounded-md border border-sky-200 bg-white px-2 py-0.5 font-mono text-xs font-bold text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100" x-text="code"></span>
+                            </template>
+                            <span class="text-xs text-sky-700 dark:text-sky-400 self-center" x-show="remainingCopyCodes().length > 24">+<span x-text="remainingCopyCodes().length - 24"></span> more</span>
+                        </div>
+                    </div>
+
+                    <div x-show="unknownRefsForSave().length" x-cloak
+                         class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                        <p class="font-semibold">
+                            <i class="fas fa-exclamation-triangle mr-1.5" aria-hidden="true"></i>
+                            <span x-text="unknownRefsForSave().length"></span>
+                            reference<span x-show="unknownRefsForSave().length !== 1">s</span>
+                            not registered in the system
+                        </p>
+                        <p class="mt-1 font-mono text-xs font-bold tracking-wide" x-text="unknownRefsForSave().join(', ')"></p>
+                        <p class="mt-2 text-xs" x-show="autoRegisterRefs">
+                            These will be registered to your allocation and issued when you click <strong>Save issues</strong>.
+                        </p>
+                        <p class="mt-2 text-xs text-amber-800 dark:text-amber-200" x-show="!autoRegisterRefs">
+                            Turn on auto-register below, or ask the librarian to register these references first.
+                        </p>
+                    </div>
+
+                    <label class="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm dark:border-gray-700 dark:bg-gray-900/80 cursor-pointer">
+                        <input type="checkbox" x-model="autoRegisterRefs"
+                               class="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-primary focus:ring-brand-primary/30" />
+                        <span>
+                            <span class="font-semibold text-gray-900 dark:text-white">Auto-register unknown references</span>
+                            <span class="block mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                When saving, register any valid ref codes (A001–Z999) that are not yet in the system — supports multiple refs in one save.
+                            </span>
+                        </span>
+                    </label>
+
                     <div class="hidden sm:flex flex-wrap items-center justify-between gap-3">
                         <p class="text-sm text-gray-600 dark:text-gray-400">
                             <span class="font-semibold text-gray-900 dark:text-white" x-text="filteredStudents.length"></span>
                             <span x-show="studentSearch.trim()"> matching</span>
                             student<span x-show="filteredStudents.length !== 1">s</span>
                         </p>
-                        <button type="button" @click="saveIssues()" :disabled="submitting || !hasPendingIssues()"
-                                class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">
-                            <i class="fas fa-save" x-show="!submitting"></i>
-                            <i class="fas fa-spinner fa-spin" x-show="submitting"></i>
-                            <span x-text="submitting ? 'Saving…' : 'Save reference codes'"></span>
-                        </button>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" @click="autoAssignCopyCodes()" :disabled="!remainingCopyCodes().length"
+                                    class="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200">
+                                <i class="fas fa-magic" aria-hidden="true"></i> Auto-assign refs
+                            </button>
+                            <button type="button" @click="saveIssues()" :disabled="submitting || !canSaveIssues()"
+                                    class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50">
+                                <i class="fas fa-save" x-show="!submitting"></i>
+                                <i class="fas fa-spinner fa-spin" x-show="submitting"></i>
+                                <span x-text="submitting ? 'Saving…' : 'Save issues'"></span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Mobile cards -->
@@ -253,12 +335,18 @@
                                               x-text="existingIssue(stu.student_id).copy_code"></span>
                                     </template>
                                     <template x-if="!existingIssue(stu.student_id)">
-                                        <input type="text" maxlength="4" autocomplete="off"
-                                               :list="'teacher-copy-codes-' + selectedBookId"
-                                               x-model="refInputs[stu.student_id]"
-                                               @input="refInputs[stu.student_id] = ($event.target.value || '').toUpperCase()"
-                                               placeholder="Ref e.g. A001"
-                                               class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                                        <div>
+                                            <input type="text" maxlength="4" autocomplete="off"
+                                                   :list="'teacher-copy-codes-' + selectedBookId"
+                                                   :value="getRefInput(stu.student_id)"
+                                                   @input="setRefInput(stu.student_id, $event.target.value)"
+                                                   placeholder="Ref e.g. A004"
+                                                   class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                                            <p class="mt-1 text-[10px] text-amber-700 dark:text-amber-300 font-semibold"
+                                               x-show="isUnknownCopyRef(getRefInput(stu.student_id))">
+                                                Not in system — will register on save
+                                            </p>
+                                        </div>
                                     </template>
                                 </div>
                                 <div class="mt-2">
@@ -298,12 +386,14 @@
                                                       x-text="existingIssue(stu.student_id).copy_code"></span>
                                             </template>
                                             <template x-if="!existingIssue(stu.student_id)">
-                                                <input type="text" maxlength="4" autocomplete="off"
-                                                       :list="'teacher-copy-codes-' + selectedBookId"
-                                                       x-model="refInputs[stu.student_id]"
-                                                       @input="refInputs[stu.student_id] = ($event.target.value || '').toUpperCase()"
-                                                       placeholder="e.g. A001"
-                                                       class="w-full max-w-[7rem] rounded-lg border border-gray-200 bg-white px-2.5 py-2 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                                                <div>
+                                                    <input type="text" maxlength="4" autocomplete="off"
+                                                           :list="'teacher-copy-codes-' + selectedBookId"
+                                                           :value="getRefInput(stu.student_id)"
+                                                           @input="setRefInput(stu.student_id, $event.target.value)"
+                                                           placeholder="e.g. A004"
+                                                           class="w-full max-w-[8rem] rounded-lg border border-gray-200 bg-white px-2.5 py-2 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                                                </div>
                                             </template>
                                         </td>
                                         <td class="px-3 py-3 sm:px-4">
@@ -311,7 +401,10 @@
                                                 <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">Issued</span>
                                             </template>
                                             <template x-if="!existingIssue(stu.student_id) && (refInputs[stu.student_id] || '').trim()">
-                                                <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">Pending</span>
+                                                <span class="inline-flex flex-wrap items-center gap-1">
+                                                    <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
+                                                          x-text="isUnknownCopyRef(getRefInput(stu.student_id)) ? 'Will register' : 'Pending'"></span>
+                                                </span>
                                             </template>
                                             <template x-if="!existingIssue(stu.student_id) && !(refInputs[stu.student_id] || '').trim()">
                                                 <span class="text-xs text-gray-400">—</span>
@@ -324,23 +417,29 @@
                         <p x-show="!filteredStudents.length" class="text-center text-sm text-gray-500 py-8">No students match your search.</p>
                     </div>
 
-                    <datalist :id="'teacher-copy-codes-' + selectedBookId">
-                        <template x-for="code in (selectedBook ? selectedBook.copies_in_stock : [])" :key="code">
-                            <option :value="code"></option>
-                        </template>
+                    {% for book in books_for_issue %}
+                    <datalist id="teacher-copy-codes-{{ book.book_id }}">
+                        {% for code in book.copies_in_stock|default([]) %}
+                        <option value="{{ code }}"></option>
+                        {% endfor %}
                     </datalist>
+                    {% endfor %}
 
                     <div x-show="saveMessage"
                          class="rounded-xl border px-4 py-3 text-sm"
                          :class="saveOk ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100' : 'border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100'"
                          x-text="saveMessage" role="status"></div>
 
-                    <div class="cb-sticky-actions sm:hidden">
-                        <button type="button" @click="saveIssues()" :disabled="submitting || !hasPendingIssues()"
+                    <div class="cb-sticky-actions sm:hidden space-y-2">
+                        <button type="button" @click="autoAssignCopyCodes()" :disabled="!remainingCopyCodes().length"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800 shadow-sm disabled:opacity-50">
+                            <i class="fas fa-magic" aria-hidden="true"></i> Auto-assign refs
+                        </button>
+                        <button type="button" @click="saveIssues()" :disabled="submitting || !canSaveIssues()"
                                 class="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-3.5 text-sm font-semibold text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-50">
                             <i class="fas fa-save" x-show="!submitting"></i>
                             <i class="fas fa-spinner fa-spin" x-show="submitting"></i>
-                            <span x-text="submitting ? 'Saving…' : 'Save reference codes'"></span>
+                            <span x-text="submitting ? 'Saving…' : 'Save issues'"></span>
                         </button>
                     </div>
                 </div>
@@ -359,9 +458,14 @@
                 <div class="grid gap-4 lg:grid-cols-12 lg:items-end">
                     <div class="lg:col-span-4">
                         <label for="teacher_return_book_select" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Filter by book</label>
-                        <select id="teacher_return_book_select" x-ref="returnBookSelect" x-model="selectedReturnBookId" @change="onReturnBookChange()"
+                        <select id="teacher_return_book_select" x-model="selectedReturnBookId" @change="onReturnBookChange()"
                                 class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
-                            <option value="">All books</option>
+                            <option value="">All books ({{ book_ns.issued }} issued)</option>
+                            {% for book in books_for_issue %}
+                            {% if book.active_issues|default(0) > 0 %}
+                            <option value="{{ book.book_id }}">{{ book.book_name }} ({{ book.active_issues }} issued)</option>
+                            {% endif %}
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="lg:col-span-5">
@@ -453,13 +557,15 @@
                         </table>
                     </div>
 
-                    <template x-for="book in books" :key="'rdl-' + book.book_id">
-                        <datalist :id="'teacher-return-codes-' + book.book_id">
-                            <template x-for="code in (book.copies_issued || [])" :key="book.book_id + '-' + code">
-                                <option :value="code"></option>
-                            </template>
-                        </datalist>
-                    </template>
+                    {% for book in books_for_issue %}
+                    {% if book.copies_issued|default([]) %}
+                    <datalist id="teacher-return-codes-{{ book.book_id }}">
+                        {% for code in book.copies_issued %}
+                        <option value="{{ code }}"></option>
+                        {% endfor %}
+                    </datalist>
+                    {% endif %}
+                    {% endfor %}
 
                     <div x-show="returnSaveMessage"
                          class="rounded-xl border px-4 py-3 text-sm"
@@ -503,10 +609,13 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
 
+{% block extra_scripts %}
 <script>
-document.addEventListener('alpine:init', function () {
-  Alpine.data('teacherClassBooksLevel', function () {
+(function () {
+  function registerTeacherClassBooksLevel() {
+    Alpine.data('teacherClassBooksLevel', function () {
     var payload = {};
     try {
       var el = document.getElementById('class-books-level-data');
@@ -535,13 +644,30 @@ document.addEventListener('alpine:init', function () {
       returnSaveMessage: '',
       returnSaveOk: false,
       returnHints: [],
+      autoRegisterRefs: true,
       init: function () {
-        this.renderBookOptions();
-        this.renderReturnBookOptions();
+        this.initRefInputs();
         if (this.books.length === 1) {
           this.selectedBookId = String(this.books[0].book_id);
           this.onBookChange();
         }
+      },
+      initRefInputs: function () {
+        var refs = {};
+        var prev = this.refInputs || {};
+        (this.students || []).forEach(function (s) {
+          var sid = s.student_id;
+          refs[sid] = prev[sid] || '';
+        });
+        this.refInputs = refs;
+      },
+      getRefInput: function (studentId) {
+        return (this.refInputs[studentId] || '').toUpperCase();
+      },
+      setRefInput: function (studentId, value) {
+        var next = Object.assign({}, this.refInputs || {});
+        next[studentId] = (value || '').trim().toUpperCase();
+        this.refInputs = next;
       },
       isBookSelected: function (bookId) {
         var id = String(bookId);
@@ -555,13 +681,112 @@ document.addEventListener('alpine:init', function () {
         var id = String(bookId);
         if (this.activeTab === 'return') {
           this.selectedReturnBookId = id;
-          if (this.$refs.returnBookSelect) this.$refs.returnBookSelect.value = id;
           this.onReturnBookChange();
         } else {
           this.selectedBookId = id;
-          if (this.$refs.bookSelect) this.$refs.bookSelect.value = id;
           this.onBookChange();
         }
+      },
+      startIssueBook: function (bookId) {
+        this.activeTab = 'issue';
+        this.selectedBookId = String(bookId);
+        this.onBookChange();
+        this.autoAssignCopyCodes();
+        var self = this;
+        this.$nextTick(function () {
+          var panel = document.getElementById('issue-panel');
+          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      },
+      remainingCopyCodes: function () {
+        var book = this.selectedBook;
+        if (!book) return [];
+        var pool = (book.copies_in_stock || []).map(function (c) { return String(c).toUpperCase(); });
+        var used = {};
+        var self = this;
+        Object.keys(book.issues_by_student || {}).forEach(function (k) {
+          var issue = book.issues_by_student[k];
+          if (issue && issue.copy_code) used[String(issue.copy_code).toUpperCase()] = true;
+        });
+        Object.keys(this.refInputs || {}).forEach(function (sid) {
+          var c = (self.refInputs[sid] || '').trim().toUpperCase();
+          if (c) used[c] = true;
+        });
+        return pool.filter(function (code) { return !used[code]; });
+      },
+      copyOptionsForStudent: function (studentId) {
+        var self = this;
+        var book = this.selectedBook;
+        if (!book) return [];
+        var current = (this.refInputs[studentId] || '').trim().toUpperCase();
+        var pool = (book.copies_in_stock || []).map(function (c) { return String(c).toUpperCase(); });
+        var issued = {};
+        Object.keys(book.issues_by_student || {}).forEach(function (k) {
+          var issue = book.issues_by_student[k];
+          if (issue && issue.copy_code) issued[String(issue.copy_code).toUpperCase()] = true;
+        });
+        var takenByOthers = {};
+        Object.keys(this.refInputs || {}).forEach(function (sid) {
+          if (sid === studentId) return;
+          var c = (self.refInputs[sid] || '').trim().toUpperCase();
+          if (c) takenByOthers[c] = true;
+        });
+        var opts = pool.filter(function (code) {
+          return !issued[code] && !takenByOthers[code];
+        });
+        if (current && opts.indexOf(current) < 0 && !issued[current]) {
+          opts.push(current);
+        }
+        return opts.sort();
+      },
+      autoAssignCopyCodes: function () {
+        var self = this;
+        var codes = this.remainingCopyCodes().slice();
+        if (!codes.length) return;
+        var idx = 0;
+        (this.students || []).forEach(function (stu) {
+          if (self.existingIssue(stu.student_id)) return;
+          if ((self.refInputs[stu.student_id] || '').trim()) return;
+          if (idx >= codes.length) return;
+          self.setRefInput(stu.student_id, codes[idx]);
+          idx += 1;
+        });
+      },
+      knownCopyRefSet: function () {
+        var book = this.selectedBook;
+        var set = {};
+        if (!book) return set;
+        (book.copies_in_stock || []).forEach(function (c) {
+          var code = String(c || '').trim().toUpperCase();
+          if (code) set[code] = true;
+        });
+        Object.keys(book.issues_by_student || {}).forEach(function (k) {
+          var issue = book.issues_by_student[k];
+          if (issue && issue.copy_code) {
+            set[String(issue.copy_code).trim().toUpperCase()] = true;
+          }
+        });
+        return set;
+      },
+      isUnknownCopyRef: function (code) {
+        code = (code || '').trim().toUpperCase();
+        if (!code || code.length !== 4) return false;
+        return !this.knownCopyRefSet()[code];
+      },
+      unknownRefsForSave: function () {
+        var self = this;
+        var unknown = [];
+        var seen = {};
+        (this.students || []).forEach(function (stu) {
+          if (self.existingIssue(stu.student_id)) return;
+          var code = (self.refInputs[stu.student_id] || '').trim().toUpperCase();
+          if (!code || seen[code]) return;
+          if (self.isUnknownCopyRef(code)) {
+            unknown.push(code);
+            seen[code] = true;
+          }
+        });
+        return unknown.sort();
       },
       get filteredStudents() {
         var q = (this.studentSearch || '').trim().toUpperCase();
@@ -587,47 +812,6 @@ document.addEventListener('alpine:init', function () {
         if (!book || !book.issues_by_student) return { issued: 0 };
         return { issued: Object.keys(book.issues_by_student).length };
       },
-      renderBookOptions: function () {
-        var sel = this.$refs.bookSelect;
-        if (!sel) return;
-        var current = this.selectedBookId;
-        sel.innerHTML = '';
-        var ph = document.createElement('option');
-        ph.value = '';
-        ph.textContent = 'Select a book…';
-        sel.appendChild(ph);
-        (this.books || []).forEach(function (book) {
-          var opt = document.createElement('option');
-          opt.value = String(book.book_id);
-          var avail = book.available != null ? book.available : (book.in_stock_count || 0);
-          opt.textContent = (book.book_name || 'Book') + ' (' + avail + ' available)';
-          sel.appendChild(opt);
-        });
-        if (current) sel.value = current;
-      },
-      renderReturnBookOptions: function () {
-        var sel = this.$refs.returnBookSelect;
-        if (!sel) return;
-        var current = this.selectedReturnBookId;
-        sel.innerHTML = '';
-        var totalIssued = 0;
-        (this.books || []).forEach(function (book) {
-          totalIssued += book.active_issues != null ? book.active_issues : 0;
-        });
-        var ph = document.createElement('option');
-        ph.value = '';
-        ph.textContent = 'All books (' + totalIssued + ' issued)';
-        sel.appendChild(ph);
-        (this.books || []).forEach(function (book) {
-          var issued = book.active_issues != null ? book.active_issues : 0;
-          if (issued < 1) return;
-          var opt = document.createElement('option');
-          opt.value = String(book.book_id);
-          opt.textContent = (book.book_name || 'Book') + ' (' + issued + ' issued)';
-          sel.appendChild(opt);
-        });
-        if (current) sel.value = current;
-      },
       findStudent: function (studentId) {
         var key = (studentId || '').trim().toUpperCase();
         for (var i = 0; i < (this.students || []).length; i++) {
@@ -636,7 +820,7 @@ document.addEventListener('alpine:init', function () {
         }
         return null;
       },
-      get returnRows: function () {
+      get returnRows() {
         var self = this;
         var filterId = this.selectedReturnBookId ? String(this.selectedReturnBookId) : '';
         var rows = [];
@@ -668,7 +852,7 @@ document.addEventListener('alpine:init', function () {
         });
         return rows;
       },
-      get selectedBook: function () {
+      get selectedBook() {
         if (!this.selectedBookId) return null;
         var id = String(this.selectedBookId);
         for (var i = 0; i < this.books.length; i++) {
@@ -677,7 +861,7 @@ document.addEventListener('alpine:init', function () {
         return null;
       },
       onBookChange: function () {
-        this.refInputs = {};
+        this.initRefInputs();
         this.saveMessage = '';
         this.saveOk = false;
         this.studentSearch = '';
@@ -713,6 +897,29 @@ document.addEventListener('alpine:init', function () {
           return ((self.returnRefInputs[row.rowKey] || '').trim().length >= 1);
         });
       },
+      canSaveIssues: function () {
+        if (!this.hasPendingIssues()) return false;
+        var book = this.selectedBook;
+        if (!book) return false;
+        if ((book.available || 0) < 1 && !this.unknownRefsForSave().length) return false;
+        return true;
+      },
+      pendingIssueDuplicateRefs: function () {
+        var self = this;
+        var seen = {};
+        var dups = [];
+        (this.students || []).forEach(function (stu) {
+          if (self.existingIssue(stu.student_id)) return;
+          var code = (self.refInputs[stu.student_id] || '').trim().toUpperCase();
+          if (!code) return;
+          if (seen[code]) {
+            if (dups.indexOf(code) < 0) dups.push(code);
+          } else {
+            seen[code] = true;
+          }
+        });
+        return dups.sort();
+      },
       saveIssues: function () {
         var self = this;
         var book = this.selectedBook;
@@ -728,8 +935,40 @@ document.addEventListener('alpine:init', function () {
           issues.push({ student_id: stu.student_id, copy_code: code });
         });
         if (!issues.length) {
-          window.alert('Enter at least one reference code.');
+          window.alert('Enter at least one reference code for a student who does not already have this book.');
           return;
+        }
+        var dups = this.pendingIssueDuplicateRefs();
+        if (dups.length) {
+          window.alert('Each reference code can only be used once:\n' + dups.join(', '));
+          return;
+        }
+        var bookAvail = (book.available != null ? book.available : 0);
+        if (bookAvail < 1 && !this.unknownRefsForSave().length) {
+          window.alert('All copies for this book are already issued. Use the Return tab if a student returned a book.');
+          return;
+        }
+        if (issues.length > bookAvail && bookAvail > 0 && !this.unknownRefsForSave().length) {
+          window.alert(
+            'You only have ' + bookAvail + ' cop' + (bookAvail === 1 ? 'y' : 'ies') +
+            ' available but entered ' + issues.length + ' references. Remove extra refs or save in smaller batches.'
+          );
+          return;
+        }
+        var unknown = this.unknownRefsForSave();
+        if (unknown.length && !this.autoRegisterRefs) {
+          window.alert(
+            'These references are not registered in the system:\n' + unknown.join(', ') +
+            '\n\nEnable "Auto-register unknown references" or ask the librarian to register them first.'
+          );
+          return;
+        }
+        if (unknown.length && this.autoRegisterRefs) {
+          var confirmMsg =
+            unknown.length + ' reference' + (unknown.length !== 1 ? 's are' : ' is') +
+            ' not registered in the system yet:\n\n' + unknown.join(', ') +
+            '\n\nRegister and issue to students now?';
+          if (!window.confirm(confirmMsg)) return;
         }
         this.submitting = true;
         this.saveMessage = '';
@@ -741,6 +980,7 @@ document.addEventListener('alpine:init', function () {
             academic_level_id: this.levelId,
             book_id: book.book_id,
             issues: issues,
+            auto_register: this.autoRegisterRefs,
           }),
         })
           .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
@@ -750,7 +990,17 @@ document.addEventListener('alpine:init', function () {
             if (res.ok && data.ok) {
               self.saveOk = true;
               self.saveMessage = data.message || 'Saved.';
-              window.setTimeout(function () { window.location.reload(); }, 800);
+              if (data.auto_registered && data.auto_registered.length) {
+                var regCodes = [];
+                data.auto_registered.forEach(function (r) {
+                  if (r.copy_code) regCodes.push(String(r.copy_code).toUpperCase());
+                });
+                regCodes = regCodes.filter(function (c, i, a) { return a.indexOf(c) === i; }).sort();
+                if (regCodes.length) {
+                  self.saveMessage += ' Registered: ' + regCodes.join(', ') + '.';
+                }
+              }
+              window.setTimeout(function () { window.location.reload(); }, 1200);
             } else {
               self.saveOk = false;
               self.saveMessage = data.message || 'Could not save issues.';
@@ -762,12 +1012,14 @@ document.addEventListener('alpine:init', function () {
                   }).join('; ');
                 }
               }
+              window.alert(self.saveMessage);
             }
           })
-          .catch(function () {
+          .catch(function (err) {
             self.submitting = false;
             self.saveOk = false;
             self.saveMessage = 'Could not reach the server.';
+            window.alert(self.saveMessage);
           });
       },
       saveReturns: function () {
@@ -843,6 +1095,12 @@ document.addEventListener('alpine:init', function () {
       },
     };
   });
-});
+  }
+  if (window.Alpine && window.Alpine.data) {
+    registerTeacherClassBooksLevel();
+  } else {
+    document.addEventListener('alpine:init', registerTeacherClassBooksLevel);
+  }
+})();
 </script>
 {% endblock %}

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}{% if is_parent_view|default(false) %}Attendance (read-only){% else %}Student Attendance{% endif %} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}{% if is_parent_view|default(false) %}Attendance (read-only){% elif is_class_teacher_view|default(false) %}Student attendance{% elif is_teacher_view|default(false) %}Subject attendance{% else %}Attendance register{% endif %} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block extra_head %}{% if is_teacher_view|default(false) %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endif %}{% endblock %}
+{% block extra_head %}{% if (is_teacher_view|default(false) or is_class_teacher_view|default(false)) and not is_parent_view|default(false) %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endif %}{% endblock %}
 
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
 
@@ -36,7 +36,11 @@
     <i class="fas fa-check-circle w-5"></i>
     <span>Attendance</span>
 </a>
-{% elif not is_teacher_view|default(false) %}
+{% elif is_class_teacher_view|default(false) %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif is_teacher_view|default(false) %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif not is_parent_view|default(false) %}
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
 {% if nav_role == 'secretary' %}
 {% set secretary_nav_scope = 'students' %}
@@ -72,7 +76,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="att-page-shell {% if is_teacher_view|default(false) and not is_parent_view|default(false) %}att-page-shell--teacher{% endif %} page-content max-w-7xl mx-auto role-page role-page--{% if is_teacher_view|default(false) %}teacher{% else %}{{ portal_page_variant|default('default') }}{% endif %} student-attendance-page">
+<div class="att-page-shell {% if (is_teacher_view|default(false) or is_class_teacher_view|default(false)) and not is_parent_view|default(false) %}att-page-shell--teacher{% endif %} page-content max-w-7xl mx-auto role-page role-page--{% if is_teacher_view|default(false) or is_class_teacher_view|default(false) %}teacher{% else %}{{ portal_page_variant|default('default') }}{% endif %} student-attendance-page">
     {% include 'dashboards/includes/portal_page_flash.html' %}
     {% if is_parent_view|default(false) and is_technician|default(false) and current_view_role|default('') == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
@@ -113,10 +117,20 @@
         {% endif %}
     {% endif %}
 
-    {% if is_teacher_view|default(false) and not is_parent_view|default(false) %}
+    {% if is_class_teacher_view|default(false) and not is_parent_view|default(false) %}
     <header class="att-page-head mb-2 sm:mb-3">
-        <h1 class="att-page-head__title"><i class="fas fa-clipboard-check" aria-hidden="true"></i> Attendance</h1>
-        <a href="{{ subject_progress_url|default(employee_dash_url('subject-progress')) }}" class="att-page-head__link touch-btn" title="Subject progress">
+        <div class="min-w-0 flex-1">
+            <h1 class="att-page-head__title"><i class="fas fa-user-check" aria-hidden="true"></i> Student attendance</h1>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Mark morning, afternoon, and evening attendance. Parents see these daily checks in their portal.</p>
+        </div>
+    </header>
+    {% elif is_teacher_view|default(false) and not is_parent_view|default(false) %}
+    <header class="att-page-head mb-2 sm:mb-3">
+        <div class="min-w-0 flex-1">
+            <h1 class="att-page-head__title"><i class="fas fa-clipboard-check" aria-hidden="true"></i> Subject attendance</h1>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Mark present or absent per subject from your timetable. Saves link to subject progress.</p>
+        </div>
+        <a href="{{ subject_progress_url|default(employee_dash_url('subject-progress')) }}" class="att-page-head__link touch-btn shrink-0" title="Subject progress">
             <i class="fas fa-tasks" aria-hidden="true"></i><span class="hidden sm:inline">Progress</span>
         </a>
     </header>
@@ -125,15 +139,16 @@
         <div class="relative px-4 sm:px-5 py-3 sm:py-4">
             <h1 class="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                 <i class="fas fa-check-circle text-lg" aria-hidden="true"></i>
-                Student Attendance
+                Attendance register
             </h1>
+            <p class="mt-1 text-sm text-white/85">View and manage attendance records across all classes.</p>
         </div>
     </div>
     {% else %}
     <h1 class="text-lg font-bold text-gray-900 dark:text-white mb-3">Attendance</h1>
     {% endif %}
 
-    <form method="GET" action="{% if is_parent_view|default(false) %}{{ parent_dash_url('attendance/' ~ parent_student_id) }}{% else %}{{ employee_dash_url('student-management/student-attendance') }}{% endif %}" id="{% if not is_parent_view|default(false) %}student-attendance-filter-form{% endif %}" class="att-filter-toolbar" aria-label="Attendance filters">
+    <form method="GET" action="{% if is_parent_view|default(false) %}{{ parent_dash_url('attendance/' ~ parent_student_id) }}{% else %}{{ attendance_form_action|default(employee_dash_url('student-management/student-attendance')) }}{% endif %}" id="{% if not is_parent_view|default(false) %}student-attendance-filter-form{% endif %}" class="att-filter-toolbar" aria-label="{% if is_class_teacher_view|default(false) %}Student attendance filters{% elif is_teacher_view|default(false) %}Subject attendance filters{% else %}Attendance register filters{% endif %}">
         <div class="att-filter-grid">
             <div class="att-filter-field">
                 <label for="academic_year_id" class="att-filter-label">Year</label>
@@ -240,7 +255,7 @@
     /* —— Header —— */
     .student-attendance-page .att-page-head {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
         gap: 0.75rem;
         margin-bottom: 0.75rem;
@@ -396,11 +411,20 @@
         gap: 0.5rem;
         margin-bottom: 0.75rem;
     }
+    .student-attendance-page .att-bulk-bar .att-save-bar--top {
+        grid-column: 1 / -1;
+    }
     @media (min-width: 640px) {
         .student-attendance-page .att-bulk-bar {
             display: flex;
+            flex-wrap: wrap;
             justify-content: flex-end;
+            align-items: center;
             gap: 0.5rem;
+        }
+        .student-attendance-page .att-bulk-bar .att-save-bar--top {
+            grid-column: auto;
+            margin-left: 0.25rem;
         }
     }
     .student-attendance-page .att-bulk-btn {
@@ -553,6 +577,13 @@
         text-align: center;
         vertical-align: top;
     }
+    .student-attendance-page .att-col-date--slot {
+        min-width: 3rem;
+    }
+    .student-attendance-page .att-col-date--slot .att-col-date__label {
+        font-size: 0.625rem;
+        line-height: 1.2;
+    }
     @media (min-width: 640px) {
         .student-attendance-page .att-col-date { min-width: 4.5rem; padding: 0.5rem 0.35rem; }
     }
@@ -700,8 +731,28 @@
         background: #111827;
         border-color: #374151;
     }
+    .student-attendance-page .att-save-bar--top {
+        padding: 0;
+        border-top: none;
+        background: transparent;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5rem;
+        flex: 1 1 100%;
+        position: static;
+        box-shadow: none;
+    }
+    .dark .student-attendance-page .att-save-bar--top {
+        background: transparent;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-save-bar--top {
+            flex: 0 0 auto;
+            margin-left: auto;
+        }
+    }
     @media (max-width: 767px) {
-        .student-attendance-page .att-save-bar {
+        .student-attendance-page .att-save-bar:not(.att-save-bar--top) {
             position: sticky;
             bottom: 0;
             z-index: 20;
@@ -726,6 +777,7 @@
     }
     @media (min-width: 640px) {
         .student-attendance-page .att-level-save-btn { width: auto; min-width: 10rem; margin-left: auto; }
+        .student-attendance-page .att-level-save-btn--top { margin-left: 0; }
         .student-attendance-page .att-save-bar { flex-direction: row; align-items: center; }
     }
     .student-attendance-page .att-level-save-status {
@@ -933,15 +985,17 @@
             <div class="att-save-popup__icon" aria-hidden="true">
                 <i class="fas fa-circle-check"></i>
             </div>
-            <h2 id="att-save-popup-title" class="att-save-popup__title">Attendance saved</h2>
-            <p class="att-save-popup__message">Your attendance register has been saved successfully.</p>
+            <h2 id="att-save-popup-title" class="att-save-popup__title">{% if is_class_teacher_view|default(false) %}Student attendance saved{% elif is_teacher_view|default(false) %}Subject attendance saved{% else %}Attendance saved{% endif %}</h2>
+            <p class="att-save-popup__message">{% if is_class_teacher_view|default(false) %}Your student attendance has been saved successfully.{% elif is_teacher_view|default(false) %}Your subject attendance has been saved successfully.{% else %}Your attendance register has been saved successfully.{% endif %}</p>
             <p class="att-save-popup__hint">Closing automatically…</p>
             <button type="button" class="att-save-popup__close hidden">OK</button>
         </div>
     </div>
     <script>
     (function() {
-        var ATTENDANCE_REGISTER_URL = {{ employee_dash_url('student-management/student-attendance')|tojson }};
+        var ATTENDANCE_REGISTER_URL = {{ attendance_form_action|default(employee_dash_url('student-management/student-attendance'))|tojson }};
+        var ATT_IS_TEACHER_SUBJECT = {{ (is_teacher_view|default(false) and not is_parent_view|default(false))|tojson }};
+        var ATT_IS_CLASS_TEACHER = {{ (is_class_teacher_view|default(false) and not is_parent_view|default(false))|tojson }};
         var ATTENDANCE_REGISTER_URL_FALLBACK = {{ url_for('student_attendance')|tojson }};
 
         function attendanceLiveEndpoint() {
@@ -1068,8 +1122,27 @@
         }
 
         function getLevelSaveStatusEl(levelCard) {
-            if (!levelCard) return null;
-            return levelCard.querySelector('.att-level-save-status');
+            if (levelCard) {
+                var inCard = levelCard.querySelector('.att-level-save-status');
+                if (inCard) return inCard;
+            }
+            return document.querySelector('.att-level-save-status--top') || document.querySelector('.att-level-save-status');
+        }
+
+        function setAllSaveButtonsDisabled(form, disabled) {
+            if (!form) return;
+            form.querySelectorAll('.att-level-save-btn').forEach(function(btn) {
+                btn.disabled = !!disabled;
+            });
+        }
+
+        function updateAllSaveStatusEls(msg, isError) {
+            document.querySelectorAll('.att-level-save-status').forEach(function(statusEl) {
+                statusEl.classList.remove('hidden');
+                statusEl.textContent = msg;
+                classListRemove(statusEl, ['text-green-600', 'text-green-400', 'text-red-600', 'text-red-400', 'dark:text-green-400', 'dark:text-red-400']);
+                classListAdd(statusEl, isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400');
+            });
         }
 
         function getRowColorClass(pct) {
@@ -1125,8 +1198,16 @@
             var closeBtn = overlay.querySelector('.att-save-popup__close');
             var iconWrap = overlay.querySelector('.att-save-popup__icon');
             var icon = iconWrap ? iconWrap.querySelector('i') : null;
-            var title = isError ? 'Could not save attendance' : 'Attendance saved';
-            var message = msg || (isError ? 'Something went wrong. Please try again.' : 'Your attendance register has been saved successfully.');
+            var title = isError
+                ? (ATT_IS_CLASS_TEACHER ? 'Could not save student attendance' : (ATT_IS_TEACHER_SUBJECT ? 'Could not save subject attendance' : 'Could not save attendance'))
+                : (ATT_IS_CLASS_TEACHER ? 'Student attendance saved' : (ATT_IS_TEACHER_SUBJECT ? 'Subject attendance saved' : 'Attendance saved'));
+            var message = msg || (isError
+                ? 'Something went wrong. Please try again.'
+                : (ATT_IS_CLASS_TEACHER
+                    ? 'Your student attendance has been saved successfully.'
+                    : (ATT_IS_TEACHER_SUBJECT
+                        ? 'Your subject attendance has been saved successfully.'
+                        : 'Your attendance register has been saved successfully.')));
             if (titleEl) titleEl.textContent = title;
             if (msgEl) msgEl.textContent = message;
             if (icon) {
@@ -1147,17 +1228,17 @@
         }
 
         function showAttendanceStatus(msg, isError, levelCard) {
-            var statusEl = getLevelSaveStatusEl(levelCard) || document.querySelector('.att-level-save-status');
-            if (statusEl) {
-                statusEl.classList.remove('hidden');
-                statusEl.textContent = msg;
-                classListRemove(statusEl, ['text-green-600', 'text-green-400', 'text-red-600', 'text-red-400', 'dark:text-green-400', 'dark:text-red-400']);
-                classListAdd(statusEl, isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400');
-            }
+            updateAllSaveStatusEls(msg, isError);
             var lower = String(msg || '').toLowerCase();
             if (lower.indexOf('saving') === -1) {
                 showAttendancePopup(msg, isError);
             }
+        }
+
+        function getAttendanceLevelCard(levelCard) {
+            if (levelCard) return levelCard;
+            var form = getAttendanceForm();
+            return form ? form.querySelector('.attendance-level-card') : null;
         }
 
         function refreshAllAttendanceRows() {
@@ -1227,8 +1308,8 @@
 
         function saveAttendance(levelCard) {
             var form = getAttendanceForm();
+            levelCard = getAttendanceLevelCard(levelCard);
             if (!form || !levelCard) return;
-            var saveBtn = levelCard.querySelector('.att-level-save-btn');
             try {
             syncAttendanceHiddenFromFilters();
             var mySeq = ++attSaveSeq;
@@ -1246,7 +1327,7 @@
             formData.set('student_ids', studentIdsCsv);
             appendAttendanceCellsInRoot(formData, levelCard);
             showAttendanceStatus('Saving…', false, levelCard);
-            if (saveBtn) saveBtn.disabled = true;
+            setAllSaveButtonsDisabled(form, true);
             form.setAttribute('data-attendance-saving', '1');
             var postUrl = attendanceLiveEndpoint();
             fetch(postUrl, {
@@ -1274,13 +1355,16 @@
                     showAttendanceStatus((data && data.message) ? String(data.message) : 'Could not save changes.', true, levelCard);
                     return;
                 }
-                showAttendanceStatus('Attendance saved for this class.', false, levelCard);
+                showAttendanceStatus(
+                    ATT_IS_CLASS_TEACHER ? 'Student attendance saved for this class.' : (ATT_IS_TEACHER_SUBJECT ? 'Subject attendance saved for this class.' : 'Attendance saved for this class.'),
+                    false, levelCard);
                 applyAttendanceSaveFragments(data);
-                var statusEl = getLevelSaveStatusEl(levelCard);
                 setTimeout(function() {
-                    if (statusEl && statusEl.textContent.indexOf('saved') !== -1) {
-                        statusEl.classList.add('hidden');
-                    }
+                    document.querySelectorAll('.att-level-save-status').forEach(function(statusEl) {
+                        if (statusEl.textContent.indexOf('saved') !== -1) {
+                            statusEl.classList.add('hidden');
+                        }
+                    });
                 }, 3200);
             })
             .catch(function(err) {
@@ -1290,13 +1374,15 @@
             })
             .finally(function() {
                 var f = getAttendanceForm();
-                if (f) f.removeAttribute('data-attendance-saving');
-                if (saveBtn) saveBtn.disabled = false;
+                if (f) {
+                    f.removeAttribute('data-attendance-saving');
+                    setAllSaveButtonsDisabled(f, false);
+                }
             });
             } catch (err) {
                 console.error('saveAttendance', err);
                 showAttendanceStatus('Could not start save. Refresh the page and try again.', true, levelCard);
-                if (saveBtn) saveBtn.disabled = false;
+                setAllSaveButtonsDisabled(form, false);
             }
         }
 
@@ -1317,13 +1403,15 @@
             }
         }
 
-        function setAttendanceColumnForDate(dateStr, subjectId, present, levelCard) {
+        function setAttendanceColumnForDate(dateStr, subjectId, present, levelCard, sessionSlot) {
             if (!dateStr) return;
             var subj = String(subjectId || '0');
+            var slot = String(sessionSlot || '');
             var root = levelCard || getAttendanceForm();
             attendanceCheckboxesIn(root).forEach(function(cb) {
                 if (cb.getAttribute('data-date') === dateStr &&
-                    String(cb.getAttribute('data-subject-id') || '0') === subj) {
+                    String(cb.getAttribute('data-subject-id') || '0') === subj &&
+                    String(cb.getAttribute('data-session-slot') || '') === slot) {
                     cb.checked = present;
                 }
             });
@@ -1342,7 +1430,7 @@
                 if (!getAttendanceForm()) return;
                 var levelCard = e.target.closest ? e.target.closest('.attendance-level-card') : null;
                 var saveBtn = e.target.closest ? e.target.closest('.att-level-save-btn') : null;
-                if (saveBtn && levelCard) {
+                if (saveBtn) {
                     e.preventDefault();
                     saveAttendance(levelCard);
                     return;
@@ -1363,10 +1451,10 @@
                 var dayA = e.target.closest ? e.target.closest('.att-day-all-absent') : null;
                 if (dayP) {
                     e.preventDefault();
-                    setAttendanceColumnForDate(dayP.getAttribute('data-date'), dayP.getAttribute('data-subject-id'), true, levelCard);
+                    setAttendanceColumnForDate(dayP.getAttribute('data-date'), dayP.getAttribute('data-subject-id'), true, levelCard, dayP.getAttribute('data-session-slot'));
                 } else if (dayA) {
                     e.preventDefault();
-                    setAttendanceColumnForDate(dayA.getAttribute('data-date'), dayA.getAttribute('data-subject-id'), false, levelCard);
+                    setAttendanceColumnForDate(dayA.getAttribute('data-date'), dayA.getAttribute('data-subject-id'), false, levelCard, dayA.getAttribute('data-session-slot'));
                 }
             });
             shell.addEventListener('change', function(e) {

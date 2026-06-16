@@ -31,10 +31,16 @@
     {% if request.endpoint == 'employee_tpad' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('student-management/student-attendance') }}"
-   class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
-    <i class="fas fa-check-circle w-5"></i>
-    <span>Attendance</span>
-    {% if request.endpoint == 'student_attendance' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+   class="sidebar-item {% if request.endpoint == 'student_attendance' or (request.path.endswith('/student-attendance') and '/class-student-attendance' not in request.path) %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Subject attendance</span>
+    {% if request.endpoint == 'student_attendance' or (request.path.endswith('/student-attendance') and '/class-student-attendance' not in request.path) %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('student-management/class-student-attendance') }}"
+   class="sidebar-item {% if request.endpoint == 'class_student_attendance' or '/class-student-attendance' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-check w-5"></i>
+    <span>Student attendance register</span>
+    {% if request.endpoint == 'class_student_attendance' or '/class-student-attendance' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% if _tch_nav == 'all' %}
 <a @click.prevent="comingSoonTitle = 'Assignments / Homework'; comingSoonModalOpen = true"
