@@ -44,5 +44,7 @@
 </a>
 {% endif %}
 {% if _tech_nav in ('all', 'admin') %}
-{% include 'dashboards/includes/academic_calendar_sidebar_links.html' with acal_show_section_header=true, acal_section_pad_top=false %}
+{% set acal_show_section_header = true %}
+{% set acal_section_pad_top = false %}
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' %}
 {% endif %}

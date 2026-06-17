@@ -2,7 +2,9 @@
 
 {% if _stu_nav == 'all' %}
 <p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Schedule</p>
-{% include 'dashboards/includes/academic_calendar_sidebar_links.html' with acal_href=student_dash_url('academic-calendar'), acal_hide_manage=true %}
+{% set acal_href = student_dash_url('academic-calendar') %}
+{% set acal_hide_manage = true %}
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' %}
 <a @click.prevent="comingSoonTitle = 'My Timetable / Classes'; comingSoonModalOpen = true"
    class="sidebar-item">
     <i class="fas fa-calendar-alt w-5"></i>

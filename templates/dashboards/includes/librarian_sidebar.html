@@ -17,4 +17,7 @@
     <span>Issue / return</span>
     {% if request.endpoint in ('librarian_issue_return_records', 'librarian_issue_return_records_level') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
-{% include 'dashboards/includes/academic_calendar_sidebar_links.html' with acal_show_section_header=true, acal_section_pad_top=true, acal_hide_manage=true %}
+{% set acal_show_section_header = true %}
+{% set acal_section_pad_top = true %}
+{% set acal_hide_manage = true %}
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' %}
