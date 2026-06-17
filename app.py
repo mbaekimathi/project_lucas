@@ -4744,6 +4744,169 @@ def merge_subjects_with_exam_combinations(subjects, combinations, id_to_gc=None,
     return out
 
 
+def _teacher_marks_subject_ids_for_load(teacher_subject_ids, combinations):
+    """Subject IDs whose marks to load: teacher allocations plus combo partners."""
+    base = {int(x) for x in (teacher_subject_ids or []) if x is not None}
+    try:
+        base = {int(x) for x in base}
+    except (TypeError, ValueError):
+        base = set()
+    if not base:
+        return []
+    out = set(base)
+    for c in combinations or []:
+        mids = []
+        for x in c.get('member_subject_ids') or []:
+            try:
+                mids.append(int(x))
+            except (TypeError, ValueError):
+                continue
+        if len(mids) < 2:
+            continue
+        if any(m in base for m in mids):
+            out.update(mids)
+    return sorted(out)
+
+
+def expand_teacher_marks_sheet_subjects(subjects_flat, combinations, teacher_subject_ids, cursor):
+    """
+    Teachers see every paper in a combined exam group they teach, plus a live total column.
+    Partner subjects are read-only; only allocated subjects are editable.
+    """
+    if not subjects_flat:
+        return [], {}, set()
+
+    teacher_set = set()
+    for x in teacher_subject_ids or []:
+        try:
+            teacher_set.add(int(x))
+        except (TypeError, ValueError):
+            continue
+
+    by_id = {}
+    for s in subjects_flat:
+        try:
+            by_id[int(s['id'])] = dict(s)
+        except (TypeError, ValueError):
+            continue
+
+    relevant = []
+    member_to_combo = {}
+    all_combo_members = set()
+    for c in combinations or []:
+        mids = []
+        for x in c.get('member_subject_ids') or []:
+            try:
+                mids.append(int(x))
+            except (TypeError, ValueError):
+                continue
+        if len(mids) < 2:
+            continue
+        if not any(m in teacher_set for m in mids):
+            continue
+        cid = int(c['id'])
+        relevant.append({
+            'id': cid,
+            'member_subject_ids': mids,
+            'combined_code': (c.get('combined_code') or '').strip(),
+        })
+        for mid in mids:
+            member_to_combo[mid] = cid
+            all_combo_members.add(mid)
+
+    if not relevant:
+        editable = {int(s['id']) for s in subjects_flat if int(s.get('id') or 0) in teacher_set}
+        return list(subjects_flat), {}, editable
+
+    missing = [mid for mid in all_combo_members if mid not in by_id]
+    if missing:
+        try:
+            ph = ','.join(['%s'] * len(missing))
+            cursor.execute(
+                f"""
+                SELECT id, subject_name, subject_code, description, status, exam_total_marks, exam_display_order
+                FROM subjects
+                WHERE id IN ({ph}) AND COALESCE(status, 'active') = 'active'
+                """,
+                tuple(missing),
+            )
+            for row in cursor.fetchall() or []:
+                sid = int(row.get('id') if isinstance(row, dict) else row[0])
+                by_id[sid] = {
+                    'id': sid,
+                    'subject_name': row.get('subject_name') if isinstance(row, dict) else row[1],
+                    'subject_code': row.get('subject_code') if isinstance(row, dict) else row[2],
+                    'description': row.get('description') if isinstance(row, dict) else row[3],
+                    'status': row.get('status') if isinstance(row, dict) else row[4],
+                    'exam_total_marks': row.get('exam_total_marks') if isinstance(row, dict) else (row[5] if len(row) > 5 else None),
+                    'exam_display_order': row.get('exam_display_order') if isinstance(row, dict) else (row[6] if len(row) > 6 else None),
+                }
+        except Exception as e:
+            print(f"expand_teacher_marks_sheet_subjects fetch: {e}")
+
+    combo_by_id = {c['id']: c for c in relevant}
+    flat_order = [int(s['id']) for s in subjects_flat]
+    for mid in all_combo_members:
+        if mid not in flat_order:
+            flat_order.append(mid)
+
+    out = []
+    added_combos = set()
+    added_ids = set()
+    combination_column_members = {}
+    sep = '/'
+
+    for sid in flat_order:
+        if sid in all_combo_members:
+            cid = member_to_combo.get(sid)
+            if cid is None or cid in added_combos:
+                continue
+            added_combos.add(cid)
+            combo = combo_by_id[cid]
+            mids = list(combo['member_subject_ids'])
+            mids.sort(key=lambda m: flat_order.index(m) if m in flat_order else 9999)
+            code_parts = []
+            names = []
+            for mid in mids:
+                info = by_id.get(mid) or {}
+                names.append((info.get('subject_name') or '').strip() or '—')
+                cd = (info.get('subject_code') or '').strip()
+                code_parts.append(cd if cd else ((info.get('subject_name') or '')[:12] or '—'))
+                row = dict(info)
+                row.update({
+                    'id': mid,
+                    'combination_id': cid,
+                    'combination_role': 'member',
+                    'member_subject_ids': mids,
+                    'is_teacher_editable': mid in teacher_set,
+                })
+                out.append(row)
+                added_ids.add(mid)
+            custom_code = combo.get('combined_code') or ''
+            total_row = {
+                'id': -cid,
+                'subject_name': sep.join(names),
+                'subject_code': custom_code if custom_code else sep.join(code_parts),
+                'description': '',
+                'status': 'active',
+                'exam_total_marks': 100.0,
+                'combination_id': cid,
+                'combination_role': 'total',
+                'member_subject_ids': mids,
+                'is_teacher_editable': False,
+            }
+            out.append(total_row)
+            combination_column_members[str(-cid)] = mids
+            added_ids.add(-cid)
+        elif sid not in added_ids and sid in by_id:
+            row = dict(by_id[sid])
+            row['is_teacher_editable'] = sid in teacher_set
+            out.append(row)
+            added_ids.add(sid)
+
+    return out, combination_column_members, teacher_set
+
+
 def fetch_base_academic_level_category_order(cursor):
     """Ordered list of distinct level_category values (same ordering intent as exam-subject-settings)."""
     base_category_order = []
@@ -62448,6 +62611,8 @@ def students_by_academic_level(level_id):
     class_grade_bands = {}
     subject_exam_max_map_base = {}
     combination_column_members = {}
+    teacher_editable_subject_ids = set()
+    teacher_subject_ids_list = []
     current_year_id = None
     current_term_id = None
     registered_current_exam_pick = None
@@ -62508,6 +62673,17 @@ def students_by_academic_level(level_id):
                         'full_name': row.get('full_name') if isinstance(row, dict) else row[2]
                     })
                 
+                if is_teacher and teacher_id:
+                    cursor.execute("""
+                        SELECT DISTINCT subject_id
+                        FROM teacher_subject_assignments
+                        WHERE teacher_id = %s AND academic_level_id = %s
+                    """, (teacher_id, level_id))
+                    teacher_subject_ids_list = [
+                        row.get('subject_id') if isinstance(row, dict) else row[0]
+                        for row in (cursor.fetchall() or [])
+                    ]
+
                 # Get only subjects registered for this academic level:
                 # Prefer subjects that appear in exams for this level; else subjects allocated via teacher_subject_assignments
                 if is_teacher and teacher_id:
@@ -62735,7 +62911,11 @@ def students_by_academic_level(level_id):
                     for s in subjects_flat
                 }
                 if is_teacher and teacher_id:
-                    subjects = subjects_flat
+                    subjects, combination_column_members, teacher_editable_subject_ids = (
+                        expand_teacher_marks_sheet_subjects(
+                            subjects_flat, combinations_loaded, teacher_subject_ids_list, cursor,
+                        )
+                    )
                 else:
                     subjects = merge_subjects_with_exam_combinations(
                         subjects_flat,
@@ -62745,21 +62925,17 @@ def students_by_academic_level(level_id):
                     )
                 
                 # Get marks for students in subjects (if marks table exists)
-                # For teachers, only get marks for their assigned subjects
+                # For teachers, load marks for allocated subjects and combo partners
                 student_marks = {}
                 try:
                     if is_teacher and teacher_id:
-                        # Get teacher's assigned subject IDs for this level
-                        cursor.execute("""
-                            SELECT DISTINCT subject_id
-                            FROM teacher_subject_assignments
-                            WHERE teacher_id = %s AND academic_level_id = %s
-                        """, (teacher_id, level_id))
-                        teacher_subjects = cursor.fetchall()
-                        teacher_subject_ids = [row.get('subject_id') if isinstance(row, dict) else row[0] for row in teacher_subjects]
+                        marks_subject_ids = _teacher_marks_subject_ids_for_load(
+                            teacher_subject_ids_list, combinations_loaded,
+                        )
+                        teacher_subjects = marks_subject_ids or teacher_subject_ids_list
                         
-                        if teacher_subject_ids:
-                            placeholders = ','.join(['%s'] * len(teacher_subject_ids))
+                        if teacher_subjects:
+                            placeholders = ','.join(['%s'] * len(teacher_subjects))
                             cursor.execute(f"""
                                 SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id, e.exam_name
                                 FROM student_marks sm
@@ -62767,7 +62943,7 @@ def students_by_academic_level(level_id):
                                 LEFT JOIN exams e ON sm.exam_id = e.id
                                 WHERE s.current_grade = %s
                                 AND sm.subject_id IN ({placeholders})
-                            """, [level_name] + teacher_subject_ids)
+                            """, [level_name] + teacher_subjects)
                             marks_results = cursor.fetchall()
                             
                             for mark_row in marks_results:
@@ -62858,7 +63034,12 @@ def students_by_academic_level(level_id):
 
     subject_exam_max_map = dict(subject_exam_max_map_base)
     for s in subjects:
-        if s.get('combination_id'):
+        if s.get('combination_role') == 'total' or s.get('combination_id') and int(s.get('id') or 0) < 0:
+            subject_exam_max_map[int(s['id'])] = 100.0
+            combination_column_members[str(int(s['id']))] = [int(x) for x in (s.get('member_subject_ids') or [])]
+        elif s.get('combination_id') and s.get('combination_role') != 'total':
+            pass
+        elif s.get('combination_id'):
             subject_exam_max_map[int(s['id'])] = 100.0
             combination_column_members[str(int(s['id']))] = [int(x) for x in (s.get('member_subject_ids') or [])]
 
@@ -62936,6 +63117,7 @@ def students_by_academic_level(level_id):
                          marks_summary_column=marks_summary_column,
                          marks_display_scaled=marks_display_scaled,
                          is_teacher=is_teacher,
+                         teacher_editable_subject_ids=sorted(teacher_editable_subject_ids),
                          registered_current_exam=registered_current_exam_pick,
                          marks_filters_from_url=marks_filters_from_url)
 
@@ -63493,6 +63675,18 @@ def get_marks_by_exam():
                         teacher_subjects = cursor.fetchall()
                         for subj_row in teacher_subjects:
                             teacher_subject_ids.append(subj_row.get('subject_id') if isinstance(subj_row, dict) else subj_row[0])
+
+                    marks_load_subject_ids = teacher_subject_ids
+                    if is_teacher and teacher_subject_ids:
+                        try:
+                            ensure_subject_exam_combination_tables(cursor)
+                            combos_live = _fetch_live_subject_exam_combinations_full(cursor)
+                            marks_load_subject_ids = _teacher_marks_subject_ids_for_load(
+                                teacher_subject_ids, combos_live,
+                            )
+                        except Exception as _tl:
+                            print(f"teacher combo marks subjects: {_tl}")
+                            marks_load_subject_ids = teacher_subject_ids
                     
                     teacher_marks_readonly = False
                     marks_lock_at_str = None
@@ -63540,9 +63734,9 @@ def get_marks_by_exam():
                         # Get marks filtered by exam
                         try:
                             exam_placeholders = ','.join(['%s'] * len(exam_group_ids))
-                            if is_teacher and teacher_id and teacher_subject_ids:
-                                # Filter by teacher's subjects
-                                subject_placeholders = ','.join(['%s'] * len(teacher_subject_ids))
+                            if is_teacher and teacher_id and marks_load_subject_ids:
+                                # Filter by teacher's subjects and combination partners
+                                subject_placeholders = ','.join(['%s'] * len(marks_load_subject_ids))
                                 cursor.execute(f"""
                                     SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id
                                     FROM student_marks sm
@@ -63550,7 +63744,7 @@ def get_marks_by_exam():
                                     WHERE sm.student_id IN (SELECT student_id FROM students WHERE current_grade = %s)
                                     AND sm.exam_id IN ({exam_placeholders})
                                     AND sm.subject_id IN ({subject_placeholders})
-                                """, [level_name] + exam_group_ids + teacher_subject_ids)
+                                """, [level_name] + exam_group_ids + marks_load_subject_ids)
                             else:
                                 cursor.execute("""
                                     SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id
@@ -63579,15 +63773,14 @@ def get_marks_by_exam():
                     else:
                         # Get all marks (no filter)
                         try:
-                            if is_teacher and teacher_id and teacher_subject_ids:
-                                # Filter by teacher's subjects
-                                placeholders = ','.join(['%s'] * len(teacher_subject_ids))
+                            if is_teacher and teacher_id and marks_load_subject_ids:
+                                placeholders = ','.join(['%s'] * len(marks_load_subject_ids))
                                 cursor.execute(f"""
                                     SELECT student_id, subject_id, marks, exam_id
                                     FROM student_marks
                                     WHERE student_id IN (SELECT student_id FROM students WHERE current_grade = %s)
                                     AND subject_id IN ({placeholders})
-                                """, [level_name] + teacher_subject_ids)
+                                """, [level_name] + marks_load_subject_ids)
                             else:
                                 cursor.execute("""
                                     SELECT student_id, subject_id, marks, exam_id
@@ -63614,11 +63807,11 @@ def get_marks_by_exam():
                     subject_exam_max_payload = {}
                     try:
                         ensure_subject_exam_total_marks_column(cursor)
-                        if is_teacher and teacher_id and teacher_subject_ids:
-                            ph = ','.join(['%s'] * len(teacher_subject_ids))
+                        if is_teacher and teacher_id and marks_load_subject_ids:
+                            ph = ','.join(['%s'] * len(marks_load_subject_ids))
                             cursor.execute(
                                 f"SELECT id, exam_total_marks FROM subjects WHERE id IN ({ph})",
-                                tuple(teacher_subject_ids),
+                                tuple(marks_load_subject_ids),
                             )
                         else:
                             cursor.execute("""
@@ -64039,11 +64232,11 @@ def save_marks():
                     registered_current=registered_current,
                     exam_type=exam_scope_type,
                 )
-                max_raw = subject_exam_max_raw_marks(etm)
+                max_raw = min(subject_exam_max_raw_marks(etm), 100.0)
                 if marks_value is not None and marks_value > max_raw + 1e-9:
                     return jsonify({
                         'success': False,
-                        'message': f'Marks cannot exceed this subject\'s exam maximum ({max_raw:g}).',
+                        'message': f'Marks cannot exceed {max_raw:g} (maximum 100).',
                     }), 400
                 
                 # Check if mark already exists

@@ -588,6 +588,107 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     border: 1px solid #bae6fd;
 }
 .dark .ms-banner--sky { color: #bae6fd; background: rgba(12,74,110,0.3); border-color: #0369a1; }
+.marks-scale-guide {
+    margin-bottom: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.625rem;
+    border: 1px solid #0ea5e9;
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    color: #0c4a6e;
+}
+.dark .marks-scale-guide {
+    color: #e0f2fe;
+    background: linear-gradient(135deg, rgba(12,74,110,0.35) 0%, rgba(3,105,161,0.2) 100%);
+    border-color: #0369a1;
+}
+.marks-scale-guide__title {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+.marks-scale-guide__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.marks-scale-guide__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: #fff;
+    border: 1px solid #7dd3fc;
+    color: #075985;
+}
+.dark .marks-scale-guide__chip {
+    background: rgba(15,23,42,0.5);
+    border-color: #0284c7;
+    color: #bae6fd;
+}
+.marks-scale-guide__chip strong {
+    font-weight: 800;
+    color: #0369a1;
+}
+.dark .marks-scale-guide__chip strong { color: #7dd3fc; }
+.marks-th-outof {
+    font-size: 0.6rem;
+    line-height: 1.1;
+    font-weight: 700;
+    color: #0369a1;
+    letter-spacing: 0;
+    text-transform: none;
+}
+.dark .marks-th-outof { color: #7dd3fc; }
+.marks-cell-readonly {
+    display: inline-block;
+    width: 100%;
+    padding: 0.2rem 0.15rem;
+    border-radius: 0.25rem;
+    background: #f1f5f9;
+    color: #475569;
+    font-weight: 600;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+.dark .marks-cell-readonly {
+    background: rgba(30, 41, 59, 0.65);
+    color: #cbd5e1;
+}
+.marks-combo-total-cell {
+    display: inline-block;
+    width: 100%;
+    padding: 0.2rem 0.15rem;
+    border-radius: 0.25rem;
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    color: #047857;
+    font-weight: 800;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+.dark .marks-combo-total-cell {
+    background: linear-gradient(135deg, rgba(6, 78, 59, 0.35) 0%, rgba(4, 120, 87, 0.2) 100%);
+    color: #6ee7b7;
+}
+.marks-th-combo-total {
+    background: #ecfdf5 !important;
+    color: #047857 !important;
+}
+.dark .marks-th-combo-total {
+    background: rgba(6, 78, 59, 0.25) !important;
+    color: #6ee7b7 !important;
+}
+@media (min-width: 768px) {
+    .marks-th-outof { font-size: 0.65rem; }
+}
 
 .ms-toolbar-row {
     display: flex;
@@ -836,11 +937,45 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <p x-show="selectedExam && examIsLocked" x-cloak class="ms-banner ms-banner--amber">
             <i class="fas fa-lock mr-1.5 opacity-80" aria-hidden="true"></i>Exam allocations are locked — you can view marks here; editing is disabled until an administrator unlocks allocations.
         </p>
+        {% if can_edit and not cc_single_subject_edit %}
+        <div x-show="selectedExam && !examIsLocked" x-cloak class="marks-scale-guide" role="note" aria-label="Mark entry scale guide">
+            <p class="marks-scale-guide__title">
+                <i class="fas fa-ruler-combined text-sky-600 dark:text-sky-400" aria-hidden="true"></i>
+                Enter each mark <strong>out of</strong> the exam total shown below
+            </p>
+            <ul class="marks-scale-guide__list">
+                {% for subject in subjects %}
+                {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
+                {% set subj_max_disp = subj_max|int if subj_max == subj_max|int else subj_max %}
+                <li class="marks-scale-guide__chip">
+                    <span>{{ subject.subject_code or subject.subject_name }}</span>
+                    {% if subject.combination_role == 'total' %}
+                    <strong>combined %</strong>
+                    <span class="opacity-75 font-normal">(live)</span>
+                    {% elif subject.combination_role == 'member' and not subject.get('is_teacher_editable', true) %}
+                    <strong>0–{{ subj_max_disp }}</strong>
+                    <span class="opacity-75 font-normal">(view only)</span>
+                    {% elif subject.combination_id and not subject.combination_role %}
+                    <strong>0–100%</strong>
+                    <span class="opacity-75 font-normal">(combined)</span>
+                    {% else %}
+                    <strong>0–{{ subj_max_disp }}</strong>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            <p class="text-[10px] sm:text-xs mt-2 opacity-80 leading-snug">
+                Totals come from <a href="{{ employee_dash_url('exam-subject-settings') }}" class="underline font-semibold">Exam subject settings</a>.
+                Combined groups show each paper; the <strong>combined %</strong> column updates live as marks are entered.
+                Grey cells are other teachers&apos; subjects (view only).
+            </p>
+        </div>
+        {% endif %}
         <p x-show="selectedExam" x-cloak class="ms-banner ms-banner--slate">
-            {% if is_teacher %}
-            Enter marks out of each subject total. {% if marks_summary_column == 'total_scaled' %}<strong>Total</strong>{% else %}<strong>Avg%</strong>{% endif %}, <strong>Code</strong>, and <strong>Points</strong> update from <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>.
+            {% if can_edit and not cc_single_subject_edit %}
+            Type raw marks in each cell (see scale above and <strong>/ total</strong> under each column). {% if marks_summary_column == 'total_scaled' %}<strong>Total</strong>{% else %}<strong>Avg%</strong>{% endif %}, <strong>Code</strong>, and <strong>Points</strong> update from <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>.
             {% elif cc_single_subject_edit and can_edit %}
-            Enter marks out of this subject&apos;s exam total. <strong>Avg%</strong>, <strong>Code</strong>, and <strong>Points</strong> update from <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>. Use arrow keys and Enter to move between cells.
+            Enter marks <strong>out of {{ edit_subject_exam_max|int if edit_subject_exam_max == edit_subject_exam_max|int else edit_subject_exam_max }}</strong> for {{ edit_subject.subject_name }}. <strong>Avg%</strong>, <strong>Code</strong>, and <strong>Points</strong> update from <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>. Use arrow keys and Enter to move between cells.
             {% elif marks_display_scaled %}
             Scaled <strong>/100</strong> view; <strong>Total</strong> sums converted marks. Teachers enter raw marks when editing.
             {% elif combined_subjects|length > 0 %}
@@ -886,8 +1021,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <th class="sticky-col sticky-col-2 px-1.5 py-2 sm:px-3 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">Student</th>
                             {% for subject in subjects %}
                             {% set raw_code = ((subject.subject_code or '')|trim|upper) %}
-                            {% if subject.combination_id %}
-                                {# Combined column: show ALL member codes (joined in subject_code) #}
+                            {% set is_combo_total = subject.combination_role == 'total' %}
+                            {% set is_combo_member = subject.combination_role == 'member' %}
+                            {% if subject.combination_id and (is_combo_total or not subject.combination_role) %}
                                 {% set subj_lbl = raw_code if raw_code else ((subject.subject_name|upper) if subject.subject_name else '') %}
                             {% else %}
                                 {% if raw_code %}
@@ -897,7 +1033,13 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 {% endif %}
                             {% endif %}
                             {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
-                            {% if subject.combination_id %}
+                            {% if is_combo_total %}
+                            <th class="marks-th-subject marks-th-combo-total px-0.5 py-2 sm:py-3 text-center font-semibold uppercase align-bottom"
+                                title="{{ subject.subject_name }} — live combined % (weighted from all papers in this group)">Σ {{ subj_lbl[:6] }}</th>
+                            {% elif is_combo_member and not subject.get('is_teacher_editable', true) %}
+                            <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-500 dark:text-gray-400 uppercase bg-gray-100 dark:bg-gray-700 align-bottom"
+                                title="{{ subject.subject_name }} — view only (entered by another teacher) — out of {{ subj_max }}">{{ subj_lbl }} <i class="fas fa-lock text-[8px] opacity-70" aria-hidden="true"></i></th>
+                            {% elif subject.combination_id and not subject.combination_role %}
                             <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom"
                                 title="{{ subject.subject_name }} — unified % (0–100); each paper scaled using its exam total from Exam subject settings">{{ subj_lbl }}</th>
                             {% elif marks_display_scaled %}
@@ -915,6 +1057,28 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="{% if uses_class_grading_setting and grading_setting_name %}Grade code from {{ grading_setting_name }}{% else %}Grade code from school default bands{% endif %}">Code</th>
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[9px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="Allocation points from Grades Registration for that band">Points</th>
                         </tr>
+                        <tr class="marks-header-outof-row">
+                            <th class="sticky-col sticky-col-1 bg-gray-50 dark:bg-gray-800/80" aria-hidden="true"></th>
+                            <th class="sticky-col sticky-col-2 px-1.5 py-1 text-left text-[9px] sm:text-[10px] font-bold text-sky-700 dark:text-sky-300 uppercase bg-gray-50 dark:bg-gray-800/80 leading-tight">Out of</th>
+                            {% for subject in subjects %}
+                            {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
+                            {% set subj_max_disp = subj_max|int if subj_max == subj_max|int else subj_max %}
+                            <th class="marks-th-subject marks-th-outof px-0.5 py-1 text-center bg-gray-50 dark:bg-gray-800/80 align-middle{% if subject.combination_role == 'total' %} text-emerald-700 dark:text-emerald-300{% endif %}">
+                                {% if subject.combination_role == 'total' %}
+                                live %
+                                {% elif subject.combination_role == 'member' or not subject.combination_id %}
+                                /{{ subj_max_disp }}
+                                {% elif subject.combination_id %}
+                                0–100%
+                                {% else %}
+                                /{{ subj_max_disp }}
+                                {% endif %}
+                            </th>
+                            {% endfor %}
+                            <th class="px-0.5 py-1 bg-gray-50 dark:bg-gray-800/80" aria-hidden="true"></th>
+                            <th class="px-0.5 py-1 bg-gray-50 dark:bg-gray-800/80" aria-hidden="true"></th>
+                            <th class="px-0.5 py-1 bg-gray-50 dark:bg-gray-800/80" aria-hidden="true"></th>
+                        </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                         <template x-for="(student, rowIdx) in sortedStudents()" :key="student.student_id">
@@ -924,37 +1088,50 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 <span class="font-medium text-gray-900 dark:text-white text-xs sm:text-sm leading-snug max-md:line-clamp-2" x-text="student.full_name"></span>
                             </td>
                             {% for subject in subjects %}
-                            <td class="marks-td-subject py-1 sm:py-1 text-center align-middle">
-                                {% if can_edit %}
-                                <template x-if="canEnterMarks">
+                            {% set is_combo_total = subject.combination_role == 'total' %}
+                            <td class="marks-td-subject py-1 sm:py-1 text-center align-middle{% if is_combo_total %} bg-emerald-50/50 dark:bg-emerald-900/10{% endif %}">
+                                {% if is_combo_total %}
+                                <span class="marks-combo-total-cell"
+                                      :title="'Combined % from all papers in ' + {{ (subject.subject_name or '')|tojson }}"
+                                      x-text="getComboTotalDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
+                                {% elif can_edit %}
+                                <template x-if="canEnterMarks && canEditSubjectCell({{ subject.id }})">
                                     <input type="text"
                                            inputmode="decimal"
                                            maxlength="8"
                                            :data-row-index="rowIdx"
                                            data-col-index="{{ loop.index0 }}"
-                                           :value="getMark(student.student_id, {{ subject.id }})"
+                                           :value="getMemberRawDisplay(student.student_id, {{ subject.id }})"
+                                           @input="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
                                            @blur="saveMark(student.student_id, {{ subject.id }}, $event.target.value)"
                                            @keydown.enter="handleEnterKey($event)"
                                            @keydown.up.prevent="handleArrowKey($event)"
                                            @keydown.down.prevent="handleArrowKey($event)"
                                            @keydown.left.prevent="handleArrowKey($event)"
                                            @keydown.right.prevent="handleArrowKey($event)"
-                                           @keypress="allowMarkChar($event)"
+                                           @keypress="allowMarkChar($event, {{ subject.id }})"
                                            :disabled="!selectedExam"
+                                           placeholder=""
+                                           :title="'Enter mark out of ' + maxAllowedMarkFor({{ subject.id }}) + ' (max 100)'"
                                            :class="getStatusClass(student.student_id, {{ subject.id }})"
                                            class="mark-input touch-manipulation"
                                            autocomplete="off"
                                            enterkeyhint="next">
+                                </template>
+                                <template x-if="canEnterMarks && !canEditSubjectCell({{ subject.id }})">
+                                    <span class="marks-cell-readonly"
+                                          title="Entered by another teacher — view only"
+                                          x-text="getMemberRawDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
                                 </template>
                                 <template x-if="!canEnterMarks">
                                     <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums"
                                           :class="examIsLocked && selectedExam ? 'cursor-pointer rounded px-0.5 ring-1 ring-amber-200/60 dark:ring-amber-700/50' : ''"
                                           :title="examIsLocked && selectedExam ? 'Allocations locked — tap for details' : ''"
                                           @click="examIsLocked && selectedExam && showLockedExamModal()"
-                                          x-text="getMark(student.student_id, {{ subject.id }}) || '-'"></span>
+                                          x-text="getCellMarkDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
                                 </template>
                                 {% else %}
-                                <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums" x-text="getMark(student.student_id, {{ subject.id }}) || '-'"></span>
+                                <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums" x-text="getCellMarkDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
                                 {% endif %}
                             </td>
                             {% endfor %}
@@ -1149,6 +1326,7 @@ function marksSheet() {
         academicLevelId: {{ academic_level_id|default('null') }},
         subjectExamMax: {{ (subject_exam_max_map or {})|tojson|safe }},
         columnMembers: {{ (combination_column_members or {})|tojson|safe }},
+        teacherEditableSubjectIds: {{ (teacher_editable_subject_ids or [])|tojson|safe }},
 
         subjectIds: [{% for s in subjects %}{{ s.id }}{% if not loop.last %},{% endif %}{% endfor %}],
         studentsList: {{ (students or [])|tojson|safe }},
@@ -1437,6 +1615,92 @@ function marksSheet() {
             return (Number.isFinite(n) && n > 0) ? n : 100;
         },
 
+        /** Hard ceiling: subject exam total, never above 100. */
+        maxAllowedMarkFor(subjectId) {
+            return Math.min(this.subjectExamMaxFor(subjectId), 100);
+        },
+
+        isComboTotalColumn(subjectId) {
+            return Number(subjectId) < 0;
+        },
+
+        get comboMemberIdsForSummarySkip() {
+            const skip = new Set();
+            for (const colId of Object.keys(this.columnMembers || {})) {
+                if (Number(colId) >= 0) continue;
+                const mids = this.columnMembers[colId];
+                if (!Array.isArray(mids)) continue;
+                mids.forEach((m) => skip.add(Number(m)));
+            }
+            return skip;
+        },
+
+        canEditSubjectCell(subjectId) {
+            if (!this.canEdit || !this.canEnterMarks || this.isComboTotalColumn(subjectId)) return false;
+            const ids = this.teacherEditableSubjectIds || [];
+            if (this.isTeacherMarks && ids.length) {
+                const sid = Number(subjectId);
+                return ids.some((x) => Number(x) === sid);
+            }
+            return true;
+        },
+
+        getMemberRawDisplay(studentId, subjectId) {
+            const raw = this._rawStoredMark(studentId, subjectId);
+            if (raw === null) return '';
+            return this.formatMarkDisplay(raw, false);
+        },
+
+        getComboTotalPct(studentId, columnSubjectId) {
+            const members = this.getCombinationMembers(columnSubjectId);
+            if (!members || !members.length) return null;
+            let weightedSum = 0;
+            let weightSum = 0;
+            for (const mid of members) {
+                const raw = this._rawStoredMark(studentId, mid);
+                if (raw !== null) {
+                    const w = this.subjectExamMaxFor(mid);
+                    weightedSum += ((100 * raw) / w) * w;
+                    weightSum += w;
+                }
+            }
+            return weightSum ? (weightedSum / weightSum) : null;
+        },
+
+        getComboTotalDisplay(studentId, columnSubjectId) {
+            const pct = this.getComboTotalPct(studentId, columnSubjectId);
+            return this.formatMarkDisplay(pct, true);
+        },
+
+        getCellMarkDisplay(studentId, subjectId) {
+            if (this.isComboTotalColumn(subjectId)) {
+                return this.getComboTotalDisplay(studentId, subjectId);
+            }
+            return this.getMark(studentId, subjectId);
+        },
+
+        onMarkInput(studentId, subjectId, value, event) {
+            if (!this.selectedExam || !this.canEditSubjectCell(subjectId)) return;
+            const trimmed = (value || '').trim().replace(',', '.');
+            let numValue = null;
+            if (trimmed) {
+                numValue = parseFloat(trimmed);
+                if (Number.isNaN(numValue)) return;
+                const max = this.maxAllowedMarkFor(subjectId);
+                if (numValue > max) {
+                    numValue = max;
+                    if (event && event.target) {
+                        const disp = Math.round(max) === max ? String(Math.round(max)) : String(max);
+                        event.target.value = disp;
+                    }
+                }
+                if (numValue < 0) numValue = 0;
+            }
+            if (!this.marks[studentId]) this.marks[studentId] = {};
+            if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
+            this.marks[studentId][subjectId][this.selectedExam] = numValue;
+        },
+
         getCombinationMembers(subjectId) {
             const m = this.columnMembers[String(subjectId)];
             return Array.isArray(m) && m.length ? m : null;
@@ -1461,12 +1725,25 @@ function marksSheet() {
             return Number.isFinite(n) ? n : null;
         },
 
-        allowMarkChar(event) {
+        allowMarkChar(event, subjectId) {
             const code = event.charCode;
             if (!code) return;
             const ch = String.fromCharCode(code);
-            if (ch >= '0' && ch <= '9') return;
-            if ((ch === '.' || ch === ',') && !String(event.target.value).includes('.')) return;
+            const el = event.target;
+            const cur = String(el.value || '');
+            const start = el.selectionStart != null ? el.selectionStart : cur.length;
+            const end = el.selectionEnd != null ? el.selectionEnd : cur.length;
+            const trial = cur.slice(0, start) + ch + cur.slice(end);
+            const max = this.maxAllowedMarkFor(subjectId);
+            if (ch >= '0' && ch <= '9') {
+                const num = parseFloat(trial.replace(',', '.'));
+                if (!Number.isNaN(num) && num > max + 1e-9) {
+                    event.preventDefault();
+                    return;
+                }
+                return;
+            }
+            if ((ch === '.' || ch === ',') && !cur.includes('.') && !cur.includes(',')) return;
             event.preventDefault();
         },
 
@@ -1756,10 +2033,11 @@ function marksSheet() {
         },
 
         getMarkNumeric(studentId, subjectId) {
+            if (this.isComboTotalColumn(subjectId)) {
+                return this.getComboTotalPct(studentId, subjectId);
+            }
             const members = this.getCombinationMembers(subjectId);
-            if (members && members.length) {
-                // Weighted average converted mark (/100) across member papers.
-                // Weight by each paper's exam total marks so the combined converted mark stays in 0–100.
+            if (members && members.length && Number(subjectId) < 0) {
                 let weightedSum = 0;
                 let weightSum = 0;
                 for (const mid of members) {
@@ -1785,8 +2063,9 @@ function marksSheet() {
         getScaledPct(studentId, subjectId) {
             const raw = this.getMarkNumeric(studentId, subjectId);
             if (raw === null) return null;
+            if (this.isComboTotalColumn(subjectId)) return this.roundWhole(raw);
             const members = this.getCombinationMembers(subjectId);
-            if (members && members.length) return this.roundWhole(raw);
+            if (members && members.length && Number(subjectId) < 0) return this.roundWhole(raw);
             const mx = this.subjectExamMaxFor(subjectId);
             if (!mx) return null;
             return this.roundWhole((100 * raw) / mx);
@@ -1805,24 +2084,15 @@ function marksSheet() {
         /** Sum of raw marks for this exam, one count per paper (combined columns sum their members). */
         getStudentTotalRawMarks(studentId) {
             if (!this.selectedExam) return null;
+            const skip = this.comboMemberIdsForSummarySkip;
             let total = 0;
             let any = false;
             for (const subjectId of this.subjectIds) {
-                const members = this.getCombinationMembers(subjectId);
-                if (members && members.length) {
-                    for (const mid of members) {
-                        const raw = this._rawStoredMark(studentId, mid);
-                        if (raw !== null) {
-                            total += raw;
-                            any = true;
-                        }
-                    }
-                } else {
-                    const raw = this._rawStoredMark(studentId, subjectId);
-                    if (raw !== null) {
-                        total += raw;
-                        any = true;
-                    }
+                if (skip.has(Number(subjectId)) || this.isComboTotalColumn(subjectId)) continue;
+                const raw = this._rawStoredMark(studentId, subjectId);
+                if (raw !== null) {
+                    total += raw;
+                    any = true;
                 }
             }
             if (!any) return null;
@@ -1832,9 +2102,11 @@ function marksSheet() {
         /** Sum of converted /100 marks (one per subject column; combined counts once). */
         getStudentTotalScaledMarks(studentId) {
             if (!this.selectedExam) return null;
+            const skip = this.comboMemberIdsForSummarySkip;
             let total = 0;
             let any = false;
             for (const subjectId of this.subjectIds) {
+                if (skip.has(Number(subjectId))) continue;
                 const pct = this.getScaledPct(studentId, subjectId);
                 if (pct !== null) {
                     total += pct;
@@ -1854,14 +2126,17 @@ function marksSheet() {
             if (this.summaryMode === 'total_scaled') {
                 return this.getStudentTotalScaledMarks(studentId);
             }
+            const skip = this.comboMemberIdsForSummarySkip;
             let sumPct = 0;
             let count = 0;
             for (const subjectId of this.subjectIds) {
+                if (skip.has(Number(subjectId))) continue;
                 const pct = this.displayScaled
                     ? this.getScaledPct(studentId, subjectId)
                     : (() => {
                         const raw = this.getMarkNumeric(studentId, subjectId);
                         if (raw === null) return null;
+                        if (this.isComboTotalColumn(subjectId)) return raw;
                         const mx = this.subjectExamMaxFor(subjectId);
                         return mx ? (100 * raw) / mx : null;
                     })();
@@ -1874,11 +2149,14 @@ function marksSheet() {
         },
 
         getMark(studentId, subjectId) {
+            if (this.isComboTotalColumn(subjectId)) {
+                return this.getComboTotalDisplay(studentId, subjectId);
+            }
             const members = this.getCombinationMembers(subjectId);
             const n = this.displayScaled
                 ? this.getScaledPct(studentId, subjectId)
                 : this.getMarkNumeric(studentId, subjectId);
-            return this.formatMarkDisplay(n, !!(members && members.length));
+            return this.formatMarkDisplay(n, !!(members && members.length && Number(subjectId) < 0));
         },
 
         getTotal(studentId) {
@@ -1913,18 +2191,24 @@ function marksSheet() {
          */
         getOverallMeanPctForGrading(studentId) {
             if (!this.selectedExam) return null;
+            const skip = this.comboMemberIdsForSummarySkip;
             let sumPct = 0;
             let count = 0;
             for (const subjectId of this.subjectIds) {
+                if (skip.has(Number(subjectId))) continue;
                 let pct = null;
                 if (this.displayScaled) {
                     pct = this.getScaledPct(studentId, subjectId);
                 } else {
                     const raw = this.getMarkNumeric(studentId, subjectId);
                     if (raw === null) continue;
-                    const mx = this.subjectExamMaxFor(subjectId);
-                    if (!mx) continue;
-                    pct = (100 * raw) / mx;
+                    if (this.isComboTotalColumn(subjectId)) {
+                        pct = raw;
+                    } else {
+                        const mx = this.subjectExamMaxFor(subjectId);
+                        if (!mx) continue;
+                        pct = (100 * raw) / mx;
+                    }
                 }
                 if (pct !== null) {
                     sumPct += pct;
@@ -2227,7 +2511,9 @@ function marksSheet() {
             }
             if (this.marksInputsDisabled) return;
 
-            if (this.getCombinationMembers(subjectId)) {
+            if (this.isComboTotalColumn(subjectId)) return;
+
+            if (this.getCombinationMembers(subjectId) && Number(subjectId) < 0) {
                 return this.saveCombinationMark(studentId, subjectId, value);
             }
 
@@ -2246,11 +2532,9 @@ function marksSheet() {
                     setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
                     return;
                 }
-                const mx = this.subjectExamMaxFor(subjectId);
+                const mx = this.maxAllowedMarkFor(subjectId);
                 if (numValue > mx + 1e-6) {
-                    this.saveStatus[key] = 'error';
-                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
-                    return;
+                    numValue = mx;
                 }
             }
 
