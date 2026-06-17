@@ -92,10 +92,12 @@
 
 {% block content %}
 <script>const _studentEmpPrefix = {{ employee_dash_url()|tojson }};</script>
+<script type="application/json" id="student-mgmt-academic-levels">{{ academic_levels|default([])|tojson }}</script>
 <div class="p-3 sm:p-4 md:p-6 lg:p-8 w-full max-w-full min-w-0 overflow-x-hidden page-content max-w-7xl mx-auto pb-[max(1rem,env(safe-area-inset-bottom))] role-page role-page--{{ portal_page_variant|default('default') }}" 
      x-data="{ 
          studentsList: [],
          stats: { total: 0, in_session: 0, pending: 0, suspended: 0 },
+         academicLevelNames: [],
          page: 1,
          pages: 1,
          perPage: 50,
@@ -173,6 +175,13 @@
              if (n !== this.page) this.fetchStudents(n);
          },
          initStudentList() {
+             try {
+                 const levEl = document.getElementById('student-mgmt-academic-levels');
+                 const levels = levEl && levEl.textContent ? JSON.parse(levEl.textContent) : [];
+                 this.academicLevelNames = (levels || []).map((l) => (l.level_name || '').trim()).filter(Boolean);
+             } catch (e) {
+                 this.academicLevelNames = [];
+             }
              this.fetchStats();
              this.fetchStudents(1);
          },
@@ -187,39 +196,167 @@
          deleteModalOpen: false,
          selectedStudent: null,
          loading: false,
+         async fetchStudentDetail(studentId) {
+             const response = await fetch(`${_studentEmpPrefix}/get-student/${encodeURIComponent(studentId)}`, {
+                 credentials: 'same-origin',
+                 headers: { 'Accept': 'application/json' },
+             });
+             const data = await response.json();
+             if (!response.ok || !data.success) {
+                 throw new Error(data.message || 'Error loading student details');
+             }
+             return data.student;
+         },
          async loadStudent(studentId) {
              this.loading = true;
              try {
-                 const response = await fetch(`${_studentEmpPrefix}/get-student/${studentId}`);
-                 const data = await response.json();
-                 if (data.success) {
-                     this.selectedStudent = data.student;
-                     this.viewModalOpen = true;
-                 } else {
-                     alert(data.message || 'Error loading student details');
-                 }
+                 this.selectedStudent = await this.fetchStudentDetail(studentId);
+                 this.viewModalOpen = true;
              } catch (error) {
                  console.error('Error:', error);
-                 alert('Error loading student details');
+                 alert(error.message || 'Error loading student details');
              } finally {
                  this.loading = false;
              }
          },
          async openEditModal(studentId) {
-             await this.loadStudent(studentId);
-             this.originalStudentId = this.selectedStudent.student_id;
-             this.studentIdError = '';
-             this.viewModalOpen = false;
+             if (!studentId) return;
+             this.loading = true;
              this.editModalOpen = true;
-             window.dispatchEvent(new CustomEvent('student-photo-set', {
-                 detail: {
-                     inputId: 'edit-student-profile-image',
-                     url: this.selectedStudent.profile_image_url || '',
-                 },
-             }));
-             window.dispatchEvent(new CustomEvent('student-fingerprint-reload', {
-                 detail: { studentId: this.selectedStudent.student_id },
-             }));
+             this.viewModalOpen = false;
+             this.studentIdError = '';
+             this.selectedStudent = null;
+             let student = null;
+             try {
+                 student = await this.fetchStudentDetail(studentId);
+             } catch (error) {
+                 console.error('Error:', error);
+                 this.editModalOpen = false;
+                 alert(error.message || 'Error loading student details');
+             } finally {
+                 this.loading = false;
+             }
+             if (!student) return;
+             this.selectedStudent = student;
+             this.normalizeSelectedStudentFields();
+             this.originalStudentId = this.selectedStudent.student_id;
+             this.$nextTick(() => {
+                 this.ensureGradeOption(this.selectedStudent.current_grade);
+                 this.syncEditFormControls();
+                 window.dispatchEvent(new CustomEvent('student-photo-set', {
+                     detail: {
+                         inputId: 'edit-student-profile-image',
+                         url: this.selectedStudent.profile_image_url || '',
+                     },
+                 }));
+                 window.dispatchEvent(new CustomEvent('student-fingerprint-reload', {
+                     detail: { studentId: this.selectedStudent.student_id },
+                 }));
+             });
+         },
+         normalizeSelectedStudentFields() {
+             if (!this.selectedStudent) return;
+             const s = this.selectedStudent;
+             const textFields = [
+                 'student_id', 'full_name', 'date_of_birth', 'gender', 'current_grade',
+                 'previous_school', 'assessment_number', 'address', 'medical_info', 'special_needs',
+                 'student_category', 'sponsor_name', 'sponsor_phone', 'sponsor_email',
+                 'status', 'parent_name', 'parent_phone', 'parent_email',
+                 'relationship', 'emergency_contact',
+             ];
+             textFields.forEach((key) => {
+                 if (s[key] === null || s[key] === undefined) {
+                     s[key] = '';
+                 } else if (typeof s[key] !== 'string') {
+                     s[key] = String(s[key]).trim();
+                 } else {
+                     s[key] = s[key].trim();
+                 }
+             });
+             if (s.date_of_birth && s.date_of_birth.length > 10) {
+                 s.date_of_birth = s.date_of_birth.slice(0, 10);
+             }
+             const g = (s.gender || '').trim();
+             if (g) {
+                 const genderMap = {
+                     MALE: 'Male', FEMALE: 'Female', OTHER: 'Other',
+                     'PREFER NOT TO SAY': 'Prefer not to say',
+                 };
+                 s.gender = genderMap[g.toUpperCase()] || g;
+             }
+             const rel = (s.relationship || '').trim();
+             if (rel) {
+                 const relMap = { FATHER: 'Father', MOTHER: 'Mother', GUARDIAN: 'Guardian', OTHER: 'Other' };
+                 s.relationship = relMap[rel.toUpperCase()] || rel;
+             }
+             const cat = (s.student_category || '').trim().toLowerCase();
+             if (cat) {
+                 s.student_category = cat;
+             }
+             const grade = (s.current_grade || '').trim();
+             if (grade && this.academicLevelNames.length) {
+                 const match = this.academicLevelNames.find((n) => n.toLowerCase() === grade.toLowerCase());
+                 if (match) s.current_grade = match;
+             }
+             if (!s.status) {
+                 s.status = 'pending approval';
+             }
+         },
+         syncEditFormControls() {
+             if (!this.selectedStudent) return;
+             const s = this.selectedStudent;
+             const pairs = [
+                 ['edit_student_id', s.student_id],
+                 ['edit_status', s.status],
+                 ['edit_full_name', s.full_name],
+                 ['edit_date_of_birth', s.date_of_birth],
+                 ['edit_gender', s.gender],
+                 ['edit_current_grade', s.current_grade],
+                 ['edit_previous_school', s.previous_school],
+                 ['edit_assessment_number', s.assessment_number],
+                 ['edit_student_category', s.student_category],
+                 ['edit_sponsor_name', s.sponsor_name],
+                 ['edit_sponsor_phone', s.sponsor_phone],
+                 ['edit_sponsor_email', s.sponsor_email],
+                 ['edit_parent_name', s.parent_name],
+                 ['edit_relationship', s.relationship],
+                 ['edit_parent_phone', s.parent_phone],
+                 ['edit_parent_email', s.parent_email],
+                 ['edit_address', s.address],
+                 ['edit_emergency_contact', s.emergency_contact],
+                 ['edit_medical_info', s.medical_info],
+                 ['edit_special_needs', s.special_needs],
+             ];
+             pairs.forEach(([id, val]) => {
+                 const el = document.getElementById(id);
+                 if (!el) return;
+                 el.value = val == null ? '' : String(val);
+                 el.dispatchEvent(new Event('input', { bubbles: true }));
+                 el.dispatchEvent(new Event('change', { bubbles: true }));
+             });
+         },
+         ensureGradeOption(grade) {
+             const sel = document.getElementById('edit_current_grade');
+             if (!sel || !grade) return;
+             const exists = Array.from(sel.options).some((o) => o.value === grade);
+             if (!exists) {
+                 const opt = document.createElement('option');
+                 opt.value = grade;
+                 opt.textContent = grade;
+                 opt.selected = true;
+                 sel.appendChild(opt);
+             }
+         },
+         showSponsorFields() {
+             const cat = ((this.selectedStudent && this.selectedStudent.student_category) || '').toLowerCase();
+             return cat === 'sponsored' || cat === 'both';
+         },
+         onStudentCategoryChange() {
+             if (!this.showSponsorFields() && this.selectedStudent) {
+                 this.selectedStudent.sponsor_name = '';
+                 this.selectedStudent.sponsor_phone = '';
+                 this.selectedStudent.sponsor_email = '';
+             }
          },
          originalStudentId: null,
          studentIdError: '',
@@ -266,7 +403,7 @@
                  const formData = new FormData();
                  const fields = [
                      'student_id', 'full_name', 'date_of_birth', 'gender', 'current_grade',
-                     'previous_school', 'address', 'medical_info', 'special_needs',
+                     'previous_school', 'assessment_number', 'address', 'medical_info', 'special_needs',
                      'student_category', 'sponsor_name', 'sponsor_phone', 'sponsor_email',
                      'status', 'parent_name', 'parent_phone', 'parent_email',
                      'relationship', 'emergency_contact',
@@ -891,7 +1028,7 @@
         <div class="flex min-h-[100dvh] min-h-screen items-end justify-center px-3 pt-10 pb-[max(1rem,env(safe-area-inset-bottom))] text-center sm:items-center sm:px-4 sm:py-8">
             <div class="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm" @click="editModalOpen = false"></div>
             
-            <div class="relative z-[60] inline-block align-bottom sm:align-middle w-full max-w-[min(42rem,calc(100vw-1.25rem))] md:max-w-3xl lg:max-w-5xl mx-auto mb-3 sm:mb-0 rounded-2xl bg-white dark:bg-gray-800 text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 max-h-[92dvh] sm:max-h-[94vh] flex flex-col"
+            <div class="relative z-[60] inline-block align-bottom sm:align-middle w-full max-w-[min(42rem,calc(100vw-1.25rem))] md:max-w-4xl lg:max-w-5xl mx-auto mb-3 sm:mb-0 rounded-2xl bg-white dark:bg-gray-800 text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 max-h-[92dvh] sm:max-h-[94vh] flex flex-col"
                  x-transition:enter="ease-out duration-300"
                  x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
                  x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
@@ -922,191 +1059,15 @@
                 <!-- Modal Body -->
                 <form class="student-mgmt-edit-form flex flex-col flex-1 min-h-0" @submit.prevent="saveStudent()">
                     <div class="bg-white dark:bg-gray-800 px-4 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar max-h-[calc(92dvh-10rem)] md:max-h-[min(75vh,42rem)]">
+                        <div x-show="loading && editModalOpen" class="flex items-center justify-center gap-3 py-16 text-sm text-gray-600 dark:text-gray-400">
+                            <i class="fas fa-spinner fa-spin text-violet-600"></i>
+                            <span>Loading student details…</span>
+                        </div>
                         <template x-if="selectedStudent">
-                            <div class="space-y-6 sm:space-y-8">
-                                <!-- Student Information Section -->
-                                <div>
-                                    <div class="flex items-center space-x-2 mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-700">
-                                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                                            <i class="fas fa-user-graduate text-white text-sm"></i>
-                                        </div>
-                                        <h4 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white">Student Information</h4>
-                                    </div>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                                                Student ID <span class="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" 
-                                                   x-model="selectedStudent.student_id" 
-                                                   @blur="validateStudentId(selectedStudent.student_id, originalStudentId)"
-                                                   @input="studentIdError = ''"
-                                                   required
-                                                   :class="studentIdError ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 transition-all shadow-sm hover:shadow-md">
-                                            <p x-show="studentIdError" x-text="studentIdError" class="text-xs text-red-600 dark:text-red-400 mt-1.5 flex items-center">
-                                                <i class="fas fa-exclamation-circle mr-1"></i>
-                                                <span x-text="studentIdError"></span>
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                                                Full Name <span class="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" x-model="selectedStudent.full_name" required
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Date of Birth</label>
-                                            <input type="date" x-model="selectedStudent.date_of_birth"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Gender</label>
-                                            <select x-model="selectedStudent.gender" 
-                                                    class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md appearance-none cursor-pointer">
-                                                <option value="">Select Gender</option>
-                                                <option value="MALE">Male</option>
-                                                <option value="FEMALE">Female</option>
-                                                <option value="OTHER">Other</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Current Grade</label>
-                                            <input type="text" x-model="selectedStudent.current_grade"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Status</label>
-                                            <select x-model="selectedStudent.status" 
-                                                    class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md appearance-none cursor-pointer">
-                                                <option value="pending approval">Pending Approval</option>
-                                                <option value="in session">In Session</option>
-                                                <option value="suspended">Suspended</option>
-                                                <option value="expelled">Expelled</option>
-                                                <option value="transferred">Transferred</option>
-                                                <option value="alumni">Alumni</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Category</label>
-                                            <select x-model="selectedStudent.student_category" 
-                                                    class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md appearance-none cursor-pointer">
-                                                <option value="">Select Category</option>
-                                                <option value="self sponsored">Self Sponsored</option>
-                                                <option value="sponsored">Sponsored</option>
-                                                <option value="both">Both</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Previous School</label>
-                                            <input type="text" x-model="selectedStudent.previous_school"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div class="sm:col-span-2">
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Address</label>
-                                            <textarea x-model="selectedStudent.address" rows="3"
-                                                      class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md resize-none"></textarea>
-                                        </div>
-                                        <div class="sm:col-span-2">
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Medical Information</label>
-                                            <textarea x-model="selectedStudent.medical_info" rows="3"
-                                                      class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md resize-none"></textarea>
-                                        </div>
-                                        <div class="sm:col-span-2">
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Special Needs</label>
-                                            <textarea x-model="selectedStudent.special_needs" rows="3"
-                                                      class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md resize-none"></textarea>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Sponsor Information Section -->
-                                <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700">
-                                    <div class="flex items-center space-x-2 mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-700">
-                                        <div class="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
-                                            <i class="fas fa-handshake text-white text-sm"></i>
-                                        </div>
-                                        <h4 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white">Sponsor Information</h4>
-                                    </div>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Sponsor Name</label>
-                                            <input type="text" x-model="selectedStudent.sponsor_name"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Sponsor Phone</label>
-                                            <input type="text" x-model="selectedStudent.sponsor_phone"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div class="sm:col-span-2">
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Sponsor Email</label>
-                                            <input type="email" x-model="selectedStudent.sponsor_email"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Parent Information Section -->
-                                <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700">
-                                    <div class="flex items-center space-x-2 mb-4 pb-3 border-b-2 border-gray-200 dark:border-gray-700">
-                                        <div class="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
-                                            <i class="fas fa-users text-white text-sm"></i>
-                                        </div>
-                                        <h4 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white">Parent/Guardian Information</h4>
-                                    </div>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Parent Name</label>
-                                            <input type="text" x-model="selectedStudent.parent_name"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Relationship</label>
-                                            <input type="text" x-model="selectedStudent.relationship"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Phone</label>
-                                            <input type="text" x-model="selectedStudent.parent_phone"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Email</label>
-                                            <input type="email" x-model="selectedStudent.parent_email"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                        <div class="sm:col-span-2">
-                                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Emergency Contact</label>
-                                            <input type="text" x-model="selectedStudent.emergency_contact"
-                                                   class="w-full px-4 py-2.5 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Profile photo & fingerprint (bottom of form) -->
-                                <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700 space-y-6">
-                                    <div class="flex items-center space-x-2 pb-3 border-b-2 border-gray-200 dark:border-gray-700">
-                                        <div class="w-8 h-8 bg-gradient-to-br from-sky-500 to-violet-600 rounded-lg flex items-center justify-center">
-                                            <i class="fas fa-id-card text-white text-sm"></i>
-                                        </div>
-                                        <div>
-                                            <h4 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white">Photo &amp; fingerprint</h4>
-                                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Optional — student profile picture and biometric enrollment</p>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        {% with input_id='edit-student-profile-image' %}
-                                        {% include 'dashboards/includes/student_profile_photo_picker.html' %}
-                                        {% endwith %}
-                                    </div>
-                                    <div>
-                                        {% with fingerprint_mode='live', fingerprint_student_id='' %}
-                                        {% include 'dashboards/includes/student_fingerprint_enrollment.html' %}
-                                        {% endwith %}
-                                    </div>
-                                </div>
+                            <div class="space-y-8 sm:space-y-10" :key="selectedStudent.student_id">
+                                {% with student_form_mode='edit', profile_photo_input_id='edit-student-profile-image' %}
+                                {% include 'includes/student_admission_form_sections.html' %}
+                                {% endwith %}
                             </div>
                         </template>
                     </div>

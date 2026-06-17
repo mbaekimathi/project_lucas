@@ -97,11 +97,8 @@
                             Remember me
                         </label>
                         <div class="flex flex-col items-end gap-1 text-right">
-                            <a href="{{ url_for('retrieve_password') }}" class="font-semibold text-white/75 hover:text-white text-xs underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 rounded">
+                            <a href="{{ url_for('employee_forgot_password') }}" id="role_forgot_password_link" class="font-semibold text-white/75 hover:text-white text-xs underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 rounded">
                                 Forgot password?
-                            </a>
-                            <a href="{{ url_for('parent_forgot_password') }}" id="parent_forgot_password_link" class="hidden font-semibold text-violet-200/90 hover:text-white text-[11px] underline-offset-2 hover:underline">
-                                Reset with admission ID
                             </a>
                         </div>
                     </div>
@@ -192,18 +189,33 @@
     }
 
     var parentForgotBaseUrl = {{ url_for('parent_forgot_password')|tojson }};
+    var employeeForgotBaseUrl = {{ url_for('employee_forgot_password')|tojson }};
+    var studentForgotBaseUrl = {{ url_for('student_forgot_password')|tojson }};
 
-    function updateParentForgotLink(admissionValue) {
-        var link = document.getElementById('parent_forgot_password_link');
+    function updateRoleForgotLinks(admissionValue) {
         var sel = document.getElementById('role_view');
-        if (!link) return;
-        if (sel && sel.value === 'parent' && parentPhase === 'password') {
-            link.classList.remove('hidden');
+        var link = document.getElementById('role_forgot_password_link');
+        if (!link || !sel) return;
+        var role = sel.value;
+        if (role === 'parent' && parentPhase !== 'password') {
+            link.classList.add('hidden');
+            return;
+        }
+        link.classList.remove('hidden');
+        if (role === 'parent') {
             var v = admissionValue || norm((document.getElementById('login_code') || {}).value || '');
             link.href = parentForgotBaseUrl + (v ? ('?admission=' + encodeURIComponent(v)) : '');
+        } else if (role === 'student') {
+            var scode = ((document.getElementById('login_code') || {}).value || '').trim();
+            link.href = studentForgotBaseUrl + (scode.length === 6 ? ('?code=' + encodeURIComponent(scode)) : '');
         } else {
-            link.classList.add('hidden');
+            var code = ((document.getElementById('login_code') || {}).value || '').trim();
+            link.href = employeeForgotBaseUrl + (code.length === 6 ? ('?code=' + encodeURIComponent(code)) : '');
         }
+    }
+
+    function updateParentForgotLink(admissionValue) {
+        updateRoleForgotLinks(admissionValue);
     }
 
     function setPasswordBlockVisible(visible) {
@@ -387,6 +399,7 @@
                 }
             }
         }
+        updateRoleForgotLinks();
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -400,6 +413,7 @@
                     loginInput.value = norm(loginInput.value);
                     scheduleParentCheck();
                 }
+                updateRoleForgotLinks();
             });
             loginInput.addEventListener('blur', function () {
                 if (sel && sel.value === 'parent') {

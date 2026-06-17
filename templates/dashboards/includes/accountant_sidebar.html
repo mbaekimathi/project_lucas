@@ -189,4 +189,5 @@
     <span>Finance settings</span>
     {% if request.endpoint == 'accountant_finance_settings' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' with acal_hide_manage=true %}
 {% endif %}

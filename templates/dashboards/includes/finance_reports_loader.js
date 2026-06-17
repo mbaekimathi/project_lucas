@@ -837,6 +837,25 @@
     searchDebounceTimer = setTimeout(loadReport, SEARCH_DEBOUNCE_MS);
   }
 
+  function bindSidebarAccountLinks() {
+    if (slug !== 'revenue-collection') return;
+    var nav = document.querySelector('.fr-sidebar-nav--reports');
+    if (!nav) return;
+    nav.addEventListener('click', function (ev) {
+      var link = ev.target.closest('[data-fr-sidebar-account], [data-fr-sidebar-all-accounts]');
+      if (!link || !nav.contains(link)) return;
+      ev.preventDefault();
+      var fa = qs('fr-finance-account');
+      if (!fa) {
+        window.location.assign(link.getAttribute('href') || window.location.pathname);
+        return;
+      }
+      var aid = link.getAttribute('data-fr-sidebar-account');
+      fa.value = aid || '';
+      scheduleLoad(0);
+    });
+  }
+
   function bindLiveFilters() {
     var ids = ['fr-financial-year', 'fr-date-from', 'fr-date-to', 'fr-finance-account', 'fr-grade', 'fr-source', 'fr-period'];
     ids.forEach(function (id) {
@@ -911,6 +930,7 @@
     defaultDates();
   }
   bindLiveFilters();
+  bindSidebarAccountLinks();
   updateActiveFilterChips();
 
   var resetBtn = qs('fr-reset');

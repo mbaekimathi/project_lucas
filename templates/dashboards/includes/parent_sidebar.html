@@ -67,6 +67,7 @@
     <span>Exam timetable</span>
     {% if request.endpoint in ('parent_portal_exam_timetable', 'parent_portal_exam_timetable_student') or '/exam-timetable' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' with acal_href=parent_dash_url('academic-calendar'), acal_hide_manage=true %}
 {% endif %}
 
 {% if _par_nav in ('all', 'library') %}

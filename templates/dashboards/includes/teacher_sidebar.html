@@ -75,6 +75,7 @@
 
 {% if _tch_nav == 'all' %}
 <p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' with acal_hide_manage=true %}
 <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true"
    class="sidebar-item">
     <i class="fas fa-bell w-5"></i>

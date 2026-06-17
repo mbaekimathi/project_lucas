@@ -29,3 +29,4 @@
     <span>Requisitions</span>
     {% if request.endpoint == 'store_requisitions' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' with acal_show_section_header=true, acal_section_pad_top=true, acal_hide_manage=true %}

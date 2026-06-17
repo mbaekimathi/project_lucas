@@ -1,0 +1,27 @@
+{# Academic calendar — include in any role sidebar. Set acal_href for parent/student portals. #}
+{% set _acal_href = acal_href|default(employee_dash_url('academic-calendar')) %}
+{% set _acal_manage_href = acal_manage_href|default(employee_dash_url('academic-calendar/manage')) %}
+{% set _role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% set _can_manage = _role in ('head of institution', 'deputy head of institution', 'secretary') or session.get('role', '').lower() == 'technician' %}
+{% set _view_active = request.endpoint == 'academic_calendar' %}
+{% set _manage_active = request.endpoint == 'academic_calendar_manage' %}
+
+{% if acal_show_section_header|default(false) %}
+<p class="px-3 {% if acal_section_pad_top|default(true) %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">School</p>
+{% endif %}
+
+<a href="{{ _acal_href }}"
+   class="sidebar-item {% if _view_active %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Academic calendar</span>
+    {% if _view_active %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+
+{% if _can_manage and not acal_hide_manage|default(false) %}
+<a href="{{ _acal_manage_href }}"
+   class="sidebar-item {% if _manage_active %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-plus w-5"></i>
+    <span>Update calendar</span>
+    {% if _manage_active %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}

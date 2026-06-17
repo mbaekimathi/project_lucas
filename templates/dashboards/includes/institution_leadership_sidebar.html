@@ -61,7 +61,7 @@
 {% if _lead_nav in ('all', 'academic') %}
 <p class="px-3 {% if _lead_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Academic</p>
 <a href="{{ employee_dash_url('classes-subjects') }}"
-   class="sidebar-item {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
+   class="sidebar-item {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or '/classes-subjects' in request.path %}sidebar-item-active{% endif %}">
     <i class="fas fa-chalkboard-teacher w-5"></i>
     <span>Classes &amp; subjects</span>
     {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or request.path.endswith('/classes-subjects') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
@@ -84,6 +84,7 @@
     <span>Exam audits</span>
     {% if request.endpoint == 'exam_audits' or '/exam-audits' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' %}
 {% endif %}
 
 {% if _lead_nav in ('all', 'finance') %}
@@ -110,11 +111,6 @@
 
 {% if _lead_nav == 'all' %}
 <p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
-<a @click.prevent="comingSoonTitle = 'Academic Calendar'; comingSoonModalOpen = true"
-   class="sidebar-item">
-    <i class="fas fa-calendar-alt w-5"></i>
-    <span>Academic calendar</span>
-</a>
 <a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true"
    class="sidebar-item">
     <i class="fas fa-bed w-5"></i>

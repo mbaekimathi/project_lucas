@@ -1,30 +1,47 @@
-{# Finance account shortcuts — revenue collection report sidebar #}
+{# Finance account shortcuts — filter revenue collection on this page (not accountant /accounts/*) #}
 {% set _fo = filter_options|default({}) %}
 {% set _accounts = _fo.finance_accounts|default([]) %}
 {% set _slug = finance_report_slug|default(report_slug|default('')) %}
 {% set _active_fa = request.args.get('finance_account_id', '') %}
+{% set _fy = request.args.get('financial_year_id') or _fo.default_financial_year_id|default('') %}
+{% set _df = request.args.get('date_from') or _fo.default_date_from|default('') %}
+{% set _dt = request.args.get('date_to') or _fo.default_date_to|default('') %}
+{% set _src = request.args.get('source', 'all') %}
+{% set _grade = request.args.get('grade', '') %}
+{% set _rc_base = employee_dash_url('finance-overview/reports/revenue-collection') %}
+
+{% macro fr_rc_filter_href(fa_id='') %}
+{% set href = _rc_base %}
+{% if _fy %}{% set href = href ~ '?financial_year_id=' ~ _fy %}{% endif %}
+{% if _df %}{% set href = href ~ ('&' if _fy else '?') ~ 'date_from=' ~ _df %}{% endif %}
+{% if _dt %}{% set href = href ~ ('&' if _fy or _df else '?') ~ 'date_to=' ~ _dt %}{% endif %}
+{% if _src %}{% set href = href ~ ('&' if '?' in href else '?') ~ 'source=' ~ (_src|urlencode) %}{% endif %}
+{% if _grade %}{% set href = href ~ ('&' if '?' in href else '?') ~ 'grade=' ~ (_grade|urlencode) %}{% endif %}
+{% if fa_id %}{% set href = href ~ ('&' if '?' in href else '?') ~ 'finance_account_id=' ~ fa_id %}{% endif %}
+{{ href }}
+{% endmacro %}
 
 {% if _slug == 'revenue-collection' and _accounts %}
 <p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Finance accounts</p>
 
-<a href="{{ employee_dash_url('finance-overview/reports/revenue-collection') }}"
+<a href="{{ fr_rc_filter_href() }}"
    data-fr-sidebar-all-accounts="1"
    class="sidebar-item {% if not _active_fa %}sidebar-item-active{% endif %}"
    title="All accounts on this report">
     <i class="fas fa-layer-group w-5"></i>
     <span>All accounts</span>
-    {% if not _active_fa %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if not _active_fa %}<i class="fas fa-check-circle ml-auto text-green-500 fr-sidebar-active-mark"></i>{% endif %}
 </a>
 
 {% for a in _accounts %}
-<a href="{{ employee_dash_url('accounts/' ~ a.id) }}"
+<a href="{{ fr_rc_filter_href(a.id) }}"
    data-fr-sidebar-account="{{ a.id }}"
-   class="sidebar-item"
-   title="Open {{ a.name }} summary">
+   class="sidebar-item {% if _active_fa and _active_fa|string == a.id|string %}sidebar-item-active{% endif %}"
+   title="Filter report to {{ a.name }}">
     <i class="fas fa-wallet w-5"></i>
     <span class="truncate">{{ a.name }}</span>
     {% if _active_fa and _active_fa|string == a.id|string %}
-    <i class="fas fa-check-circle ml-auto text-green-500 shrink-0"></i>
+    <i class="fas fa-check-circle ml-auto text-green-500 fr-sidebar-active-mark shrink-0"></i>
     {% endif %}
 </a>
 {% endfor %}

@@ -43,3 +43,6 @@
     {% if request.endpoint == 'logs_audit_trails' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}
+{% if _tech_nav in ('all', 'admin') %}
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' with acal_show_section_header=true, acal_section_pad_top=false %}
+{% endif %}

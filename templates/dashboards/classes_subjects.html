@@ -17,113 +17,260 @@
 
 {% block extra_head %}
 <style>
-    .cs-levels-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .cs-levels-table { min-width: 20rem; }
+  .cs-list-wrap {
+    border-radius: 0.75rem;
+    border: 1px solid rgb(229 231 235);
+    background: rgb(255 255 255);
+    overflow: hidden;
+  }
+  .dark .cs-list-wrap {
+    border-color: rgb(55 65 81);
+    background: rgb(31 41 55 / 0.45);
+  }
+  .cs-list-head {
+    display: none;
+    grid-template-columns: minmax(9rem, 1.1fr) minmax(6rem, 0.75fr) minmax(0, 2.5fr) minmax(5rem, 0.55fr) 2.5rem;
+    gap: 0.75rem 1rem;
+    padding: 0.65rem 1rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgb(107 114 128);
+    border-bottom: 1px solid rgb(229 231 235);
+    background: rgb(249 250 251);
+  }
+  .dark .cs-list-head {
+    color: rgb(156 163 175);
+    border-color: rgb(55 65 81);
+    background: rgb(17 24 39 / 0.6);
+  }
+  @media (min-width: 768px) {
+    .cs-list-head { display: grid; }
+  }
+  .cs-category-row {
+    padding: 0.45rem 1rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgb(107 114 128);
+    background: rgb(243 244 246 / 0.9);
+    border-bottom: 1px solid rgb(229 231 235);
+  }
+  .dark .cs-category-row {
+    color: rgb(156 163 175);
+    background: rgb(17 24 39 / 0.75);
+    border-color: rgb(55 65 81);
+  }
+  .cs-level-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem 0.75rem;
+    align-items: start;
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid rgb(243 244 246);
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.12s;
+  }
+  .dark .cs-level-row {
+    border-color: rgb(55 65 81 / 0.65);
+  }
+  .cs-level-row:last-child { border-bottom: none; }
+  .cs-level-row:hover { background: rgb(249 250 251); }
+  .dark .cs-level-row:hover { background: rgb(17 24 39 / 0.55); }
+  .cs-level-row:focus-visible {
+    outline: 2px solid var(--brand-primary, #800020);
+    outline-offset: -2px;
+  }
+  @media (min-width: 768px) {
+    .cs-level-row {
+      grid-template-columns: minmax(9rem, 1.1fr) minmax(6rem, 0.75fr) minmax(0, 2.5fr) minmax(5rem, 0.55fr) 2.5rem;
+      align-items: center;
+      gap: 0.75rem 1rem;
+    }
+    .cs-level-row__chev { justify-self: end; }
+    .cs-level-row__mobile-meta { display: none; }
+  }
+  .cs-level-row__name {
+    font-weight: 700;
+    font-size: 0.9375rem;
+    color: rgb(17 24 39);
+    line-height: 1.3;
+  }
+  .dark .cs-level-row__name { color: rgb(243 244 246); }
+  .cs-level-row__cat {
+    font-size: 0.8125rem;
+    color: rgb(75 85 99);
+  }
+  .dark .cs-level-row__cat { color: rgb(156 163 175); }
+  .cs-level-row__mobile-meta {
+    grid-column: 1 / -1;
+    font-size: 0.75rem;
+    color: rgb(107 114 128);
+  }
+  .cs-subject-lines { list-style: none; margin: 0; padding: 0; }
+  .cs-subject-lines li + li { margin-top: 0.45rem; }
+  .cs-subject-lines__name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: rgb(31 41 55);
+  }
+  .dark .cs-subject-lines__name { color: rgb(229 231 235); }
+  .cs-subject-lines__teachers {
+    font-size: 0.75rem;
+    color: rgb(107 114 128);
+    margin-top: 0.1rem;
+  }
+  .dark .cs-subject-lines__teachers { color: rgb(156 163 175); }
+  .cs-subject-lines__teachers--warn { color: rgb(217 119 6); }
+  .dark .cs-subject-lines__teachers--warn { color: rgb(251 191 36); }
+  .cs-counts {
+    font-size: 0.75rem;
+    color: rgb(75 85 99);
+    line-height: 1.45;
+  }
+  .dark .cs-counts { color: rgb(156 163 175); }
+  .cs-level-row__chev {
+    color: rgb(156 163 175);
+    font-size: 0.75rem;
+    padding-top: 0.15rem;
+  }
+  .cs-level-row:hover .cs-level-row__chev,
+  .cs-level-row:hover .cs-level-row__name {
+    color: var(--brand-primary, #800020);
+  }
+  .dark .cs-level-row:hover .cs-level-row__name { color: rgb(252 211 77); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
+<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
     {% set role_theme = portal_page_variant|default('default') %}
     {% set role_hero_eyebrow = 'Academic' %}
     {% set role_hero_title = 'Classes & subjects' %}
-    {% set role_hero_subtitle = 'Browse academic levels and open subject details for each class.' %}
+    {% set role_hero_subtitle = 'Browse classes with their subjects and teachers. Select a class to view progress and attendance.' %}
     {% set role_hero_icon_class = 'fa-chalkboard' %}
     {% include 'dashboards/includes/role_hero.html' %}
 
-        {% if academic_levels %}
-        <div class="mb-3 max-w-sm">
-            <label for="cs-level-search" class="sr-only">Search</label>
-            <input
-                id="cs-level-search"
-                type="search"
-                autocomplete="off"
-                placeholder="Search"
-                class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm px-3 py-2 focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary"
-            />
+    {% if academic_levels %}
+    <div class="mb-4 max-w-md">
+        <label for="cs-level-search" class="sr-only">Search classes, subjects, or teachers</label>
+        <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" aria-hidden="true"></i>
+            <input id="cs-level-search" type="search" autocomplete="off" placeholder="Search class, subject, or teacher…"
+                   class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm pl-9 pr-3 py-2.5 focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary" />
+        </div>
+    </div>
+
+    <div class="cs-list-wrap">
+        <div class="cs-list-head" aria-hidden="true">
+            <span>Class</span>
+            <span>Category</span>
+            <span>Subjects &amp; teachers</span>
+            <span>Totals</span>
+            <span></span>
         </div>
 
-        <section class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 overflow-hidden">
-            <div class="cs-levels-scroll">
-                <table class="cs-levels-table w-full text-sm border-collapse">
-                    <thead class="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-                        <tr>
-                            <th scope="col" class="px-3 sm:px-4 py-2.5 text-left font-medium">Level</th>
-                            <th scope="col" class="hidden sm:table-cell px-4 py-2.5 text-left font-medium">Category</th>
-                            <th scope="col" class="w-14 px-3 py-2.5 text-right font-medium tabular-nums">#</th>
-                            <th scope="col" class="hidden md:table-cell px-4 py-2.5 text-left font-medium">Subjects</th>
-                            <th scope="col" class="w-8 px-2 py-2.5"><span class="sr-only">Open</span></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700/80">
-                        {% set cat_ns = namespace(prev='') %}
-                        {% for level in academic_levels %}
-                        {% set subs = level.subject_allocations|default([]) %}
-                        {% if level.level_category != cat_ns.prev %}
-                        <tr class="cs-category-row bg-gray-50/80 dark:bg-gray-900/50">
-                            <td colspan="5" class="px-3 sm:px-4 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">{{ level.level_category }}</td>
-                        </tr>
-                        {% set cat_ns.prev = level.level_category %}
-                        {% endif %}
-                        <tr
-                            class="cs-level-row hover:bg-gray-50/80 dark:hover:bg-gray-900/30"
-                            data-level-name="{{ (level.level_name or '')|lower }}"
-                            data-level-category="{{ (level.level_category or '')|lower }}"
-                            data-subject-names="{% for s in subs %}{{ (s.subject_name or '')|lower }} {{ (s.subject_code or '')|lower }} {% endfor %}"
-                        >
-                            <td class="px-3 sm:px-4 py-3 align-top">
-                                <a href="{{ employee_dash_url('classes-subjects/level/' ~ level.id) }}"
-                                   class="font-medium text-gray-900 dark:text-white hover:text-brand-primary dark:hover:text-brand-secondary">
-                                    {{ level.level_name }}
-                                </a>
-                                <span class="sm:hidden text-xs text-gray-500 dark:text-gray-400"> · {{ level.level_category }}</span>
-                            </td>
-                            <td class="hidden sm:table-cell px-4 py-3 align-top text-gray-600 dark:text-gray-300">{{ level.level_category }}</td>
-                            <td class="px-3 py-3 align-top text-right tabular-nums text-gray-700 dark:text-gray-300">{{ subs|length }}</td>
-                            <td class="hidden md:table-cell px-4 py-3 align-top text-gray-600 dark:text-gray-300">
-                                {% if subs %}
-                                {% for s in subs[:5] %}{{ s.subject_name }}{% if s.subject_code %} ({{ s.subject_code }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% if subs|length > 5 %}, +{{ subs|length - 5 }}{% endif %}
-                                {% else %}—{% endif %}
-                            </td>
-                            <td class="px-2 py-3 align-top text-right">
-                                <a href="{{ employee_dash_url('classes-subjects/level/' ~ level.id) }}" class="text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary" aria-label="{{ level.level_name }}">
-                                    <i class="fas fa-chevron-right text-xs" aria-hidden="true"></i>
-                                </a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </section>
+        {% set cat_ns = namespace(prev='') %}
+        {% for level in academic_levels %}
+        {% set subs = level.subject_allocations|default([]) %}
+        {% set teachers = level.teachers|default([]) %}
+        {% if level.level_category != cat_ns.prev %}
+        <div class="cs-category-row cs-category-label" data-category="{{ (level.level_category or '')|lower }}">{{ level.level_category }}</div>
+        {% set cat_ns.prev = level.level_category %}
         {% endif %}
-</motion.div>
+
+        <a href="{{ employee_dash_url('classes-subjects/level/' ~ level.id) }}"
+           class="cs-level-row cs-level-item"
+           data-level-name="{{ (level.level_name or '')|lower }}"
+           data-level-category="{{ (level.level_category or '')|lower }}"
+           data-subject-names="{% for s in subs %}{{ (s.subject_name or '')|lower }} {{ (s.subject_code or '')|lower }} {% endfor %}"
+           data-teacher-names="{% for t in teachers %}{{ (t.teacher_name or '')|lower }} {% endfor %}{% for s in subs %}{% for t in s.teachers|default([]) %}{{ (t.teacher_name or '')|lower }} {% endfor %}{% endfor %}">
+            <div>
+                <div class="cs-level-row__name">{{ level.level_name }}</div>
+                {% if level.level_description %}
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{{ level.level_description }}</div>
+                {% endif %}
+            </div>
+            <div class="cs-level-row__cat hidden md:block">{{ level.level_category }}</div>
+            <div>
+                {% if subs %}
+                <ul class="cs-subject-lines">
+                    {% for s in subs %}
+                    <li>
+                        <div class="cs-subject-lines__name">
+                            {{ s.subject_name }}{% if s.subject_code %} <span class="font-normal text-gray-400">({{ s.subject_code }})</span>{% endif %}
+                        </div>
+                        {% if s.teachers|default([]) %}
+                        <div class="cs-subject-lines__teachers">
+                            <i class="fas fa-chalkboard-teacher text-[10px] mr-0.5 opacity-70" aria-hidden="true"></i>
+                            {% for t in s.teachers %}{{ t.teacher_name }}{% if not loop.last %}, {% endif %}{% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="cs-subject-lines__teachers cs-subject-lines__teachers--warn">No teacher assigned</div>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <span class="text-sm text-gray-500 dark:text-gray-400">No subjects allocated</span>
+                {% endif %}
+            </div>
+            <div class="cs-counts tabular-nums">
+                <div>{{ subs|length }} subj.</div>
+                <div>{{ level.teacher_count|default(teachers|length) }} teach.</div>
+            </div>
+            <div class="cs-level-row__chev" aria-hidden="true"><i class="fas fa-chevron-right"></i></div>
+            <div class="cs-level-row__mobile-meta md:hidden">
+                {{ level.level_category }} · {{ subs|length }} subject{% if subs|length != 1 %}s{% endif %} · Tap to open progress &amp; attendance
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    <p id="cs-no-results" class="hidden mt-6 text-center text-sm text-gray-500 dark:text-gray-400">No classes match your search.</p>
+    {% else %}
+    <div class="py-12 text-center border border-dashed border-gray-300 dark:border-gray-700 rounded-xl text-gray-500 dark:text-gray-400">
+        <i class="fas fa-school text-3xl mb-2 opacity-60"></i>
+        <p>No active academic levels found.</p>
+    </div>
+    {% endif %}
+</div>
 {% if academic_levels %}
 <script>
 (function () {
     var input = document.getElementById('cs-level-search');
     if (!input) return;
-    var rows = [].slice.call(document.querySelectorAll('.cs-level-row'));
-    var categoryRows = [].slice.call(document.querySelectorAll('.cs-category-row'));
+    var rows = [].slice.call(document.querySelectorAll('.cs-level-item'));
+    var categories = [].slice.call(document.querySelectorAll('.cs-category-label'));
+    var noResults = document.getElementById('cs-no-results');
     function syncCategories() {
-        categoryRows.forEach(function (catRow) {
-            var next = catRow.nextElementSibling, any = false;
-            while (next && !next.classList.contains('cs-category-row')) {
-                if (next.classList.contains('cs-level-row') && next.style.display !== 'none') { any = true; break; }
-                next = next.nextElementSibling;
-            }
-            catRow.style.display = any ? '' : 'none';
+        categories.forEach(function (cat) {
+            var catName = cat.getAttribute('data-category') || '';
+            var any = rows.some(function (row) {
+                return row.style.display !== 'none' &&
+                    (row.getAttribute('data-level-category') || '') === catName;
+            });
+            cat.style.display = any ? '' : 'none';
         });
     }
-
     input.addEventListener('input', function () {
         var q = (input.value || '').toLowerCase().trim();
+        var visible = 0;
         rows.forEach(function (row) {
-            var hay = (row.getAttribute('data-level-name') || '') + ' ' +
-                (row.getAttribute('data-level-category') || '') + ' ' +
-                (row.getAttribute('data-subject-names') || '');
-            row.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+            var hay = [
+                row.getAttribute('data-level-name') || '',
+                row.getAttribute('data-level-category') || '',
+                row.getAttribute('data-subject-names') || '',
+                row.getAttribute('data-teacher-names') || '',
+            ].join(' ');
+            var show = !q || hay.indexOf(q) !== -1;
+            row.style.display = show ? '' : 'none';
+            if (show) visible += 1;
         });
+        if (noResults) noResults.classList.toggle('hidden', visible !== 0);
         syncCategories();
     });
 })();

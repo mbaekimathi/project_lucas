@@ -3,7 +3,7 @@
 {% if _cc_nav in ('all', 'classes') %}
 <p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Classes</p>
 <a href="{{ employee_dash_url('classes-subjects') }}"
-   class="sidebar-item {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
+   class="sidebar-item {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or '/classes-subjects' in request.path %}sidebar-item-active{% endif %}">
     <i class="fas fa-book w-5"></i>
     <span>Classes &amp; subjects</span>
     {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or request.path.endswith('/classes-subjects') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
@@ -143,6 +143,7 @@
     <span>Notifications</span>
     {% if request.endpoint == 'notifications' or request.path.endswith('/notifications') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{% include 'dashboards/includes/academic_calendar_sidebar_links.html' %}
 {% endif %}
 
 {% if _cc_nav in ('all', 'settings') %}

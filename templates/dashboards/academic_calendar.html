@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}Academic calendar — {{ school_settings.school_name or 'School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if portal == 'parent' %}
+{% set parent_nav_scope = 'academics' %}
+{% include 'dashboards/includes/parent_page_sidebar.html' %}
+{% elif portal == 'student' %}
+{% set student_nav_scope = 'all' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
+{% elif nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'all' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'school' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'school' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% elif nav_role == 'accountant' %}
+{% set accountant_nav_scope = 'insights' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
+{% elif nav_role == 'teachers' or nav_role == 'teacher' %}
+{% set teacher_nav_scope = 'all' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif nav_role == 'librarian' %}
+{% include 'dashboards/includes/librarian_page_sidebar.html' %}
+{% elif nav_role == 'store manager' %}
+{% include 'dashboards/includes/store_manager_page_sidebar.html' %}
+{% elif nav_role == 'technician' %}
+{% set technician_nav_scope = 'all' %}
+{% include 'dashboards/includes/technician_page_sidebar.html' %}
+{% else %}
+<div class="space-y-0.5">
+    {% include 'dashboards/includes/academic_calendar_sidebar_links.html' %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    {% set role_theme = portal_page_variant|default('default') %}
+    {% set role_hero_title = 'Academic calendar' %}
+    {% set role_hero_subtitle = (selected_year.year_name if selected_year else 'School activities by academic year') ~ ((' · ' ~ selected_term.term_name) if selected_term else (' · All terms' if calendar_terms else '')) %}
+    {% set role_hero_icon_class = 'fa-calendar-alt' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    <div class="flex flex-wrap items-end gap-3 mb-6">
+        <form method="GET" action="{% if portal == 'parent' %}{{ parent_dash_url('academic-calendar') }}{% elif portal == 'student' %}{{ student_dash_url('academic-calendar') }}{% else %}{{ employee_dash_url('academic-calendar') }}{% endif %}" class="flex flex-wrap items-end gap-2">
+            {% if view_month %}<input type="hidden" name="month" value="{{ view_month }}">{% endif %}
+            <div>
+                <label for="academic-year-select" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Academic year</label>
+                <select id="academic-year-select" name="academic_year_id" onchange="this.form.submit()"
+                        class="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-[12rem]">
+                    {% for y in academic_years %}
+                    <option value="{{ y.id }}" {% if selected_year_id and y.id|string == selected_year_id|string %}selected{% endif %}>
+                        {{ y.year_name }}{% if y.is_current %} (current){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if calendar_terms %}
+            <div>
+                <label for="term-select" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Term</label>
+                <select id="term-select" name="term_id" onchange="this.form.submit()"
+                        class="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-[10rem]">
+                    <option value="0" {% if not selected_term_id %}selected{% endif %}>All terms</option>
+                    {% for t in calendar_terms %}
+                    <option value="{{ t.id }}" {% if selected_term_id and t.id|string == selected_term_id|string %}selected{% endif %}>
+                        {{ t.term_name }}{% if t.is_current %} (current){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+
+    {% if selected_year_id %}
+    <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden mb-6">
+        <div class="px-4 sm:px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-9 h-9 rounded-lg bg-brand-primary text-white flex items-center justify-center shrink-0">
+                    <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <h2 class="text-base font-bold text-gray-900 dark:text-white m-0">Calendar</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 m-0">
+                        Full academic year{% if calendar_year_label %} · {{ calendar_year_label }}{% endif %}
+                        — shaded days have activities
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                {% if can_prev_month and calendar_prev_url %}
+                <a href="{{ calendar_prev_url }}"
+                   class="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                   title="Previous month" aria-label="Previous month">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+                {% else %}
+                <span class="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 opacity-50 cursor-not-allowed">
+                    <i class="fas fa-chevron-left"></i>
+                </span>
+                {% endif %}
+                <p class="text-sm font-bold text-gray-900 dark:text-white min-w-[9rem] text-center m-0">{{ month_label }}</p>
+                {% if can_next_month and calendar_next_url %}
+                <a href="{{ calendar_next_url }}"
+                   class="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                   title="Next month" aria-label="Next month">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+                {% else %}
+                <span class="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 opacity-50 cursor-not-allowed">
+                    <i class="fas fa-chevron-right"></i>
+                </span>
+                {% endif %}
+                {% if calendar_today_url %}
+                <a href="{{ calendar_today_url }}"
+                   class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    Today
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="px-4 sm:px-5 py-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+            {% for key, label in category_labels.items() %}
+            {% set cc = category_colors[key] %}
+            <span class="inline-flex items-center gap-1">
+                <span class="acal-swatch" style="background:{{ cc.bg }}; border-color:{{ cc.badge }};"></span>
+                {{ label }}
+            </span>
+            {% endfor %}
+            <span class="inline-flex items-center gap-1">
+                <span class="acal-swatch acal-swatch-shaded"></span>
+                Day with activity
+            </span>
+        </div>
+
+        <div class="p-4 sm:p-5">
+            <div class="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 text-center">
+                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+            </div>
+            <div class="grid grid-cols-7 gap-1 sm:gap-1.5">
+                {% for cell in calendar_grid %}
+                <div class="acal-cell{% if cell.other_month %} acal-cell-other-month{% endif %}{% if not cell.other_month and not cell.in_range %} acal-cell-outside{% endif %}{% if cell.is_today %} acal-cell-today{% endif %}{% if cell.has_activity %} acal-cell-has-activity{% endif %}"
+                     {% if cell.cell_style %}style="{{ cell.cell_style }}"{% endif %}
+                     title="{{ cell.date_full }}{% if cell.has_activity %} — {{ cell.markers|length }} activit{{ 'y' if cell.markers|length == 1 else 'ies' }}{% endif %}">
+                    <div class="h-full flex flex-col items-center text-center">
+                        <span class="acal-cell-weekday">{{ cell.weekday }}</span>
+                        <span class="acal-cell-day">{{ cell.day }}</span>
+                        <span class="acal-cell-date-short">{{ cell.date_short }}</span>
+                        {% if cell.has_activity %}
+                        <div class="flex flex-wrap justify-center gap-0.5 mt-auto pt-0.5 w-full">
+                            {% for m in cell.markers %}
+                            <a href="#acal-ref-{{ m.ref }}"
+                               class="acal-ref-badge"
+                               style="background:{{ m.color_badge }};"
+                               title="{{ m.title }}">{{ m.ref }}</a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+        <div class="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+            <h2 class="text-sm font-bold text-gray-900 dark:text-white m-0">Activity list</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-0.5">
+                {{ calendar_activities|length }} activit{{ 'y' if calendar_activities|length == 1 else 'ies' }}
+                — ref numbers match the calendar above
+            </p>
+        </div>
+        {% if calendar_activities %}
+        <ul class="divide-y divide-gray-100 dark:divide-gray-700 m-0 p-0 list-none">
+            {% for item in calendar_activities %}
+            <li id="acal-ref-{{ item.ref }}" class="px-4 py-3">
+                <div class="flex flex-wrap items-start gap-3">
+                    <span class="acal-ref-badge acal-ref-badge-lg shrink-0"
+                          style="background:{{ item.color_badge }};">{{ item.ref }}</span>
+                    <div class="min-w-0 flex-1">
+                        <p class="font-semibold text-gray-900 dark:text-white m-0">{{ item.activity_title }}</p>
+                        <p class="text-xs text-gray-500 mt-1 m-0">
+                            {{ item.activity_date_display }}
+                            {% if item.end_date_display and item.end_date_display != item.activity_date_display %}
+                            — {{ item.end_date_display }}
+                            {% endif %}
+                            · {{ item.category_label }}
+                            {% if item.term_label %} · {{ item.term_label }}{% endif %}
+                        </p>
+                        {% if item.description %}
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mt-1.5 m-0">{{ item.description }}</p>
+                        {% endif %}
+                    </div>
+                    <span class="text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 shrink-0"
+                          style="background:{{ item.color_bg }}; color:{{ item.color_text }};">
+                        {{ item.category_label }}
+                    </span>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="px-4 py-10 text-center text-gray-500 dark:text-gray-400 text-sm">
+            No activities{% if selected_term %} for {{ selected_term.term_name }}{% elif selected_year %} for this year{% endif %} yet.
+            {% if can_manage_calendar %}
+            <span class="block mt-1 text-xs">Use <strong>Update calendar</strong> in the sidebar to register activities.</span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </section>
+    {% else %}
+    <div class="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 py-12 text-center text-gray-500 dark:text-gray-400">
+        <i class="fas fa-calendar-times text-3xl mb-3 opacity-50"></i>
+        <p class="m-0">No academic year configured yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.acal-swatch {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.25rem;
+    border: 2px solid transparent;
+}
+.acal-swatch-shaded {
+    background: #ede9fe;
+    border-color: #7c3aed;
+}
+.dark .acal-swatch-shaded {
+    background: #3b0764;
+    border-color: #a78bfa;
+}
+.acal-cell {
+    min-height: 4.25rem;
+    border-radius: 0.5rem;
+    border: 2px solid #e5e7eb;
+    padding: 0.3rem 0.2rem;
+    background: #ffffff;
+}
+.dark .acal-cell {
+    background: #1f2937;
+    border-color: #374151;
+}
+@media (min-width: 640px) {
+    .acal-cell { min-height: 5.25rem; padding: 0.4rem 0.25rem; }
+}
+.acal-cell-other-month { opacity: 0.42; }
+.acal-cell-other-month.acal-cell-has-activity { opacity: 0.72; }
+.acal-cell-outside:not(.acal-cell-has-activity) { background: #f9fafb; }
+.dark .acal-cell-outside:not(.acal-cell-has-activity) { background: #111827; }
+.acal-cell-today {
+    outline: 2px solid var(--brand-primary, #2563eb);
+    outline-offset: -2px;
+}
+.acal-cell-has-activity { border-width: 2px; font-weight: 600; }
+.acal-cell-weekday {
+    font-size: 0.55rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    color: #9ca3af;
+    margin-bottom: 0.1rem;
+}
+.dark .acal-cell-weekday { color: #6b7280; }
+.acal-cell-day {
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: #111827;
+}
+@media (min-width: 640px) {
+    .acal-cell-day { font-size: 1.15rem; }
+}
+.dark .acal-cell-day { color: #f9fafb; }
+.acal-cell-date-short {
+    font-size: 0.55rem;
+    font-weight: 500;
+    line-height: 1.1;
+    color: #6b7280;
+    margin-top: 0.1rem;
+}
+.dark .acal-cell-date-short { color: #9ca3af; }
+.acal-ref-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.15rem;
+    height: 1.15rem;
+    padding: 0 0.2rem;
+    border-radius: 9999px;
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+    text-decoration: none;
+}
+.acal-ref-badge-lg {
+    min-width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.8rem;
+}
+</style>
+{% endblock %}

@@ -575,6 +575,19 @@ EMPLOYEE_SCOPED_ROOT_SEGMENTS = frozenset({
 PARENT_PUBLIC_SEGMENTS = frozenset({
     'portal-setup',
     'forgot-password',
+    'reset-password',
+})
+
+# /student/<segment> public account-recovery routes
+STUDENT_PUBLIC_SEGMENTS = frozenset({
+    'forgot-password',
+    'reset-password',
+})
+
+# /<employee-role-slug>/<segment> public account-recovery routes
+EMPLOYEE_PUBLIC_SEGMENTS = frozenset({
+    'forgot-password',
+    'reset-password',
 })
 
 
@@ -602,11 +615,16 @@ class RootRolePathRewriteMiddleware:
                 return self.app(environ, start_response)
             new_path = '/dashboard/parent' + ('/' + rest if rest else '')
         elif seg == 'student':
+            rest_first = rest.split('/')[0].lower() if rest else ''
+            if rest_first in STUDENT_PUBLIC_SEGMENTS:
+                return self.app(environ, start_response)
             new_path = '/dashboard/student' + ('/' + rest if rest else '')
         elif not rest:
             new_path = '/dashboard/employee'
         else:
             rest_first = rest.split('/')[0].lower()
+            if rest_first in EMPLOYEE_PUBLIC_SEGMENTS:
+                return self.app(environ, start_response)
             if rest_first in EMPLOYEE_SCOPED_ROOT_SEGMENTS:
                 new_path = '/' + rest
             else:
@@ -1815,6 +1833,526 @@ def ensure_class_teacher_assignments_table(cursor):
         """)
     except Exception as e:
         print(f"ensure_class_teacher_assignments_table: {e}")
+
+
+def ensure_academic_calendar_activities_table(cursor):
+    """School-wide academic calendar events per academic year."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS academic_calendar_activities (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                academic_year_id INT NOT NULL,
+                term_id INT NULL,
+                activity_title VARCHAR(255) NOT NULL,
+                activity_date DATE NOT NULL,
+                end_date DATE NULL,
+                category VARCHAR(64) NOT NULL DEFAULT 'event',
+                description TEXT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'active',
+                created_by INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_acal_year_date (academic_year_id, activity_date),
+                INDEX idx_acal_year_term (academic_year_id, term_id),
+                INDEX idx_acal_status (status),
+                FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+                FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE SET NULL,
+                FOREIGN KEY (created_by) REFERENCES employees(id) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        cursor.execute("SHOW COLUMNS FROM academic_calendar_activities LIKE 'term_id'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE academic_calendar_activities
+                ADD COLUMN term_id INT NULL AFTER academic_year_id,
+                ADD INDEX idx_acal_year_term (academic_year_id, term_id)
+            """)
+            try:
+                cursor.execute("""
+                    ALTER TABLE academic_calendar_activities
+                    ADD CONSTRAINT fk_acal_term FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE SET NULL
+                """)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"ensure_academic_calendar_activities_table: {e}")
+
+
+ACADEMIC_CALENDAR_CATEGORY_LABELS = {
+    'term': 'Term dates',
+    'holiday': 'Holiday',
+    'exam': 'Exams',
+    'event': 'School event',
+    'meeting': 'Meeting',
+    'other': 'Other',
+}
+
+ACADEMIC_CALENDAR_CATEGORY_COLORS = {
+    'term': {'badge': '#2563eb', 'bg': '#dbeafe', 'text': '#1e3a8a'},
+    'holiday': {'badge': '#059669', 'bg': '#d1fae5', 'text': '#065f46'},
+    'exam': {'badge': '#e11d48', 'bg': '#ffe4e6', 'text': '#9f1239'},
+    'event': {'badge': '#7c3aed', 'bg': '#ede9fe', 'text': '#5b21b6'},
+    'meeting': {'badge': '#d97706', 'bg': '#fef3c7', 'text': '#92400e'},
+    'other': {'badge': '#64748b', 'bg': '#f1f5f9', 'text': '#334155'},
+}
+
+
+def _calendar_category_colors(category):
+    return ACADEMIC_CALENDAR_CATEGORY_COLORS.get(
+        (category or 'event').strip().lower(),
+        ACADEMIC_CALENDAR_CATEGORY_COLORS['other'],
+    )
+
+
+def _prepare_academic_calendar_view(activities, selected_year=None, selected_term=None):
+    """Assign ref numbers, colors, and a date→activities map for the calendar grid."""
+    today = date_cls.today()
+    range_start = None
+    range_end = None
+    if selected_year:
+        range_start = _coerce_to_date(selected_year.get('start_date'))
+        range_end = _coerce_to_date(selected_year.get('end_date'))
+
+    sorted_acts = sorted(
+        activities or [],
+        key=lambda x: (
+            _coerce_to_date(x.get('activity_date')) or date_cls.min,
+            x.get('id') or 0,
+        ),
+    )
+
+    if not range_start:
+        range_start = today.replace(month=1, day=1)
+    if not range_end:
+        range_end = today.replace(month=12, day=31)
+    if range_end < range_start:
+        range_start, range_end = range_end, range_start
+
+    enriched = []
+    date_map = {}
+    for idx, act in enumerate(sorted_acts, start=1):
+        category = (act.get('category') or 'event').strip().lower()
+        colors = _calendar_category_colors(category)
+        entry = dict(act)
+        entry['ref'] = idx
+        entry['color_badge'] = colors['badge']
+        entry['color_bg'] = colors['bg']
+        entry['color_text'] = colors['text']
+        enriched.append(entry)
+
+        start = _coerce_to_date(act.get('activity_date'))
+        end = _coerce_to_date(act.get('end_date')) or start
+        if not start:
+            continue
+        if not end:
+            end = start
+        if end < start:
+            start, end = end, start
+        d = start
+        marker = {
+            'ref': idx,
+            'title': act.get('activity_title') or '',
+            'color_badge': colors['badge'],
+            'color_bg': colors['bg'],
+            'color_text': colors['text'],
+        }
+        while d <= end:
+            key = d.strftime('%Y-%m-%d')
+            date_map.setdefault(key, []).append(marker)
+            d += timedelta(days=1)
+
+    initial_month = today.strftime('%Y-%m')
+    if today < range_start:
+        initial_month = range_start.strftime('%Y-%m')
+    elif today > range_end:
+        initial_month = range_end.strftime('%Y-%m')
+
+    year_label = ''
+    if selected_year and selected_year.get('year_name'):
+        year_label = selected_year['year_name']
+    elif range_start and range_end:
+        year_label = (
+            f"{range_start.strftime('%d %b %Y')} – {range_end.strftime('%d %b %Y')}"
+        )
+
+    return {
+        'activities': enriched,
+        'date_map': date_map,
+        'range_start': range_start.strftime('%Y-%m-%d'),
+        'range_end': range_end.strftime('%Y-%m-%d'),
+        'initial_month': initial_month,
+        'year_label': year_label,
+    }
+
+
+def _build_calendar_month_grid(view_year, view_month, date_map=None, range_start=None, range_end=None):
+    """Build a 6-week Monday-start grid for one calendar month."""
+    import calendar as cal_mod
+
+    date_map = date_map or {}
+    today = date_cls.today()
+    today_key = today.strftime('%Y-%m-%d')
+    rs = _coerce_to_date(range_start)
+    re = _coerce_to_date(range_end)
+    view_year = int(view_year)
+    view_month = int(view_month)
+
+    first = date_cls(view_year, view_month, 1)
+    start_pad = first.weekday()
+    days_in_month = cal_mod.monthrange(view_year, view_month)[1]
+    if view_month == 1:
+        prev_month, prev_year = 12, view_year - 1
+    else:
+        prev_month, prev_year = view_month - 1, view_year
+    prev_month_days = cal_mod.monthrange(prev_year, prev_month)[1]
+
+    def build_cell(y, m, d, other_month):
+        d_obj = date_cls(int(y), int(m), int(d))
+        key = d_obj.strftime('%Y-%m-%d')
+        markers = list(date_map.get(key) or [])
+        primary = markers[0] if markers else None
+        in_range = True
+        if rs and d_obj < rs:
+            in_range = False
+        if re and d_obj > re:
+            in_range = False
+        cell = {
+            'day': d,
+            'key': key,
+            'other_month': other_month,
+            'in_range': in_range,
+            'is_today': key == today_key,
+            'markers': markers,
+            'has_activity': bool(markers),
+            'shade_bg': (primary or {}).get('color_bg') or '',
+            'shade_border': (primary or {}).get('color_badge') or '',
+            'weekday': d_obj.strftime('%a'),
+            'date_short': d_obj.strftime('%d %b'),
+            'date_full': d_obj.strftime('%A, %d %B %Y'),
+            'cell_style': '',
+        }
+        if cell['has_activity']:
+            style = f"background:{cell['shade_bg']};border-color:{cell['shade_border']};"
+            if len(markers) > 1:
+                style += f"box-shadow:inset 0 0 0 1px {cell['shade_border']}55;"
+            cell['cell_style'] = style
+        return cell
+
+    cells = []
+    for i in range(start_pad - 1, -1, -1):
+        day = prev_month_days - i
+        cells.append(build_cell(prev_year, prev_month, day, True))
+    for day in range(1, days_in_month + 1):
+        cells.append(build_cell(view_year, view_month, day, False))
+    if view_month == 12:
+        next_month, next_year = 1, view_year + 1
+    else:
+        next_month, next_year = view_month + 1, view_year
+    next_day = 1
+    while len(cells) < 42:
+        cells.append(build_cell(next_year, next_month, next_day, True))
+        next_day += 1
+    return cells
+
+
+def _shift_calendar_month(year, month, delta):
+    month += delta
+    while month < 1:
+        month += 12
+        year -= 1
+    while month > 12:
+        month -= 12
+        year += 1
+    return year, month
+
+
+def _calendar_view_query(academic_year_id, term_id=None, month=None):
+    qs = f'academic_year_id={int(academic_year_id)}'
+    if term_id:
+        qs += f'&term_id={int(term_id)}'
+    else:
+        qs += '&term_id=0'
+    if month:
+        qs += f'&month={month}'
+    return qs
+
+def _calendar_activity_json_safe(act):
+    return {
+        'id': act.get('id'),
+        'ref': act.get('ref'),
+        'activity_title': act.get('activity_title') or '',
+        'activity_date_input': act.get('activity_date_input') or '',
+        'end_date_input': act.get('end_date_input') or '',
+        'activity_date_display': act.get('activity_date_display') or '',
+        'end_date_display': act.get('end_date_display') or '',
+        'category': act.get('category') or 'event',
+        'category_label': act.get('category_label') or '',
+        'term_label': act.get('term_label') or '',
+        'description': act.get('description') or '',
+        'color_badge': act.get('color_badge') or '#64748b',
+        'color_bg': act.get('color_bg') or '#f1f5f9',
+        'color_text': act.get('color_text') or '#334155',
+    }
+
+
+def _academic_calendar_can_manage():
+    user_role = session.get('role', '').lower()
+    viewing_as = session.get('viewing_as_employee_role', '').lower()
+    if user_role == 'technician':
+        return True
+    allowed = ('head of institution', 'deputy head of institution', 'secretary')
+    return user_role in allowed or viewing_as in allowed
+
+
+def _fetch_academic_years_for_calendar(cursor):
+    years = []
+    try:
+        cursor.execute("""
+            SELECT id, year_name, start_date, end_date, is_current, status
+            FROM academic_years
+            WHERE COALESCE(status, 'active') IN ('active', 'draft', 'closed')
+            ORDER BY COALESCE(start_date, '1900-01-01') DESC, id DESC
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                years.append({
+                    'id': row.get('id'),
+                    'year_name': row.get('year_name') or '',
+                    'start_date': row.get('start_date'),
+                    'end_date': row.get('end_date'),
+                    'is_current': bool(row.get('is_current')),
+                    'status': row.get('status') or '',
+                })
+            else:
+                years.append({
+                    'id': row[0] if len(row) > 0 else None,
+                    'year_name': row[1] if len(row) > 1 else '',
+                    'start_date': row[2] if len(row) > 2 else None,
+                    'end_date': row[3] if len(row) > 3 else None,
+                    'is_current': bool(row[4]) if len(row) > 4 else False,
+                    'status': row[5] if len(row) > 5 else '',
+                })
+    except Exception as e:
+        print(f"_fetch_academic_years_for_calendar: {e}")
+    return years
+
+
+def _fetch_terms_for_calendar_year(cursor, academic_year_id):
+    terms = []
+    if not academic_year_id:
+        return terms
+    try:
+        cursor.execute(
+            """
+            SELECT id, term_name, start_date, end_date, is_current, status
+            FROM terms
+            WHERE academic_year_id = %s
+              AND COALESCE(status, 'active') IN ('active', 'draft', 'closed')
+            ORDER BY COALESCE(start_date, '1900-01-01') ASC, id ASC
+            """,
+            (int(academic_year_id),),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                terms.append({
+                    'id': row.get('id'),
+                    'term_name': row.get('term_name') or '',
+                    'start_date': row.get('start_date'),
+                    'end_date': row.get('end_date'),
+                    'is_current': bool(row.get('is_current')),
+                    'status': row.get('status') or '',
+                })
+            else:
+                terms.append({
+                    'id': row[0] if len(row) > 0 else None,
+                    'term_name': row[1] if len(row) > 1 else '',
+                    'start_date': row[2] if len(row) > 2 else None,
+                    'end_date': row[3] if len(row) > 3 else None,
+                    'is_current': bool(row[4]) if len(row) > 4 else False,
+                    'status': row[5] if len(row) > 5 else '',
+                })
+    except Exception as e:
+        print(f"_fetch_terms_for_calendar_year: {e}")
+    return terms
+
+
+def _calendar_activity_row_dict(row):
+    if isinstance(row, dict):
+        activity_date = row.get('activity_date')
+        end_date = row.get('end_date')
+        category = (row.get('category') or 'event').strip().lower()
+        term_name = (row.get('term_name') or '').strip()
+        return {
+            'id': row.get('id'),
+            'academic_year_id': row.get('academic_year_id'),
+            'term_id': row.get('term_id'),
+            'term_name': term_name,
+            'term_label': term_name or 'Whole year',
+            'activity_title': row.get('activity_title') or '',
+            'activity_date': activity_date,
+            'activity_date_display': _format_date_short(activity_date) or '',
+            'end_date': end_date,
+            'end_date_display': _format_date_short(end_date) or '',
+            'category': category,
+            'category_label': ACADEMIC_CALENDAR_CATEGORY_LABELS.get(category, category.title()),
+            'description': (row.get('description') or '').strip(),
+            'activity_date_input': _calendar_date_input_value(activity_date),
+            'end_date_input': _calendar_date_input_value(end_date),
+        }
+    term_name = (row[8] if len(row) > 8 else '') or ''
+    category = (row[6] if len(row) > 6 else 'event') or 'event'
+    activity_date_val = row[4] if len(row) > 4 else None
+    end_date_val = row[5] if len(row) > 5 else None
+    return {
+        'id': row[0] if len(row) > 0 else None,
+        'academic_year_id': row[1] if len(row) > 1 else None,
+        'term_id': row[2] if len(row) > 2 else None,
+        'term_name': term_name,
+        'term_label': term_name or 'Whole year',
+        'activity_title': row[3] if len(row) > 3 else '',
+        'activity_date': activity_date_val,
+        'activity_date_display': _format_date_short(activity_date_val) or '',
+        'activity_date_input': _calendar_date_input_value(activity_date_val),
+        'end_date': end_date_val,
+        'end_date_display': _format_date_short(end_date_val) or '',
+        'end_date_input': _calendar_date_input_value(end_date_val),
+        'category': category,
+        'category_label': ACADEMIC_CALENDAR_CATEGORY_LABELS.get(category, category.title()),
+        'description': (row[7] if len(row) > 7 else '') or '',
+    }
+
+
+def _calendar_date_input_value(value):
+    d = _coerce_to_date(value)
+    return d.strftime('%Y-%m-%d') if d else ''
+
+
+def _parse_calendar_activity_form(form):
+    """Parse academic calendar activity fields from a request form."""
+    title = (form.get('activity_title') or '').strip()
+    activity_date = (form.get('activity_date') or '').strip()
+    end_date = (form.get('end_date') or '').strip() or None
+    category = (form.get('category') or 'event').strip().lower()
+    description = (form.get('description') or '').strip()
+    term_id_raw = form.get('term_id', type=int)
+    year_id = form.get('academic_year_id', type=int)
+    if category not in ACADEMIC_CALENDAR_CATEGORY_LABELS:
+        category = 'event'
+    if not year_id or not title or not activity_date:
+        return None, 'Title, date, and academic year are required.'
+    try:
+        datetime.strptime(activity_date, '%Y-%m-%d')
+        if end_date:
+            datetime.strptime(end_date, '%Y-%m-%d')
+    except ValueError:
+        return None, 'Please enter valid dates.'
+    return {
+        'year_id': int(year_id),
+        'term_id_raw': term_id_raw,
+        'title': title,
+        'activity_date': activity_date,
+        'end_date': end_date,
+        'category': category,
+        'description': description or None,
+    }, None
+
+
+def _validate_calendar_activity_term(cursor, term_id_raw, year_id):
+    if not term_id_raw:
+        return True, term_id_raw
+    cursor.execute(
+        """
+        SELECT id FROM terms
+        WHERE id = %s AND academic_year_id = %s
+        LIMIT 1
+        """,
+        (int(term_id_raw), int(year_id)),
+    )
+    if not cursor.fetchone():
+        return False, None
+    return True, int(term_id_raw)
+
+
+def _fetch_academic_calendar_activities(cursor, academic_year_id, term_id=None):
+    try:
+        academic_year_id = int(academic_year_id)
+    except (TypeError, ValueError):
+        return []
+    query = """
+        SELECT a.id, a.academic_year_id, a.term_id, a.activity_title, a.activity_date, a.end_date,
+               a.category, a.description, t.term_name
+        FROM academic_calendar_activities a
+        LEFT JOIN terms t ON t.id = a.term_id
+        WHERE a.academic_year_id = %s AND COALESCE(a.status, 'active') = 'active'
+    """
+    params = [academic_year_id]
+    if term_id:
+        try:
+            term_id = int(term_id)
+            query += " AND (a.term_id IS NULL OR a.term_id = %s)"
+            params.append(term_id)
+        except (TypeError, ValueError):
+            pass
+    query += " ORDER BY a.activity_date ASC, a.id ASC"
+    cursor.execute(query, tuple(params))
+    return [_calendar_activity_row_dict(r) for r in (cursor.fetchall() or [])]
+
+
+def _group_calendar_activities_by_month(activities):
+    from collections import OrderedDict
+    groups = OrderedDict()
+    for item in activities or []:
+        d = _coerce_to_date(item.get('activity_date'))
+        if d:
+            key = d.strftime('%Y-%m')
+            label = d.strftime('%B %Y')
+        else:
+            key = 'unknown'
+            label = 'Other'
+        if key not in groups:
+            groups[key] = {'label': label, 'items': []}
+        groups[key]['items'].append(item)
+    return list(groups.values())
+
+
+def _resolve_calendar_term_id(cursor, academic_year_id, requested_term_id=None, default_to_current=False):
+    """Resolve term filter. None = all terms; default_to_current picks is_current when no id given."""
+    terms = _fetch_terms_for_calendar_year(cursor, academic_year_id)
+    if not terms:
+        return None, terms, None
+    if requested_term_id == 0:
+        return None, terms, None
+    if requested_term_id:
+        for t in terms:
+            if str(t.get('id')) == str(requested_term_id):
+                return int(t['id']), terms, t
+        return None, terms, None
+    if default_to_current:
+        for t in terms:
+            if t.get('is_current'):
+                return int(t['id']), terms, t
+    return None, terms, None
+
+
+def _calendar_manage_redirect_query(year_id, term_id=None):
+    qs = f'academic_year_id={int(year_id)}'
+    if term_id:
+        qs += f'&term_id={int(term_id)}'
+    return qs
+
+
+def _resolve_calendar_year_id(cursor, requested_year_id=None):
+    years = _fetch_academic_years_for_calendar(cursor)
+    if not years:
+        return None, years
+    if requested_year_id:
+        for y in years:
+            if str(y.get('id')) == str(requested_year_id):
+                return int(y['id']), years
+    for y in years:
+        if y.get('is_current'):
+            return int(y['id']), years
+    return int(years[0]['id']), years
 
 
 def _attendance_class_day_sql(alias='sar'):
@@ -9130,6 +9668,7 @@ def init_db():
             """)
 
             ensure_class_teacher_assignments_table(cursor)
+            ensure_academic_calendar_activities_table(cursor)
 
             # Create subject_academic_levels junction table
             cursor.execute("""
@@ -10579,6 +11118,136 @@ def _mask_email_for_display(email):
 def _clear_parent_password_reset_session():
     session.pop('parent_pwd_reset_student_id', None)
     session.pop('parent_pwd_reset_dob_ok', None)
+
+
+def _sync_parent_portal_email(cursor, student_id, email):
+    """Keep parents.email and parent portal users.email aligned for one admission ID."""
+    sid = (student_id or '').strip()
+    email_norm = normalize_login_email(email or '')
+    if not sid or not email_norm:
+        return
+    try:
+        cursor.execute(
+            """
+            UPDATE parents
+            SET email = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE student_id = %s
+            """,
+            (email_norm, sid),
+        )
+        portal_user = _fetch_parent_portal_user(cursor, sid)
+        if portal_user and portal_user.get('id'):
+            cursor.execute(
+                "UPDATE users SET email = %s WHERE id = %s AND role = 'parent'",
+                (email_norm, portal_user['id']),
+            )
+    except Exception as ex:
+        print(f"_sync_parent_portal_email: {ex}")
+
+
+def _resolve_parent_password_reset_email(cursor, admission_raw):
+    """
+    Email for parent password recovery: school record (parents.email) first,
+    then portal account (users.email).
+    """
+    row = _fetch_student_parent_by_admission(cursor, admission_raw)
+    portal_user = _fetch_parent_portal_user(cursor, admission_raw)
+    record_email = normalize_login_email((row or {}).get('parent_email') or '')
+    portal_email = normalize_login_email((portal_user or {}).get('email') or '')
+    return record_email or portal_email, portal_user, row
+
+
+def _clear_employee_password_reset_session():
+    session.pop('employee_pwd_reset_code', None)
+
+
+def _clear_student_password_reset_session():
+    session.pop('student_pwd_reset_code', None)
+
+
+def _fetch_student_portal_user(cursor, login_code_raw):
+    """Student portal user by six-digit code or matching student_id suffix."""
+    code = (login_code_raw or '').strip()
+    if not code.isdigit() or len(code) != 6:
+        return None
+    cursor.execute(
+        """
+        SELECT u.* FROM users u
+        WHERE u.role = 'student' AND (
+            (u.login_code IS NOT NULL AND u.login_code = %s)
+            OR (u.student_id IS NOT NULL AND (
+                u.student_id = %s
+                OR (CHAR_LENGTH(u.student_id) >= 6 AND RIGHT(u.student_id, 6) = %s)
+            ))
+        )
+        LIMIT 1
+        """,
+        (code, code, code),
+    )
+    return cursor.fetchone()
+
+
+def _fetch_employee_for_password_reset(cursor, employee_code_raw):
+    """Active/pending employee row for password reset."""
+    code = (employee_code_raw or '').strip()
+    if not code.isdigit() or len(code) != 6:
+        return None
+    cursor.execute(
+        """
+        SELECT id, full_name, email, employee_id, status
+        FROM employees
+        WHERE employee_id = %s AND status IN ('pending approval', 'active')
+        LIMIT 1
+        """,
+        (code,),
+    )
+    return cursor.fetchone()
+
+
+def _password_reset_forgot_url(account_type):
+    routes = {
+        'employee': 'employee_forgot_password',
+        'student': 'student_forgot_password',
+        'parent': 'parent_forgot_password',
+    }
+    return url_for(routes.get((account_type or '').strip().lower(), 'login'))
+
+
+def _password_reset_login_url(account_type, admission=''):
+    role = (account_type or 'employee').strip().lower()
+    if role == 'parent' and (admission or '').strip():
+        return url_for('login', role='parent', admission=(admission or '').strip())
+    if role in ('employee', 'parent', 'student'):
+        return url_for('login', role=role)
+    return url_for('login')
+
+
+def _issue_password_reset_token(cursor, *, email, account_type, account_id, full_name):
+    """Send verification email and store token. Returns (ok, email_norm_or_error_key)."""
+    email_norm = normalize_login_email(email or '')
+    if not email_norm:
+        return False, 'invalid_email'
+    code = ''.join(secrets.choice('0123456789') for _ in range(6))
+    code_hash = generate_password_hash(code)
+    expires_at = datetime.utcnow() + timedelta(minutes=30)
+    display_name = (full_name or 'User').strip() or 'User'
+    if not send_password_reset_email(email_norm, display_name, code):
+        return False, 'email_send_failed'
+    cursor.execute(
+        """
+        DELETE FROM password_reset_tokens
+        WHERE LOWER(TRIM(email)) = %s AND consumed_at IS NULL
+        """,
+        (email_norm,),
+    )
+    cursor.execute(
+        """
+        INSERT INTO password_reset_tokens (email, account_type, account_id, code_hash, expires_at)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (email_norm, account_type, account_id, code_hash, expires_at),
+    )
+    return True, email_norm
 
 
 def _fetch_parent_portal_user(cursor, admission_raw):
@@ -12356,6 +13025,8 @@ def _insert_admission_application(
                         pf['emergency_contact'],
                     ),
                 )
+                if pf.get('email'):
+                    _sync_parent_portal_email(cursor, student_id, pf['email'])
                 if fingerprints_json:
                     _saved_fp, fp_err = save_fingerprints_from_json(
                         cursor,
@@ -12396,6 +13067,35 @@ def _insert_admission_application(
             return False, None, 'An error occurred while submitting your application. Please try again.'
     print(f'_insert_admission_application exhausted retries: {last_error}')
     return False, None, 'Could not assign a student ID right now. Please try again in a moment.'
+
+
+def _fetch_active_academic_levels_for_forms(cursor):
+    """Active academic levels for admission / student edit dropdowns."""
+    cursor.execute(
+        """
+        SELECT id, level_category, level_name, level_description
+        FROM academic_levels
+        WHERE COALESCE(level_status, 'active') = 'active'
+        ORDER BY level_name ASC
+        """
+    )
+    rows = []
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            rows.append({
+                'id': row.get('id'),
+                'level_category': row.get('level_category', ''),
+                'level_name': row.get('level_name', ''),
+                'level_description': row.get('level_description', ''),
+            })
+        else:
+            rows.append({
+                'id': row[0] if len(row) > 0 else None,
+                'level_category': row[1] if len(row) > 1 else '',
+                'level_name': row[2] if len(row) > 2 else '',
+                'level_description': row[3] if len(row) > 3 else '',
+            })
+    return rows
 
 
 @app.route('/admission', methods=['GET', 'POST'])
@@ -12572,28 +13272,12 @@ def admission():
         return redirect(url_for('home'))
     
     # GET request - render admission form
-    # Fetch active academic levels for admission form
     academic_levels = []
     connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT id, level_category, level_name, level_description 
-                    FROM academic_levels 
-                    WHERE level_status = 'active'
-                    ORDER BY level_name ASC
-                """)
-                results = cursor.fetchall()
-                
-                if results:
-                    for row in results:
-                        academic_levels.append({
-                            'id': row.get('id'),
-                            'level_category': row.get('level_category', ''),
-                            'level_name': row.get('level_name', ''),
-                            'level_description': row.get('level_description', '')
-                        })
+                academic_levels = _fetch_active_academic_levels_for_forms(cursor)
         except Exception as e:
             print(f"Error fetching academic levels for admission: {e}")
         finally:
@@ -13044,57 +13728,50 @@ def parent_forgot_password():
                     else:
                         email_in = normalize_login_email(request.form.get('email', ''))
                         if not email_in or '@' not in email_in:
-                            error = 'Enter the email address on your parent portal account.'
+                            error = 'Enter the parent/guardian email on file with the school.'
                         else:
-                            portal_user = _fetch_parent_portal_user(cursor, sid)
+                            account_email, portal_user, _parent_row = _resolve_parent_password_reset_email(
+                                cursor, sid
+                            )
                             if not portal_user:
                                 error = 'No portal account found. Start again or contact the school.'
                                 _clear_parent_password_reset_session()
                             else:
-                                account_email = normalize_login_email(portal_user.get('email') or '')
                                 if not account_email:
                                     error = (
-                                        'No email is stored on your portal account. Please contact the school office.'
+                                        'No parent email is on file for this admission. Please contact the school office.'
                                     )
                                 elif email_in != account_email:
                                     error = (
                                         'That email does not match our records for this admission. '
-                                        'Use the email you registered with, or contact the school.'
+                                        'Use the parent/guardian email the school has on file, or contact the school.'
                                     )
                                 else:
-                                    code = ''.join(secrets.choice('0123456789') for _ in range(6))
-                                    code_hash = generate_password_hash(code)
-                                    expires_at = datetime.utcnow() + timedelta(minutes=30)
+                                    _sync_parent_portal_email(cursor, sid, email_in)
                                     full_name = (portal_user.get('full_name') or 'Parent').strip() or 'Parent'
-                                    if not send_password_reset_email(account_email, full_name, code):
+                                    ok, result = _issue_password_reset_token(
+                                        cursor,
+                                        email=email_in,
+                                        account_type='parent',
+                                        account_id=portal_user['id'],
+                                        full_name=full_name,
+                                    )
+                                    if not ok:
                                         error = (
                                             'Could not send the verification email. Ask the school to check email settings, '
                                             'or try again later.'
                                         )
                                     else:
-                                        cursor.execute(
-                                            """
-                                            DELETE FROM password_reset_tokens
-                                            WHERE LOWER(TRIM(email)) = %s AND consumed_at IS NULL
-                                            """,
-                                            (account_email,),
-                                        )
-                                        cursor.execute(
-                                            """
-                                            INSERT INTO password_reset_tokens
-                                                (email, account_type, account_id, code_hash, expires_at)
-                                            VALUES (%s, 'parent', %s, %s, %s)
-                                            """,
-                                            (account_email, portal_user['id'], code_hash, expires_at),
-                                        )
                                         connection.commit()
                                         _clear_parent_password_reset_session()
-                                        session['pwd_reset_email'] = account_email
+                                        session['pwd_reset_email'] = result
+                                        session['pwd_reset_account_type'] = 'parent'
+                                        session['pwd_reset_admission'] = sid
                                         flash(
                                             'We sent a 6-digit code to your email. Enter it on the next page with your new password.',
                                             'success',
                                         )
-                                        return redirect(url_for('reset_password'))
+                                        return redirect(url_for('parent_reset_password'))
                 else:
                     error = 'Invalid step.'
         finally:
@@ -13115,9 +13792,11 @@ def parent_forgot_password():
         if connection:
             try:
                 with connection.cursor() as cursor:
-                    portal_user = _fetch_parent_portal_user(cursor, student_id_sess)
-                    if portal_user:
-                        masked_email = _mask_email_for_display(portal_user.get('email') or '')
+                    account_email, _portal_user, _parent_row = _resolve_parent_password_reset_email(
+                        cursor, student_id_sess
+                    )
+                    if account_email:
+                        masked_email = _mask_email_for_display(account_email)
             except Exception as e:
                 print(f"parent_forgot_password masked email: {e}")
             finally:
@@ -13138,6 +13817,246 @@ def parent_forgot_password():
         step=step,
         admission_prefill=admission_prefill,
         student_id_display=student_id_sess or '',
+        masked_email=masked_email,
+    )
+
+
+@app.route('/employee-forgot-password', methods=['GET', 'POST'])
+@app.route('/employee/forgot-password', methods=['GET', 'POST'])
+@app.route('/dashboard/employee/forgot-password', methods=['GET', 'POST'])
+def employee_forgot_password():
+    """Staff password reset: six-digit employee code → email on file → verification code."""
+    code_prefill = (request.args.get('code') or '').strip()
+
+    if request.method == 'POST':
+        action = (request.form.get('reset_action') or '').strip()
+        connection = get_db_connection()
+        if not connection:
+            flash('Database connection error. Please try again later.', 'error')
+            return redirect(url_for('employee_forgot_password'))
+        error = None
+        try:
+            with connection.cursor() as cursor:
+                if action == 'code':
+                    raw = (request.form.get('employee_code') or '').strip()
+                    if not raw.isdigit() or len(raw) != 6:
+                        error = 'Enter your six-digit employee code.'
+                    else:
+                        employee = _fetch_employee_for_password_reset(cursor, raw)
+                        if not employee:
+                            error = (
+                                'We could not find an active staff account with that code. '
+                                'Check the code or contact your school administrator.'
+                            )
+                        else:
+                            session['employee_pwd_reset_code'] = raw
+                            return redirect(url_for('employee_forgot_password'))
+                elif action == 'email':
+                    code_sess = session.get('employee_pwd_reset_code')
+                    if not code_sess:
+                        error = 'Session expired. Enter your employee code again.'
+                    else:
+                        email_in = normalize_login_email(request.form.get('email', ''))
+                        if not email_in or '@' not in email_in:
+                            error = 'Enter the email address on your staff account.'
+                        else:
+                            employee = _fetch_employee_for_password_reset(cursor, code_sess)
+                            if not employee:
+                                error = 'Staff account not found. Start again with your employee code.'
+                                _clear_employee_password_reset_session()
+                            else:
+                                account_email = normalize_login_email(employee.get('email') or '')
+                                if not account_email:
+                                    error = (
+                                        'No email is on file for this staff account. Please contact your school administrator.'
+                                    )
+                                elif email_in != account_email:
+                                    error = (
+                                        'That email does not match our records for this employee code. '
+                                        'Use the email registered with HR, or contact the school.'
+                                    )
+                                else:
+                                    full_name = (employee.get('full_name') or 'Staff').strip() or 'Staff'
+                                    ok, result = _issue_password_reset_token(
+                                        cursor,
+                                        email=email_in,
+                                        account_type='employee',
+                                        account_id=employee['id'],
+                                        full_name=full_name,
+                                    )
+                                    if not ok:
+                                        error = (
+                                            'Could not send the verification email. Ask the school to check email settings, '
+                                            'or try again later.'
+                                        )
+                                    else:
+                                        connection.commit()
+                                        _clear_employee_password_reset_session()
+                                        session['pwd_reset_email'] = result
+                                        session['pwd_reset_account_type'] = 'employee'
+                                        session.pop('pwd_reset_admission', None)
+                                        flash(
+                                            'We sent a 6-digit code to your email. Enter it on the next page with your new password.',
+                                            'success',
+                                        )
+                                        return redirect(url_for('employee_reset_password'))
+                else:
+                    error = 'Invalid step.'
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+        if error:
+            flash(error, 'error')
+            return redirect(url_for('employee_forgot_password'))
+
+    code_sess = session.get('employee_pwd_reset_code')
+    masked_email = ''
+    if code_sess:
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    employee = _fetch_employee_for_password_reset(cursor, code_sess)
+                    if employee:
+                        masked_email = _mask_email_for_display(employee.get('email') or '')
+            except Exception as e:
+                print(f"employee_forgot_password masked email: {e}")
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    step = 2 if code_sess else 1
+    return render_template(
+        'employee_forgot_password.html',
+        step=step,
+        code_prefill=code_prefill or code_sess or '',
+        employee_code_display=code_sess or '',
+        masked_email=masked_email,
+    )
+
+
+@app.route('/student-forgot-password', methods=['GET', 'POST'])
+@app.route('/student/forgot-password', methods=['GET', 'POST'])
+@app.route('/dashboard/student/forgot-password', methods=['GET', 'POST'])
+def student_forgot_password():
+    """Student password reset: six-digit portal code → email on account → verification code."""
+    code_prefill = (request.args.get('code') or '').strip()
+
+    if request.method == 'POST':
+        action = (request.form.get('reset_action') or '').strip()
+        connection = get_db_connection()
+        if not connection:
+            flash('Database connection error. Please try again later.', 'error')
+            return redirect(url_for('student_forgot_password'))
+        error = None
+        try:
+            with connection.cursor() as cursor:
+                ensure_users_portal_login_schema(cursor)
+                connection.commit()
+                if action == 'code':
+                    raw = (request.form.get('portal_code') or '').strip()
+                    if not raw.isdigit() or len(raw) != 6:
+                        error = 'Enter your six-digit student portal code.'
+                    else:
+                        portal_user = _fetch_student_portal_user(cursor, raw)
+                        if not portal_user:
+                            error = (
+                                'We could not find a student portal account with that code. '
+                                'Check the code from your school or contact the office.'
+                            )
+                        else:
+                            session['student_pwd_reset_code'] = raw
+                            return redirect(url_for('student_forgot_password'))
+                elif action == 'email':
+                    code_sess = session.get('student_pwd_reset_code')
+                    if not code_sess:
+                        error = 'Session expired. Enter your portal code again.'
+                    else:
+                        email_in = normalize_login_email(request.form.get('email', ''))
+                        if not email_in or '@' not in email_in:
+                            error = 'Enter the email address on your student portal account.'
+                        else:
+                            portal_user = _fetch_student_portal_user(cursor, code_sess)
+                            if not portal_user:
+                                error = 'Student portal account not found. Start again with your portal code.'
+                                _clear_student_password_reset_session()
+                            else:
+                                account_email = normalize_login_email(portal_user.get('email') or '')
+                                if not account_email:
+                                    error = (
+                                        'No email is stored on your student portal account. Please contact the school office.'
+                                    )
+                                elif email_in != account_email:
+                                    error = (
+                                        'That email does not match our records for this portal code. '
+                                        'Use the email the school registered for you, or contact the office.'
+                                    )
+                                else:
+                                    full_name = (portal_user.get('full_name') or 'Student').strip() or 'Student'
+                                    ok, result = _issue_password_reset_token(
+                                        cursor,
+                                        email=email_in,
+                                        account_type='student',
+                                        account_id=portal_user['id'],
+                                        full_name=full_name,
+                                    )
+                                    if not ok:
+                                        error = (
+                                            'Could not send the verification email. Ask the school to check email settings, '
+                                            'or try again later.'
+                                        )
+                                    else:
+                                        connection.commit()
+                                        _clear_student_password_reset_session()
+                                        session['pwd_reset_email'] = result
+                                        session['pwd_reset_account_type'] = 'student'
+                                        session.pop('pwd_reset_admission', None)
+                                        flash(
+                                            'We sent a 6-digit code to your email. Enter it on the next page with your new password.',
+                                            'success',
+                                        )
+                                        return redirect(url_for('student_reset_password'))
+                else:
+                    error = 'Invalid step.'
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+        if error:
+            flash(error, 'error')
+            return redirect(url_for('student_forgot_password'))
+
+    code_sess = session.get('student_pwd_reset_code')
+    masked_email = ''
+    if code_sess:
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    portal_user = _fetch_student_portal_user(cursor, code_sess)
+                    if portal_user:
+                        masked_email = _mask_email_for_display(portal_user.get('email') or '')
+            except Exception as e:
+                print(f"student_forgot_password masked email: {e}")
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    step = 2 if code_sess else 1
+    return render_template(
+        'student_forgot_password.html',
+        step=step,
+        code_prefill=code_prefill or code_sess or '',
+        portal_code_display=code_sess or '',
         masked_email=masked_email,
     )
 
@@ -13237,10 +14156,7 @@ def parent_portal_setup():
                                         """,
                                         (parent_name, email, ph, canonical_sid),
                                     )
-                                    cursor.execute(
-                                        "UPDATE parents SET email = %s WHERE student_id = %s",
-                                        (email, canonical_sid),
-                                    )
+                                    _sync_parent_portal_email(cursor, canonical_sid, email)
                                     connection.commit()
                                 except IntegrityError:
                                     connection.rollback()
@@ -13484,10 +14400,7 @@ def login_parent_register():
                     (parent_name, email, ph, canonical_sid),
                 )
                 new_id = cursor.lastrowid
-                cursor.execute(
-                    "UPDATE parents SET email = %s WHERE student_id = %s",
-                    (email, canonical_sid),
-                )
+                _sync_parent_portal_email(cursor, canonical_sid, email)
                 connection.commit()
             except IntegrityError:
                 connection.rollback()
@@ -13836,84 +14749,51 @@ def login_select_role():
 
 @app.route('/retrieve-password', methods=['GET', 'POST'])
 def retrieve_password():
-    """Request a verification code by email (matches employee or parent/student account automatically)."""
-    generic_notice = (
-        'If an account matches this email, we sent a verification code. Check your inbox (and spam).'
-    )
-    if request.method == 'POST':
-        allowed, retry_after = check_rate_limit('retrieve_password_post', limit=8, window_sec=300)
-        if not allowed:
-            flash(rate_limit_flash_message(retry_after), 'error')
-            return redirect(url_for('retrieve_password'))
-
-        if not validate_portal_csrf(request.form.get('csrf_token')):
-            flash('Your session expired. Refresh the page and submit again.', 'error')
-            return redirect(url_for('retrieve_password'))
-
-        email = request.form.get('email', '').strip()
-        if not email:
-            flash('Please enter your email.', 'error')
-            return redirect(url_for('retrieve_password'))
-
-        account = lookup_account_for_password_reset(email)
-        if not account:
-            flash(generic_notice, 'info')
-            return redirect(url_for('retrieve_password'))
-
-        account_type = account['account_type']
-        code = ''.join(secrets.choice('0123456789') for _ in range(6))
-        code_hash = generate_password_hash(code)
-        expires_at = datetime.utcnow() + timedelta(minutes=30)
-        to_addr = account['email']
-
-        if not send_password_reset_email(to_addr, account['full_name'], code):
-            flash(
-                'Could not send the verification email. Your school can set SMTP under Integration Settings, '
-                'or the server administrator can set MAIL_* environment variables.',
-                'error',
-            )
-            return redirect(url_for('retrieve_password'))
-
-        connection = get_db_connection()
-        if not connection:
-            flash('Database connection error. Please try again later.', 'error')
-            return redirect(url_for('retrieve_password'))
-        try:
-            with connection.cursor() as cursor:
-                email_norm = normalize_login_email(email)
-                cursor.execute("""
-                    DELETE FROM password_reset_tokens
-                    WHERE LOWER(TRIM(email)) = %s AND consumed_at IS NULL
-                """, (email_norm,))
-                cursor.execute("""
-                    INSERT INTO password_reset_tokens (email, account_type, account_id, code_hash, expires_at)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (email_norm, account_type, account['id'], code_hash, expires_at))
-                connection.commit()
-        except Exception as e:
-            print(f"retrieve_password token insert: {e}")
-            try:
-                connection.rollback()
-            except Exception:
-                pass
-            flash('We could not save your reset request. Please try again.', 'error')
-            return redirect(url_for('retrieve_password'))
-        finally:
-            try:
-                connection.close()
-            except Exception:
-                pass
-
-        session['pwd_reset_email'] = normalize_login_email(email)
-        flash('We sent a code to your email. Enter it on the next page with your new password.', 'success')
-        return redirect(url_for('reset_password'))
-
-    return render_template('retrieve_password.html')
+    """Legacy URL — staff, student, and parent each have their own reset flow."""
+    flash('Choose the password reset link for your role on the sign-in page.', 'info')
+    return redirect(url_for('login'))
 
 
-@app.route('/reset-password', methods=['GET', 'POST'])
-def reset_password():
-    """Enter verification code and set a new password."""
+def _reset_password_context(account_type):
+    role = (account_type or 'employee').strip().lower()
+    titles = {
+        'employee': 'Set new staff password',
+        'student': 'Set new student password',
+        'parent': 'Set new parent password',
+    }
+    subtitles = {
+        'employee': 'Enter the code sent to your staff email, then choose a new password.',
+        'student': 'Enter the code sent to your student email, then choose a new password.',
+        'parent': 'Enter the code sent to your parent/guardian email, then choose a new password.',
+    }
+    forgot_routes = {
+        'employee': 'employee_forgot_password',
+        'student': 'student_forgot_password',
+        'parent': 'parent_forgot_password',
+    }
+    reset_routes = {
+        'employee': 'employee_reset_password',
+        'student': 'student_reset_password',
+        'parent': 'parent_reset_password',
+    }
+    return {
+        'account_type': role,
+        'page_title': titles.get(role, 'Set new password'),
+        'page_subtitle': subtitles.get(role, 'Enter the code from your email, then choose your new password.'),
+        'forgot_password_url': url_for(forgot_routes.get(role, 'login')),
+        'reset_form_action': url_for(reset_routes.get(role, 'reset_password')),
+        'login_url': _password_reset_login_url(
+            role,
+            session.get('pwd_reset_admission', ''),
+        ),
+    }
+
+
+def _handle_reset_password(account_type):
+    """Shared handler for role-specific password reset pages."""
+    ctx = _reset_password_context(account_type)
+    preset_email = session.get('pwd_reset_email') or request.args.get('email', '').strip()
+
     if request.method == 'POST':
         email = normalize_login_email(request.form.get('email', ''))
         reset_code = (request.form.get('reset_code') or '').strip().replace(' ', '')
@@ -13921,11 +14801,15 @@ def reset_password():
         confirm_password = request.form.get('confirm_password', '')
 
         def _render_form():
-            return render_template('reset_password.html', preset_email=email)
+            return render_template(
+                'reset_password.html',
+                preset_email=email,
+                **ctx,
+            )
 
         if not email:
             flash('Please enter the email you used when requesting the code.', 'error')
-            return redirect(url_for('reset_password'))
+            return redirect(url_for(f'{account_type}_reset_password'))
 
         if not reset_code:
             flash('Please enter the verification code from your email.', 'error')
@@ -13946,17 +14830,23 @@ def reset_password():
             return _render_form()
         try:
             with connection.cursor() as cursor:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT * FROM password_reset_tokens
-                    WHERE LOWER(TRIM(email)) = %s AND consumed_at IS NULL AND expires_at > %s
+                    WHERE LOWER(TRIM(email)) = %s AND account_type = %s
+                      AND consumed_at IS NULL AND expires_at > %s
                     ORDER BY id DESC LIMIT 1
-                """, (email, datetime.utcnow()))
+                    """,
+                    (email, account_type, datetime.utcnow()),
+                )
                 token_row = cursor.fetchone()
                 if not token_row or not check_password_hash(token_row['code_hash'], reset_code):
-                    flash('Invalid or expired verification code. Request a new code from Retrieve password.', 'error')
+                    flash(
+                        f'Invalid or expired verification code. Request a new code from the {account_type} reset page.',
+                        'error',
+                    )
                     return _render_form()
 
-                account_type = token_row['account_type']
                 new_hash = generate_password_hash(new_password)
                 if account_type == 'employee':
                     cursor.execute(
@@ -13974,7 +14864,7 @@ def reset_password():
                 )
                 connection.commit()
         except Exception as e:
-            print(f"reset_password error: {e}")
+            print(f"reset_password ({account_type}) error: {e}")
             try:
                 connection.rollback()
             except Exception:
@@ -13987,12 +14877,52 @@ def reset_password():
             except Exception:
                 pass
 
+        admission = session.pop('pwd_reset_admission', None)
         session.pop('pwd_reset_email', None)
+        session.pop('pwd_reset_account_type', None)
         flash('Your password has been updated. You can sign in now.', 'success')
-        return redirect(url_for('login'))
+        return redirect(_password_reset_login_url(account_type, admission or ''))
 
-    preset_email = session.get('pwd_reset_email') or request.args.get('email', '').strip()
-    return render_template('reset_password.html', preset_email=preset_email)
+    return render_template('reset_password.html', preset_email=preset_email, **ctx)
+
+
+@app.route('/employee-reset-password', methods=['GET', 'POST'])
+@app.route('/employee/reset-password', methods=['GET', 'POST'])
+@app.route('/dashboard/employee/reset-password', methods=['GET', 'POST'])
+def employee_reset_password():
+    """Staff: enter verification code and set a new password."""
+    return _handle_reset_password('employee')
+
+
+@app.route('/student-reset-password', methods=['GET', 'POST'])
+@app.route('/student/reset-password', methods=['GET', 'POST'])
+@app.route('/dashboard/student/reset-password', methods=['GET', 'POST'])
+def student_reset_password():
+    """Student: enter verification code and set a new password."""
+    return _handle_reset_password('student')
+
+
+@app.route('/parent-reset-password', methods=['GET', 'POST'])
+@app.route('/parent/reset-password', methods=['GET', 'POST'])
+@app.route('/dashboard/parent/reset-password', methods=['GET', 'POST'])
+def parent_reset_password():
+    """Parent: enter verification code and set a new password."""
+    return _handle_reset_password('parent')
+
+
+@app.route('/reset-password', methods=['GET', 'POST'])
+def reset_password():
+    """Legacy URL — redirect to the role-specific reset page when possible."""
+    account_type = (session.get('pwd_reset_account_type') or request.args.get('role') or '').strip().lower()
+    routes = {
+        'employee': 'employee_reset_password',
+        'student': 'student_reset_password',
+        'parent': 'parent_reset_password',
+    }
+    if account_type in routes:
+        return redirect(url_for(routes[account_type]))
+    flash('Start from the password reset link for your role on the sign-in page.', 'info')
+    return redirect(url_for('login'))
 
 
 @app.route('/logout')
@@ -18148,29 +19078,35 @@ def _student_row_to_detail_dict(student):
     """Build student detail JSON from a DB row (students + parents join)."""
     if not student:
         return None
+
+    def _text(val):
+        if val is None:
+            return ''
+        return str(val).strip()
+
     return {
         'id': student.get('id'),
-        'student_id': student.get('student_id'),
-        'full_name': student.get('full_name'),
-        'date_of_birth': str(student.get('date_of_birth')) if student.get('date_of_birth') else None,
-        'gender': student.get('gender'),
-        'current_grade': student.get('current_grade'),
-        'previous_school': student.get('previous_school'),
-        'assessment_number': student.get('assessment_number'),
-        'address': student.get('address'),
-        'medical_info': student.get('medical_info'),
-        'special_needs': student.get('special_needs'),
-        'student_category': student.get('student_category'),
-        'sponsor_name': student.get('sponsor_name'),
-        'sponsor_phone': student.get('sponsor_phone'),
-        'sponsor_email': student.get('sponsor_email'),
-        'status': student.get('status'),
-        'parent_name': student.get('parent_name'),
-        'parent_phone': student.get('parent_phone'),
-        'parent_email': student.get('parent_email'),
-        'relationship': student.get('relationship'),
-        'emergency_contact': student.get('emergency_contact'),
-        'profile_image': student.get('profile_image'),
+        'student_id': _text(student.get('student_id')),
+        'full_name': _text(student.get('full_name')),
+        'date_of_birth': _format_date_input_value(student.get('date_of_birth')),
+        'gender': _text(student.get('gender')),
+        'current_grade': _text(student.get('current_grade')),
+        'previous_school': _text(student.get('previous_school')),
+        'assessment_number': _text(student.get('assessment_number')),
+        'address': _text(student.get('address')),
+        'medical_info': _text(student.get('medical_info')),
+        'special_needs': _text(student.get('special_needs')),
+        'student_category': _text(student.get('student_category')),
+        'sponsor_name': _text(student.get('sponsor_name')),
+        'sponsor_phone': _text(student.get('sponsor_phone')),
+        'sponsor_email': _text(student.get('sponsor_email')),
+        'status': _text(student.get('status')) or 'pending approval',
+        'parent_name': _text(student.get('parent_name')),
+        'parent_phone': _text(student.get('parent_phone')),
+        'parent_email': _text(student.get('parent_email')),
+        'relationship': _text(student.get('relationship')),
+        'emergency_contact': _text(student.get('emergency_contact')),
+        'profile_image': _text(student.get('profile_image')),
         'profile_image_url': _student_profile_image_url(student.get('profile_image')),
         'fingerprint_count': student.get('fingerprint_count'),
         'created_at': str(student.get('created_at')) if student.get('created_at') else None,
@@ -26830,11 +27766,23 @@ def student_management():
     can_edit = check_permission_or_role('edit_students', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant'])
     can_delete = check_permission_or_role('delete_students', ['head of institution', 'deputy head of institution'])
 
+    academic_levels = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                academic_levels = _fetch_active_academic_levels_for_forms(cursor)
+        except Exception as e:
+            print(f"student_management academic levels: {e}")
+        finally:
+            connection.close()
+
     return render_template(
         'dashboards/student_management.html',
         can_add=can_add,
         can_edit=can_edit,
         can_delete=can_delete,
+        academic_levels=academic_levels,
     )
 
 
@@ -26991,6 +27939,7 @@ def update_student(student_id):
     gender = (data.get('gender') or '').strip().upper()
     current_grade = (data.get('current_grade') or '').strip()
     previous_school = (data.get('previous_school') or '').strip()
+    assessment_number = (data.get('assessment_number') or '').strip()
     address = (data.get('address') or '').strip()
     medical_info = (data.get('medical_info') or '').strip()
     special_needs = (data.get('special_needs') or '').strip()
@@ -27057,23 +28006,23 @@ def update_student(student_id):
                     cursor.execute("""
                     UPDATE students 
                     SET student_id = %s, full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s, 
-                        previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
+                        previous_school = %s, assessment_number = %s, address = %s, medical_info = %s, special_needs = %s,
                         profile_image = %s,
                         student_category = %s, sponsor_name = %s, sponsor_phone = %s, sponsor_email = %s,
                         status = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE student_id = %s
-                """, (new_student_id, full_name, date_of_birth, gender, current_grade, previous_school, address, 
+                """, (new_student_id, full_name, date_of_birth, gender, current_grade, previous_school, assessment_number, address, 
                       medical_info, special_needs, profile_image_path, student_category, sponsor_name, sponsor_phone, 
                       sponsor_email, status, student_id))
                 else:
                     cursor.execute("""
                     UPDATE students 
                     SET student_id = %s, full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s, 
-                        previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
+                        previous_school = %s, assessment_number = %s, address = %s, medical_info = %s, special_needs = %s,
                         student_category = %s, sponsor_name = %s, sponsor_phone = %s, sponsor_email = %s,
                         status = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE student_id = %s
-                """, (new_student_id, full_name, date_of_birth, gender, current_grade, previous_school, address, 
+                """, (new_student_id, full_name, date_of_birth, gender, current_grade, previous_school, assessment_number, address, 
                       medical_info, special_needs, student_category, sponsor_name, sponsor_phone, 
                       sponsor_email, status, student_id))
                 
@@ -27091,28 +28040,28 @@ def update_student(student_id):
                     cursor.execute("""
                     UPDATE students 
                     SET full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s, 
-                        previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
+                        previous_school = %s, assessment_number = %s, address = %s, medical_info = %s, special_needs = %s,
                         profile_image = %s,
                         student_category = %s, sponsor_name = %s, sponsor_phone = %s, sponsor_email = %s,
                         status = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE student_id = %s
-                """, (full_name, date_of_birth, gender, current_grade, previous_school, address, 
+                """, (full_name, date_of_birth, gender, current_grade, previous_school, assessment_number, address, 
                       medical_info, special_needs, profile_image_path, student_category, sponsor_name, sponsor_phone, 
                       sponsor_email, status, student_id))
                 else:
                     cursor.execute("""
                     UPDATE students 
                     SET full_name = %s, date_of_birth = %s, gender = %s, current_grade = %s, 
-                        previous_school = %s, address = %s, medical_info = %s, special_needs = %s,
+                        previous_school = %s, assessment_number = %s, address = %s, medical_info = %s, special_needs = %s,
                         student_category = %s, sponsor_name = %s, sponsor_phone = %s, sponsor_email = %s,
                         status = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE student_id = %s
-                """, (full_name, date_of_birth, gender, current_grade, previous_school, address, 
+                """, (full_name, date_of_birth, gender, current_grade, previous_school, assessment_number, address, 
                       medical_info, special_needs, student_category, sponsor_name, sponsor_phone, 
                       sponsor_email, status, student_id))
             
             # Update or insert parent
-            if parent_name and parent_phone and parent_email:
+            if parent_name and parent_phone:
                 cursor.execute("""
                     SELECT id FROM parents WHERE student_id = %s
                 """, (new_student_id,))
@@ -27130,6 +28079,9 @@ def update_student(student_id):
                         INSERT INTO parents (student_id, full_name, phone, email, relationship, emergency_contact)
                         VALUES (%s, %s, %s, %s, %s, %s)
                     """, (new_student_id, parent_name, parent_phone, parent_email, relationship, emergency_contact))
+
+            if parent_email:
+                _sync_parent_portal_email(cursor, new_student_id, parent_email)
             
             if profile_image_path and old_profile_image and old_profile_image != profile_image_path:
                 _remove_student_profile_image_file(old_profile_image)
@@ -34601,6 +35553,292 @@ def _load_schedule_profiles_and_settings(cursor, selected_profile_id: str):
     return schedule_settings, schedule_profiles
 
 
+@app.route('/dashboard/employee/academic-calendar')
+@app.route('/dashboard/parent/academic-calendar')
+@app.route('/parent/academic-calendar')
+@app.route('/dashboard/student/academic-calendar')
+@app.route('/student/academic-calendar')
+@login_required
+def academic_calendar():
+    """School academic calendar — activities for the selected year."""
+    user_role = session.get('role', '').lower()
+    viewing_as = (session.get('viewing_as_role') or session.get('viewing_as_employee_role') or '').lower()
+    portal = 'employee'
+    if user_role == 'parent' or viewing_as == 'parent':
+        portal = 'parent'
+    elif user_role == 'student' or viewing_as == 'student':
+        portal = 'student'
+
+    requested_year_id = request.args.get('academic_year_id', type=int)
+    if 'term_id' in request.args:
+        raw_term_id = request.args.get('term_id', type=int)
+        requested_term_id = 0 if raw_term_id in (None, 0) else raw_term_id
+    else:
+        requested_term_id = None
+    academic_years = []
+    calendar_terms = []
+    selected_year_id = None
+    selected_year = None
+    selected_term_id = None
+    selected_term = None
+    calendar_activities = []
+    calendar_grid = []
+    view_month = None
+    month_label = ''
+    calendar_prev_url = ''
+    calendar_next_url = ''
+    calendar_today_url = ''
+    can_prev_month = False
+    can_next_month = False
+    calendar_year_label = ''
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_academic_calendar_activities_table(cursor)
+                connection.commit()
+                selected_year_id, academic_years = _resolve_calendar_year_id(cursor, requested_year_id)
+                if selected_year_id:
+                    for y in academic_years:
+                        if int(y.get('id')) == int(selected_year_id):
+                            selected_year = y
+                            break
+                    selected_term_id, calendar_terms, selected_term = _resolve_calendar_term_id(
+                        cursor, selected_year_id, requested_term_id, default_to_current=True,
+                    )
+                    activities = _fetch_academic_calendar_activities(
+                        cursor, selected_year_id, selected_term_id,
+                    )
+                    calendar_view = _prepare_academic_calendar_view(
+                        activities, selected_year, selected_term,
+                    )
+                    calendar_activities = calendar_view['activities']
+                    calendar_year_label = calendar_view.get('year_label') or ''
+                    view_month = (request.args.get('month') or '').strip()
+                    if not view_month or len(view_month) != 7:
+                        view_month = calendar_view['initial_month']
+                    try:
+                        vy, vm = [int(x) for x in view_month.split('-')]
+                        if vm < 1 or vm > 12:
+                            raise ValueError('invalid month')
+                    except (TypeError, ValueError):
+                        vy, vm = [int(x) for x in calendar_view['initial_month'].split('-')]
+                        view_month = calendar_view['initial_month']
+                    calendar_grid = _build_calendar_month_grid(
+                        vy, vm,
+                        calendar_view['date_map'],
+                        calendar_view['range_start'],
+                        calendar_view['range_end'],
+                    )
+                    month_label = date_cls(vy, vm, 1).strftime('%B %Y')
+                    range_month_start = calendar_view['range_start'][:7]
+                    range_month_end = calendar_view['range_end'][:7]
+                    py, pm = _shift_calendar_month(vy, vm, -1)
+                    ny, nm = _shift_calendar_month(vy, vm, 1)
+                    prev_month = f'{py}-{pm:02d}'
+                    next_month = f'{ny}-{nm:02d}'
+                    can_prev_month = not range_month_start or prev_month >= range_month_start
+                    can_next_month = not range_month_end or next_month <= range_month_end
+                    base_path = 'academic-calendar'
+                    if portal == 'parent':
+                        base = parent_dashboard_path(base_path)
+                    elif portal == 'student':
+                        base = student_dashboard_path(base_path)
+                    else:
+                        base = employee_dashboard_path(base_path)
+                    q = lambda m: base + '?' + _calendar_view_query(
+                        selected_year_id, selected_term_id, m,
+                    )
+                    calendar_prev_url = q(prev_month) if can_prev_month else ''
+                    calendar_next_url = q(next_month) if can_next_month else ''
+                    calendar_today_url = q(calendar_view['initial_month'])
+        except Exception as e:
+            print(f"academic_calendar: {e}")
+            flash('Could not load academic calendar.', 'error')
+        finally:
+            connection.close()
+
+    return render_template(
+        'dashboards/academic_calendar.html',
+        role=user_role,
+        portal=portal,
+        academic_years=academic_years,
+        calendar_terms=calendar_terms,
+        selected_year_id=selected_year_id,
+        selected_year=selected_year,
+        selected_term_id=selected_term_id,
+        selected_term=selected_term,
+        calendar_activities=calendar_activities,
+        calendar_grid=calendar_grid,
+        view_month=view_month,
+        month_label=month_label,
+        calendar_year_label=calendar_year_label,
+        calendar_prev_url=calendar_prev_url,
+        calendar_next_url=calendar_next_url,
+        calendar_today_url=calendar_today_url,
+        can_prev_month=can_prev_month,
+        can_next_month=can_next_month,
+        can_manage_calendar=_academic_calendar_can_manage() and portal == 'employee',
+        category_labels=ACADEMIC_CALENDAR_CATEGORY_LABELS,
+        category_colors=ACADEMIC_CALENDAR_CATEGORY_COLORS,
+    )
+
+
+@app.route('/dashboard/employee/academic-calendar/manage', methods=['GET', 'POST'])
+@login_required
+def academic_calendar_manage():
+    """Register and maintain academic calendar activities."""
+    if not _academic_calendar_can_manage():
+        flash('You do not have permission to update the academic calendar.', 'error')
+        return redirect(employee_dashboard_path('academic-calendar'))
+
+    user_role = session.get('role', '').lower()
+    requested_year_id = request.args.get('academic_year_id', type=int) or request.form.get('academic_year_id', type=int)
+    if 'term_id' in request.args:
+        raw_term_id = request.args.get('term_id', type=int)
+        requested_term_id = 0 if raw_term_id in (None, 0) else raw_term_id
+    elif 'term_id' in request.form:
+        raw_term_id = request.form.get('term_id', type=int)
+        requested_term_id = 0 if raw_term_id in (None, 0) else raw_term_id
+    else:
+        requested_term_id = None
+    academic_years = []
+    calendar_terms = []
+    selected_year_id = None
+    selected_year = None
+    selected_term_id = None
+    selected_term = None
+    activities = []
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(employee_dashboard_path('academic-calendar'))
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_academic_calendar_activities_table(cursor)
+            if request.method == 'POST':
+                action = (request.form.get('action') or '').strip().lower()
+                filter_term_id = request.form.get('filter_term_id', type=int)
+                if action in ('add', 'edit'):
+                    parsed, err = _parse_calendar_activity_form(request.form)
+                    if err:
+                        flash(err, 'error')
+                    elif action == 'edit':
+                        activity_id = request.form.get('activity_id', type=int)
+                        if not activity_id:
+                            flash('Activity not found.', 'error')
+                        else:
+                            year_id = parsed['year_id']
+                            term_valid, term_id_raw = _validate_calendar_activity_term(
+                                cursor, parsed['term_id_raw'], year_id,
+                            )
+                            if not term_valid:
+                                flash('Selected term does not belong to that academic year.', 'error')
+                            else:
+                                cursor.execute(
+                                    """
+                                    UPDATE academic_calendar_activities
+                                    SET academic_year_id = %s, term_id = %s, activity_title = %s,
+                                        activity_date = %s, end_date = %s, category = %s, description = %s
+                                    WHERE id = %s AND COALESCE(status, 'active') = 'active'
+                                    """,
+                                    (
+                                        year_id, term_id_raw, parsed['title'], parsed['activity_date'],
+                                        parsed['end_date'], parsed['category'], parsed['description'],
+                                        int(activity_id),
+                                    ),
+                                )
+                                connection.commit()
+                                flash('Activity updated.', 'success')
+                                return redirect(
+                                    employee_dashboard_path('academic-calendar/manage')
+                                    + '?' + _calendar_manage_redirect_query(year_id, filter_term_id),
+                                )
+                    else:
+                        year_id = parsed['year_id']
+                        term_valid, term_id_raw = _validate_calendar_activity_term(
+                            cursor, parsed['term_id_raw'], year_id,
+                        )
+                        if not term_valid:
+                            flash('Selected term does not belong to that academic year.', 'error')
+                        else:
+                            created_by = session.get('user_id')
+                            cursor.execute(
+                                """
+                                INSERT INTO academic_calendar_activities
+                                    (academic_year_id, term_id, activity_title, activity_date, end_date,
+                                     category, description, created_by)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                """,
+                                (
+                                    year_id, term_id_raw, parsed['title'], parsed['activity_date'],
+                                    parsed['end_date'], parsed['category'], parsed['description'], created_by,
+                                ),
+                            )
+                            connection.commit()
+                            flash('Activity added to the academic calendar.', 'success')
+                            return redirect(
+                                employee_dashboard_path('academic-calendar/manage')
+                                + '?' + _calendar_manage_redirect_query(year_id, filter_term_id or term_id_raw),
+                            )
+                elif action == 'delete':
+                    activity_id = request.form.get('activity_id', type=int)
+                    year_id = request.form.get('academic_year_id', type=int)
+                    if activity_id and year_id:
+                        cursor.execute(
+                            """
+                            UPDATE academic_calendar_activities
+                            SET status = 'deleted'
+                            WHERE id = %s AND academic_year_id = %s
+                              AND COALESCE(status, 'active') = 'active'
+                            """,
+                            (int(activity_id), int(year_id)),
+                        )
+                        connection.commit()
+                        if cursor.rowcount:
+                            flash('Activity deleted.', 'success')
+                        else:
+                            flash('Activity not found or already deleted.', 'error')
+                        return redirect(
+                            employee_dashboard_path('academic-calendar/manage')
+                            + '?' + _calendar_manage_redirect_query(year_id, filter_term_id),
+                        )
+
+            selected_year_id, academic_years = _resolve_calendar_year_id(cursor, requested_year_id)
+            if selected_year_id:
+                for y in academic_years:
+                    if int(y.get('id')) == int(selected_year_id):
+                        selected_year = y
+                        break
+                selected_term_id, calendar_terms, selected_term = _resolve_calendar_term_id(
+                    cursor, selected_year_id, requested_term_id,
+                )
+                activities = _fetch_academic_calendar_activities(
+                    cursor, selected_year_id, selected_term_id,
+                )
+    except Exception as e:
+        print(f"academic_calendar_manage: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Could not save calendar activity.', 'error')
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/academic_calendar_manage.html',
+        role=user_role,
+        academic_years=academic_years,
+        calendar_terms=calendar_terms,
+        selected_year_id=selected_year_id,
+        selected_year=selected_year,
+        selected_term_id=selected_term_id,
+        selected_term=selected_term,
+        activities=activities,
+        category_labels=ACADEMIC_CALENDAR_CATEGORY_LABELS,
+    )
+
+
 @app.route('/dashboard/employee/academic-settings')
 @login_required
 def academic_settings():
@@ -40005,13 +41243,427 @@ def get_terms_for_year():
 
 
 def _academic_classes_portal_allowed():
-    """Curriculum coordinator, principal, or technician view-as those roles."""
+    """Curriculum coordinator, institution leadership, or technician view-as those roles."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
-    return is_academic_coordinator or is_technician or is_principal
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
+    return is_academic_coordinator or is_technician or is_principal or is_deputy
+
+
+def _attach_teachers_to_academic_level_subjects(cursor, academic_levels):
+    """Attach teachers[] to each subject_allocation and a deduped teachers list on each level."""
+    if not academic_levels:
+        return academic_levels
+    from collections import defaultdict
+    level_ids = []
+    for level in academic_levels:
+        try:
+            level_ids.append(int(level.get('id')))
+        except (TypeError, ValueError):
+            continue
+    if not level_ids:
+        return academic_levels
+    teachers_by_pair = defaultdict(list)
+    seen_by_pair = defaultdict(set)
+    try:
+        ph = ','.join(['%s'] * len(level_ids))
+        cursor.execute(
+            f"""
+            SELECT tsa.academic_level_id, tsa.subject_id,
+                   e.id AS teacher_id, e.full_name AS teacher_name,
+                   {_employee_staff_identity_sql('e')} AS teacher_employee_id
+            FROM teacher_subject_assignments tsa
+            LEFT JOIN employees e ON e.id = tsa.teacher_id
+            WHERE tsa.academic_level_id IN ({ph})
+            ORDER BY tsa.academic_level_id, tsa.subject_id, e.full_name ASC
+            """,
+            tuple(level_ids),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                lid = row.get('academic_level_id')
+                sid = row.get('subject_id')
+                tid = row.get('teacher_id')
+                tname = (row.get('teacher_name') or '').strip()
+                staff_id = (row.get('teacher_employee_id') or '').strip()
+            else:
+                lid = row[0] if len(row) > 0 else None
+                sid = row[1] if len(row) > 1 else None
+                tid = row[2] if len(row) > 2 else None
+                tname = (row[3] or '').strip() if len(row) > 3 else ''
+                staff_id = (row[4] or '').strip() if len(row) > 4 else ''
+            if lid is None or sid is None or tid is None:
+                continue
+            key = (int(lid), int(sid))
+            if int(tid) in seen_by_pair[key]:
+                continue
+            seen_by_pair[key].add(int(tid))
+            teachers_by_pair[key].append({
+                'teacher_id': int(tid),
+                'teacher_name': tname or 'Teacher',
+                'teacher_employee_id': staff_id,
+            })
+    except Exception as e:
+        print(f"_attach_teachers_to_academic_level_subjects: {e}")
+    for level in academic_levels:
+        lid = level.get('id')
+        try:
+            lid_i = int(lid)
+        except (TypeError, ValueError):
+            continue
+        by_id = {}
+        for subj in level.get('subject_allocations') or []:
+            sid = subj.get('subject_id')
+            try:
+                sid_i = int(sid)
+            except (TypeError, ValueError):
+                subj['teachers'] = []
+                continue
+            pair_teachers = teachers_by_pair.get((lid_i, sid_i), [])
+            subj['teachers'] = pair_teachers
+            for t in pair_teachers:
+                tid = t.get('teacher_id')
+                if tid is not None and tid not in by_id:
+                    by_id[tid] = t
+        level['teachers'] = list(by_id.values())
+        level['teacher_count'] = len(by_id)
+    return academic_levels
+
+
+def _fetch_class_teacher_for_level(cursor, level_id, academic_year_id=None):
+    """Class teacher assigned to one academic level for the current (or given) year."""
+    try:
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return None
+    ensure_class_teacher_assignments_table(cursor)
+    if not academic_year_id:
+        academic_year_id = _resolve_current_academic_year_id(cursor)
+    if not academic_year_id:
+        return None
+    try:
+        cursor.execute(
+            f"""
+            SELECT e.id AS teacher_id, e.full_name AS teacher_name,
+                   {_employee_staff_identity_sql('e')} AS teacher_employee_id
+            FROM class_teacher_assignments cta
+            INNER JOIN employees e ON e.id = cta.teacher_id
+            WHERE cta.academic_level_id = %s AND cta.academic_year_id = %s
+            LIMIT 1
+            """,
+            (level_id, int(academic_year_id)),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        if isinstance(row, dict):
+            return {
+                'teacher_id': row.get('teacher_id'),
+                'teacher_name': (row.get('teacher_name') or '').strip() or 'Class teacher',
+                'teacher_employee_id': (row.get('teacher_employee_id') or '').strip(),
+            }
+        return {
+            'teacher_id': row[0] if len(row) > 0 else None,
+            'teacher_name': (row[1] or '').strip() if len(row) > 1 else 'Class teacher',
+            'teacher_employee_id': (row[2] or '').strip() if len(row) > 2 else '',
+        }
+    except Exception as e:
+        print(f"_fetch_class_teacher_for_level: {e}")
+        return None
+
+
+def _fetch_level_attendance_term_summary(cursor, level_id, term_id=None):
+    """Whole-day class attendance summary for one academic level in a term."""
+    empty = {
+        'has_data': False,
+        'term_name': '',
+        'students_in_class': 0,
+        'present': 0,
+        'absent': 0,
+        'total_records': 0,
+        'pct': 0.0,
+    }
+    try:
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return empty
+    cursor.execute(
+        """
+        SELECT level_name FROM academic_levels
+        WHERE id = %s AND COALESCE(level_status, 'active') = 'active'
+        LIMIT 1
+        """,
+        (level_id,),
+    )
+    lr = cursor.fetchone()
+    if not lr:
+        return empty
+    level_name = (lr.get('level_name') if isinstance(lr, dict) else lr[0]) or ''
+    level_name = str(level_name).strip()
+    if not level_name:
+        return empty
+    term_name = ''
+    if not term_id:
+        _y, _yn, term_id, term_name = _get_current_academic_year_and_term(cursor)
+    else:
+        cursor.execute("SELECT term_name FROM terms WHERE id = %s LIMIT 1", (int(term_id),))
+        tr = cursor.fetchone()
+        if tr:
+            term_name = (tr.get('term_name') if isinstance(tr, dict) else tr[0]) or ''
+    if not term_id:
+        return empty
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS c FROM students
+            WHERE TRIM(COALESCE(current_grade, '')) = %s
+              AND LOWER(TRIM(COALESCE(status, ''))) = 'in session'
+            """,
+            (level_name,),
+        )
+        crow = cursor.fetchone()
+        students_in_class = int((crow.get('c') if isinstance(crow, dict) else crow[0]) or 0) if crow else 0
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN sar.present = 1 THEN 1 ELSE 0 END) AS present
+            FROM student_attendance_records sar
+            INNER JOIN students s ON s.student_id = sar.student_id
+            WHERE sar.term_id = %s
+              AND TRIM(COALESCE(s.current_grade, '')) = %s
+              AND {_attendance_class_day_sql('sar')}
+            """,
+            (int(term_id), level_name),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return {**empty, 'term_name': term_name, 'students_in_class': students_in_class}
+        total = int((row.get('total') if isinstance(row, dict) else row[0]) or 0)
+        present = int((row.get('present') if isinstance(row, dict) else row[1]) or 0)
+        absent = max(0, total - present)
+        return {
+            'has_data': total > 0,
+            'term_name': term_name,
+            'students_in_class': students_in_class,
+            'present': present,
+            'absent': absent,
+            'total_records': total,
+            'pct': round(100.0 * present / total, 1) if total else 0.0,
+        }
+    except Exception as e:
+        print(f"_fetch_level_attendance_term_summary: {e}")
+        return empty
+
+
+def _timetable_time_key(time_val):
+    s = str(time_val or '').strip()
+    if not s:
+        return ''
+    m = re.match(r'^(\d{1,2}:\d{2})', s)
+    return m.group(1) if m else s
+
+
+def _fetch_class_timetable_entries(cursor, level_id, term_id=None):
+    """Timetable slots for one academic level (optional term filter)."""
+    try:
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return []
+    query = f"""
+        SELECT t.day_of_week, t.time_slot, t.teacher_id, t.subject_id,
+               e.full_name AS teacher_name, {_employee_staff_identity_sql('e')} AS staff_employee_number,
+               e.employee_id AS portal_employee_id,
+               s.subject_name, s.subject_code
+        FROM timetables t
+        LEFT JOIN employees e ON t.teacher_id = e.id
+        LEFT JOIN subjects s ON s.id = t.subject_id
+        WHERE t.academic_level_id = %s
+    """
+    params = [level_id]
+    if term_id:
+        query += " AND t.term_id = %s"
+        params.append(int(term_id))
+    query += " ORDER BY t.day_of_week, t.time_slot"
+    cursor.execute(query, tuple(params))
+    entries = []
+    for entry in cursor.fetchall() or []:
+        if isinstance(entry, dict):
+            entries.append({
+                'day': entry.get('day_of_week', '') or '',
+                'time': entry.get('time_slot', '') or '',
+                'teacher_id': entry.get('teacher_id'),
+                'subject_id': entry.get('subject_id'),
+                'teacher_name': entry.get('teacher_name', '') or '',
+                'staff_employee_number': entry.get('staff_employee_number', '') or '',
+                'portal_employee_id': entry.get('portal_employee_id', '') or '',
+                'subject_name': entry.get('subject_name', '') or '',
+                'subject_code': entry.get('subject_code', '') or '',
+            })
+        else:
+            entries.append({
+                'day': entry[0] if len(entry) > 0 else '',
+                'time': entry[1] if len(entry) > 1 else '',
+                'teacher_id': entry[2] if len(entry) > 2 else None,
+                'subject_id': entry[3] if len(entry) > 3 else None,
+                'teacher_name': entry[4] if len(entry) > 4 else '',
+                'staff_employee_number': entry[5] if len(entry) > 5 else '',
+                'portal_employee_id': entry[6] if len(entry) > 6 else '',
+                'subject_name': entry[7] if len(entry) > 7 else '',
+                'subject_code': entry[8] if len(entry) > 8 else '',
+            })
+    return entries
+
+
+def _build_timetable_grid_data(entries, settings):
+    """Precompute days, time columns, and cell lookup for class timetable display."""
+    settings = settings or {}
+    study_days = [d.strip() for d in str(settings.get('study_days') or '').split(',') if d.strip()]
+    if not study_days:
+        study_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    class_times = settings.get('class_times') or []
+    if not isinstance(class_times, list):
+        class_times = []
+    configured_starts = []
+    time_ranges = {}
+    for ct in class_times:
+        if not isinstance(ct, dict):
+            continue
+        start = str(ct.get('start_time') or '').strip()
+        if not start:
+            continue
+        configured_starts.append(start)
+        end = str(ct.get('end_time') or '').strip()
+        tk = _timetable_time_key(start)
+        time_ranges[tk] = f"{start} - {end}" if end else start
+    from_data = [str(e.get('time') or '').strip() for e in (entries or []) if e.get('time')]
+    raw_times = configured_starts + from_data
+    by_key = {}
+    for t in raw_times:
+        tk = _timetable_time_key(t)
+        if not tk:
+            continue
+        if tk not in by_key or len(str(t)) >= len(str(by_key[tk])):
+            by_key[tk] = t
+    time_slots = sorted(by_key.values(), key=lambda x: _timetable_time_key(x))
+    grid = {}
+    for e in entries or []:
+        day = str(e.get('day') or '').strip()
+        tk = _timetable_time_key(e.get('time'))
+        if not day or not tk:
+            continue
+        grid.setdefault(day, {}).setdefault(tk, []).append(e)
+    rows = []
+    for day in study_days:
+        cells = []
+        for t in time_slots:
+            tk = _timetable_time_key(t)
+            cells.append({
+                'time': t,
+                'time_label': time_ranges.get(tk, t),
+                'entries': grid.get(day, {}).get(tk, []),
+            })
+        rows.append({'day': day, 'day_short': day[:3] if day else '', 'cells': cells})
+    return {
+        'days': study_days,
+        'time_slots': time_slots,
+        'time_ranges': time_ranges,
+        'grid': grid,
+        'rows': rows,
+        'profile_name': settings.get('profile_name', '') or '',
+        'slot_count': len(entries or []),
+    }
+
+
+def _fetch_class_attendance_term_analytics(cursor, level_name, term_id=None):
+    """Attendance analytics for one class: summary plus per-day breakdown in a term."""
+    empty = {
+        'has_data': False,
+        'present_count': 0,
+        'absent_count': 0,
+        'total_records': 0,
+        'overall_pct': 0.0,
+        'students_with_records': 0,
+        'by_day': [],
+    }
+    level_name = str(level_name or '').strip()
+    if not level_name:
+        return empty
+    if not term_id:
+        _y, _yn, term_id, _tn = _get_current_academic_year_and_term(cursor)
+    if not term_id:
+        return empty
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT sar.student_id) AS c
+            FROM student_attendance_records sar
+            INNER JOIN students s ON s.student_id = sar.student_id
+            WHERE sar.term_id = %s
+              AND TRIM(COALESCE(s.current_grade, '')) = %s
+              AND LOWER(TRIM(COALESCE(s.status, ''))) = 'in session'
+              AND """ + _attendance_class_day_sql('sar'),
+            (int(term_id), level_name),
+        )
+        r0 = cursor.fetchone()
+        students_with_records = int((r0.get('c') if isinstance(r0, dict) else r0[0]) or 0) if r0 else 0
+        cursor.execute(
+            """
+            SELECT sar.attendance_date, sar.present
+            FROM student_attendance_records sar
+            INNER JOIN students s ON s.student_id = sar.student_id
+            WHERE sar.term_id = %s
+              AND TRIM(COALESCE(s.current_grade, '')) = %s
+              AND LOWER(TRIM(COALESCE(s.status, ''))) = 'in session'
+              AND """ + _attendance_class_day_sql('sar') + """
+            ORDER BY sar.attendance_date ASC
+            """,
+            (int(term_id), level_name),
+        )
+        by_day = defaultdict(lambda: {'present': 0, 'total': 0})
+        present_total = 0
+        rows = cursor.fetchall() or []
+        for r in rows:
+            dt = r.get('attendance_date') if isinstance(r, dict) else r[0]
+            pr = r.get('present') if isinstance(r, dict) else r[1]
+            ds = dt.strftime('%Y-%m-%d') if hasattr(dt, 'strftime') else str(dt)[:10]
+            is_pr = _attendance_register_row_present(pr)
+            by_day[ds]['total'] += 1
+            if is_pr:
+                by_day[ds]['present'] += 1
+                present_total += 1
+        n = len(rows)
+        day_rows = []
+        for ds in sorted(by_day.keys()):
+            agg = by_day[ds]
+            t = agg['total']
+            p = agg['present']
+            try:
+                label = datetime.strptime(ds, '%Y-%m-%d').strftime('%a %d %b')
+            except Exception:
+                label = ds
+            day_rows.append({
+                'date_str': ds,
+                'label': label,
+                'present': p,
+                'absent': t - p,
+                'total': t,
+                'pct': round(100.0 * p / t, 1) if t else None,
+            })
+        return {
+            'has_data': n > 0,
+            'present_count': present_total,
+            'absent_count': max(0, n - present_total),
+            'total_records': n,
+            'overall_pct': round(100.0 * present_total / n, 1) if n else 0.0,
+            'students_with_records': students_with_records,
+            'by_day': day_rows,
+        }
+    except Exception as e:
+        print(f"_fetch_class_attendance_term_analytics: {e}")
+        return empty
 
 
 def _subject_progress_portal_allowed():
@@ -40250,193 +41902,55 @@ def _fetch_academic_levels_with_subject_allocations(cursor):
 @app.route('/dashboard/employee/classes-subjects')
 @login_required
 def classes_subjects():
-    """Classes & Subjects management page for academic coordinators"""
-    user_role = session.get('role', '').lower()
-    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    employee_id = session.get('employee_id') or session.get('user_id')
-    
-    # Check if user is academic coordinator or viewing as academic coordinator
-    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
-    is_technician = user_role == 'technician'
-    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
-    
-    # Allow academic coordinators, principals, and technicians
-    if not (is_academic_coordinator or is_technician or is_principal):
+    """Classes & Subjects management page for academic coordinators."""
+    if not _academic_classes_portal_allowed():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    
-    # Get academic levels for classes
-    connection = get_db_connection()
+
+    user_role = session.get('role', '').lower()
     academic_levels = []
-    
+    connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
-                # Get academic levels
-                cursor.execute("""
-                    SELECT id, level_category, level_name, level_description, level_status
-                    FROM academic_levels
-                    WHERE level_status = 'active'
-                    ORDER BY level_category, level_name ASC
-                """)
-                academic_levels_results = cursor.fetchall()
-                
-                for row in academic_levels_results:
-                    academic_levels.append({
-                        'id': row.get('id') if isinstance(row, dict) else row[0],
-                        'level_category': row.get('level_category', '') if isinstance(row, dict) else row[1],
-                        'level_name': row.get('level_name', '') if isinstance(row, dict) else row[2],
-                        'level_description': row.get('level_description', '') if isinstance(row, dict) else row[3],
-                        'level_status': row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
-                    })
-
-                # Per-level: subjects allocated to each academic level.
-                # Source of truth is subject_academic_levels so the page shows all
-                # registered level subjects, even when a teacher has not been assigned yet.
-                allocations_by_level = {}
-                try:
-                    cursor.execute("""
-                        SELECT sal.academic_level_id, sal.subject_id,
-                               s.subject_name, s.subject_code,
-                               COALESCE(s.status, 'active') AS subject_status
-                        FROM subject_academic_levels sal
-                        INNER JOIN academic_levels al
-                            ON sal.academic_level_id = al.id
-                           AND COALESCE(al.level_status, 'active') = 'active'
-                        INNER JOIN subjects s ON sal.subject_id = s.id
-                        ORDER BY al.level_name ASC, s.subject_name ASC
-                    """)
-                    assign_rows = cursor.fetchall() or []
-                    for arow in assign_rows:
-                        lid = arow.get('academic_level_id') if isinstance(arow, dict) else arow[0]
-                        if lid is None:
-                            continue
-                        subj_name = (arow.get('subject_name', '') if isinstance(arow, dict) else arow[2]) or ''
-                        subj_status = (arow.get('subject_status', 'active') if isinstance(arow, dict) else (arow[4] if len(arow) > 4 else 'active'))
-                        if str(subj_status or '').lower() == 'inactive':
-                            continue
-                        subj_id = arow.get('subject_id') if isinstance(arow, dict) else arow[1]
-                        if subj_id is None:
-                            continue
-                        level_subjects = allocations_by_level.setdefault(lid, {})
-                        if subj_id not in level_subjects:
-                            level_subjects[subj_id] = {
-                                'subject_id': subj_id,
-                                'subject_name': subj_name or 'Subject',
-                                'subject_code': (arow.get('subject_code', '') if isinstance(arow, dict) else (arow[3] if len(arow) > 3 else '')) or '',
-                            }
-                except Exception as e:
-                    print(f"Note: subject_academic_levels for classes-subjects: {e}")
-
-                # Backward compatibility: if a subject is in teacher assignments but not
-                # in subject_academic_levels, still include it in the list.
-                try:
-                    cursor.execute("""
-                        SELECT tsa.academic_level_id, tsa.subject_id,
-                               s.subject_name, s.subject_code,
-                               COALESCE(s.status, 'active') AS subject_status
-                        FROM teacher_subject_assignments tsa
-                        INNER JOIN academic_levels al
-                            ON tsa.academic_level_id = al.id
-                           AND COALESCE(al.level_status, 'active') = 'active'
-                        LEFT JOIN subjects s ON tsa.subject_id = s.id
-                        ORDER BY al.level_name ASC, s.subject_name ASC
-                    """)
-                    tsa_rows = cursor.fetchall() or []
-                    for trow in tsa_rows:
-                        lid = trow.get('academic_level_id') if isinstance(trow, dict) else trow[0]
-                        subj_id = trow.get('subject_id') if isinstance(trow, dict) else trow[1]
-                        if lid is None or subj_id is None:
-                            continue
-                        subj_status = (trow.get('subject_status', 'active') if isinstance(trow, dict) else (trow[4] if len(trow) > 4 else 'active'))
-                        if str(subj_status or '').lower() == 'inactive':
-                            continue
-                        level_subjects = allocations_by_level.setdefault(lid, {})
-                        if subj_id not in level_subjects:
-                            level_subjects[subj_id] = {
-                                'subject_id': subj_id,
-                                'subject_name': (trow.get('subject_name', '') if isinstance(trow, dict) else (trow[2] if len(trow) > 2 else '')) or 'Subject',
-                                'subject_code': (trow.get('subject_code', '') if isinstance(trow, dict) else (trow[3] if len(trow) > 3 else '')) or '',
-                            }
-                except Exception as e:
-                    print(f"Note: teacher_subject_assignments fallback for classes-subjects: {e}")
-
-                ensure_subject_exam_display_order_columns(cursor)
-                all_level_sids = set()
-                for _lid, subdict in allocations_by_level.items():
-                    all_level_sids.update(int(x) for x in subdict.keys() if x is not None)
-                edo_by_sid = {}
-                id_to_gc_all = {}
-                if all_level_sids:
-                    ph = ','.join(['%s'] * len(all_level_sids))
-                    cursor.execute(
-                        f"SELECT id, exam_display_order FROM subjects WHERE id IN ({ph})",
-                        tuple(all_level_sids),
-                    )
-                    for er in cursor.fetchall() or []:
-                        eid = er.get('id') if isinstance(er, dict) else er[0]
-                        if eid is not None:
-                            edo_by_sid[int(eid)] = er.get('exam_display_order') if isinstance(er, dict) else (er[1] if len(er) > 1 else None)
-                    id_to_gc_all = fetch_subject_id_to_exam_group_category(cursor, list(all_level_sids))
-                base_cat_order = fetch_base_academic_level_category_order(cursor)
-
-                for level in academic_levels:
-                    level_subjects = allocations_by_level.get(level['id'], {})
-                    sort_rows = []
-                    for sid, info in level_subjects.items():
-                        try:
-                            sid_i = int(sid)
-                        except (TypeError, ValueError):
-                            continue
-                        gc = id_to_gc_all.get(sid_i, 'Uncategorized')
-                        sort_rows.append(
-                            {
-                                'id': sid_i,
-                                'subject_name': info.get('subject_name') or '',
-                                'subject_code': info.get('subject_code') or '',
-                                'exam_display_order': edo_by_sid.get(sid_i),
-                                'group_category': gc,
-                            }
-                        )
-                    sec_ord = build_exam_subject_section_order({r['group_category'] for r in sort_rows}, base_cat_order)
-                    sort_rows.sort(key=lambda r: exam_subject_column_sort_key(r, sec_ord))
-                    level['subject_allocations'] = [
-                        {
-                            'subject_id': r['id'],
-                            'subject_name': r['subject_name'],
-                            'subject_code': r['subject_code'],
-                        }
-                        for r in sort_rows
-                    ]
+                academic_levels = _fetch_academic_levels_with_subject_allocations(cursor)
+                _attach_teachers_to_academic_level_subjects(cursor, academic_levels)
         except Exception as e:
             print(f"Error fetching academic levels: {e}")
         finally:
             connection.close()
-    
-    return render_template('dashboards/classes_subjects.html',
-                         academic_levels=academic_levels,
-                         role=user_role)
+
+    return render_template(
+        'dashboards/classes_subjects.html',
+        academic_levels=academic_levels,
+        role=user_role,
+    )
 
 
 @app.route('/dashboard/employee/classes-subjects/level/<int:level_id>')
 @login_required
 def classes_subjects_level_detail(level_id):
-    """Academic level detail: all allocated subjects and assigned teachers."""
-    user_role = session.get('role', '').lower()
-    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-
-    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
-    is_technician = user_role == 'technician'
-    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
-
-    if not (is_academic_coordinator or is_technician or is_principal):
+    """Academic level detail: subjects, teachers, progress, and attendance."""
+    if not _academic_classes_portal_allowed():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
+    user_role = session.get('role', '').lower()
     connection = get_db_connection()
     level = None
     level_subjects = []
     total_allocated_teachers = 0
+    class_teacher = None
+    attendance_summary = {}
+    attendance_analytics = {}
+    current_term_name = None
+    current_year_id = None
+    current_term_id = None
+    enrolled_count = 0
+    exam_bundle = {}
+    timetable_entries = []
+    timetable_settings = {}
+    timetable_grid = {}
 
     if connection:
         try:
@@ -40570,6 +42084,35 @@ def classes_subjects_level_detail(level_id):
                 else:
                     level_subjects = []
                 total_allocated_teachers = sum(len(item.get('teachers') or []) for item in level_subjects)
+
+                current_year_id, _yn, current_term_id, current_term_name = _get_current_academic_year_and_term(cursor)
+                class_teacher = _fetch_class_teacher_for_level(cursor, level_id)
+                attendance_summary = _fetch_level_attendance_term_summary(cursor, level_id, current_term_id)
+                attendance_analytics = _fetch_class_attendance_term_analytics(
+                    cursor, level['level_name'], current_term_id,
+                )
+                exam_bundle = _build_class_exam_performance_bundle(cursor, level, None, None)
+                timetable_settings = _get_schedule_settings_for_level(cursor, level_id)
+                timetable_entries = _fetch_class_timetable_entries(cursor, level_id, current_term_id)
+                timetable_grid = _build_timetable_grid_data(timetable_entries, timetable_settings)
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) AS c FROM students
+                    WHERE TRIM(COALESCE(current_grade, '')) = %s
+                      AND LOWER(TRIM(COALESCE(status, ''))) = 'in session'
+                    """,
+                    (level['level_name'],),
+                )
+                er = cursor.fetchone()
+                enrolled_count = int((er.get('c') if isinstance(er, dict) else er[0]) or 0) if er else 0
+                for item in level_subjects:
+                    sid = item.get('subject_id')
+                    if sid and current_term_id:
+                        item['coverage'] = _compute_subject_session_coverage(
+                            cursor, level_id, sid, current_term_id,
+                        )
+                    else:
+                        item['coverage'] = _subject_session_coverage_empty()
         except Exception as e:
             print(f"Error loading classes-subjects level detail: {e}")
             import traceback
@@ -40585,6 +42128,17 @@ def classes_subjects_level_detail(level_id):
         level=level,
         level_subjects=level_subjects,
         total_allocated_teachers=total_allocated_teachers,
+        class_teacher=class_teacher,
+        attendance_summary=attendance_summary,
+        attendance_analytics=attendance_analytics,
+        current_term_name=current_term_name,
+        current_term_id=current_term_id,
+        current_year_id=current_year_id,
+        enrolled_count=enrolled_count,
+        exam_bundle=exam_bundle,
+        timetable_entries=timetable_entries,
+        timetable_settings=timetable_settings,
+        timetable_grid=timetable_grid,
     )
 
 
@@ -57227,8 +58781,9 @@ def get_class_timetable():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
     
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_academic_coordinator or is_technician or is_principal or is_deputy):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
     
     data = request.get_json()
@@ -65276,9 +66831,10 @@ def _finance_overview_has_access():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_technician = user_role == 'technician'
     is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
-    has_view = check_permission_or_role('view_student_fees', ['accountant', 'head of institution'])
-    has_manage = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
-    return is_technician or has_view or has_manage or is_secretary
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
+    has_view = check_permission_or_role('view_student_fees', ['accountant', 'head of institution', 'deputy head of institution'])
+    has_manage = check_permission_or_role('manage_fees', ['accountant', 'head of institution', 'deputy head of institution'])
+    return is_technician or has_view or has_manage or is_secretary or is_deputy
 
 
 def _finance_overview_class_filter_options(cursor):
