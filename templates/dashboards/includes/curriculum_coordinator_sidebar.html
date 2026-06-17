@@ -133,6 +133,12 @@
     <span>Reports</span>
     {% if request.endpoint in ('reports', 'reports_class_detail', 'reports_class_analytics') or request.path.endswith('/reports') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('academic-reports') }}"
+   class="sidebar-item {% if request.endpoint in ('academic_reports', 'academic_report_preview') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Academic reports</span>
+    {% if request.endpoint in ('academic_reports', 'academic_report_preview') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 {% endif %}
 
 {% if _cc_nav in ('all', 'school') %}

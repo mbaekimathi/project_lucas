@@ -135,6 +135,11 @@
         <span>Reports</span>
         <small>Class and combined level exam reports</small>
     </a>
+    <a href="{{ employee_dash_url('academic-reports') }}" class="role-quick-card">
+        <i class="fas fa-clipboard-list text-brand-primary dark:text-brand-secondary"></i>
+        <span>Academic reports</span>
+        <small>Report cards, registers, timetables, and exports</small>
+    </a>
 </div>
 
 <script type="application/json" id="cc-coordinator-chart-data">{{ {'level': cd.level_chart|default({}), 'subject': cd.subject_chart|default({}), 'attendance': cd.attendance_by_level_chart|default({})}|tojson }}</script>
