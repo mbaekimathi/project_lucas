@@ -571,9 +571,21 @@
     {% else %}
     {% set subject_columns = meta.subject_columns if meta and meta.subject_columns else [] %}
     {% set subject_columns_by_class = meta.subject_columns_by_class if meta and meta.subject_columns_by_class else {} %}
+    {% set exam_cols = meta.exam_columns if meta and meta.exam_columns else [] %}
+    {% set multi_exam_cards = meta.all_exams_mode and exam_cols|length > 1 %}
     <div class="space-y-8">
         {% for row in rows %}
-        {% set grade = row.grade or '-' %}
+        {% set grade = namespace(val=row.grade or '-') %}
+        {% if row.mean is not none and row.mean != '' and meta and meta.grade_bands %}
+            {% set om = row.mean|float|int %}
+            {% for gb in meta.grade_bands %}
+                {% set gb_start = gb.start|float if gb.start is not none else none %}
+                {% set gb_end = gb.end|float if gb.end is not none else none %}
+                {% if gb_start is not none and gb_end is not none and om >= gb_start and om <= gb_end %}
+                    {% set grade.val = gb.code or gb.label or '-' %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
         <article class="ar-rc {% if not loop.last %}print:break-after-page{% endif %}">
             <div class="ar-rc-deco ar-rc-deco--tr"></div>
             <div class="ar-rc-deco ar-rc-deco--bl"></div>
@@ -619,7 +631,7 @@
                     <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">School year</span><span class="ar-rc-meta-value">{% if af.academic_year and 'Year ID' not in af.academic_year %}{{ af.academic_year }}{% else %}-{% endif %}</span></div>
                     <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Term / exam</span><span class="ar-rc-meta-value">
                         {%- set term_val = af.term if af.term and 'Term ID' not in af.term else '' -%}
-                        {%- set exam_val = af.exam_name if af.exam_name and af.exam_name not in ('All exams', '') else '' -%}
+                        {%- set exam_val = row.card_exam_label if row.card_exam_label is defined and row.card_exam_label else (af.exam_name if af.exam_name and af.exam_name not in ('All exams', '') else '') -%}
                         {%- if exam_val and term_val and term_val.upper() in exam_val.upper() -%}{{ exam_val }}
                         {%- elif exam_val and term_val -%}{{ term_val }} · {{ exam_val }}
                         {%- elif exam_val -%}{{ exam_val }}
@@ -643,7 +655,89 @@
                 {% endif %}
                 <div class="ar-rc-body-grid ar-rc-body-grid--split">
                     <div>
-                        <table class="ar-rc-table">
+                        {% set row_class = (row.current_grade or row.level_name or af.class_level or '')|trim %}
+                        {% set row_subject_cols = subject_columns_by_class.get(row_class) if subject_columns_by_class and row_class else subject_columns %}
+                        {% if not row_subject_cols and row.level_name and subject_columns_by_class %}
+                            {% set row_subject_cols = subject_columns_by_class.get(row.level_name|trim) %}
+                        {% endif %}
+                        {% if not row_subject_cols %}{% set row_subject_cols = subject_columns %}{% endif %}
+                        {% if multi_exam_cards and row.subject_marks_by_exam is mapping %}
+                        <div class="ar-rc-table-scroll">
+                        <table class="ar-rc-table ar-rc-table--subjects ar-rc-table--multi-exam">
+                            <thead>
+                                <tr>
+                                    <th class="ar-rc-th-subj">Subject</th>
+                                    {% for ec in exam_cols %}
+                                    <th class="ar-rc-th-exam-col">{{ ec.label or ec.exam_name or 'Exam' }}</th>
+                                    {% endfor %}
+                                    <th class="ar-rc-th-avg">Average</th>
+                                    <th>Grade</th>
+                                    <th>Points</th>
+                                    <th class="ar-rc-th-feedback">Teacher's feedback</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for sc in row_subject_cols %}
+                                <tr>
+                                    <td class="ar-rc-td-subj">{{ sc }}</td>
+                                    {% for ec in exam_cols %}
+                                    {% set mark_raw = namespace(val='') %}
+                                    {% set want_id = ec.exam_id|string if ec.exam_id is not none else '' %}
+                                    {% set want_key = ec.key|string if ec.key is defined and ec.key else '' %}
+                                    {% set want_sit = ((ec.exam_name or ec.label or '')|trim|upper) ~ '\x1f' ~ ((ec.exam_date or '')|trim) %}
+                                    {% for ex in row.subject_marks_by_exam.get(sc, []) %}
+                                        {% set ex_sit = ((ex.exam_name or '')|trim|upper) ~ '\x1f' ~ ((ex.exam_date or '')|trim) %}
+                                        {% set ex_name_key = (ex.exam_name or '')|trim|upper %}
+                                        {% set col_name_key = (ec.exam_name or ec.label or '')|trim|upper %}
+                                        {% if want_key and ex_sit == want_key %}
+                                            {% set mark_raw.val = ex.mark %}
+                                        {% elif col_name_key and ex_name_key == col_name_key %}
+                                            {% set mark_raw.val = ex.mark %}
+                                        {% elif want_id and ex.exam_id is not none and ex.exam_id|string == want_id %}
+                                            {% set mark_raw.val = ex.mark %}
+                                        {% elif want_key and ex.exam_id is not none and ex.exam_id|string == want_key %}
+                                            {% set mark_raw.val = ex.mark %}
+                                        {% elif ex.exam_name == ec.exam_name and (ex.exam_date or '') == (ec.exam_date or '') %}
+                                            {% set mark_raw.val = ex.mark %}
+                                        {% elif want_sit and ex_sit == want_sit %}
+                                            {% set mark_raw.val = ex.mark %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    <td class="ar-rc-td-num">{% if mark_raw.val not in (None, '') %}{{ mark_raw.val|round|int }}{% else %}-{% endif %}</td>
+                                    {% endfor %}
+                                    {% set avg_mark = row.subject_marks.get(sc) if row.subject_marks is mapping else none %}
+                                    {% set sub_grade = namespace(val='-') %}
+                                    {% set sub_points = namespace(val='-') %}
+                                    {% set sub_feedback = namespace(val='-') %}
+                                    {% if avg_mark not in (None, '') and meta and meta.grade_bands %}
+                                        {% set m = avg_mark|float|int %}
+                                        {% for gb in meta.grade_bands %}
+                                            {% set gb_start = gb.start|float if gb.start is not none else none %}
+                                            {% set gb_end = gb.end|float if gb.end is not none else none %}
+                                            {% if gb_start is not none and gb_end is not none and m >= gb_start and m <= gb_end %}
+                                                {% set sub_grade.val = gb.code or gb.label or '-' %}
+                                                {% if gb.allocation_points is not none %}{% set sub_points.val = gb.allocation_points %}{% endif %}
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% endif %}
+                                    {% if sub_feedback.val == '-' and sub_grade.val != '-' and meta and meta.grade_bands %}
+                                        {% for gb in meta.grade_bands %}
+                                            {% if (gb.code or gb.label or '')|upper == (sub_grade.val|string|upper) %}
+                                                {% set sub_feedback.val = gb.meaning or gb.label or '-' %}
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% endif %}
+                                    <td class="ar-rc-td-num ar-rc-td-avg">{% if avg_mark not in (None, '') %}{{ avg_mark|round|int }}{% else %}-{% endif %}</td>
+                                    <td class="ar-rc-td-num">{{ sub_grade.val }}</td>
+                                    <td class="ar-rc-td-num">{{ sub_points.val }}</td>
+                                    <td class="ar-rc-td-feedback">{{ sub_feedback.val }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        </div>
+                        {% else %}
+                        <table class="ar-rc-table ar-rc-table--subjects">
                             <thead>
                                 <tr>
                                     <th class="ar-rc-th-subj">Subject</th>
@@ -654,12 +748,6 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% set row_class = (row.current_grade or row.level_name or af.class_level or '')|trim %}
-                                {% set row_subject_cols = subject_columns_by_class.get(row_class) if subject_columns_by_class and row_class else subject_columns %}
-                                {% if not row_subject_cols and row.level_name and subject_columns_by_class %}
-                                    {% set row_subject_cols = subject_columns_by_class.get(row.level_name|trim) %}
-                                {% endif %}
-                                {% if not row_subject_cols %}{% set row_subject_cols = subject_columns %}{% endif %}
                                 {% for sc in row_subject_cols %}
                                 {% set mark_raw = row.get(sc) %}
                                 {% if mark_raw in (None, '') and row.subject_marks is mapping %}
@@ -702,6 +790,7 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                        {% endif %}
                     </div>
                     <div class="text-center">
                         {% if row.student_photo %}
@@ -713,7 +802,7 @@
                             <table><tbody>
                                 <tr><td>Total marks</td><td>{{ row.total_marks|round|int }}</td></tr>
                                 <tr><td>Mean</td><td>{{ row.mean|round|int }}</td></tr>
-                                <tr><td>Overall grade</td><td>{{ grade }}</td></tr>
+                                <tr><td>Overall grade</td><td>{{ grade.val }}</td></tr>
                                 <tr><td>GP</td><td>{{ overall_points.val }}</td></tr>
                                 <tr><td>Class rank</td><td>{{ row.position }} / {{ rows|length }}</td></tr>
                             </tbody></table>
@@ -723,7 +812,7 @@
                 <div class="ar-rc-stats-row">
                     <div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">{{ row.total_marks|round|int }}</p></div>
                     <div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">{{ row.mean|round|int }}</p></div>
-                    <div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">{{ grade }}</p></div>
+                    <div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">{{ grade.val }}</p></div>
                     <div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">{{ overall_points.val }}</p></div>
                 </div>
                 <p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span>

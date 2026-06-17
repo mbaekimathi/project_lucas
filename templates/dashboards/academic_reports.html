@@ -22,7 +22,7 @@
 @media print {
     @page {
         size: A4 portrait;
-        margin: 8mm 10mm 10mm 10mm;
+        margin: 6mm 8mm 8mm 8mm;
     }
     /*
       Dashboard shell uses a fixed-height main + inner overflow-y-auto.
@@ -91,6 +91,41 @@
         z-index: 2147483647 !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+    }
+    /* Multi-student cards: fixed traps all pages in one viewport — use normal flow */
+    html.ar-print-individual-batch-doc body > *:not(#ar-preview-wrap) {
+        display: none !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch {
+        position: static !important;
+        left: auto !important;
+        top: auto !important;
+        right: auto !important;
+        z-index: auto !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 8mm !important;
+        height: auto !important;
+        min-height: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch > div.rounded-xl,
+    #ar-preview-wrap.ar-print-individual-batch #ar-details-list,
+    #ar-preview-wrap.ar-print-individual-batch #ar-chunked-cards-root {
+        display: block !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    #ar-preview-wrap .ar-print-page-break {
+        display: block !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        visibility: visible !important;
+        page-break-before: always !important;
+        break-before: page !important;
     }
     /* Single individual report: full viewport width (static flow stays in narrow dashboard column) */
     #ar-preview-wrap.ar-print-single-sheet {
@@ -499,6 +534,14 @@
         page-break-before: always !important;
         break-before: page !important;
     }
+    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual.ar-print-page-follow {
+        page-break-before: always !important;
+        break-before: page !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual:not(:last-of-type) {
+        page-break-after: always !important;
+        break-after: page !important;
+    }
     #ar-preview-wrap .ar-print-page-sheet,
     #ar-preview-wrap .ar-class-print-sheet,
     #ar-preview-wrap .ar-register-class-wrap {
@@ -625,21 +668,33 @@
         grid-template-columns: 1fr !important;
         gap: 0 !important;
     }
-    #ar-preview-wrap .ar-rc-individual {
-        min-height: calc(100vh - 42mm) !important;
+    #ar-preview-wrap article.ar-rc-individual {
+        margin-bottom: 0 !important;
+    }
+    /* Full A4 portrait sheet per student (283mm = 297mm page − 14mm margins) */
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual,
+    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual {
+        min-height: 283mm !important;
+        height: 283mm !important;
+        max-height: 283mm !important;
         display: flex !important;
         flex-direction: column !important;
+        box-sizing: border-box !important;
         break-inside: avoid !important;
         page-break-inside: avoid !important;
+        overflow: hidden !important;
     }
     #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual {
-        min-height: calc(100vh - 42mm) !important;
         page-break-after: avoid !important;
         break-after: avoid !important;
         width: 100% !important;
         max-width: none !important;
         margin-left: 0 !important;
         margin-right: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet #ar-print-page-footer,
+    #ar-preview-wrap.ar-print-individual-batch #ar-print-page-footer {
+        display: none !important;
     }
     #ar-preview-wrap .ar-rc-individual,
     #ar-preview-wrap .ar-rc-individual .ar-rc-main-body,
@@ -675,126 +730,204 @@
         border: none !important;
         overflow: hidden !important;
     }
-    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-header-band {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-header-band,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-header-band {
         display: block !important;
-        padding: 3mm 4mm !important;
+        padding: 4mm 5mm !important;
         background: linear-gradient(128deg, #0f2744 0%, #1e3a5f 55%, #166534 100%) !important;
         color: #fff !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
-    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-school-name {
-        font-size: 13pt !important;
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-school-name,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-school-name {
+        font-size: 14pt !important;
         color: #fff !important;
+        line-height: 1.15 !important;
     }
     #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-school-contact,
-    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-kicker {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-kicker,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-school-contact,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-kicker {
         color: rgba(255, 255, 255, 0.85) !important;
-        font-size: 7pt !important;
+        font-size: 7.5pt !important;
+        line-height: 1.2 !important;
     }
-    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-logo-wrap {
-        width: 14mm !important;
-        height: 14mm !important;
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-logo-wrap,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-logo-wrap {
+        width: 16mm !important;
+        height: 16mm !important;
     }
-    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-title {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-title,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-title {
         font-size: 14pt !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-inner {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-doc-title-row,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-doc-title-row {
+        margin: 2mm 0 3mm !important;
+        padding: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-inner,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-inner {
         flex: 1 1 auto !important;
         display: flex !important;
         flex-direction: column !important;
-        padding: 0 1mm !important;
+        padding: 0 2mm !important;
+        min-height: 0 !important;
+        height: 100% !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-main-body {
-        flex: 1 1 auto !important;
-        display: flex !important;
-        flex-direction: column !important;
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-main-body,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-main-body {
+        flex: 0 0 auto !important;
+        display: block !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-panel--with-photo {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-panel--with-photo,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-panel--with-photo {
         display: grid !important;
-        grid-template-columns: 1fr 22mm !important;
-        gap: 3mm !important;
+        grid-template-columns: 1fr 24mm !important;
+        gap: 4mm !important;
         align-items: start !important;
-        padding: 2mm 3mm !important;
-        margin-bottom: 2mm !important;
+        padding: 3mm 4mm !important;
+        margin-bottom: 3mm !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-grid {
-        gap: 1.5mm 4mm !important;
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-grid,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-grid {
+        gap: 2mm 4mm !important;
         font-size: 10pt !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-label {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-label,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-label {
         font-size: 8pt !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-value {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-value,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-value {
         font-size: 11pt !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-photo-wrap .ar-rc-photo {
-        width: 20mm !important;
-        height: 25mm !important;
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-photo-wrap .ar-rc-photo,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-photo-wrap .ar-rc-photo {
+        width: 22mm !important;
+        height: 28mm !important;
         margin: 0 auto !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects thead th {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--subjects thead th,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--subjects thead th {
+        font-size: 8.5pt !important;
+        padding: 1.5mm 1.5mm !important;
+        line-height: 1.15 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--subjects tbody td,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--subjects tbody td {
         font-size: 9.5pt !important;
-        padding: 1.5mm 2mm !important;
+        padding: 1.2mm 1.5mm !important;
+        line-height: 1.2 !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects tbody td {
-        font-size: 10pt !important;
-        padding: 1.2mm 2mm !important;
-        line-height: 1.25 !important;
-    }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects .ar-rc-td-subj {
-        width: 46% !important;
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--subjects .ar-rc-td-subj,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--subjects .ar-rc-td-subj {
+        width: auto !important;
         font-size: 9.5pt !important;
+        font-weight: 600 !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-stats-row--5 {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-subj,
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-subj,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-subj,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-subj {
+        width: 7% !important;
+        min-width: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-exam-col,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-exam-col {
+        font-size: 7pt !important;
+        line-height: 1.1 !important;
+        padding: 1mm 0.6mm !important;
+        word-break: break-word;
+        hyphens: auto;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-avg,
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-avg,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-avg,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-avg {
+        width: 7% !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam thead th:not(.ar-rc-th-subj):not(.ar-rc-th-feedback):not(.ar-rc-th-exam-col),
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-num:not(.ar-rc-td-avg),
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam thead th:not(.ar-rc-th-subj):not(.ar-rc-th-feedback):not(.ar-rc-th-exam-col),
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-num:not(.ar-rc-td-avg) {
+        width: 6% !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-feedback,
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-feedback,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-feedback,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-feedback {
+        width: 14% !important;
+        font-size: 6.5pt !important;
+        line-height: 1.12 !important;
+        padding: 0.8mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-stats-row--5,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-stats-row--5 {
         grid-template-columns: repeat(5, 1fr) !important;
-        gap: 2mm !important;
-        margin: 2.5mm 0 !important;
+        gap: 2.5mm !important;
+        margin: 3mm 0 !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-stat {
-        padding: 2mm 1.5mm !important;
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-stat,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-stat {
+        padding: 2.5mm 2mm !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-stat-label {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-stat-label,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-stat-label {
         font-size: 7.5pt !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-stat-value {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-stat-value,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-stat-value {
         font-size: 12pt !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-grade-scale {
-        font-size: 8pt !important;
-        margin: 1.5mm 0 !important;
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-grade-scale,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-grade-scale {
+        font-size: 7.5pt !important;
+        margin: 2mm 0 !important;
+        line-height: 1.25 !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-feedback {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback {
         flex: 1 1 auto !important;
         display: flex !important;
         flex-direction: column !important;
         margin-top: 2mm !important;
+        min-height: 32mm !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-feedback-title {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback-title,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback-title {
         font-size: 9pt !important;
-        margin-bottom: 1mm !important;
-    }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-feedback-lines {
-        flex: 1 1 auto !important;
-        min-height: 28mm !important;
-        padding: 2mm 3mm !important;
-    }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-feedback-line {
-        height: 7mm !important;
         margin-bottom: 1.5mm !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-signatures {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback-lines,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback-lines {
+        flex: 1 1 auto !important;
+        min-height: 28mm !important;
+        padding: 2.5mm 3mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback-line,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback-line {
+        height: 6mm !important;
+        margin-bottom: 1.5mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-signatures,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-signatures {
+        flex: 0 0 auto !important;
         margin-top: auto !important;
         padding-top: 3mm !important;
         font-size: 8.5pt !important;
         gap: 4mm !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-sig-title {
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-sig-title,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-sig-title {
         font-size: 8pt !important;
         margin-bottom: 4mm !important;
     }
-    #ar-preview-wrap .ar-rc-individual .ar-rc-title {
-        font-size: 12pt !important;
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-sig-block p,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-sig-block p {
+        margin: 0.8mm 0 !important;
+        line-height: 1.25 !important;
     }
     #ar-preview-wrap .ar-rc-individual .ar-rc-summary-box {
         display: none !important;
@@ -1156,7 +1289,6 @@
         max-width: none !important;
         margin-left: 0 !important;
         margin-right: 0 !important;
-        min-height: 0 !important;
     }
     #ar-preview-wrap.ar-print-individual-batch #ar-print-letterhead {
         display: none !important;
@@ -1165,17 +1297,28 @@
         padding: 0 !important;
         border: none !important;
     }
-    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-header-band {
-        display: block !important;
-        padding: 3mm 4mm !important;
-        background: linear-gradient(128deg, #0f2744 0%, #1e3a5f 55%, #166534 100%) !important;
-        color: #fff !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+    /* Flatten class cohort wrappers so each student card paginates independently */
+    #ar-preview-wrap.ar-print-individual-batch details.ar-class-print-sheet {
+        border: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        break-inside: auto !important;
+        page-break-inside: auto !important;
     }
-    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-school-name {
-        font-size: 13pt !important;
-        color: #fff !important;
+    #ar-preview-wrap.ar-print-individual-batch details.ar-class-print-sheet > summary {
+        display: none !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch details.ar-class-print-sheet > div {
+        padding: 0 !important;
+        background: transparent !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch .space-y-6 > * + *,
+    #ar-preview-wrap.ar-print-individual-batch #ar-chunked-cards-root > article + article {
+        margin-top: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch #ar-chunked-cards-root {
+        display: block !important;
     }
     /* Container queries use preview pane width — disable for print so all reports use full A4 */
     #ar-preview-wrap {
@@ -1785,6 +1928,32 @@
 .ar-rc-table .ar-rc-td-subj {
     width: auto;
     min-width: 0;
+}
+.ar-rc-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+.ar-rc-table--multi-exam thead th.ar-rc-th-exam-col,
+.ar-rc-table--multi-exam thead th.ar-rc-th-avg {
+    font-size: 0.58rem;
+    line-height: 1.15;
+    text-align: center;
+    vertical-align: bottom;
+    min-width: 2.5rem;
+    max-width: 4.5rem;
+    word-break: break-word;
+}
+.ar-rc-table--multi-exam .ar-rc-td-avg {
+    background: #f1f5f9;
+    font-weight: 700;
+}
+.dark .ar-rc-table--multi-exam .ar-rc-td-avg {
+    background: rgba(30, 41, 59, 0.5);
+}
+.ar-rc-table--multi-exam thead th.ar-rc-th-subj {
+    width: 22%;
+    min-width: 5rem;
 }
 .ar-rc-summary-box {
     border: 2px solid var(--ar-rc-navy);
@@ -2460,6 +2629,7 @@
                     </div>
                     <div id="ar-filter-wrap-exam" class="hidden ar-filter-field">
                         <label for="gf-exam-name" class="ar-filter-label">Exam name</label>
+                        <p id="ar-exam-filter-hint" class="text-[11px] text-slate-500 dark:text-slate-400 mb-1 leading-snug">All exams are included by default. Pick one exam to filter the report.</p>
                         <select id="gf-exam-name" class="ar-filter-control">
                             <option value="">All exams</option>
                         </select>
@@ -2502,7 +2672,7 @@
                     </div>
                     <div id="ar-wrap-student-roster" class="hidden ar-filter-field">
                         <label for="gf-student-select" class="ar-filter-label">Student</label>
-                        <p id="ar-student-roster-hint" class="text-[11px] text-slate-500 dark:text-slate-400 mb-1 leading-snug">Choose a class above, then pick a student.</p>
+                        <p id="ar-student-roster-hint" class="text-[11px] text-slate-500 dark:text-slate-400 mb-1 leading-snug">All students are generated by default. Pick one student to show a single report.</p>
                         <select id="gf-student-select" class="ar-filter-control" disabled>
                             <option value="">Select a class first…</option>
                         </select>
@@ -2652,7 +2822,7 @@
       hint: 'Select a class/level (required for most performance reports). Academic year and term narrow results.',
       reports: [
         { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: each subject column shows scaled mark % and grade code together (Grades Registration), on screen, PDF, and spreadsheet (e.g. 85 EE22). Footer rows show class subject means the same way.' },
-        { id: 'exam_individual_performance', label: 'Individual student performance', desc: 'One student’s scaled marks (/100) in the selected class — enter Student ID.' },
+        { id: 'exam_individual_performance', label: 'Individual student performance', desc: 'Scaled marks per subject for all students in the class, or one student when selected below.' },
       ],
     },
     timetables: {
@@ -2789,11 +2959,14 @@
     } else {
       if (levelLabel) levelLabel.textContent = 'Class';
       levelEl.disabled = false;
-      var allOpt = document.createElement('option');
-      allOpt.value = '';
-      allOpt.textContent = 'All classes';
-      allOpt.setAttribute('data-all-classes', '1');
-      levelEl.appendChild(allOpt);
+      var needsSingleClass = requiresSingleClassSelection();
+      if (!needsSingleClass) {
+        var allOpt = document.createElement('option');
+        allOpt.value = '';
+        allOpt.textContent = 'All classes';
+        allOpt.setAttribute('data-all-classes', '1');
+        levelEl.appendChild(allOpt);
+      }
       levelOptionsCache.forEach(function(o) {
         if (!o.value) return;
         if (allowedLevelIds && allowedLevelIds.size && !allowedLevelIds.has(String(o.value)) && String(o.value) !== prev) {
@@ -2806,10 +2979,13 @@
       });
       if (prev && Array.from(levelEl.options).some(function(o) { return o.value === prev; })) {
         levelEl.value = prev;
+      } else if (needsSingleClass && levelEl.options.length) {
+        levelEl.selectedIndex = 0;
       } else {
         levelEl.value = '';
       }
     }
+    ensureDefaultClassSelected();
     if (studentRosterHint && isCombinedLevelView() && val('gf-level')) {
       studentRosterHint.textContent = 'Combined class: students from all levels in this group.';
     }
@@ -2821,11 +2997,16 @@
   }
   const detailsListEl = document.getElementById('ar-details-list');
   const generatedAtEl = document.getElementById('ar-generated-at');
+  var reportLoadTimer = null;
+  var reportLoadAbort = null;
+  var reportLoadToken = 0;
+  var REPORT_LOAD_DEBOUNCE_MS = 360;
+  var REPORT_CARD_CHUNK_SIZE = 4;
   const examOptions = {{ (exam_names or [])|tojson|safe }};
   const EXAM_PICK_SEP = '\x1f';
   const registeredCurrentExam = {{ (registered_current_exam or None)|tojson|safe }};
-  /** When true, user chose "All exams" (no filter); do not re-apply school current exam after year/term/level sync. */
-  var userChoseNoExamFilter = false;
+  /** When true, exam filter stays on All exams; do not auto-pick the school current exam. */
+  var userChoseNoExamFilter = true;
 
   function splitExamPick(rv) {
     if (rv === null || rv === undefined) return { exam_name: null, exam_type: null };
@@ -2839,31 +3020,6 @@
     };
   }
 
-  function tryApplyRegisteredExamPick() {
-    if (!registeredCurrentExam || !examNameEl) return;
-    var yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
-    var termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
-    if (!yearVal || !termVal) return;
-    if (parseInt(registeredCurrentExam.academic_year_id, 10) !== yearVal) return;
-    if (parseInt(registeredCurrentExam.term_id, 10) !== termVal) return;
-    var wantName = String(registeredCurrentExam.exam_name || '').trim().toUpperCase();
-    var wantType = registeredCurrentExam.exam_type;
-    for (var i = 0; i < examNameEl.options.length; i++) {
-      var o = examNameEl.options[i];
-      if (!o.value) continue;
-      var pick = splitExamPick(o.value);
-      var pn = String(pick.exam_name || '').trim().toUpperCase();
-      if (pn !== wantName) continue;
-      if (wantType == null || wantType === '') {
-        examNameEl.selectedIndex = i;
-        return;
-      }
-      if (String(pick.exam_type || '').trim().toUpperCase() === String(wantType).trim().toUpperCase()) {
-        examNameEl.selectedIndex = i;
-        return;
-      }
-    }
-  }
   const levelOptionsCache = (function() {
     if (!levelEl) return [];
     return Array.from(levelEl.options || []).map(function(o) {
@@ -2896,24 +3052,43 @@
     return sectionEl.value === 'exams' && currentReportId() === 'exam_individual_performance';
   }
 
-  /** True when the user must pick one student (not whole-class individual cards). */
-  function examNeedsSingleStudentPicker(reportType) {
-    reportType = String(reportType || currentReportId() || '').trim();
-    if (reportType === 'exam_individual_performance' && isExamIndividualMode()) return true;
-    return false;
+  /** Individual report cards: one class at a time (no whole-school load). */
+  function requiresSingleClassSelection() {
+    if (sectionEl.value !== 'exams') return false;
+    if (isExamIndividualStudentReport()) return true;
+    return isExamIndividualMode() && currentReportId() === 'exam_all_students_performance';
   }
 
-  /** Exam reports: class always; student picker only for single-student individual report. */
+  /** Pick the first class when individual reports must not use "All classes". */
+  function ensureDefaultClassSelected() {
+    if (!levelEl || !requiresSingleClassSelection()) return false;
+    var cur = val('gf-level');
+    if (cur && Array.from(levelEl.options || []).some(function(o) { return String(o.value) === String(cur); })) {
+      return false;
+    }
+    if (!levelEl.options || !levelEl.options.length) return false;
+    levelEl.selectedIndex = 0;
+    return true;
+  }
+
+  /** Optional student dropdown: all students by default, or one student when selected. */
+  function examShowsOptionalStudentRoster(reportType) {
+    reportType = String(reportType || currentReportId() || '').trim();
+    if (!isExamIndividualMode()) return false;
+    return reportType === 'exam_all_students_performance' || reportType === 'exam_individual_performance';
+  }
+
+  /** Exam reports: class always; optional student roster in individual report-card mode. */
   function examReportFilterNeeds() {
-    const pickOne = examNeedsSingleStudentPicker(currentReportId());
+    const showRoster = examShowsOptionalStudentRoster(currentReportId());
     return {
       examScope: true,
       year: true,
       term: true,
       exam: true,
       level: true,
-      student: pickOne,
-      studentRoster: pickOne,
+      student: showRoster,
+      studentRoster: showRoster,
       studentSearch: false
     };
   }
@@ -2933,16 +3108,16 @@
   }
 
   function usesExamStudentRoster() {
-    return examNeedsSingleStudentPicker(currentReportId());
+    return examShowsOptionalStudentRoster(currentReportId());
   }
 
-  /** Defensive: keep only rows for the selected student when a single-student report is active. */
+  /** Keep only rows for the selected student when optional roster has a pick. */
   function narrowExamRowsToSelectedStudent(rows) {
-    if (!examNeedsSingleStudentPicker(currentReportId())) return rows;
     const rid = currentReportId();
     if (!rid || rid.indexOf('exam_') !== 0) return rows;
     const sid = val('gf-student');
     if (!sid || !Array.isArray(rows)) return rows;
+    if (!examShowsOptionalStudentRoster(rid)) return rows;
     const want = String(sid).trim().toLowerCase();
     if (!want) return rows;
     return rows.filter(function(row) {
@@ -2952,11 +3127,9 @@
     });
   }
 
-  /** Student required before generating (attendance individual or one-student exam report). */
+  /** Student required before generating (attendance individual only). */
   function reportUsesFindStudentPicker(reportType) {
-    if (reportType === 'attendance_individual') return true;
-    if (examNeedsSingleStudentPicker(reportType)) return true;
-    return false;
+    return reportType === 'attendance_individual';
   }
 
   function fillReportOptions(sectionKey) {
@@ -2972,14 +3145,14 @@
           label: 'All students',
           desc: scope === 'class'
             ? 'All students: marks scaled to /100 (exam subject settings).'
-            : 'Individual students: report card with scaled marks (/100).'
+            : 'Report cards for every student by default — optionally pick one student below.'
         },
         {
           id: 'exam_individual_performance',
           label: 'Individual student',
           desc: scope === 'class'
             ? 'All students: report cards per student (marks on 0–100 scale).'
-            : 'Individual students: one student’s scaled marks (/100) — select student below.'
+            : 'Report cards for all students by default — optionally pick one student below.'
         },
       ];
     }
@@ -2995,7 +3168,7 @@
     renderReportGrid(lastReportOptions);
     updateReportDescription();
     updateExtraFilters();
-    loadDetails();
+    scheduleLoadDetails();
   }
 
   function renderSectionTabs() {
@@ -3098,19 +3271,17 @@
         return Object.assign({}, none, { level: true, dates: true });
       case 'attendance_individual':
         return Object.assign({}, none, { level: true, dates: true, student: true, studentSearch: true });
-      case 'exam_individual_performance': {
-        const pickOne = isExamIndividualMode();
+      case 'exam_individual_performance':
         return Object.assign({}, none, {
           examScope: true,
           year: true,
           term: true,
           exam: true,
           level: true,
-          student: pickOne,
-          studentRoster: pickOne,
+          student: isExamIndividualMode(),
+          studentRoster: isExamIndividualMode(),
           studentSearch: false
         });
-      }
       case 'exam_all_students_performance':
         return Object.assign({}, none, examReportFilterNeeds());
       case 'exam_subject_performance':
@@ -3213,7 +3384,14 @@
 
     if (needs.exam) syncExamNameOptions();
     if (levelEl) levelEl.disabled = false;
+    if (isExamIndividualStudentReport() && examScopeEl) {
+      examScopeEl.value = 'individual';
+    }
     syncLevelViewUi();
+    var classDefaulted = ensureDefaultClassSelected();
+    if (classDefaulted && needs.studentRoster) {
+      loadClassStudentRoster();
+    }
 
     updateReportDescription();
   }
@@ -3232,6 +3410,7 @@
 
     if (!selectedExam) {
       rebuildLevelSelect(null);
+      ensureDefaultClassSelected();
       return;
     }
 
@@ -3252,46 +3431,88 @@
     });
 
     rebuildLevelSelect(allowed.size ? allowed : null);
+    ensureDefaultClassSelected();
+  }
+
+  function getVisibleExamFilterPicks() {
+    const yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
+    const termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
+    const activeLevelIds = activeLevelIdsForFilters();
+    const seen = new Set();
+    const picks = [];
+    examOptions.forEach(function(item) {
+      const yOk = !yearVal || Number(item.academic_year_id || 0) === yearVal;
+      const tOk = !termVal || Number(item.term_id || 0) === termVal;
+      const examLvl = Number(item.academic_level_id || 0);
+      const lOk = !activeLevelIds.length || activeLevelIds.indexOf(examLvl) >= 0;
+      if (!yOk || !tOk || !lOk) return;
+      const rawName = String(item.exam_name || '').trim();
+      const typ = String(item.exam_type || '').trim();
+      const key = (rawName + EXAM_PICK_SEP + typ).toLowerCase();
+      if (!rawName || seen.has(key)) return;
+      seen.add(key);
+      picks.push({ exam_name: rawName, exam_type: typ });
+    });
+    return picks;
+  }
+
+  function rowsFromSubjectMarksByExam(detail) {
+    var rows = [];
+    if (!detail || typeof detail !== 'object') return rows;
+    Object.keys(detail).forEach(function(subj) {
+      (detail[subj] || []).forEach(function(ex) {
+        rows.push({ exam_name: ex.exam_name, exam_date: ex.exam_date });
+      });
+    });
+    return rows;
+  }
+
+  function enrichExamColsFromMarks(cols, detail, rows) {
+    return (cols || []).map(function(col) {
+      var name = col.exam_name || col.label || '';
+      var nk = normalizedExamNameKey(name);
+      return {
+        key: nk || normalizedExamSittingKey(name, ''),
+        label: col.label || shortExamLabel(name) || name || 'Exam',
+        exam_name: name,
+        exam_date: '',
+      };
+    });
+  }
+
+  function buildExamColsFromVisibleFilter(detail, rows) {
+    return enrichExamColsFromMarks(
+      getVisibleExamFilterPicks().map(function(p) {
+        return {
+          label: shortExamLabel(p.exam_name) || p.exam_name,
+          exam_name: p.exam_name,
+          exam_date: '',
+        };
+      }),
+      detail,
+      rows
+    );
   }
 
   function syncExamNameOptions() {
     if (!examNameEl) return;
     const previous = String(examNameEl.value || '');
-    const yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
-    const termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
-    const activeLevelIds = activeLevelIdsForFilters();
-
-    const seen = new Set();
-    const opts = examOptions.filter(function(item) {
-      const yOk = !yearVal || Number(item.academic_year_id || 0) === yearVal;
-      const tOk = !termVal || Number(item.term_id || 0) === termVal;
-      const examLvl = Number(item.academic_level_id || 0);
-      const lOk = !activeLevelIds.length || activeLevelIds.indexOf(examLvl) >= 0;
-      return yOk && tOk && lOk;
-    }).filter(function(item) {
-      const rawName = String(item.exam_name || '').trim();
-      const typ = String(item.exam_type || '').trim();
-      const key = (rawName + EXAM_PICK_SEP + typ).toLowerCase();
-      if (!rawName || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    const opts = getVisibleExamFilterPicks();
 
     examNameEl.innerHTML = '<option value=\"\">All exams</option>';
     opts.forEach(function(item) {
       const opt = document.createElement('option');
-      const rawName = String(item.exam_name || '').trim();
-      const typ = String(item.exam_type || '').trim();
+      const rawName = item.exam_name;
+      const typ = item.exam_type || '';
       opt.value = rawName + EXAM_PICK_SEP + typ;
       opt.textContent = typ ? (rawName + ' — ' + typ) : rawName;
       examNameEl.appendChild(opt);
     });
     if (previous && Array.from(examNameEl.options).some(function(o) { return o.value === previous; })) {
       examNameEl.value = previous;
-    } else if (userChoseNoExamFilter) {
-      examNameEl.value = '';
     } else {
-      tryApplyRegisteredExamPick();
+      examNameEl.value = '';
+      userChoseNoExamFilter = true;
     }
     syncLevelOptionsForSelectedExam();
   }
@@ -3370,7 +3591,7 @@
     }
     syncReportGridActive();
     syncReportFilters();
-    loadDetails();
+    scheduleLoadDetails(true);
   });
 
   renderSectionTabs();
@@ -3395,7 +3616,7 @@
     };
     out.teacher_id = reportType === 'timetable_teacher' && val('gf-teacher') ? parseInt(val('gf-teacher'), 10) : null;
     out.timetable_view = reportType === 'timetable_subject' ? (val('gf-timetable-view') || 'student') : null;
-    if (reportUsesFindStudentPicker(reportType)) {
+    if (reportUsesFindStudentPicker(reportType) || examShowsOptionalStudentRoster(reportType)) {
       const sid = val('gf-student');
       out.student_id = sid ? String(sid).trim() : null;
     } else {
@@ -3403,11 +3624,22 @@
     }
     if (reportType && reportType.indexOf('exam_') === 0) {
       var ep = splitExamPick(val('gf-exam-name'));
-      out.exam_name = ep.exam_name || null;
-      out.exam_type = ep.exam_type || null;
+      if (ep.exam_name) {
+        out.exam_name = ep.exam_name;
+        out.exam_type = ep.exam_type || null;
+        out.exam_names = null;
+      } else {
+        out.exam_name = null;
+        out.exam_type = null;
+        var visibleExams = getVisibleExamFilterPicks();
+        out.exam_names = visibleExams.length
+          ? visibleExams.map(function(p) { return p.exam_name; })
+          : null;
+      }
     } else {
       out.exam_name = null;
       out.exam_type = null;
+      out.exam_names = null;
     }
     if (reportType === 'class_list_attendance') {
       const registerDate = val('gf-register-date');
@@ -3430,7 +3662,12 @@
     q.set('format', fmt || 'excel');
     Object.keys(f).forEach(function(k) {
       const v = f[k];
-      if (v !== null && v !== undefined && String(v).trim() !== '') {
+      if (v === null || v === undefined) return;
+      if (k === 'exam_names' && Array.isArray(v)) {
+        if (v.length) q.set('exam_names', v.join(','));
+        return;
+      }
+      if (String(v).trim() !== '') {
         q.set(k, String(v));
       }
     });
@@ -3481,7 +3718,11 @@
     }
     if (needs.exam) {
       var ex = filterSelectText('gf-exam-name');
-      if (ex && ex.indexOf('Select exam') === -1) parts.push('Exam: ' + shortExamLabel(ex));
+      if (ex && ex.indexOf('All exams') === -1 && ex.indexOf('Select exam') === -1) {
+        parts.push('Exam: ' + shortExamLabel(ex));
+      } else {
+        parts.push('Exam: All exams');
+      }
     }
     if (needs.dates) {
       var df = val('gf-dfrom');
@@ -3505,6 +3746,8 @@
         } else {
           parts.push('Student ID: ' + sid);
         }
+      } else if (usesExamStudentRoster()) {
+        parts.push('Student: All students');
       }
     }
   if (needs.examScope && examScopeEl) {
@@ -3524,6 +3767,7 @@
   }
 
   var detailsOpenState = [];
+  var printPreviewRestore = null;
 
   function expandDetailsForPrint() {
     detailsOpenState = [];
@@ -3541,10 +3785,75 @@
     detailsOpenState = [];
   }
 
+  function removeIndividualReportPageBreaks() {
+    document.querySelectorAll('#ar-preview-wrap .ar-print-page-break').forEach(function(el) {
+      el.remove();
+    });
+  }
+
+  function insertIndividualReportPageBreaks() {
+    removeIndividualReportPageBreaks();
+    var wrap = document.getElementById('ar-preview-wrap');
+    if (!wrap || !wrap.classList.contains('ar-print-individual-batch')) return;
+    var cards = wrap.querySelectorAll('#ar-details-list article.ar-rc-individual');
+    for (var i = 1; i < cards.length; i++) {
+      var br = document.createElement('div');
+      br.className = 'ar-print-page-break';
+      br.setAttribute('aria-hidden', 'true');
+      cards[i].parentNode.insertBefore(br, cards[i]);
+    }
+  }
+
+  function detachPreviewForBatchPrint() {
+    var wrap = document.getElementById('ar-preview-wrap');
+    if (!wrap || !wrap.classList.contains('ar-print-individual-batch')) return;
+    if (printPreviewRestore && wrap.parentNode === document.body) return;
+    printPreviewRestore = {
+      parent: wrap.parentNode,
+      next: wrap.nextSibling,
+    };
+    document.body.appendChild(wrap);
+    document.documentElement.classList.add('ar-print-individual-batch-doc');
+  }
+
+  function restorePreviewAfterPrint() {
+    removeIndividualReportPageBreaks();
+    document.documentElement.classList.remove('ar-print-individual-batch-doc');
+    var wrap = document.getElementById('ar-preview-wrap');
+    if (!printPreviewRestore || !wrap || !printPreviewRestore.parent) {
+      printPreviewRestore = null;
+      return;
+    }
+    if (printPreviewRestore.next && printPreviewRestore.next.parentNode === printPreviewRestore.parent) {
+      printPreviewRestore.parent.insertBefore(wrap, printPreviewRestore.next);
+    } else {
+      printPreviewRestore.parent.appendChild(wrap);
+    }
+    printPreviewRestore = null;
+  }
+
+  function normalizeIndividualReportPrintPages() {
+    var wrap = document.getElementById('ar-preview-wrap');
+    if (!wrap || !wrap.classList.contains('ar-print-individual-batch')) return;
+    var cards = wrap.querySelectorAll('#ar-details-list article.ar-rc-individual');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      card.classList.add('ar-print-page-sheet');
+      if (i > 0) {
+        card.classList.add('ar-print-page-follow');
+      } else {
+        card.classList.remove('ar-print-page-follow');
+      }
+    }
+  }
+
   function prepareAcademicReportPrint() {
     updatePrintLetterhead();
     expandDetailsForPrint();
     syncPrintPageMode();
+    normalizeIndividualReportPrintPages();
+    insertIndividualReportPageBreaks();
+    detachPreviewForBatchPrint();
     scrollAcademicReportPaneToTop();
   }
 
@@ -3682,6 +3991,286 @@
   function reportTermExamLine(af, ew) {
     var term = reportTermLabel(af);
     var exam = reportExamLabel(af, ew);
+    if (term && exam) return term + ' · ' + exam;
+    return term || exam || '-';
+  }
+
+  function isAllExamsReportMode(meta, af) {
+    if (meta && meta.all_exams_mode) return true;
+    var pick = splitExamPick(val('gf-exam-name'));
+    if (!pick.exam_name) return true;
+    var en = String((af && af.exam_name) || '').trim();
+    return !en || /^all exams$/i.test(en);
+  }
+
+  function normalizedExamNameKey(examName) {
+    return String(examName || '').trim().toUpperCase();
+  }
+
+  function normalizedExamSittingKey(examName, examDate) {
+    var en = String(examName || '').trim().toUpperCase();
+    var ed = String(examDate || '').trim();
+    if (!en && !ed) return '';
+    return en + '\x1f' + ed;
+  }
+
+  function reportCardExamEntryKey(ex) {
+    if (!ex) return '';
+    var nameKey = normalizedExamNameKey(ex.exam_name);
+    if (nameKey) return nameKey;
+    var sitting = normalizedExamSittingKey(ex.exam_name, ex.exam_date);
+    if (sitting) return sitting;
+    if (ex.exam_id != null && ex.exam_id !== '') return String(ex.exam_id);
+    return '';
+  }
+
+  function resolveReportExamColumns(detail, metaExamColumns) {
+    if (Array.isArray(metaExamColumns) && metaExamColumns.length) {
+      var seenMeta = {};
+      var out = [];
+      metaExamColumns.forEach(function(col) {
+        var dedupeKey = normalizedExamNameKey(col.exam_name || col.label);
+        if (!dedupeKey) {
+          dedupeKey = normalizedExamSittingKey(col.exam_name || col.label, col.exam_date);
+        }
+        if (!dedupeKey) {
+          dedupeKey = (col.key != null && String(col.key).trim() !== '') ? String(col.key)
+            : (col.exam_id != null && col.exam_id !== '' ? String(col.exam_id) : '');
+        }
+        if (!dedupeKey || seenMeta[dedupeKey]) return;
+        seenMeta[dedupeKey] = true;
+        out.push({
+          key: dedupeKey,
+          label: shortExamLabel(col.exam_name || col.label || '') || String(col.exam_name || col.label || 'Exam').trim() || 'Exam',
+          exam_name: col.exam_name || col.label || '',
+          exam_date: col.exam_date || '',
+        });
+      });
+      return out;
+    }
+    var seen = {};
+    var list = [];
+    Object.keys(detail || {}).forEach(function(subj) {
+      (detail[subj] || []).forEach(function(ex) {
+        var key = reportCardExamEntryKey(ex);
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        list.push({
+          key: key,
+          label: shortExamLabel(ex.exam_name || 'Exam') || String(ex.exam_name || 'Exam').trim() || 'Exam',
+          exam_name: ex.exam_name || '',
+          date: ex.exam_date || '',
+        });
+      });
+    });
+    list.sort(function(a, b) {
+      return String(a.date).localeCompare(String(b.date))
+        || a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+    });
+    return list.map(function(x) {
+      return {
+        key: x.key,
+        label: x.label,
+        exam_name: x.exam_name || x.label || '',
+        exam_date: x.date || '',
+      };
+    });
+  }
+
+  function examNamesReferToSameSitting(exName, examCol) {
+    var a = normalizedExamNameKey(exName);
+    if (!a) return false;
+    var candidates = [
+      examCol.exam_name,
+      examCol.label,
+      shortExamLabel(examCol.exam_name),
+      shortExamLabel(examCol.label),
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+      var b = normalizedExamNameKey(candidates[i]);
+      if (!b) continue;
+      if (a === b) return true;
+      if (a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return true;
+    }
+    var shortEx = normalizedExamNameKey(shortExamLabel(exName));
+    if (shortEx) {
+      for (var j = 0; j < candidates.length; j++) {
+        var c = normalizedExamNameKey(candidates[j]);
+        if (c && (shortEx === c || shortEx.indexOf(c) >= 0 || c.indexOf(shortEx) >= 0)) return true;
+      }
+    }
+    return false;
+  }
+
+  function examEntryMatchesExamCol(ex, examCol) {
+    if (!ex || !examCol) return false;
+    if (examNamesReferToSameSitting(ex.exam_name, examCol)) return true;
+    var colKey = String(examCol.key || '').trim();
+    var exKey = reportCardExamEntryKey(ex);
+    if (colKey && exKey && exKey === colKey) return true;
+    var sitEx = normalizedExamSittingKey(ex.exam_name, ex.exam_date);
+    var sitCol = normalizedExamSittingKey(examCol.exam_name || examCol.label, examCol.exam_date);
+    if (sitEx && sitCol && sitEx === sitCol) return true;
+    if (ex.exam_id != null && ex.exam_id !== '' && String(ex.exam_id) === colKey) return true;
+    var pipeKey = String(ex.exam_name || '') + '|' + String(ex.exam_date || '');
+    if (pipeKey === colKey) return true;
+    return false;
+  }
+
+  function buildReportCardRowForExam(row, examCol, subjectColumns, rowBands) {
+    const detail = (row && row.subject_marks_by_exam && typeof row.subject_marks_by_exam === 'object')
+      ? row.subject_marks_by_exam
+      : {};
+    const subject_marks = {};
+    const numericMarks = [];
+    (subjectColumns || []).forEach(function(subj) {
+      const entries = detail[subj] || [];
+      var mark = null;
+      entries.forEach(function(ex) {
+        if (examEntryMatchesExamCol(ex, examCol)) mark = ex.mark;
+      });
+      if (mark != null && mark !== '') {
+        subject_marks[subj] = mark;
+        const n = parseFloat(mark);
+        if (!isNaN(n)) numericMarks.push(n);
+      }
+    });
+    const mean = numericMarks.length
+      ? Math.round(numericMarks.reduce(function(a, b) { return a + b; }, 0) / numericMarks.length)
+      : null;
+    const total = numericMarks.length
+      ? Math.round(numericMarks.reduce(function(a, b) { return a + b; }, 0))
+      : null;
+    const out = Object.assign({}, row);
+    out.subject_marks = subject_marks;
+    (subjectColumns || []).forEach(function(subj) {
+      out[subj] = (subject_marks[subj] != null && subject_marks[subj] !== '') ? subject_marks[subj] : '';
+    });
+    out.total_marks = total != null ? total : '';
+    out.mean = mean != null ? mean : '';
+    const bands = rowBands || [];
+    out.grade = (mean != null) ? gradeCodeFromMark(mean, bands) : '-';
+    const gp = (mean != null) ? gradePointsFromMark(mean, bands) : '';
+    out.grade_points = (gp && gp !== '—') ? gp : '';
+    return out;
+  }
+
+  function markForSubjectExam(detail, subjectName, examCol) {
+    const entries = (detail && detail[subjectName]) || [];
+    var mark = null;
+    entries.forEach(function(ex) {
+      if (examEntryMatchesExamCol(ex, examCol)) mark = ex.mark;
+    });
+    return mark;
+  }
+
+  function buildReportCardMultiExamSubjectTable(row, subjectColumns, examCols, rowBands, levelId, gradeCodeRemarksMeta) {
+    const detail = (row && row.subject_marks_by_exam && typeof row.subject_marks_by_exam === 'object')
+      ? row.subject_marks_by_exam
+      : {};
+    const examHeaders = (examCols || []).map(function(exCol) {
+      const lbl = escapeHtml(exCol.label || 'Exam');
+      return '<th class="ar-rc-th-exam-col" title="' + lbl + '">' + lbl + '</th>';
+    }).join('');
+    const head = '' +
+      '<th class="ar-rc-th-subj">Subject</th>' +
+      examHeaders +
+      '<th class="ar-rc-th-avg">Average</th>' +
+      '<th>Grade</th>' +
+      '<th>GP</th>' +
+      '<th class="ar-rc-th-feedback">Teacher\'s feedback</th>';
+    const lines = (subjectColumns || []).map(function(subjectName) {
+      const numeric = [];
+      const examCells = (examCols || []).map(function(exCol) {
+        const mark = markForSubjectExam(detail, subjectName, exCol);
+        if (mark != null && mark !== '') {
+          const n = parseFloat(mark);
+          if (!isNaN(n)) numeric.push(n);
+        }
+        return '<td class="ar-rc-td-num">' + escapeHtml(formatReportMark(mark)) + '</td>';
+      }).join('');
+      const avg = numeric.length
+        ? Math.round(numeric.reduce(function(a, b) { return a + b; }, 0) / numeric.length)
+        : null;
+      const subGrade = avg != null ? gradeCodeFromMark(avg, rowBands) : '-';
+      const subPoints = avg != null ? gradePointsFromMark(avg, rowBands) : '—';
+      const subFeedback = teacherFeedbackForMark(avg, levelId, rowBands, gradeCodeRemarksMeta);
+      return '' +
+        '<tr>' +
+          '<td class="ar-rc-td-subj">' + escapeHtml(subjectName) + '</td>' +
+          examCells +
+          '<td class="ar-rc-td-num ar-rc-td-avg">' + escapeHtml(avg != null ? String(avg) : '-') + '</td>' +
+          '<td class="ar-rc-td-num">' + escapeHtml(subGrade) + '</td>' +
+          '<td class="ar-rc-td-num">' + escapeHtml(subPoints) + '</td>' +
+          '<td class="ar-rc-td-feedback">' + escapeHtml(subFeedback) + '</td>' +
+        '</tr>';
+    });
+    return { head: head, html: lines.join('') };
+  }
+
+  function buildExamDetailFromPerformanceRows(rows) {
+    const detail = {};
+    const examSeen = {};
+    const examCols = [];
+    (rows || []).forEach(function(r) {
+      const subject = String(r.subject_code || r.subject_name || '').trim() || 'Subject';
+      const mark = r.marks;
+      if (mark === '' || mark == null) return;
+      const eid = r.exam_id != null && r.exam_id !== '' ? String(r.exam_id) : '';
+      const en = String(r.exam_name || '').trim();
+      const ed = String(r.exam_date || '').trim();
+      const colKey = normalizedExamNameKey(en) || normalizedExamSittingKey(en, ed) || eid || (en + '\x1f' + ed);
+      if (!examSeen[colKey]) {
+        examSeen[colKey] = true;
+        examCols.push({
+          key: colKey,
+          label: shortExamLabel(en) || en || 'Exam',
+          exam_name: en,
+          exam_date: ed,
+          date: ed,
+        });
+      }
+      if (!detail[subject]) detail[subject] = [];
+      detail[subject].push({
+        exam_id: r.exam_id,
+        exam_name: en,
+        exam_date: ed,
+        mark: mark,
+      });
+    });
+    examCols.sort(function(a, b) {
+      return String(a.date || a.exam_date || '').localeCompare(String(b.date || b.exam_date || ''))
+        || a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+    });
+    return { detail: detail, examCols: examCols };
+  }
+
+  function buildReportCardSubjectTable(row, subjectColumns, rowBands, levelId, gradeCodeRemarksMeta) {
+    const lines = (subjectColumns || []).map(function(subjectName) {
+      const mark = markValueForSubject(row, subjectName);
+      const subGrade = gradeCodeFromMark(mark, rowBands);
+      const subPoints = gradePointsFromMark(mark, rowBands);
+      const subFeedback = teacherFeedbackForMark(mark, levelId, rowBands, gradeCodeRemarksMeta);
+      return '' +
+        '<tr>' +
+          '<td class="ar-rc-td-subj">' + escapeHtml(subjectName) + '</td>' +
+          '<td class="ar-rc-td-num">' + escapeHtml(formatReportMark(mark)) + '</td>' +
+          '<td class="ar-rc-td-num">' + escapeHtml(subGrade) + '</td>' +
+          '<td class="ar-rc-td-num">' + escapeHtml(subPoints) + '</td>' +
+          '<td class="ar-rc-td-feedback">' + escapeHtml(subFeedback) + '</td>' +
+        '</tr>';
+    });
+    return {
+      head: '<th class="ar-rc-th-subj">Subject</th><th>Obtained</th><th>Grade</th><th>GP</th><th class="ar-rc-th-feedback">Teacher\'s feedback</th>',
+      html: lines.join(''),
+    };
+  }
+
+  function reportCardTermExamLine(af, ew, examLabelOverride) {
+    const term = reportTermLabel(af);
+    const exam = (examLabelOverride && String(examLabelOverride).trim())
+      ? String(examLabelOverride).trim()
+      : reportExamLabel(af, ew);
     if (term && exam) return term + ' · ' + exam;
     return term || exam || '-';
   }
@@ -4216,7 +4805,7 @@
     var _rowMetaKeys = {
       position: 1, admission_number: 1, student_id: 1, full_name: 1, level_name: 1,
       current_grade: 1, home_class: 1, student_photo: 1, total_marks: 1, mean: 1, grade: 1, grade_points: 1,
-      subject_marks: 1, subject_grades: 1, class_subject_columns: 1,
+      subject_marks: 1, subject_grades: 1, subject_marks_by_exam: 1, class_subject_columns: 1,
       rank_sort_total: 1, rank_sort_mean: 1, academic_level_id: 1,
     };
 
@@ -4354,12 +4943,12 @@
       });
     }
 
-    function renderStudentCard(row, classPosition, studentSheetIndex, classSize) {
+    function renderStudentCard(row, classPosition, studentSheetIndex, classSize, examLabelOverride, multiExamCols) {
       if (studentSheetIndex === undefined) studentSheetIndex = 0;
       const grade = String(row.grade || '-');
       const rowBands = bandsForLevel(row.academic_level_id);
-      const meaning = gradeMeaning(grade, row.academic_level_id);
       const cardSubjectColumns = subjectColumnsForClass(classKeyForRow(row), [row]);
+      const useMultiExam = Array.isArray(multiExamCols) && multiExamCols.length > 1;
       const homeClass = (row.home_class && String(row.home_class).trim())
         ? row.home_class
         : ((row.current_grade && String(row.current_grade).trim()) ? row.current_grade : '');
@@ -4371,27 +4960,28 @@
       const rankVal = classPosition != null ? classPosition : (row.position || '-');
       const denom = (classSize != null && String(classSize).trim() !== '') ? String(classSize) : '';
       const rankDisp = denom ? (String(rankVal) + ' / ' + denom) : String(rankVal);
-      const termExamLabel = reportTermExamLine(af, ew);
+      const termExamLabel = useMultiExam
+        ? reportCardTermExamLine(af, ew, null)
+        : reportCardTermExamLine(af, ew, examLabelOverride);
       const photoHtml = row.student_photo && String(row.student_photo).trim()
         ? '<img src="' + escapeHtml(row.student_photo) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
         : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
       const overallPoints = (row.grade_points !== undefined && row.grade_points !== null && String(row.grade_points).trim() !== '')
         ? String(row.grade_points)
         : gradePointsFromMark(row.mean, rowBands);
-      const subjectRows = cardSubjectColumns.map(function(subjectName) {
-        const mark = markValueForSubject(row, subjectName);
-        const subGrade = gradeCodeFromMark(mark, rowBands);
-        const subPoints = gradePointsFromMark(mark, rowBands);
-        const subFeedback = teacherFeedbackForMark(mark, row.academic_level_id, rowBands, gradeCodeRemarksMeta);
-        return '' +
-          '<tr>' +
-            '<td class="ar-rc-td-subj">' + escapeHtml(subjectName) + '</td>' +
-            '<td class="ar-rc-td-num">' + escapeHtml(formatReportMark(mark)) + '</td>' +
-            '<td class="ar-rc-td-num">' + escapeHtml(subGrade) + '</td>' +
-            '<td class="ar-rc-td-num">' + escapeHtml(subPoints) + '</td>' +
-            '<td class="ar-rc-td-feedback">' + escapeHtml(subFeedback) + '</td>' +
-          '</tr>';
-      }).join('');
+      const subjectTable = useMultiExam
+        ? buildReportCardMultiExamSubjectTable(
+            row, cardSubjectColumns, multiExamCols, rowBands, row.academic_level_id, gradeCodeRemarksMeta
+          )
+        : buildReportCardSubjectTable(
+            row, cardSubjectColumns, rowBands, row.academic_level_id, gradeCodeRemarksMeta
+          );
+      const tableClass = useMultiExam
+        ? 'ar-rc-table ar-rc-table--subjects ar-rc-table--multi-exam'
+        : 'ar-rc-table ar-rc-table--subjects';
+      const tableHtml = useMultiExam
+        ? '<div class="ar-rc-table-scroll"><table class="' + tableClass + '"><thead><tr>' + subjectTable.head + '</tr></thead><tbody>' + subjectTable.html + '</tbody></table></div>'
+        : '<table class="' + tableClass + '"><thead><tr>' + subjectTable.head + '</tr></thead><tbody>' + subjectTable.html + '</tbody></table>';
       return '' +
         '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(studentSheetIndex) + '">' +
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
@@ -4405,12 +4995,7 @@
               { label: 'Term / exam', value: termExamLabel }
             ], photoHtml) +
             '<div class="ar-rc-main-body">' +
-              '<table class="ar-rc-table ar-rc-table--subjects">' +
-                '<thead><tr>' +
-                  '<th class="ar-rc-th-subj">Subject</th><th>Obtained</th><th>Grade</th><th>GP</th><th class="ar-rc-th-feedback">Teacher\'s feedback</th>' +
-                '</tr></thead>' +
-                '<tbody>' + subjectRows + '</tbody>' +
-              '</table>' +
+              tableHtml +
               '<div class="ar-rc-stats-row ar-rc-stats-row--5">' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.total_marks)) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.mean)) + '</p></div>' +
@@ -4425,6 +5010,35 @@
           '</div>' +
         '</article>';
 
+    }
+
+    var reportCardSheetIndex = 0;
+
+    function renderStudentCardsForEntry(entry, list) {
+      const row = entry.row;
+      const rowBands = bandsForLevel(row.academic_level_id);
+      const cardSubjectColumns = subjectColumnsForClass(classKeyForRow(row), [row]);
+      const allExamsMode = isAllExamsReportMode(meta, af);
+      const detail = row.subject_marks_by_exam || {};
+      let examCols = allExamsMode ? resolveReportExamColumns(detail, meta.exam_columns) : [];
+      if (allExamsMode && !examCols.length && detail && typeof detail === 'object') {
+        examCols = resolveReportExamColumns(detail, null);
+      }
+      if (allExamsMode) {
+        const filterCols = buildExamColsFromVisibleFilter(detail, rowsFromSubjectMarksByExam(detail));
+        if (filterCols.length > 1) {
+          examCols = filterCols;
+        }
+      }
+
+      if (!allExamsMode || !examCols.length) {
+        return renderStudentCard(row, entry.position, reportCardSheetIndex++, list.length, null);
+      }
+      if (examCols.length === 1) {
+        const cardRow = buildReportCardRowForExam(row, examCols[0], cardSubjectColumns, rowBands);
+        return renderStudentCard(cardRow, entry.position, reportCardSheetIndex++, list.length, examCols[0].label);
+      }
+      return renderStudentCard(row, entry.position, reportCardSheetIndex++, list.length, null, examCols);
     }
 
     function renderClassTable(className, list) {
@@ -4635,8 +5249,8 @@
       const scope = currentExamScope();
       const inner = scope === 'class'
         ? renderClassTable(className, list)
-        : rankStudentsWithinClass(list).map(function(entry, studentIdx) {
-            return renderStudentCard(entry.row, entry.position, studentIdx, list.length);
+        : rankStudentsWithinClass(list).map(function(entry) {
+            return renderStudentCardsForEntry(entry, list);
           }).join('');
       const sheetCls = printPageWrapClass(sectionIndex) + ' ar-class-print-sheet rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-md ring-1 ring-slate-900/[0.03] dark:ring-white/[0.06]';
       return '' +
@@ -5449,13 +6063,154 @@
     return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300';
   }
 
-  function renderIndividualStudentPerformanceForm(bundle) {
+  function resolveStudentPhotoUrl(row, meta) {
+    const direct = row && row.student_photo;
+    if (direct != null && String(direct).trim()) return String(direct).trim();
+    const sid = row && row.student_id;
+    const map = meta && meta.student_photos;
+    if (sid == null || !map || typeof map !== 'object') return '';
+    return map[sid] || map[String(sid)] || '';
+  }
+
+  function gradeLegendHtmlFromMeta(meta) {
+    const bands = Array.isArray(meta && meta.grade_bands) ? meta.grade_bands : [];
+    if (!bands.length) return 'Configured grade settings';
+    return bands.map(function(g) {
+      const code = String(g.code || g.label || '').trim();
+      return code ? (escapeHtml(code) + ': ' + escapeHtml(g.start) + '-' + escapeHtml(g.end)) : '';
+    }).filter(Boolean).join(', ');
+  }
+
+  function usesChunkedReportCardPaint(reportType) {
+    return reportType === 'exam_individual_performance';
+  }
+
+  function buildIndividualStudentPerformanceCardJobs(bundle) {
     let rows = Array.isArray(bundle.rows) ? bundle.rows.slice() : [];
     rows = narrowExamRowsToSelectedStudent(rows);
     if (!rows.length) {
-      return '<p class="text-sm text-gray-500 dark:text-gray-400">No student marks found for the selected filters.</p>';
+      return { jobs: [], emptyMessage: '<p class="text-sm text-gray-500 dark:text-gray-400">No student marks found for the selected filters.</p>' };
     }
 
+    const meta = bundle.meta || {};
+    const af = meta.applied_filters || {};
+    const byStudent = {};
+    rows.forEach(function(r) {
+      const sid = String((r && (r.student_id != null ? r.student_id : r.admission_number)) || '').trim() || '_';
+      if (!byStudent[sid]) byStudent[sid] = [];
+      byStudent[sid].push(r);
+    });
+    const studentGroups = Object.keys(byStudent).sort(function(a, b) {
+      const na = String((byStudent[a][0] && byStudent[a][0].full_name) || a).toLowerCase();
+      const nb = String((byStudent[b][0] && byStudent[b][0].full_name) || b).toLowerCase();
+      return na.localeCompare(nb, undefined, { sensitivity: 'base' });
+    });
+    var indSheetIndex = 0;
+    var jobs = [];
+    studentGroups.forEach(function(sid) {
+      const studentRows = byStudent[sid];
+      const examPick = splitExamPick(val('gf-exam-name'));
+      const allExamsUi = !examPick.exam_name || isAllExamsReportMode(meta, af);
+      if (!allExamsUi) {
+        jobs.push({
+          bundle: Object.assign({}, bundle, { rows: studentRows }),
+          sheetIndex: indSheetIndex++,
+        });
+        return;
+      }
+      const built = buildExamDetailFromPerformanceRows(studentRows);
+      const filterCols = buildExamColsFromVisibleFilter(built.detail, studentRows);
+      const examCols = filterCols.length > 1 ? filterCols : built.examCols;
+      if (examCols.length > 1) {
+        jobs.push({
+          bundle: Object.assign({}, bundle, {
+            rows: studentRows,
+            multiExamCols: examCols,
+            subjectMarksByExam: built.detail,
+          }),
+          sheetIndex: indSheetIndex++,
+        });
+        return;
+      }
+      if (examCols.length === 1) {
+        const exCol = examCols[0];
+        const filtered = studentRows.filter(function(r) {
+          const key = String(r.exam_id != null ? r.exam_id : (r.exam_name || '')) + '\x1f' + String(r.exam_date || '');
+          const want = String(exCol.key || '');
+          return key === want || String(r.exam_id) === want;
+        });
+        jobs.push({
+          bundle: Object.assign({}, bundle, { rows: filtered.length ? filtered : studentRows, examLabel: exCol.label }),
+          sheetIndex: indSheetIndex++,
+        });
+        return;
+      }
+      jobs.push({
+        bundle: Object.assign({}, bundle, { rows: studentRows }),
+        sheetIndex: indSheetIndex++,
+      });
+    });
+    return { jobs: jobs, emptyMessage: '' };
+  }
+
+  function renderIndividualStudentPerformanceJobsHtml(jobs) {
+    return (jobs || []).map(function(job) {
+      return renderIndividualStudentPerformanceCard(job.bundle, job.sheetIndex);
+    }).join('');
+  }
+
+  function paintReportCardsChunked(summaryHtml, jobs, token) {
+    if (!detailsListEl) return;
+    const list = Array.isArray(jobs) ? jobs : [];
+    if (!list.length) {
+      detailsListEl.innerHTML = summaryHtml;
+      return;
+    }
+    const showProgress = list.length > REPORT_CARD_CHUNK_SIZE;
+    detailsListEl.innerHTML = summaryHtml +
+      '<div id="ar-chunked-cards-root"></div>' +
+      (showProgress
+        ? '<p id="ar-chunked-progress" class="text-xs text-slate-500 dark:text-slate-400 mt-2 no-print">Building report cards…</p>'
+        : '');
+    const root = document.getElementById('ar-chunked-cards-root');
+    const prog = document.getElementById('ar-chunked-progress');
+    if (!showProgress) {
+      root.innerHTML = renderIndividualStudentPerformanceJobsHtml(list);
+      return;
+    }
+    let i = 0;
+    function step() {
+      if (token !== reportLoadToken || !root) return;
+      const end = Math.min(i + REPORT_CARD_CHUNK_SIZE, list.length);
+      let chunk = '';
+      for (; i < end; i++) {
+        const job = list[i];
+        chunk += renderIndividualStudentPerformanceCard(job.bundle, job.sheetIndex);
+      }
+      root.insertAdjacentHTML('beforeend', chunk);
+      if (prog) {
+        if (i < list.length) {
+          prog.textContent = 'Rendered ' + i + ' of ' + list.length + ' report cards…';
+        } else {
+          prog.remove();
+        }
+      }
+      if (i < list.length) {
+        setTimeout(function() { requestAnimationFrame(step); }, 0);
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  function renderIndividualStudentPerformanceForm(bundle) {
+    const built = buildIndividualStudentPerformanceCardJobs(bundle);
+    if (built.emptyMessage) return built.emptyMessage;
+    return renderIndividualStudentPerformanceJobsHtml(built.jobs);
+  }
+
+  function renderIndividualStudentPerformanceCard(bundle, sheetIndex) {
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    if (!rows.length) return '';
     const first = rows[0] || {};
     const meta = bundle.meta || {};
     const af = meta.applied_filters || {};
@@ -5490,6 +6245,89 @@
       }
       return '-';
     }
+
+    const multiExamCols = Array.isArray(bundle.multiExamCols) && bundle.multiExamCols.length > 1
+      ? bundle.multiExamCols
+      : null;
+    const subjectMarksByExam = (bundle.subjectMarksByExam && typeof bundle.subjectMarksByExam === 'object')
+      ? bundle.subjectMarksByExam
+      : null;
+    if (multiExamCols && subjectMarksByExam) {
+      const subjectOrderMap = {};
+      rows.forEach(function(r) {
+        const s = String(r.subject_code || r.subject_name || '').trim() || 'Subject';
+        const eo = parseInt(String(r.exam_display_order || ''), 10);
+        if (!subjectOrderMap[s] || (!isNaN(eo) && eo < subjectOrderMap[s])) {
+          subjectOrderMap[s] = isNaN(eo) ? 1000000000 : eo;
+        }
+      });
+      const subjectOrder = Object.keys(subjectMarksByExam).sort(function(a, b) {
+        const ea = subjectOrderMap[a] != null ? subjectOrderMap[a] : 1000000000;
+        const eb = subjectOrderMap[b] != null ? subjectOrderMap[b] : 1000000000;
+        if (ea !== eb) return ea - eb;
+        return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+      });
+      const syntheticRow = { subject_marks_by_exam: subjectMarksByExam };
+      const subjectTableInd = buildReportCardMultiExamSubjectTable(
+        syntheticRow, subjectOrder, multiExamCols, activeBands, studentLevelId, gradeCodeRemarksInd
+      );
+      const allMultiMarks = [];
+      subjectOrder.forEach(function(subj) {
+        const entries = subjectMarksByExam[subj] || [];
+        const nums = [];
+        entries.forEach(function(ex) {
+          const n = parseFloat(ex.mark);
+          if (!isNaN(n)) nums.push(n);
+        });
+        if (nums.length) {
+          allMultiMarks.push(nums.reduce(function(a, b) { return a + b; }, 0) / nums.length);
+        }
+      });
+      const overallAvgMulti = allMultiMarks.length
+        ? (allMultiMarks.reduce(function(a, b) { return a + b; }, 0) / allMultiMarks.length)
+        : null;
+      const overallGradeMulti = overallAvgMulti === null ? '-' : gradeFromSettings(null, overallAvgMulti);
+      const overallPointsMulti = overallAvgMulti === null ? '-' : gradePointsFromMark(overallAvgMulti, activeBands);
+      const overallAvgTextMulti = overallAvgMulti === null ? '-' : String(Math.round(overallAvgMulti));
+      const ewIndMulti = (bundle.meta || {}).exam_window || {};
+      const termExamLabelMulti = reportCardTermExamLine(af, ewIndMulti, null);
+      const photoUrlMulti = resolveStudentPhotoUrl(first, meta);
+      const photoHtmlMulti = photoUrlMulti
+        ? '<img src="' + escapeHtml(photoUrlMulti) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
+        : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
+      const gradeLegendMulti = gradeLegendHtmlFromMeta(meta);
+      return '' +
+        '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex == null ? 0 : sheetIndex) + '">' +
+          '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
+          '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
+          '<div class="ar-rc-inner">' +
+            renderReportCardHeader('REPORT CARD', null) +
+            renderReportCardMetaWithPhoto([
+              { label: 'Student name', value: first.full_name || '-' },
+              { label: 'Class / section', value: first.level_name || '-' },
+              { label: 'School year', value: reportSchoolYearLabel(af) },
+              { label: 'Term / exam', value: termExamLabelMulti }
+            ], photoHtmlMulti) +
+            '<div class="ar-rc-main-body">' +
+              '<div class="ar-rc-table-scroll"><table class="ar-rc-table ar-rc-table--subjects ar-rc-table--multi-exam">' +
+                '<thead><tr>' + subjectTableInd.head + '</tr></thead>' +
+                '<tbody>' + subjectTableInd.html + '</tbody>' +
+              '</table></div>' +
+              '<div class="ar-rc-stats-row ar-rc-stats-row--5">' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall average</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgTextMulti) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGradeMulti) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">' + escapeHtml(overallPointsMulti) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Exams shown</p><p class="ar-rc-stat-value">' + escapeHtml(String(multiExamCols.length)) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects</p><p class="ar-rc-stat-value">' + escapeHtml(String(subjectOrder.length)) + '</p></div>' +
+              '</div>' +
+            '</div>' +
+            '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegendMulti + '</p>' +
+            renderReportCardFeedback('') +
+            renderReportCardSignatures() +
+          '</div>' +
+        '</article>';
+    }
+
     rows.forEach(function(r) {
       const subject = String(r.subject_code || r.subject_name || '').trim() || 'Subject';
       const mark = Number(r.marks);
@@ -5532,10 +6370,10 @@
     }).map(function(subject) {
       const marks = bySubject[subject].marks;
       const subjectId = bySubject[subject].subjectId;
-      const avg = marks.length ? (marks.reduce((a, b) => a + b, 0) / marks.length) : null;
-      const markVal = avg === null ? '-' : String(Math.round(avg));
-      const grade = avg === null ? '-' : gradeFromSettings(subjectId, avg);
-      const points = avg === null ? '-' : gradePointsFromMark(avg, activeBands);
+      const markNum = marks.length ? marks[0] : null;
+      const markVal = markNum === null ? '-' : String(Math.round(markNum));
+      const grade = markNum === null ? '-' : gradeFromSettings(subjectId, markNum);
+      const points = markNum === null ? '-' : gradePointsFromMark(markNum, activeBands);
       const trendValues = bySubject[subject].history
         .slice()
         .sort(function(a, b) { return String(a.examDate || '').localeCompare(String(b.examDate || '')); })
@@ -5545,7 +6383,7 @@
         });
       const trendText = trendValues.length > 1 ? trendValues.join(' -> ') : (trendValues[0] || '-');
       const feedback = bySubject[subject].feedback
-        || teacherFeedbackForMark(avg, studentLevelId, activeBands, gradeCodeRemarksInd);
+        || teacherFeedbackForMark(markNum, studentLevelId, activeBands, gradeCodeRemarksInd);
       return {
         subject,
         markVal,
@@ -5556,45 +6394,38 @@
       };
     });
 
+    const overallTotal = allMarks.length ? Math.round(allMarks.reduce((a, b) => a + b, 0)) : null;
     const overallAvg = allMarks.length ? (allMarks.reduce((a, b) => a + b, 0) / allMarks.length) : null;
     const overallGrade = overallAvg === null ? '-' : gradeFromSettings(null, overallAvg);
     const overallPoints = overallAvg === null ? '-' : gradePointsFromMark(overallAvg, activeBands);
     const overallAvgText = overallAvg === null ? '-' : String(Math.round(overallAvg));
+    const overallTotalText = overallTotal === null ? '-' : String(overallTotal);
     const passCount = subjects.filter(function(s) { return s.grade !== 'F' && s.grade !== '-'; }).length;
+    const singleExamCard = !!(bundle.examLabel && String(bundle.examLabel).trim());
 
-    const tableRows = subjects.map(function(item) {
-      return '' +
-        '<tr>' +
-          '<td class="ar-rc-td-subj">' + escapeHtml(item.subject) +
-            (item.trendText && item.trendText !== '-' ? '<br><span class="text-[10px] font-normal text-gray-500">Trend: ' + escapeHtml(item.trendText) + '</span>' : '') +
-          '</td>' +
-          '<td class="ar-rc-td-num">' + escapeHtml(item.markVal) + '</td>' +
-          '<td class="ar-rc-td-num">' + escapeHtml(item.grade) + '</td>' +
-          '<td class="ar-rc-td-num">' + escapeHtml(item.points) + '</td>' +
-          '<td class="ar-rc-td-feedback">' + escapeHtml(item.feedback || '—') + '</td>' +
-        '</tr>';
-    }).join('');
-
-    const ewInd = (bundle.meta || {}).exam_window || {};
-    const termExamLabel = reportTermExamLine(af, ewInd);
-    const examsCount = (((bundle.meta || {}).exam_window || {}).exam_count != null)
-      ? String((bundle.meta || {}).exam_window.exam_count) : '-';
-    const photoHtml = (first.student_photo && String(first.student_photo).trim())
-      ? '<img src="' + escapeHtml(first.student_photo) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
-      : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
-    const gradeLegendInd = (
-      Array.isArray((bundle.meta || {}).grade_bands) && (bundle.meta || {}).grade_bands.length
-        ? (bundle.meta || {}).grade_bands.map(function(g) {
-            const code = String(g.code || g.label || '').trim();
-            const start = g.start;
-            const end = g.end;
-            return code ? (escapeHtml(code) + ': ' + escapeHtml(start) + '-' + escapeHtml(end)) : '';
-          }).filter(Boolean).join(', ')
-        : 'Configured grade settings'
+    const subjectOrder = subjects.map(function(s) { return s.subject; });
+    const syntheticRow = { subject_marks: {} };
+    subjects.forEach(function(s) {
+      if (s.markVal !== '-') syntheticRow.subject_marks[s.subject] = s.markVal;
+    });
+    const subjectTableInd = buildReportCardSubjectTable(
+      syntheticRow, subjectOrder, activeBands, studentLevelId, gradeCodeRemarksInd
     );
 
+    const ewInd = (bundle.meta || {}).exam_window || {};
+    const examLabelOverride = bundle.examLabel
+      || (first.exam_name ? shortExamLabel(first.exam_name) : '');
+    const termExamLabel = reportCardTermExamLine(af, ewInd, examLabelOverride);
+    const examsCount = (((bundle.meta || {}).exam_window || {}).exam_count != null)
+      ? String((bundle.meta || {}).exam_window.exam_count) : '-';
+    const photoUrlInd = resolveStudentPhotoUrl(first, meta);
+    const photoHtml = photoUrlInd
+      ? '<img src="' + escapeHtml(photoUrlInd) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
+      : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
+    const gradeLegendInd = gradeLegendHtmlFromMeta(meta);
+
     return '' +
-      '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(0) + '">' +
+      '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex == null ? 0 : sheetIndex) + '">' +
         '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
         '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
         '<div class="ar-rc-inner">' +
@@ -5607,17 +6438,21 @@
           ], photoHtml) +
           '<div class="ar-rc-main-body">' +
             '<table class="ar-rc-table ar-rc-table--subjects">' +
-              '<thead><tr>' +
-                '<th class="ar-rc-th-subj">Subject</th><th>Obtained</th><th>Grade</th><th>GP</th><th class="ar-rc-th-feedback">Teacher\'s feedback</th>' +
-              '</tr></thead>' +
-              '<tbody>' + tableRows + '</tbody>' +
+              '<thead><tr>' + subjectTableInd.head + '</tr></thead>' +
+              '<tbody>' + subjectTableInd.html + '</tbody>' +
             '</table>' +
             '<div class="ar-rc-stats-row ar-rc-stats-row--5">' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall average</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgText) + '</p></div>' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGrade) + '</p></div>' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects passed</p><p class="ar-rc-stat-value">' + escapeHtml(String(passCount)) + '</p></div>' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Exams covered</p><p class="ar-rc-stat-value">' + escapeHtml(examsCount) + '</p></div>' +
+              (singleExamCard
+                ? '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">' + escapeHtml(overallTotalText) + '</p></div>' +
+                  '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgText) + '</p></div>' +
+                  '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGrade) + '</p></div>' +
+                  '<div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
+                  '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects passed</p><p class="ar-rc-stat-value">' + escapeHtml(String(passCount)) + '</p></div>'
+                : '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall average</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgText) + '</p></div>' +
+                  '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGrade) + '</p></div>' +
+                  '<div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
+                  '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects passed</p><p class="ar-rc-stat-value">' + escapeHtml(String(passCount)) + '</p></div>' +
+                  '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Exams covered</p><p class="ar-rc-stat-value">' + escapeHtml(examsCount) + '</p></div>') +
             '</div>' +
           '</div>' +
           '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegendInd + '</p>' +
@@ -5689,17 +6524,50 @@
     );
   }
 
+  function renderReportBundleHtml(bundle, reportType) {
+    return renderReportFilterSummaryCard(bundle) +
+      (reportType === 'exam_all_students_performance'
+        ? renderAllStudentsPerformance(bundle)
+        :
+      (reportType === 'class_list_attendance'
+        ? renderAttendanceRegister(bundle)
+        : (reportType === 'class_list_exam'
+            ? renderExamEntryRegister(bundle)
+        : (reportType === 'exam_individual_performance'
+            ? renderIndividualStudentPerformanceForm(bundle)
+        : (reportType === 'exam_subject_performance'
+            ? renderExamSubjectPerformance(bundle)
+        : (reportType === 'exam_teacher_performance'
+            ? renderExamTeacherPerformance(bundle)
+        : (reportType === 'timetable_exam'
+        ? renderExamTimetable(bundle)
+        : (reportType === 'timetable_subject'
+            ? renderSubjectClassTimetable(bundle)
+            : (reportType === 'timetable_teacher'
+                ? renderTeacherTimetable(bundle)
+                : renderTable(bundle))))))))));
+  }
+
+  function scheduleLoadDetails(immediate) {
+    clearTimeout(reportLoadTimer);
+    if (immediate) {
+      loadDetails();
+      return;
+    }
+    reportLoadTimer = setTimeout(loadDetails, REPORT_LOAD_DEBOUNCE_MS);
+  }
+
   async function loadDetails() {
     const reportType = currentReportId();
     if (!reportType || !detailsListEl) return;
 
     const needsStudentPick = reportUsesFindStudentPicker(reportType);
     if (
-      reportType === 'exam_all_students_performance'
+      (reportType === 'exam_all_students_performance' || reportType === 'exam_individual_performance')
       && isExamIndividualMode()
       && !val('gf-level')
     ) {
-      detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Select a <span class="font-medium text-gray-700 dark:text-gray-300">class</span> above to generate an individual report card for each student.</p>';
+      detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Select a <span class="font-medium text-gray-700 dark:text-gray-300">class</span> above to generate report cards for students.</p>';
       setGeneratedNow();
       return;
     }
@@ -5717,29 +6585,31 @@
       return;
     }
     if (needsStudentPick && !val('gf-student')) {
-      let pickMsg;
-      if (usesExamStudentRoster()) {
-        pickMsg = val('gf-level')
-          ? 'Select a student from the dropdown below to generate the report.'
-          : 'Select a <span class="font-medium text-gray-700 dark:text-gray-300">class</span> above, then choose a student from the dropdown.';
-      } else {
-        pickMsg = 'Select a student below, or choose another report.';
-      }
+      let pickMsg = 'Select a student below, or choose another report.';
       detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">' + pickMsg + '</p>';
       setGeneratedNow();
       return;
     }
 
-    detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Loading report details...</p>';
+    detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400"><i class="fas fa-spinner fa-spin mr-1.5" aria-hidden="true"></i>Loading report details...</p>';
+    const token = ++reportLoadToken;
+    if (reportLoadAbort) {
+      try { reportLoadAbort.abort(); } catch (e) { /* ignore */ }
+    }
+    reportLoadAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
     try {
       const filters = getFiltersForReport(reportType);
-      const res = await fetch(API, {
+      const fetchOpts = {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ report_type: reportType, format: 'json', filters: filters }),
-      });
+      };
+      if (reportLoadAbort) fetchOpts.signal = reportLoadAbort.signal;
+      const res = await fetch(API, fetchOpts);
+      if (token !== reportLoadToken) return;
       const data = await res.json().catch(function() { return {}; });
+      if (token !== reportLoadToken) return;
       if (!res.ok || data.success === false) {
         detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">' + escapeHtml(data.message || 'Could not load report details.') + '</p>';
         return;
@@ -5751,29 +6621,32 @@
         meta: data.meta || {},
       };
       setGeneratedNow();
-      detailsListEl.innerHTML =
-        renderReportFilterSummaryCard(bundle) +
-        (reportType === 'exam_all_students_performance'
-          ? renderAllStudentsPerformance(bundle)
-          :
-        (reportType === 'class_list_attendance'
-          ? renderAttendanceRegister(bundle)
-          : (reportType === 'class_list_exam'
-              ? renderExamEntryRegister(bundle)
-          : (reportType === 'exam_individual_performance'
-              ? renderIndividualStudentPerformanceForm(bundle)
-          : (reportType === 'exam_subject_performance'
-              ? renderExamSubjectPerformance(bundle)
-          : (reportType === 'exam_teacher_performance'
-              ? renderExamTeacherPerformance(bundle)
-          : (reportType === 'timetable_exam'
-          ? renderExamTimetable(bundle)
-          : (reportType === 'timetable_subject'
-              ? renderSubjectClassTimetable(bundle)
-              : (reportType === 'timetable_teacher'
-                  ? renderTeacherTimetable(bundle)
-                  : renderTable(bundle))))))))));
+      if (token !== reportLoadToken) return;
+      if (usesChunkedReportCardPaint(reportType)) {
+        const summaryHtml = renderReportFilterSummaryCard(bundle);
+        const built = buildIndividualStudentPerformanceCardJobs(bundle);
+        if (token !== reportLoadToken) return;
+        if (built.emptyMessage) {
+          detailsListEl.innerHTML = summaryHtml + built.emptyMessage;
+          return;
+        }
+        paintReportCardsChunked(summaryHtml, built.jobs, token);
+        return;
+      }
+      const html = renderReportBundleHtml(bundle, reportType);
+      if (token !== reportLoadToken) return;
+      var paint = function() {
+        if (token !== reportLoadToken || !detailsListEl) return;
+        detailsListEl.innerHTML = html;
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(paint);
+      } else {
+        paint();
+      }
     } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      if (token !== reportLoadToken) return;
       detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Failed to load report details.</p>';
       setGeneratedNow();
     }
@@ -5803,7 +6676,7 @@
     studentSelectEl.innerHTML = '';
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = students.length ? 'Select student…' : 'No students in this class';
+    placeholder.textContent = students.length ? 'All students' : 'No students in this class';
     studentSelectEl.appendChild(placeholder);
     students.forEach(function(s) {
       const sid = s.student_id != null ? String(s.student_id) : '';
@@ -5831,12 +6704,12 @@
     if (!lidStr) {
       resetStudentSelect();
       if (studentRosterHint) {
-        studentRosterHint.textContent = 'Choose a class above, then pick a student.';
+        studentRosterHint.textContent = 'Choose a class above. All students are generated by default.';
       }
       return;
     }
     if (studentRosterHint) {
-      studentRosterHint.textContent = 'Students in the selected class.';
+      studentRosterHint.textContent = 'All students are generated by default. Pick one student to show a single report.';
     }
     studentSelectEl.disabled = true;
     studentSelectEl.innerHTML = '<option value="">Loading students…</option>';
@@ -5872,7 +6745,7 @@
     if (studentSelectEl && !studentSelectEl.disabled) studentSelectEl.value = '';
     hideStudentSuggestions();
     updateStudentClearVisibility();
-    if (!skipReload) loadDetails();
+    if (!skipReload) scheduleLoadDetails();
   }
 
   function renderStudentSuggestions(students) {
@@ -5907,7 +6780,7 @@
         }
         hideStudentSuggestions();
         updateStudentClearVisibility();
-        loadDetails();
+        scheduleLoadDetails(true);
       });
       var t1 = document.createElement('span');
       t1.className = 'font-medium text-gray-900 dark:text-white block truncate';
@@ -5982,7 +6855,6 @@
         }
       }
     }
-    loadDetails();
   });
   ['gf-year', 'gf-level', 'gf-level-view', 'gf-term', 'gf-exam-name', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto', 'gf-register-date'].forEach(function(id) {
     const el = document.getElementById(id);
@@ -5998,14 +6870,14 @@
           clearStudentSelection(true);
           loadClassStudentRoster();
         } else if (prevLevel && !val('gf-level')) {
-          loadDetails();
+          scheduleLoadDetails();
         }
       }
       if (id === 'gf-level' && usesExamStudentRoster()) {
         clearStudentSelection(true);
         loadClassStudentRoster();
       }
-      loadDetails();
+      scheduleLoadDetails();
     });
   });
   ['gf-year', 'gf-level', 'gf-term'].forEach(function(id) {
@@ -6017,7 +6889,7 @@
       if (studentHiddenEl && String(studentHiddenEl.value || '').trim()) {
         studentHiddenEl.value = '';
         updateStudentClearVisibility();
-        loadDetails();
+        scheduleLoadDetails();
       }
       scheduleStudentSearch();
     });
@@ -6032,7 +6904,7 @@
     studentSelectEl.addEventListener('change', function() {
       const sid = String(studentSelectEl.value || '').trim();
       if (studentHiddenEl) studentHiddenEl.value = sid;
-      loadDetails();
+      scheduleLoadDetails(true);
     });
   }
   document.addEventListener('click', function(ev) {
@@ -6090,6 +6962,8 @@
   window.addEventListener('afterprint', function() {
     document.documentElement.classList.remove('ar-print-academic-report');
     document.documentElement.classList.remove('ar-print-marks-matrix');
+    document.documentElement.classList.remove('ar-print-individual-batch-doc');
+    restorePreviewAfterPrint();
     var wrap = document.getElementById('ar-preview-wrap');
     if (wrap) {
       wrap.classList.remove(
@@ -6146,7 +7020,7 @@
   }
   applyRegisteredCurrentContextDefaults();
   syncExamNameOptions();
-  loadDetails();
+  setTimeout(function() { scheduleLoadDetails(); }, 80);
 })();
 </script>
 {% endblock %}

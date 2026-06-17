@@ -720,9 +720,16 @@ def _save_optimized_image(file_storage, folder, filename_stem, preset='profile')
     return static_relative_path(saved_path)
 
 
+_STUDENT_PROFILE_IMAGE_COLUMN_READY = False
+
+
 def ensure_student_profile_image_column(cursor):
     """Ensure students.profile_image exists (reports, parent portal, student management)."""
+    global _STUDENT_PROFILE_IMAGE_COLUMN_READY
+    if _STUDENT_PROFILE_IMAGE_COLUMN_READY:
+        return True
     if _table_has_column(cursor, 'students', 'profile_image'):
+        _STUDENT_PROFILE_IMAGE_COLUMN_READY = True
         return True
     try:
         cursor.execute(
@@ -732,6 +739,7 @@ def ensure_student_profile_image_column(cursor):
             AFTER special_needs
             """
         )
+        _STUDENT_PROFILE_IMAGE_COLUMN_READY = True
         return True
     except Exception as e:
         print(f"ensure_student_profile_image_column: {e}")
@@ -1689,7 +1697,13 @@ def ensure_subject_progress_session_log_table(cursor):
         print(f"ensure_subject_progress_session_log_table: {e}")
 
 
+_SCHEMA_COLUMN_CACHE = {}
+
+
 def _table_has_column(cursor, table_name, column_name):
+    cache_key = (str(table_name or ''), str(column_name or ''))
+    if cache_key in _SCHEMA_COLUMN_CACHE:
+        return _SCHEMA_COLUMN_CACHE[cache_key]
     try:
         cursor.execute(
             """
@@ -1700,8 +1714,11 @@ def _table_has_column(cursor, table_name, column_name):
             """,
             (table_name, column_name),
         )
-        return cursor.fetchone() is not None
+        found = cursor.fetchone() is not None
+        _SCHEMA_COLUMN_CACHE[cache_key] = found
+        return found
     except Exception:
+        _SCHEMA_COLUMN_CACHE[cache_key] = False
         return False
 
 
@@ -6424,12 +6441,249 @@ def _exam_combo_scaled_pct_for_column(marks_by_sid, member_ids, exam_total_by_si
     return weighted_sum / weight_sum
 
 
+def _academic_report_short_exam_label(exam_name):
+    """User-friendly exam title (drop year/term prefix when redundant)."""
+    s = str(exam_name or '').strip()
+    if not s:
+        return ''
+    parts = [p.strip() for p in s.split(' - ') if p.strip()]
+    if len(parts) >= 3:
+        term_part = next((p for p in parts if p.upper().startswith('TERM')), parts[-2])
+        return f"{term_part} · {parts[-1]}"
+    if len(parts) == 2:
+        return parts[-1]
+    return s
+
+
+def _academic_report_multi_exam_mode(exam_name, exam_names):
+    """Multi-column layout: no single exam selected, or explicit list of exams."""
+    if exam_name:
+        return False
+    if exam_names:
+        return len(exam_names) > 1
+    return True
+
+
+def _filter_exam_columns_to_names(cols, exam_names):
+    """Keep only exam columns that match the filter dropdown, in filter order."""
+    if not exam_names:
+        return cols or []
+    allowed = [str(n).strip() for n in exam_names if str(n).strip()]
+    if not allowed:
+        return cols or []
+    allowed_set = {n.casefold() for n in allowed}
+    order = {n.casefold(): i for i, n in enumerate(allowed)}
+    filtered = [
+        c for c in (cols or [])
+        if isinstance(c, dict)
+        and str(c.get('exam_name') or '').strip().casefold() in allowed_set
+    ]
+    filtered.sort(
+        key=lambda c: order.get(str(c.get('exam_name') or '').strip().casefold(), 9999)
+    )
+    # Fill missing filter exams (no marks yet) so headers match the dropdown.
+    present = {str(c.get('exam_name') or '').strip().casefold() for c in filtered}
+    for en in allowed:
+        if en.casefold() in present:
+            continue
+        filtered.append({
+            'key': _logical_exam_sitting_key(en, ''),
+            'exam_id': None,
+            'exam_name': en,
+            'exam_date': '',
+            'label': _academic_report_short_exam_label(en) or en,
+        })
+        present.add(en.casefold())
+    filtered.sort(
+        key=lambda c: order.get(str(c.get('exam_name') or '').strip().casefold(), 9999)
+    )
+    return filtered
+
+
+def _logical_exam_sitting_key(exam_name, exam_date=None, exam_id=None):
+    """One column per exam name (subjects may have different exam dates for the same sitting)."""
+    en = str(exam_name or '').strip().casefold()
+    if en:
+        return en
+    ed = str(exam_date or '').strip()
+    if ed:
+        return f"\x1f{ed}"
+    if exam_id is not None and exam_id != '':
+        return str(exam_id)
+    return ''
+
+
+def _collect_report_exam_columns(grouped):
+    """Ordered exam column definitions for all-exams report cards."""
+    seen = {}
+    for student in (grouped or {}).values():
+        by_exam = student.get('subject_marks_by_exam') or {}
+        for entries in by_exam.values():
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                eid = entry.get('exam_id')
+                en = entry.get('exam_name') or ''
+                ed = entry.get('exam_date') or ''
+                key = _logical_exam_sitting_key(en, ed, eid)
+                if not key or key in seen:
+                    continue
+                seen[key] = {
+                    'key': key,
+                    'exam_id': None,
+                    'exam_name': en,
+                    'exam_date': ed,
+                    'label': _academic_report_short_exam_label(en) or str(en).strip() or 'Exam',
+                }
+    cols = list(seen.values())
+    cols.sort(key=lambda x: (str(x.get('exam_date') or ''), str(x.get('exam_name') or '').lower()))
+    return cols
+
+
+def _exam_window_from_report_columns(exam_columns):
+    """Build exam_window meta from already-collected exam column definitions."""
+    cols = [c for c in (exam_columns or []) if isinstance(c, dict)]
+    if not cols:
+        return None
+    count = len(cols)
+    first_name = str(cols[0].get('exam_name') or '').strip()
+    last_name = str(cols[-1].get('exam_name') or '').strip()
+    first_date = str(cols[0].get('exam_date') or '')
+    last_date = str(cols[-1].get('exam_date') or '')
+    short_first = _academic_report_short_exam_label(first_name) or first_name
+    short_last = _academic_report_short_exam_label(last_name) or last_name
+    if count <= 1 and short_first:
+        label = short_first
+    elif count > 1 and short_first and short_first == short_last:
+        label = f"{short_first} ({count} sittings)"
+    elif count > 1 and short_first:
+        label = f"{short_first} (+{count - 1} more)"
+    elif short_first:
+        label = short_first
+    else:
+        label = 'All exams'
+    return {
+        'first_exam_name': first_name,
+        'first_exam_date': first_date,
+        'last_exam_name': last_name,
+        'last_exam_date': last_date,
+        'exam_count': count,
+        'label': label,
+    }
+
+
+def _build_subject_marks_by_exam_for_student(student, plan_by_lid, level_name_to_id, exam_total_by_sid):
+    """Per-exam scaled marks per subject column (used when academic reports filter is All exams)."""
+    details_by_sid = student.pop('_marks_detail_by_sid', None) or {}
+    if not details_by_sid:
+        return {}
+
+    lid_val = student.get('academic_level_id')
+    try:
+        lid_val = int(lid_val) if lid_val is not None else None
+    except (TypeError, ValueError):
+        lid_val = None
+    if lid_val is None:
+        class_key = (
+            str(student.get('current_grade') or '').strip()
+            or str(student.get('level_name') or '').strip()
+        )
+        lid_val = level_name_to_id.get(class_key)
+    plan = plan_by_lid.get(lid_val) if lid_val is not None else None
+
+    exams = {}
+    for sid_i, entries in details_by_sid.items():
+        try:
+            sid_key = int(sid_i)
+        except (TypeError, ValueError):
+            sid_key = sid_i
+        for entry in entries or []:
+            if not isinstance(entry, dict):
+                continue
+            eid = entry.get('exam_id')
+            if eid is None or eid == '':
+                eid = '|'.join([
+                    str(entry.get('exam_name') or ''),
+                    str(entry.get('exam_date') or ''),
+                ]) or len(exams)
+            if eid not in exams:
+                exams[eid] = {
+                    'exam_name': entry.get('exam_name') or '',
+                    'exam_date': entry.get('exam_date') or '',
+                    'marks_by_sid': {},
+                }
+            exams[eid]['marks_by_sid'].setdefault(sid_key, []).append(entry.get('mark'))
+
+    by_subject = {}
+    for _eid, exam_data in sorted(
+        exams.items(),
+        key=lambda x: (str(x[1].get('exam_date') or ''), str(x[1].get('exam_name') or '').lower()),
+    ):
+        marks_by_sid = exam_data.get('marks_by_sid') or {}
+        short_name = _academic_report_short_exam_label(exam_data.get('exam_name'))
+        exam_id_out = _eid
+        try:
+            if isinstance(_eid, int) or (isinstance(_eid, str) and str(_eid).isdigit()):
+                exam_id_out = int(_eid)
+        except (TypeError, ValueError):
+            exam_id_out = _eid
+        if plan and plan.get('label_members'):
+            for col_label, member_ids in plan['label_members'].items():
+                wm = _exam_combo_scaled_pct_for_column(marks_by_sid, member_ids, exam_total_by_sid)
+                if wm is None:
+                    continue
+                by_subject.setdefault(col_label, []).append({
+                    'exam_id': exam_id_out,
+                    'exam_name': str(exam_data.get('exam_name') or '').strip(),
+                    'exam_label': short_name or str(exam_data.get('exam_name') or '').strip(),
+                    'exam_date': exam_data.get('exam_date') or '',
+                    'mark': round_mark_display(wm),
+                })
+        else:
+            for sid_i, mlist in marks_by_sid.items():
+                if not mlist:
+                    continue
+                try:
+                    avg_pct = sum(float(m) for m in mlist) / len(mlist)
+                except (TypeError, ValueError):
+                    continue
+                lbl = (plan or {}).get('sid_to_label', {}).get(sid_i)
+                if not lbl:
+                    try:
+                        lbl = (plan or {}).get('sid_to_label', {}).get(int(sid_i))
+                    except (TypeError, ValueError):
+                        lbl = None
+                if not lbl:
+                    for ent in (details_by_sid.get(sid_i) or details_by_sid.get(int(sid_i)) or []):
+                        if isinstance(ent, dict) and ent.get('col_label'):
+                            lbl = ent.get('col_label')
+                            break
+                if not lbl:
+                    continue
+                by_subject.setdefault(lbl, []).append({
+                    'exam_id': exam_id_out,
+                    'exam_name': str(exam_data.get('exam_name') or '').strip(),
+                    'exam_label': short_name or str(exam_data.get('exam_name') or '').strip(),
+                    'exam_date': exam_data.get('exam_date') or '',
+                    'mark': round_mark_display(avg_pct),
+                })
+    return by_subject
+
+
 def _rollup_student_marks_with_exam_combinations(grouped, plan_by_lid, level_name_to_id, exam_total_by_sid):
     """Replace per-paper marks with merged combination columns on each student row."""
     for student in grouped.values():
         marks_by_sid = student.pop('_marks_by_sid', None) or {}
-        class_key = str(student.get('current_grade') or '').strip() or str(student.get('level_name') or '').strip()
-        lid_val = level_name_to_id.get(class_key)
+        lid_val = student.get('academic_level_id')
+        try:
+            lid_val = int(lid_val) if lid_val is not None else None
+        except (TypeError, ValueError):
+            lid_val = None
+        if lid_val is None:
+            class_key = str(student.get('current_grade') or '').strip() or str(student.get('level_name') or '').strip()
+            lid_val = level_name_to_id.get(class_key)
         plan = plan_by_lid.get(lid_val) if lid_val is not None else None
         subject_marks = {}
         if plan and plan.get('label_members'):
@@ -68275,7 +68529,7 @@ def _coerce_academic_report_filters(f):
             exam_names = [p.strip() for p in s.split(',') if p.strip()]
 
     exam_name = f.get('exam_name')
-    if (exam_name is None or exam_name == '' or exam_name == 'null') and exam_names:
+    if (exam_name is None or exam_name == '' or exam_name == 'null') and exam_names and len(exam_names) == 1:
         exam_name = exam_names[0]
     if exam_name is None or exam_name == '' or exam_name == 'null':
         out['exam_name'] = None
@@ -68694,9 +68948,78 @@ def _exam_all_students_performance_fixed_col_keys():
     return {
         'position', 'admission_number', 'full_name', 'student_id', 'total_marks',
         'grade', 'grade_points', 'mean', 'level_name', 'current_grade', 'home_class',
-        'student_photo', 'subject_marks', 'subject_grades', 'class_subject_columns',
+        'student_photo', 'subject_marks', 'subject_grades', 'subject_marks_by_exam',
+        'class_subject_columns',
         'rank_sort_total', 'rank_sort_mean', 'academic_level_id',
     }
+
+
+def _trim_academic_report_json_bundle(bundle, report_type):
+    """Smaller on-screen JSON: drop fields the browser recomputes or does not use."""
+    if not isinstance(bundle, dict):
+        return bundle
+    rows = bundle.get('rows')
+    if not isinstance(rows, list) or not rows:
+        return bundle
+    meta = bundle.get('meta') or {}
+    subject_cols = set(meta.get('subject_columns') or [])
+    for by_class in (meta.get('subject_columns_by_class') or {}).values():
+        if isinstance(by_class, list):
+            subject_cols.update(by_class)
+    fixed_keys = set()
+    if report_type == 'exam_all_students_performance':
+        fixed_keys = _exam_all_students_performance_fixed_col_keys()
+    slim_rows = []
+    slim_meta = dict(meta)
+    if report_type == 'exam_individual_performance':
+        student_photos = {}
+        slim_rows = []
+        drop_keys = frozenset((
+            'grade_remark', 'subject_id', 'grade_code', '_exam_cat_i', 'student_photo',
+        ))
+        for row in rows:
+            if not isinstance(row, dict):
+                slim_rows.append(row)
+                continue
+            sid = row.get('student_id')
+            photo = row.get('student_photo')
+            if sid is not None and photo and str(photo).strip():
+                student_photos.setdefault(sid, photo)
+                student_photos.setdefault(str(sid), photo)
+            slim = {k: v for k, v in row.items() if k not in drop_keys}
+            slim_rows.append(slim)
+        out = dict(bundle)
+        out['rows'] = slim_rows
+        slim_meta = dict(meta)
+        if student_photos:
+            slim_meta['student_photos'] = student_photos
+        out['meta'] = slim_meta
+        return out
+    if report_type == 'exam_all_students_performance' and meta.get('exam_columns'):
+        slim_meta['exam_columns'] = meta.get('exam_columns')
+    for row in rows:
+        if not isinstance(row, dict):
+            slim_rows.append(row)
+            continue
+        slim = {}
+        for k, v in row.items():
+            if k in ('rank_sort_total', 'rank_sort_mean', 'subject_grades', 'class_subject_columns'):
+                continue
+            if k in subject_cols and isinstance(row.get('subject_marks'), dict):
+                continue
+            slim[k] = v
+        if report_type == 'exam_all_students_performance':
+            sm = row.get('subject_marks')
+            if isinstance(sm, dict):
+                slim['subject_marks'] = sm
+            smb = row.get('subject_marks_by_exam')
+            if isinstance(smb, dict) and smb:
+                slim['subject_marks_by_exam'] = smb
+        slim_rows.append(slim)
+    out = dict(bundle)
+    out['rows'] = slim_rows
+    out['meta'] = slim_meta
+    return out
 
 
 def _academic_report_grade_code_for_pct(marks_value, meta, level_id=None):
@@ -69289,6 +69612,75 @@ def _build_exam_marks_by_student(rows):
     return [{'student_id': sid, **data} for sid, data in ordered]
 
 
+def _exam_col_match_key(exam_col):
+    if not isinstance(exam_col, dict):
+        return ''
+    eid = exam_col.get('exam_id')
+    if eid is not None and eid != '':
+        return str(eid)
+    key = exam_col.get('key')
+    if key is not None and str(key).strip() != '':
+        return str(key)
+    return f"{exam_col.get('exam_name')}|{exam_col.get('exam_date')}"
+
+
+def _exam_entry_match_key(entry):
+    if not isinstance(entry, dict):
+        return ''
+    eid = entry.get('exam_id')
+    if eid is not None and eid != '':
+        return str(eid)
+    return f"{entry.get('exam_name')}|{entry.get('exam_date')}"
+
+
+def _report_card_row_for_single_exam(row, exam_col, subject_columns):
+    """Build one report-card row with marks for a single exam sitting."""
+    if not isinstance(row, dict) or not isinstance(exam_col, dict):
+        return row
+    detail = row.get('subject_marks_by_exam') or {}
+    want = _exam_col_match_key(exam_col)
+    subject_marks = {}
+    numeric = []
+    cols = list(subject_columns or []) or list(detail.keys())
+    for subj in cols:
+        mark = None
+        for ex in detail.get(subj) or []:
+            if not isinstance(ex, dict):
+                continue
+            if _exam_entry_match_key(ex) == want:
+                mark = ex.get('mark')
+                break
+            if (
+                ex.get('exam_name') == exam_col.get('exam_name')
+                and (ex.get('exam_date') or '') == (exam_col.get('exam_date') or '')
+            ):
+                mark = ex.get('mark')
+                break
+        if mark not in (None, ''):
+            subject_marks[subj] = mark
+            try:
+                numeric.append(float(mark))
+            except (TypeError, ValueError):
+                pass
+    out = dict(row)
+    out['subject_marks'] = subject_marks
+    for subj, m in subject_marks.items():
+        out[subj] = m
+    if numeric:
+        out['mean'] = round(sum(numeric) / len(numeric))
+        out['total_marks'] = round(sum(numeric))
+    else:
+        out['mean'] = ''
+        out['total_marks'] = ''
+    out['card_exam_label'] = (exam_col.get('exam_name') or '').strip()
+    return out
+
+
+def _expand_exam_student_card_rows(bundle, report_type):
+    """Keep one row per student; all-exams layout uses multi-column table on each card."""
+    return bundle
+
+
 def _preview_display_context(report_type, bundle):
     """Extra template variables for rich preview layouts (not used for CSV)."""
     rows = bundle.get('rows') or []
@@ -69394,7 +69786,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         if not exam_names:
             exam_names = None
     exam_name = _str_opt(f.get('exam_name'))
-    if not exam_name and exam_names:
+    if not exam_name and exam_names and len(exam_names) == 1:
         exam_name = exam_names[0]
     exam_type_f = _str_opt(f.get('exam_type'))
     date_from = _str_opt(f.get('date_from'))
@@ -69504,33 +69896,45 @@ def _build_academic_report_payload(cursor, report_type, f):
         return s
 
     def _resolve_exam_window():
-        """Get first-to-latest exam span for current filters."""
-        q = """
-            SELECT exam_name, exam_date
-            FROM exams
-            WHERE 1=1
-        """
+        """Get first-to-latest exam span for current filters (bounded queries, not full scan)."""
+        base = " FROM exams WHERE 1=1"
         p = []
         if ay:
-            q += " AND academic_year_id = %s"
+            base += " AND academic_year_id = %s"
             p.append(ay)
         if tid:
-            q += " AND term_id = %s"
+            base += " AND term_id = %s"
             p.append(tid)
-        q, p = _sql_filter_academic_level_ids(q, p, 'academic_level_id', level_ids)
+        base, p = _sql_filter_academic_level_ids(base, p, 'academic_level_id', level_ids)
         if student_id:
-            q += " AND id IN (SELECT DISTINCT exam_id FROM student_marks WHERE student_id = %s)"
+            base += " AND id IN (SELECT DISTINCT exam_id FROM student_marks WHERE student_id = %s)"
             p.append(student_id)
-        q += " ORDER BY exam_date ASC, id ASC"
         try:
-            cursor.execute(q, p)
-            items = cursor.fetchall() or []
+            cursor.execute("SELECT COUNT(*) AS cnt" + base, p)
+            cnt_row = cursor.fetchone()
+            if isinstance(cnt_row, dict):
+                count = int(cnt_row.get('cnt') or 0)
+            else:
+                count = int(cnt_row[0] if cnt_row else 0)
+            if count <= 0:
+                return None
+            cursor.execute(
+                "SELECT exam_name, exam_date" + base + " ORDER BY exam_date ASC, id ASC LIMIT 1",
+                p,
+            )
+            first = cursor.fetchone()
+            if count > 1:
+                cursor.execute(
+                    "SELECT exam_name, exam_date" + base + " ORDER BY exam_date DESC, id DESC LIMIT 1",
+                    p,
+                )
+                last = cursor.fetchone()
+            else:
+                last = first
         except Exception:
             return None
-        if not items:
+        if not first:
             return None
-        first = items[0]
-        last = items[-1]
         if isinstance(first, dict):
             first_name = str(first.get('exam_name') or '').strip()
             first_date_obj = first.get('exam_date')
@@ -69547,7 +69951,6 @@ def _build_academic_report_payload(cursor, report_type, f):
         first_date = first_date_obj.strftime('%Y-%m-%d') if hasattr(first_date_obj, 'strftime') else (str(first_date_obj)[:10] if first_date_obj else '')
         last_date = last_date_obj.strftime('%Y-%m-%d') if hasattr(last_date_obj, 'strftime') else (str(last_date_obj)[:10] if last_date_obj else '')
 
-        count = len(items)
         short_first = _short_exam_label(first_name)
         short_last = _short_exam_label(last_name)
         if count <= 1 and short_first:
@@ -69603,11 +70006,18 @@ def _build_academic_report_payload(cursor, report_type, f):
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
     meta['timetable_view'] = timetable_view
+    all_exams_report = _academic_report_multi_exam_mode(exam_name, exam_names)
+    if all_exams_report:
+        meta['all_exams_mode'] = True
+        meta['applied_filters']['exam_name'] = 'All exams'
     if report_type.startswith('exam_'):
-        exam_window = _resolve_exam_window() if not exam_name else None
-        if exam_window:
-            meta['exam_window'] = exam_window
-            meta['applied_filters']['exam_name'] = exam_window.get('label') or 'All exams'
+        skip_early_exam_window = all_exams_report
+        if not skip_early_exam_window:
+            exam_window = _resolve_exam_window() if not exam_name else None
+            if exam_window:
+                meta['exam_window'] = exam_window
+                if not all_exams_report:
+                    meta['applied_filters']['exam_name'] = exam_window.get('label') or 'All exams'
 
     if report_type == 'class_list_exam':
         title = 'Class list — exam entry'
@@ -69839,6 +70249,10 @@ def _build_academic_report_payload(cursor, report_type, f):
         if class_grade_bands:
             meta['class_grade_bands'] = {str(k): v for k, v in class_grade_bands.items()}
         meta['marks_scale'] = 'scaled_pct'
+        all_exams_mode = _academic_report_multi_exam_mode(exam_name, exam_names)
+        if all_exams_mode:
+            meta['all_exams_mode'] = True
+            meta['applied_filters']['exam_name'] = 'All exams'
         q = """
             SELECT st.student_id, st.full_name, al.level_name,
                    al.id AS academic_level_id,
@@ -69848,7 +70262,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                    sm.marks, COALESCE(st.profile_image, '') AS profile_image,
                    sub.id AS subject_id,
                    COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
-                   sub.exam_total_marks
+                   sub.exam_total_marks,
+                   e.exam_name, e.exam_date, e.id AS exam_id
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -69865,7 +70280,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                    sm.marks,
                    sub.id AS subject_id,
                    COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
-                   sub.exam_total_marks
+                   sub.exam_total_marks,
+                   e.exam_name, e.exam_date, e.id AS exam_id
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -69951,6 +70367,9 @@ def _build_academic_report_payload(cursor, report_type, f):
                 raw_pf = str(r.get('profile_image') or '').strip() if include_profile_image else ''
                 sub_id_raw = r.get('subject_id')
                 eo_raw = r.get('subject_exam_display_order')
+                exam_name_raw = r.get('exam_name')
+                exam_date_raw = r.get('exam_date')
+                exam_id_raw = r.get('exam_id')
             else:
                 admission_number = r[0] if len(r) > 0 else None
                 full_name = r[1] if len(r) > 1 else None
@@ -69965,11 +70384,23 @@ def _build_academic_report_payload(cursor, report_type, f):
                     sub_id_raw = r[9] if len(r) > 9 else None
                     eo_raw = r[10] if len(r) > 10 else None
                     exam_total_marks = r[11] if len(r) > 11 else None
+                    exam_name_raw = r[12] if len(r) > 12 else None
+                    exam_date_raw = r[13] if len(r) > 13 else None
+                    exam_id_raw = r[14] if len(r) > 14 else None
                 else:
                     raw_pf = ''
                     sub_id_raw = r[8] if len(r) > 8 else None
                     eo_raw = r[9] if len(r) > 9 else None
                     exam_total_marks = r[10] if len(r) > 10 else None
+                    exam_name_raw = r[11] if len(r) > 11 else None
+                    exam_date_raw = r[12] if len(r) > 12 else None
+                    exam_id_raw = r[13] if len(r) > 13 else None
+            exam_date_str = ''
+            if exam_date_raw is not None and exam_date_raw != '':
+                if hasattr(exam_date_raw, 'strftime'):
+                    exam_date_str = exam_date_raw.strftime('%Y-%m-%d')
+                else:
+                    exam_date_str = str(exam_date_raw)[:10]
             mark_val = raw_mark_to_percentage(raw_mark_val, exam_total_marks)
             subject_label = subject_display_label(subject_code, subject_name)
             try:
@@ -70027,30 +70458,26 @@ def _build_academic_report_payload(cursor, report_type, f):
                 subject_names_set.add(col_label)
             if mark_val is not None and sid_i:
                 grouped[admission_number].setdefault('_marks_by_sid', {}).setdefault(sid_i, []).append(mark_val)
+                if all_exams_mode:
+                    grouped[admission_number].setdefault('_marks_detail_by_sid', {}).setdefault(sid_i, []).append({
+                        'mark': mark_val,
+                        'exam_name': str(exam_name_raw or '').strip(),
+                        'exam_date': exam_date_str,
+                        'exam_id': exam_id_raw,
+                        'col_label': col_label,
+                    })
 
         _rollup_student_marks_with_exam_combinations(
             grouped, combo_plan_by_lid, level_name_to_id, exam_total_by_sid
         )
-
-        student_photo_urls = {}
-        if grouped and include_profile_image:
-            student_ids = list(grouped.keys())
-            if student_ids:
-                ph = ','.join(['%s'] * len(student_ids))
-                cursor.execute(
-                    f"SELECT student_id, profile_image FROM students WHERE student_id IN ({ph})",
-                    tuple(student_ids),
+        if all_exams_mode:
+            for _stu in grouped.values():
+                _stu['subject_marks_by_exam'] = _build_subject_marks_by_exam_for_student(
+                    _stu, combo_plan_by_lid, level_name_to_id, exam_total_by_sid,
                 )
-                for pr in cursor.fetchall() or []:
-                    if isinstance(pr, dict):
-                        sid_key = pr.get('student_id')
-                        prof_path = pr.get('profile_image')
-                    else:
-                        sid_key = pr[0] if len(pr) > 0 else None
-                        prof_path = pr[1] if len(pr) > 1 else None
-                    photo_u = _student_profile_image_url(prof_path)
-                    if sid_key and photo_u:
-                        student_photo_urls[sid_key] = photo_u
+            meta['exam_columns'] = _filter_exam_columns_to_names(
+                _collect_report_exam_columns(grouped), exam_names
+            )
 
         subject_columns_by_class = {}
         for ln, level_id in level_name_to_id.items():
@@ -70162,12 +70589,9 @@ def _build_academic_report_payload(cursor, report_type, f):
                 level_id=student_level_id, class_bands=class_grade_bands,
             )
             raw_pf = str(student.get('profile_raw') or '').strip()
-            photo_url = (
-                student_photo_urls.get(student['admission_number'])
-                or _student_profile_image_url(raw_pf)
-            )
+            photo_url = _student_profile_image_url(raw_pf) if raw_pf else ''
             home_class = student.get('current_grade') or student.get('level_name') or ''
-            pre_rows.append({
+            pre_row = {
                 'admission_number': student['admission_number'],
                 'student_id': student['admission_number'],
                 'full_name': student['full_name'],
@@ -70184,7 +70608,10 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'grade_points': grade_points,
                 '_rank_total': float(rank_total_raw),
                 '_rank_mean': float(rank_mean_raw),
-            })
+            }
+            if all_exams_mode:
+                pre_row['subject_marks_by_exam'] = student.get('subject_marks_by_exam') or {}
+            pre_rows.append(pre_row)
 
         def _pre_row_sort_key(x):
             tr = float(x.get('_rank_total', 0))
@@ -70238,6 +70665,8 @@ def _build_academic_report_payload(cursor, report_type, f):
             flat_row['grade_points'] = item.get('grade_points')
             flat_row['subject_marks'] = item.get('subject_marks') or {}
             flat_row['class_subject_columns'] = row_cols
+            if all_exams_mode:
+                flat_row['subject_marks_by_exam'] = item.get('subject_marks_by_exam') or {}
             rows.append({
                 **flat_row
             })
@@ -70279,6 +70708,11 @@ def _build_academic_report_payload(cursor, report_type, f):
                 }
         except Exception as e:
             print(f"Note: grade_code_remarks for all-students report: {e}")
+        if all_exams_mode:
+            ew = _exam_window_from_report_columns(meta.get('exam_columns'))
+            if ew:
+                meta['exam_window'] = ew
+                meta['applied_filters']['exam_name'] = 'All exams'
         return {'title': perf_title, 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'exam_teacher_performance':
@@ -70529,19 +70963,28 @@ def _build_academic_report_payload(cursor, report_type, f):
         except Exception:
             pass
         if report_type == 'exam_individual_performance':
+            if not level_ids and not is_combined_level:
+                try:
+                    cursor.execute(
+                        "SELECT id, level_name FROM academic_levels "
+                        "WHERE level_status = 'active' ORDER BY level_name LIMIT 1"
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        first_id = row.get('id') if isinstance(row, dict) else row[0]
+                        first_name = (row.get('level_name') if isinstance(row, dict) else row[1]) or ''
+                        level_ids = [int(first_id)]
+                        meta['default_level_applied'] = True
+                        if first_name:
+                            meta['applied_filters']['class_level'] = str(first_name).strip()
+                except Exception:
+                    pass
             if not level_ids:
                 return {
                     'title': 'Individual student — exam performance',
                     'columns': ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks', 'grade', 'grade_points'],
                     'rows': [],
-                    'meta': {**meta, 'hint': 'Select a class/level, then enter the student ID for this report.'},
-                }
-            if not student_id:
-                return {
-                    'title': 'Individual student — exam performance',
-                    'columns': ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks', 'grade', 'grade_points'],
-                    'rows': [],
-                    'meta': {**meta, 'hint': 'Enter a student ID to load marks for that learner in the selected class.'},
+                    'meta': {**meta, 'hint': 'Select a class/level to generate student report cards.'},
                 }
         cols = _academic_report_cols_with_home_class(
             ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks', 'grade', 'grade_points', 'grade_remark'],
@@ -70559,7 +71002,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             SELECT st.student_id, st.full_name, TRIM(COALESCE(st.current_grade, '')) AS current_grade,
                    al.level_name, al.id AS academic_level_id, COALESCE(sub.subject_name, 'N/A') AS subject_name,
                    COALESCE(sub.subject_code, '') AS subject_code,
-                   e.exam_name, e.exam_date, sm.marks, COALESCE(st.profile_image, '') AS profile_image, e.subject_id,
+                   e.exam_name, e.exam_date, e.id AS exam_id, sm.marks, COALESCE(st.profile_image, '') AS profile_image, e.subject_id,
                    COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
                    sub.exam_total_marks
             FROM student_marks sm
@@ -70577,23 +71020,26 @@ def _build_academic_report_payload(cursor, report_type, f):
             q += " AND e.academic_year_id = %s"
             params.append(ay)
         q, params = _sql_filter_academic_level_ids(q, params, 'e.academic_level_id', level_ids)
-        if exam_name:
-            q += " AND e.exam_name = %s"
-            params.append(exam_name)
+        include_profile_image = _table_has_column(cursor, 'students', 'profile_image')
+        clause, ep = _exam_name_clause_and_params()
+        q += clause
+        params.extend(ep)
         if student_id:
             q += " AND st.student_id = %s"
             params.append(student_id)
-        q += " ORDER BY st.full_name, e.exam_date, COALESCE(sub.exam_display_order, 1000000000), sub.subject_name LIMIT 3000"
-        include_profile_image = _table_has_column(cursor, 'students', 'profile_image')
+        order_limit = (
+            " ORDER BY st.full_name, e.exam_date, "
+            "COALESCE(sub.exam_display_order, 1000000000), sub.subject_name LIMIT 3000"
+        )
         if include_profile_image:
-            cursor.execute(q, params)
+            cursor.execute(q + order_limit, params)
         else:
             # Backward-compatible fallback for databases without students.profile_image.
             q_no_image = """
                 SELECT st.student_id, st.full_name, TRIM(COALESCE(st.current_grade, '')) AS current_grade,
                        al.level_name, al.id AS academic_level_id, COALESCE(sub.subject_name, 'N/A') AS subject_name,
                        COALESCE(sub.subject_code, '') AS subject_code,
-                       e.exam_name, e.exam_date, sm.marks, e.subject_id,
+                       e.exam_name, e.exam_date, e.id AS exam_id, sm.marks, e.subject_id,
                        COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
                        sub.exam_total_marks
                 FROM student_marks sm
@@ -70603,25 +71049,54 @@ def _build_academic_report_payload(cursor, report_type, f):
                 LEFT JOIN subjects sub ON e.subject_id = sub.id
                 WHERE 1=1
             """
+            params_no_img = []
             if tid:
                 q_no_image += " AND e.term_id = %s"
+                params_no_img.append(tid)
             if ay:
                 q_no_image += " AND e.academic_year_id = %s"
-            if level_ids:
-                if len(level_ids) == 1:
-                    q_no_image += " AND e.academic_level_id = %s"
-                else:
-                    _lvl_ph2 = ','.join(['%s'] * len(level_ids))
-                    q_no_image += f" AND e.academic_level_id IN ({_lvl_ph2})"
-            if exam_names:
-                placeholders = ','.join(['%s'] * len(exam_names))
-                q_no_image += f" AND e.exam_name IN ({placeholders})"
-            elif exam_name:
-                q_no_image += " AND e.exam_name = %s"
+                params_no_img.append(ay)
+            q_no_image, params_no_img = _sql_filter_academic_level_ids(
+                q_no_image, params_no_img, 'e.academic_level_id', level_ids
+            )
+            q_no_image += clause
+            params_no_img.extend(ep)
             if student_id:
                 q_no_image += " AND st.student_id = %s"
-            q_no_image += " ORDER BY st.full_name, e.exam_date, COALESCE(sub.exam_display_order, 1000000000), sub.subject_name LIMIT 3000"
-            cursor.execute(q_no_image, params)
+                params_no_img.append(student_id)
+            cursor.execute(q_no_image + order_limit, params_no_img)
+        raw_rows = cursor.fetchall() or []
+        photo_url_by_student = {}
+        if include_profile_image and raw_rows:
+            need_photo_sids = set()
+            for r in raw_rows:
+                if isinstance(r, dict):
+                    sid = r.get('student_id')
+                    raw_pf = str(r.get('profile_image') or '').strip()
+                else:
+                    sid = r[0] if len(r) > 0 else None
+                    raw_pf = str(r[11]).strip() if len(r) > 11 and r[11] else ''
+                if sid and not _student_profile_image_url(raw_pf):
+                    need_photo_sids.add(sid)
+            if need_photo_sids:
+                try:
+                    sid_list = list(need_photo_sids)
+                    ph = ','.join(['%s'] * len(sid_list))
+                    cursor.execute(
+                        f"SELECT student_id, profile_image FROM students WHERE student_id IN ({ph})",
+                        sid_list,
+                    )
+                    for pr in cursor.fetchall() or []:
+                        if isinstance(pr, dict):
+                            psid = pr.get('student_id')
+                            pimg = pr.get('profile_image')
+                        else:
+                            psid = pr[0] if len(pr) > 0 else None
+                            pimg = pr[1] if len(pr) > 1 else None
+                        if psid is not None:
+                            photo_url_by_student[psid] = _student_profile_image_url(pimg)
+                except Exception:
+                    photo_url_by_student = {}
         rows = []
         default_grade_meaning_by_code = {}
         try:
@@ -70632,7 +71107,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                     default_grade_meaning_by_code[code] = label
         except Exception:
             default_grade_meaning_by_code = {}
-        for r in cursor.fetchall() or []:
+        for r in raw_rows:
             if isinstance(r, dict):
                 ed = r.get('exam_date')
                 raw_profile = str(r.get('profile_image') or '').strip() if include_profile_image else ''
@@ -70642,6 +71117,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 raw_marks_val = r.get('marks')
                 subj_disp = subject_display_label(r.get('subject_code'), r.get('subject_name'), 'N/A')
                 exam_nm = r.get('exam_name')
+                exam_id_val = r.get('exam_id')
                 student_id_out = r.get('student_id')
                 full_name_out = r.get('full_name')
                 cur_grade_out = str(r.get('current_grade') or '').strip()
@@ -70650,11 +71126,12 @@ def _build_academic_report_payload(cursor, report_type, f):
                 subject_code_out = r.get('subject_code')
             elif include_profile_image:
                 ed = r[8] if len(r) > 8 else None
-                raw_profile = str(r[10]).strip() if len(r) > 10 and r[10] else ''
-                subject_id_val = r[11] if len(r) > 11 else None
-                exam_ord_val = r[12] if len(r) > 12 else None
-                exam_total_marks = r[13] if len(r) > 13 else None
-                raw_marks_val = r[9] if len(r) > 9 else None
+                exam_id_val = r[9] if len(r) > 9 else None
+                raw_profile = str(r[11]).strip() if len(r) > 11 and r[11] else ''
+                subject_id_val = r[12] if len(r) > 12 else None
+                exam_ord_val = r[13] if len(r) > 13 else None
+                exam_total_marks = r[14] if len(r) > 14 else None
+                raw_marks_val = r[10] if len(r) > 10 else None
                 subj_disp = subject_display_label(
                     r[6] if len(r) > 6 else '',
                     r[5] if len(r) > 5 else '',
@@ -70669,11 +71146,12 @@ def _build_academic_report_payload(cursor, report_type, f):
                 exam_nm = r[7] if len(r) > 7 else None
             else:
                 ed = r[8] if len(r) > 8 else None
+                exam_id_val = r[9] if len(r) > 9 else None
                 raw_profile = ''
-                subject_id_val = r[10] if len(r) > 10 else None
-                exam_ord_val = r[11] if len(r) > 11 else None
-                exam_total_marks = r[12] if len(r) > 12 else None
-                raw_marks_val = r[9] if len(r) > 9 else None
+                subject_id_val = r[11] if len(r) > 11 else None
+                exam_ord_val = r[12] if len(r) > 12 else None
+                exam_total_marks = r[13] if len(r) > 13 else None
+                raw_marks_val = r[10] if len(r) > 10 else None
                 subj_disp = subject_display_label(
                     r[6] if len(r) > 6 else '',
                     r[5] if len(r) > 5 else '',
@@ -70687,22 +71165,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                 subject_code_out = r[6] if len(r) > 6 else ''
                 exam_nm = r[7] if len(r) > 7 else None
             photo_url = _student_profile_image_url(raw_profile) if raw_profile else ''
-            if not photo_url and include_profile_image and student_id_out:
-                try:
-                    cursor.execute(
-                        "SELECT profile_image FROM students WHERE student_id = %s LIMIT 1",
-                        (student_id_out,),
-                    )
-                    prof_row = cursor.fetchone()
-                    if prof_row:
-                        prof_val = (
-                            prof_row.get('profile_image')
-                            if isinstance(prof_row, dict)
-                            else (prof_row[0] if prof_row else None)
-                        )
-                        photo_url = _student_profile_image_url(prof_val)
-                except Exception:
-                    pass
+            if not photo_url and student_id_out:
+                photo_url = photo_url_by_student.get(student_id_out, '')
             scaled_marks = raw_mark_to_percentage(raw_marks_val, exam_total_marks)
             if scaled_marks is not None:
                 scaled_marks = round_mark_display(scaled_marks)
@@ -70724,6 +71188,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'subject_name': subj_disp,
                 'subject_code': subject_code_out,
                 'exam_name': exam_nm,
+                'exam_id': exam_id_val,
                 'exam_date': ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else ''),
                 'marks': scaled_marks if scaled_marks is not None else '',
                 'grade': (grade_code or '').strip(),
@@ -70802,6 +71267,8 @@ def _build_academic_report_payload(cursor, report_type, f):
             )
         )
         meta['row_limit'] = 3000
+        if _academic_report_multi_exam_mode(exam_name, exam_names):
+            meta['all_exams_mode'] = True
         try:
             if exam_name and level_ids_in_rows:
                 meta['grade_code_remarks'] = {
@@ -71106,6 +71573,8 @@ def academic_report_preview():
         flash((bundle or {}).get('error') or 'Could not build this report.', 'error')
         return redirect(employee_dashboard_path('academic-reports'))
 
+    bundle = _expand_exam_student_card_rows(bundle, report_type)
+
     if fmt == 'csv':
         return _make_academic_report_csv_response(bundle, report_type)
     if fmt in ('excel', 'xls', 'xlsx'):
@@ -71178,6 +71647,12 @@ def api_academic_reports_generate():
                 return _make_academic_report_csv_response(bundle, report_type)
             if fmt in ('excel', 'xls', 'xlsx'):
                 return _make_academic_report_excel_response(bundle, report_type)
+
+            bundle = _trim_academic_report_json_bundle(bundle, report_type)
+            title = bundle.get('title', 'Report')
+            columns = bundle.get('columns') or []
+            rows = bundle.get('rows') or []
+            meta = bundle.get('meta') or {}
 
             return jsonify({
                 'success': True,
