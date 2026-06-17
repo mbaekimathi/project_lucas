@@ -3393,9 +3393,12 @@ def grade_bands_for_level(level_id, class_grade_bands, default_grade_bands):
     return resolve_grade_bands(level_id, class_grade_bands, default_grade_bands)
 
 
-def fetch_grade_bands_for_marks_sheet(level_id):
+def fetch_grade_bands_for_marks_sheet(
+    level_id, exam_name=None, academic_year_id=None, term_id=None,
+):
     """
     Load grading bands for an exams-assessments class marks sheet.
+    Uses per-exam frozen settings when the user has changed global settings after marks were entered.
     Returns active bands (class setting or school default), all band maps, and metadata.
     """
     connection = get_db_connection()
@@ -3403,7 +3406,9 @@ def fetch_grade_bands_for_marks_sheet(level_id):
         return [], [], {}, {}, False, None
     try:
         with connection.cursor() as cursor:
-            default_grade_bands, subject_grade_bands, class_grade_bands = load_grade_bands_from_db(cursor)
+            default_grade_bands, subject_grade_bands, class_grade_bands = load_grade_bands_for_exam_context(
+                cursor, exam_name, academic_year_id, term_id, level_id,
+            )
             active_grade_bands = grade_bands_for_level(level_id, class_grade_bands, default_grade_bands)
             try:
                 lid = int(level_id or 0)
@@ -3411,7 +3416,12 @@ def fetch_grade_bands_for_marks_sheet(level_id):
                 lid = 0
             uses_class = bool(lid and class_grade_bands.get(lid))
             grading_setting_name = None
-            if uses_class:
+            snap = get_exam_context_settings_snapshot(
+                cursor, exam_name, academic_year_id, term_id, level_id,
+            ) if exam_name and academic_year_id and term_id and level_id else None
+            if snap:
+                grading_setting_name = 'Frozen exam settings'
+            elif uses_class:
                 assignments = load_class_grade_setting_assignments_map(cursor)
                 pid = assignments.get(lid)
                 if pid:
@@ -3897,6 +3907,321 @@ def fetch_subject_exam_combinations(cursor):
         {'id': cid, 'member_subject_ids': mids, 'display_order': disp.get(cid)}
         for cid, mids in sorted(grouped.items(), key=_combo_key)
     ]
+
+
+EXAM_CONTEXT_SETTINGS_VERSION = 1
+
+
+def ensure_exam_context_settings_table(cursor):
+    """Per-exam frozen settings (grades, totals, combinations) when global settings change."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS exam_context_settings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                exam_name VARCHAR(255) NOT NULL,
+                academic_year_id INT NOT NULL,
+                term_id INT NOT NULL,
+                academic_level_id INT NOT NULL,
+                settings_json LONGTEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_exam_context (
+                    exam_name, academic_year_id, term_id, academic_level_id
+                ),
+                INDEX idx_exam_ctx_level (academic_level_id),
+                INDEX idx_exam_ctx_year_term (academic_year_id, term_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+    except Exception as e:
+        print(f"ensure_exam_context_settings_table: {e}")
+
+
+def _parse_exam_context_key(exam_name, academic_year_id, term_id, academic_level_id):
+    try:
+        en = str(exam_name or '').strip().upper()
+        ay = int(academic_year_id)
+        tid = int(term_id)
+        lid = int(academic_level_id)
+        if not en or ay <= 0 or tid <= 0 or lid <= 0:
+            return None
+        return en, ay, tid, lid
+    except (TypeError, ValueError):
+        return None
+
+
+def _exam_context_dict(exam_name, academic_year_id, term_id, academic_level_id=None):
+    key = _parse_exam_context_key(exam_name, academic_year_id, term_id, academic_level_id)
+    if not key:
+        return None
+    return {
+        'exam_name': key[0],
+        'academic_year_id': key[1],
+        'term_id': key[2],
+        'academic_level_id': key[3],
+    }
+
+
+def _fetch_live_subject_exam_combinations_full(cursor):
+    """Live combinations including combined_code (for snapshots and display)."""
+    ensure_subject_exam_combination_tables(cursor)
+    ensure_subject_exam_display_order_columns(cursor)
+    cursor.execute(
+        """
+        SELECT m.combination_id, m.subject_id, m.sort_order,
+               c.display_order, c.combined_code
+        FROM subject_exam_combination_members m
+        INNER JOIN subject_exam_combinations c ON c.id = m.combination_id
+        ORDER BY COALESCE(c.display_order, c.id) ASC, c.id ASC,
+                 m.sort_order ASC, m.subject_id ASC
+        """
+    )
+    grouped = {}
+    disp = {}
+    codes = {}
+    for row in cursor.fetchall() or []:
+        cid = row.get('combination_id') if isinstance(row, dict) else row[0]
+        sid = row.get('subject_id') if isinstance(row, dict) else row[1]
+        dord = row.get('display_order') if isinstance(row, dict) else (row[3] if len(row) > 3 else None)
+        ccode = row.get('combined_code') if isinstance(row, dict) else (row[4] if len(row) > 4 else None)
+        if cid is None or sid is None:
+            continue
+        cid = int(cid)
+        sid = int(sid)
+        grouped.setdefault(cid, []).append(sid)
+        if dord is not None:
+            try:
+                disp[cid] = int(dord)
+            except (TypeError, ValueError):
+                pass
+        if ccode:
+            codes[cid] = str(ccode).strip()
+
+    def _combo_key(item):
+        cid, mids = item
+        return (disp.get(cid) if cid in disp else 10**9 + cid, cid)
+
+    out = []
+    for cid, mids in sorted(grouped.items(), key=_combo_key):
+        row = {
+            'id': cid,
+            'member_subject_ids': mids,
+            'display_order': disp.get(cid),
+        }
+        if codes.get(cid):
+            row['combined_code'] = codes[cid]
+        out.append(row)
+    return out
+
+
+def capture_live_exam_context_settings(cursor):
+    """Snapshot current school-wide exam display and grading settings."""
+    default_grade_bands, subject_grade_bands, class_grade_bands = load_grade_bands_from_db(cursor)
+    combinations = _fetch_live_subject_exam_combinations_full(cursor)
+    subject_exam_totals = {}
+    subject_exam_display_order = {}
+    try:
+        cursor.execute("""
+            SELECT id, exam_total_marks, exam_display_order
+            FROM subjects
+            WHERE COALESCE(status, 'active') = 'active'
+        """)
+        for row in cursor.fetchall() or []:
+            sid = int(row.get('id') if isinstance(row, dict) else row[0])
+            etm = row.get('exam_total_marks') if isinstance(row, dict) else (row[1] if len(row) > 1 else None)
+            edo = row.get('exam_display_order') if isinstance(row, dict) else (row[2] if len(row) > 2 else None)
+            if etm is not None:
+                try:
+                    subject_exam_totals[str(sid)] = round(float(etm), 2)
+                except (TypeError, ValueError):
+                    pass
+            if edo is not None:
+                try:
+                    subject_exam_display_order[str(sid)] = int(edo)
+                except (TypeError, ValueError):
+                    pass
+    except Exception as e:
+        print(f"capture_live_exam_context_settings subject totals: {e}")
+
+    return {
+        'version': EXAM_CONTEXT_SETTINGS_VERSION,
+        'default_grade_bands': default_grade_bands,
+        'class_grade_bands': {str(k): v for k, v in (class_grade_bands or {}).items()},
+        'subject_grade_bands': {str(k): v for k, v in (subject_grade_bands or {}).items()},
+        'subject_combinations': combinations,
+        'subject_exam_totals': subject_exam_totals,
+        'subject_exam_display_order': subject_exam_display_order,
+    }
+
+
+def get_exam_context_settings_snapshot(cursor, exam_name, academic_year_id, term_id, academic_level_id):
+    """Return parsed settings dict for one exam context, or None if not frozen."""
+    key = _parse_exam_context_key(exam_name, academic_year_id, term_id, academic_level_id)
+    if not key:
+        return None
+    ensure_exam_context_settings_table(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT settings_json
+            FROM exam_context_settings
+            WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+              AND academic_level_id = %s
+            LIMIT 1
+            """,
+            key,
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        raw = row.get('settings_json') if isinstance(row, dict) else row[0]
+        if not raw:
+            return None
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        print(f"get_exam_context_settings_snapshot: {e}")
+        return None
+
+
+def freeze_exam_context_settings_before_global_change(cursor):
+    """
+    Before changing global exam settings: freeze current settings for each exam context
+    that already has student marks but no snapshot yet.
+    Returns the number of new snapshots created.
+    """
+    ensure_exam_context_settings_table(cursor)
+    snapshot = capture_live_exam_context_settings(cursor)
+    snapshot_json = json.dumps(snapshot)
+    try:
+        cursor.execute("""
+            SELECT DISTINCT e.exam_name, e.academic_year_id, e.term_id, e.academic_level_id
+            FROM student_marks sm
+            INNER JOIN exams e ON e.id = sm.exam_id
+        """)
+        contexts = cursor.fetchall() or []
+    except Exception as e:
+        print(f"freeze_exam_context_settings_before_global_change list: {e}")
+        return 0
+
+    created = 0
+    for row in contexts:
+        if isinstance(row, dict):
+            en = row.get('exam_name')
+            ay = row.get('academic_year_id')
+            tid = row.get('term_id')
+            lid = row.get('academic_level_id')
+        else:
+            en = row[0] if len(row) > 0 else None
+            ay = row[1] if len(row) > 1 else None
+            tid = row[2] if len(row) > 2 else None
+            lid = row[3] if len(row) > 3 else None
+        key = _parse_exam_context_key(en, ay, tid, lid)
+        if not key:
+            continue
+        cursor.execute(
+            """
+            SELECT id FROM exam_context_settings
+            WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+              AND academic_level_id = %s
+            LIMIT 1
+            """,
+            key,
+        )
+        if cursor.fetchone():
+            continue
+        cursor.execute(
+            """
+            INSERT INTO exam_context_settings
+                (exam_name, academic_year_id, term_id, academic_level_id, settings_json)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            key + (snapshot_json,),
+        )
+        created += 1
+    return created
+
+
+def _exam_settings_freeze_suffix(frozen_count):
+    """User-facing note when prior exams keep frozen settings."""
+    try:
+        n = int(frozen_count or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if n <= 0:
+        return ''
+    word = 'exam' if n == 1 else 'exams'
+    return f' {n} {word} with existing marks will keep their previous settings.'
+
+
+def _grade_band_maps_from_snapshot(snapshot):
+    """Convert snapshot JSON to runtime band maps (int keys for class/subject)."""
+    if not snapshot:
+        return None
+    default_grade_bands = snapshot.get('default_grade_bands') or []
+    subject_grade_bands = {}
+    for k, bands in (snapshot.get('subject_grade_bands') or {}).items():
+        try:
+            subject_grade_bands[int(k)] = bands
+        except (TypeError, ValueError):
+            continue
+    class_grade_bands = {}
+    for k, bands in (snapshot.get('class_grade_bands') or {}).items():
+        try:
+            class_grade_bands[int(k)] = bands
+        except (TypeError, ValueError):
+            continue
+    return default_grade_bands, subject_grade_bands, class_grade_bands
+
+
+def load_grade_bands_for_exam_context(
+    cursor, exam_name=None, academic_year_id=None, term_id=None, academic_level_id=None,
+):
+    """Grade bands for an exam: frozen snapshot when present, else live settings."""
+    snap = None
+    if exam_name and academic_year_id and term_id and academic_level_id:
+        snap = get_exam_context_settings_snapshot(
+            cursor, exam_name, academic_year_id, term_id, academic_level_id,
+        )
+    parsed = _grade_band_maps_from_snapshot(snap)
+    if parsed:
+        return parsed
+    return load_grade_bands_from_db(cursor)
+
+
+def fetch_subject_exam_combinations_for_context(
+    cursor, exam_name=None, academic_year_id=None, term_id=None, academic_level_id=None,
+):
+    """Subject combinations for an exam context (snapshot or live)."""
+    snap = None
+    if exam_name and academic_year_id and term_id and academic_level_id:
+        snap = get_exam_context_settings_snapshot(
+            cursor, exam_name, academic_year_id, term_id, academic_level_id,
+        )
+    if snap and snap.get('subject_combinations') is not None:
+        return snap.get('subject_combinations') or []
+    combos = _fetch_live_subject_exam_combinations_full(cursor)
+    for c in combos:
+        if 'combined_code' not in c:
+            c['combined_code'] = None
+    return combos
+
+
+def subject_exam_total_for_context(
+    cursor, subject_id, exam_name=None, academic_year_id=None, term_id=None,
+    academic_level_id=None, live_fallback=None,
+):
+    """Exam total for a subject: snapshot value when exam is frozen, else live."""
+    snap = None
+    if exam_name and academic_year_id and term_id and academic_level_id:
+        snap = get_exam_context_settings_snapshot(
+            cursor, exam_name, academic_year_id, term_id, academic_level_id,
+        )
+    if snap:
+        totals = snap.get('subject_exam_totals') or {}
+        val = totals.get(str(int(subject_id)))
+        if val is not None:
+            return val
+    return live_fallback
 
 
 def ensure_academic_level_combination_tables(cursor):
@@ -18439,12 +18764,13 @@ def save_default_grade_registration():
         return redirect(employee_dashboard_path('grades-registration'))
     try:
         with connection.cursor() as cursor:
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             cursor.execute("""
                 INSERT INTO grade_registrations (academic_level_id, start_mark, end_mark, level_label, code, meaning, description, allocation_points, created_by)
                 VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (start_mark, end_mark, level_label, code, meaning, description, allocation_points, session.get('user_id')))
             connection.commit()
-        flash('Default grade saved successfully.', 'success')
+        flash('Default grade saved successfully.' + _exam_settings_freeze_suffix(frozen_n), 'success')
     except Exception as e:
         print(f"Error saving default grade: {e}")
         connection.rollback()
@@ -18497,6 +18823,7 @@ def update_default_grade_registration(grade_id):
         return redirect(employee_dashboard_path('grades-registration'))
     try:
         with connection.cursor() as cursor:
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             cursor.execute(
                 "SELECT code FROM grade_registrations WHERE id = %s",
                 (grade_id,),
@@ -18540,7 +18867,7 @@ def update_default_grade_registration(grade_id):
                     (code, old_code),
                 )
             connection.commit()
-        flash('Default grade updated successfully.', 'success')
+        flash('Default grade updated successfully.' + _exam_settings_freeze_suffix(frozen_n), 'success')
     except Exception as e:
         print(f"Error updating default grade: {e}")
         connection.rollback()
@@ -18564,6 +18891,7 @@ def delete_default_grade_registration(grade_id):
         return redirect(employee_dashboard_path('grades-registration'))
     try:
         with connection.cursor() as cursor:
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             cursor.execute(
                 "SELECT code FROM grade_registrations WHERE id = %s",
                 (grade_id,),
@@ -18587,7 +18915,11 @@ def delete_default_grade_registration(grade_id):
                 )
             cursor.execute("DELETE FROM grade_registrations WHERE id = %s", (grade_id,))
             connection.commit()
-        flash('Default grade deleted. Subject mark overrides for this code were removed.', 'success')
+        flash(
+            'Default grade deleted. Subject mark overrides for this code were removed.'
+            + _exam_settings_freeze_suffix(frozen_n),
+            'success',
+        )
     except Exception as e:
         print(f"Error deleting default grade: {e}")
         connection.rollback()
@@ -18620,6 +18952,7 @@ def save_subject_grade_override():
         return redirect(employee_dashboard_path('grades-registration'))
     try:
         with connection.cursor() as cursor:
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             cursor.execute("""
                 INSERT INTO subject_grade_overrides (academic_level_id, subject_id, code, meaning, description, created_by)
                 VALUES (%s, %s, %s, %s, %s, %s)
@@ -18629,7 +18962,7 @@ def save_subject_grade_override():
                     created_by = VALUES(created_by)
             """, (int(level_id), int(subject_id), code, meaning, description, session.get('user_id')))
             connection.commit()
-        flash('Subject grade override saved successfully.', 'success')
+        flash('Subject grade override saved successfully.' + _exam_settings_freeze_suffix(frozen_n), 'success')
     except Exception as e:
         print(f"Error saving subject grade override: {e}")
         connection.rollback()
@@ -18721,6 +19054,7 @@ def save_subject_grade_ranges():
         return redirect(employee_dashboard_path('grades-registration'))
     try:
         with connection.cursor() as cursor:
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             default_meta_by_code = {}
             if not custom_full:
                 cursor.execute("""
@@ -18764,9 +19098,17 @@ def save_subject_grade_ranges():
                 """, (int(subject_id_raw), c, level_label, meaning, sm, em, ap, session.get('user_id')))
             connection.commit()
         if custom_full:
-            flash('Custom grade allocation saved for this subject.', 'success')
+            flash(
+                'Custom grade allocation saved for this subject.'
+                + _exam_settings_freeze_suffix(frozen_n),
+                'success',
+            )
         else:
-            flash('Subject mark ranges saved (still using default codes and levels).', 'success')
+            flash(
+                'Subject mark ranges saved (still using default codes and levels).'
+                + _exam_settings_freeze_suffix(frozen_n),
+                'success',
+            )
     except Exception as e:
         print(f"Error saving subject grade ranges: {e}")
         connection.rollback()
@@ -18796,12 +19138,13 @@ def reset_subject_grade_to_default():
         return redirect(employee_dashboard_path('grades-registration'))
     try:
         with connection.cursor() as cursor:
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             cursor.execute(
                 "DELETE FROM subject_grade_mark_overrides WHERE subject_id = %s",
                 (int(subject_id_raw),),
             )
             connection.commit()
-        flash('Subject reverted to default grading.', 'success')
+        flash('Subject reverted to default grading.' + _exam_settings_freeze_suffix(frozen_n), 'success')
     except Exception as e:
         print(f"Error resetting subject grade allocation: {e}")
         connection.rollback()
@@ -18833,6 +19176,7 @@ def create_grade_setting_profile():
     try:
         with connection.cursor() as cursor:
             ensure_grade_setting_profile_tables(cursor)
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             cursor.execute(
                 "INSERT INTO grade_setting_profiles (name, description, created_by) VALUES (%s, %s, %s)",
                 (name, description, session.get('user_id')),
@@ -18872,7 +19216,7 @@ def create_grade_setting_profile():
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (profile_id, rank_i, c, ll, mn, desc, sm, em, ap))
             connection.commit()
-        flash(f'Grading setting "{name}" created.', 'success')
+        flash(f'Grading setting "{name}" created.' + _exam_settings_freeze_suffix(frozen_n), 'success')
     except Exception as e:
         print(f"Error creating grade setting profile: {e}")
         connection.rollback()
@@ -18923,6 +19267,7 @@ def save_grade_setting_profile_bands(profile_id):
     try:
         with connection.cursor() as cursor:
             ensure_grade_setting_profile_tables(cursor)
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             cursor.execute("SELECT id FROM grade_setting_profiles WHERE id = %s", (profile_id,))
             if not cursor.fetchone():
                 flash('Grading setting not found.', 'error')
@@ -18945,7 +19290,7 @@ def save_grade_setting_profile_bands(profile_id):
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (profile_id, rank_i, c, level_label, meaning, desc, sm, em, ap))
             connection.commit()
-        flash(f'Grading setting "{name}" saved.', 'success')
+        flash(f'Grading setting "{name}" saved.' + _exam_settings_freeze_suffix(frozen_n), 'success')
     except Exception as e:
         print(f"Error saving grade setting bands: {e}")
         connection.rollback()
@@ -18973,9 +19318,14 @@ def delete_grade_setting_profile(profile_id):
     try:
         with connection.cursor() as cursor:
             ensure_grade_setting_profile_tables(cursor)
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             cursor.execute("DELETE FROM grade_setting_profiles WHERE id = %s", (profile_id,))
             connection.commit()
-        flash('Grading setting deleted. Assigned classes now use school default grading.', 'success')
+        flash(
+            'Grading setting deleted. Assigned classes now use school default grading.'
+            + _exam_settings_freeze_suffix(frozen_n),
+            'success',
+        )
     except Exception as e:
         print(f"Error deleting grade setting profile: {e}")
         connection.rollback()
@@ -19007,6 +19357,7 @@ def assign_grade_settings_to_classes():
     try:
         with connection.cursor() as cursor:
             ensure_grade_setting_profile_tables(cursor)
+            frozen_n = freeze_exam_context_settings_before_global_change(cursor)
             for lid_raw, pid_raw in zip(level_ids, profile_ids):
                 if not str(lid_raw).isdigit():
                     continue
@@ -19030,7 +19381,7 @@ def assign_grade_settings_to_classes():
                     ON DUPLICATE KEY UPDATE profile_id = VALUES(profile_id)
                 """, (lid, pid))
             connection.commit()
-        flash('Class grading allocations saved.', 'success')
+        flash('Class grading allocations saved.' + _exam_settings_freeze_suffix(frozen_n), 'success')
     except Exception as e:
         print(f"Error assigning grade settings to classes: {e}")
         connection.rollback()
@@ -37384,6 +37735,21 @@ def exam_subject_settings():
     combine_hash_redirect = f"{settings_anchor}#combine-exam-subjects"
 
     if request.method == 'POST':
+        post_freeze_suffix = ''
+        try:
+            with connection.cursor() as pre_cur:
+                ensure_exam_context_settings_table(pre_cur)
+                post_freeze_suffix = _exam_settings_freeze_suffix(
+                    freeze_exam_context_settings_before_global_change(pre_cur)
+                )
+            connection.commit()
+        except Exception as e:
+            print(f"exam_subject_settings pre-freeze: {e}")
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+
         combine_action = (request.form.get('combine_action') or '').strip().lower()
 
         if combine_action == 'update_code':
@@ -37451,7 +37817,7 @@ def exam_subject_settings():
                                         (new_code, cid),
                                     )
                                     connection.commit()
-                                    flash('Combined code updated.', 'success')
+                                    flash('Combined code updated.' + post_freeze_suffix, 'success')
             except Exception as e:
                 print(f"exam_subject_settings combine update_code: {e}")
                 try:
@@ -37505,11 +37871,12 @@ def exam_subject_settings():
                         if snap_raw or codes_snap_raw:
                             flash(
                                 'Combination removed. Exam totals and subject codes for those papers '
-                                'were restored to their values before the combination.',
+                                'were restored to their values before the combination.'
+                                + post_freeze_suffix,
                                 'success',
                             )
                         else:
-                            flash('Combination removed.', 'success')
+                            flash('Combination removed.' + post_freeze_suffix, 'success')
             except Exception as e:
                 print(f"exam_subject_settings combine delete: {e}")
                 try:
@@ -37647,7 +38014,8 @@ def exam_subject_settings():
                         )
                     connection.commit()
                     flash(
-                        'Subjects combined for marks entry. Exam totals were preserved.',
+                        'Subjects combined for marks entry. Exam totals were preserved.'
+                        + post_freeze_suffix,
                         'success',
                     )
             except Exception as e:
@@ -37731,7 +38099,7 @@ def exam_subject_settings():
                                     (ordv, mid),
                                 )
                     connection.commit()
-                flash('Column order saved. Marks entry and reports use this order.', 'success')
+                flash('Column order saved. Marks entry and reports use this order.' + post_freeze_suffix, 'success')
             except Exception as e:
                 print(f"exam_subject_settings save_order: {e}")
                 try:
@@ -37799,7 +38167,7 @@ def exam_subject_settings():
                             (val, sid),
                         )
                 connection.commit()
-            flash('Exam total marks per subject were saved.', 'success')
+            flash('Exam total marks per subject were saved.' + post_freeze_suffix, 'success')
         except Exception as e:
             print(f"exam_subject_settings save: {e}")
             try:
@@ -61210,7 +61578,10 @@ def exam_analytics_detail(exam_id):
                             'exam_total_marks': extra.get('exam_total_marks'),
                             'exam_display_order': extra.get('exam_display_order'),
                         })
-                    combos_loaded = fetch_subject_exam_combinations(cur_combo)
+                    combos_loaded = fetch_subject_exam_combinations_for_context(
+                        cur_combo, exam_name, ay_id, term_id,
+                        scope_level_ids[0] if scope_level_ids else None,
+                    )
                     id_to_gc, section_order = sort_subjects_list_for_exam_columns(cur_combo, subjects_for_merge)
                     merged_rows = (
                         merge_subjects_with_exam_combinations(
@@ -61260,7 +61631,10 @@ def exam_analytics_detail(exam_id):
         try:
             with connection.cursor() as cur2:
                 ensure_subject_exam_total_marks_column(cur2)
-                default_grade_bands, _, class_grade_bands = load_grade_bands_from_db(cur2)
+                default_grade_bands, _, class_grade_bands = load_grade_bands_for_exam_context(
+                    cur2, exam_name, ay_id, term_id,
+                    scope_level_ids[0] if scope_level_ids else None,
+                )
                 scope_level_ids = [int(x) for x in (level_scope.get('level_ids') or []) if x is not None]
                 level_name_to_id = _level_name_to_id_map(cur2)
                 student_level_by_id = {}
@@ -61843,23 +62217,6 @@ def students_by_academic_level(level_id):
                 subjects_flat = [{**s} for s in subjects]
                 subjects_for_edit = list(subjects_flat)
                 id_to_gc, section_order = sort_subjects_list_for_exam_columns(cursor, subjects_flat)
-                combinations_loaded = fetch_subject_exam_combinations(cursor)
-                subject_exam_max_map_base = {
-                    int(s['id']): subject_exam_max_raw_marks(s.get('exam_total_marks'))
-                    for s in subjects_flat
-                }
-                # Teachers: one column per subject paper so marks can be entered separately, even when
-                # the same teacher is assigned to every member of an exam combination. Coordinators /
-                # principals / secretary still see merged synthetic columns (unified %).
-                if is_teacher and teacher_id:
-                    subjects = subjects_flat
-                else:
-                    subjects = merge_subjects_with_exam_combinations(
-                        subjects_flat,
-                        combinations_loaded,
-                        id_to_gc=id_to_gc,
-                        section_order=section_order,
-                    )
                 
                 # Get exams for this academic level: unique by exam_name only (one row per exam name)
                 # For teachers, only show exams for their assigned subjects
@@ -61975,6 +62332,58 @@ def students_by_academic_level(level_id):
                 except Exception as e:
                     print(f"Error fetching exams: {e}")
                     exams = []
+
+                # Resolve selected exam inside DB block so subject columns use frozen per-exam settings.
+                sheet_year_id = request.args.get('year', type=int)
+                sheet_term_id = request.args.get('term', type=int)
+                sheet_exam_id = request.args.get('exam', type=int)
+                sheet_year_default = current_year_id
+                sheet_term_default = current_term_id
+                sheet_exam_default = None
+                if exams or registered_current_exam_pick:
+                    sheet_year_default, sheet_term_default, sheet_exam_default = (
+                        _resolve_marks_sheet_filter_defaults(
+                            exams, registered_current_exam_pick, current_year_id, current_term_id,
+                        )
+                    )
+                sheet_year_id = sheet_year_id if sheet_year_id is not None else sheet_year_default
+                sheet_term_id = sheet_term_id if sheet_term_id is not None else sheet_term_default
+                sheet_exam_id = sheet_exam_id if sheet_exam_id is not None else sheet_exam_default
+                sheet_exam_name = None
+                if sheet_exam_id and exams:
+                    for ex in exams:
+                        if str(ex.get('id')) == str(sheet_exam_id):
+                            sheet_exam_name = (ex.get('exam_name') or '').strip()
+                            sheet_year_id = ex.get('academic_year_id') or sheet_year_id
+                            sheet_term_id = ex.get('term_id') or sheet_term_id
+                            break
+
+                for s in subjects_flat:
+                    sid = int(s['id'])
+                    snap_total = subject_exam_total_for_context(
+                        cursor, sid,
+                        sheet_exam_name, sheet_year_id, sheet_term_id, level_id,
+                        live_fallback=s.get('exam_total_marks'),
+                    )
+                    if snap_total is not None:
+                        s['exam_total_marks'] = snap_total
+
+                combinations_loaded = fetch_subject_exam_combinations_for_context(
+                    cursor, sheet_exam_name, sheet_year_id, sheet_term_id, level_id,
+                )
+                subject_exam_max_map_base = {
+                    int(s['id']): subject_exam_max_raw_marks(s.get('exam_total_marks'))
+                    for s in subjects_flat
+                }
+                if is_teacher and teacher_id:
+                    subjects = subjects_flat
+                else:
+                    subjects = merge_subjects_with_exam_combinations(
+                        subjects_flat,
+                        combinations_loaded,
+                        id_to_gc=id_to_gc,
+                        section_order=section_order,
+                    )
                 
                 # Get marks for students in subjects (if marks table exists)
                 # For teachers, only get marks for their assigned subjects
@@ -62098,6 +62507,13 @@ def students_by_academic_level(level_id):
     marks_display_scaled = not can_edit
     marks_summary_column = 'total_scaled' if marks_display_scaled else 'avg_pct'
 
+    selected_exam_name = ''
+    if selected_exam_id and exams:
+        for ex in exams:
+            if str(ex.get('id')) == str(selected_exam_id):
+                selected_exam_name = (ex.get('exam_name') or '').strip()
+                break
+
     (
         active_grade_bands,
         default_grade_bands,
@@ -62105,17 +62521,13 @@ def students_by_academic_level(level_id):
         class_grade_bands,
         uses_class_grading_setting,
         grading_setting_name,
-    ) = fetch_grade_bands_for_marks_sheet(level_id)
+    ) = fetch_grade_bands_for_marks_sheet(
+        level_id, selected_exam_name, current_year_id, current_term_id,
+    )
 
     # Grade-code remarks (per exam context) for report cards.
     initial_grade_code_remarks = {}
     try:
-        selected_exam_name = ''
-        if selected_exam_id and exams:
-            for ex in exams:
-                if str(ex.get('id')) == str(selected_exam_id):
-                    selected_exam_name = (ex.get('exam_name') or '').strip()
-                    break
         if selected_exam_name:
             connection2 = get_db_connection()
             if connection2:
@@ -62470,6 +62882,13 @@ def students_by_level_subject_edit(level_id, subject_id):
     if sheet_back_qs:
         sheet_back_url += '?' + '&'.join(sheet_back_qs)
 
+    selected_exam_name = ''
+    if selected_exam_id and exams:
+        for ex in exams:
+            if str(ex.get('id')) == str(selected_exam_id):
+                selected_exam_name = (ex.get('exam_name') or '').strip()
+                break
+
     (
         active_grade_bands,
         default_grade_bands,
@@ -62477,16 +62896,12 @@ def students_by_level_subject_edit(level_id, subject_id):
         class_grade_bands,
         uses_class_grading_setting,
         grading_setting_name,
-    ) = fetch_grade_bands_for_marks_sheet(level_id)
+    ) = fetch_grade_bands_for_marks_sheet(
+        level_id, selected_exam_name, current_year_id, current_term_id,
+    )
 
     initial_grade_code_remarks = {}
     try:
-        selected_exam_name = ''
-        if selected_exam_id and exams:
-            for ex in exams:
-                if str(ex.get('id')) == str(selected_exam_id):
-                    selected_exam_name = (ex.get('exam_name') or '').strip()
-                    break
         if selected_exam_name:
             connection2 = get_db_connection()
             if connection2:
@@ -63240,6 +63655,11 @@ def save_marks():
                 if not sub_max_row:
                     return jsonify({'success': False, 'message': 'Subject not found.'}), 404
                 etm = sub_max_row.get('exam_total_marks') if isinstance(sub_max_row, dict) else sub_max_row[0]
+                etm = subject_exam_total_for_context(
+                    cursor, subject_id,
+                    exam_scope_name, exam_scope_year_id, exam_scope_term_id, exam_scope_level_id,
+                    live_fallback=etm,
+                )
                 max_raw = subject_exam_max_raw_marks(etm)
                 if marks_value is not None and marks_value > max_raw + 1e-9:
                     return jsonify({
@@ -63754,6 +64174,7 @@ def _build_exam_class_report(
     is_combined=False,
     combo_id=None,
     primary_level_id=None,
+    subject_exam_totals_override=None,
 ):
     """Build one exam performance report card for one level or a combined level group."""
     level_ids = [int(x) for x in (level_ids or []) if x is not None]
@@ -63843,6 +64264,12 @@ def _build_exam_class_report(
             etm = mr.get('exam_total_marks') if isinstance(mr, dict) else (mr[2] if len(mr) > 2 else None)
             if etm is None:
                 etm = subject_stats[subject_id].get('exam_total_marks')
+            if subject_exam_totals_override:
+                ov = subject_exam_totals_override.get(str(subject_id))
+                if ov is None:
+                    ov = subject_exam_totals_override.get(int(subject_id))
+                if ov is not None:
+                    etm = ov
             scaled = raw_mark_to_percentage(mval, etm)
             if scaled is not None:
                 subject_stats[subject_id]['marks'].append(scaled)
@@ -64204,7 +64631,9 @@ def reports():
 
                     report_data = []
                     combined_report_data = []
-                    default_grade_bands, subject_grade_bands, class_grade_bands = load_grade_bands_from_db(cursor)
+                    report_exam_name = None
+                    if exam_extra_params:
+                        report_exam_name = (exam_extra_params[0] or '').strip().upper() or None
 
                     combos_to_build = []
                     for combo in level_combinations:
@@ -64218,6 +64647,16 @@ def reports():
 
                     if report_view in ('all', 'combined'):
                         for disp in combos_to_build:
+                            plid = disp['level_ids'][0] if disp.get('level_ids') else None
+                            default_grade_bands, subject_grade_bands, class_grade_bands = (
+                                load_grade_bands_for_exam_context(
+                                    cursor, report_exam_name, academic_year_id, term_id, plid,
+                                )
+                            )
+                            snap = get_exam_context_settings_snapshot(
+                                cursor, report_exam_name, academic_year_id, term_id, plid,
+                            )
+                            totals_ov = (snap or {}).get('subject_exam_totals')
                             row = _build_exam_class_report(
                                 cursor,
                                 disp['level_ids'],
@@ -64233,7 +64672,8 @@ def reports():
                                 class_grade_bands,
                                 is_combined=True,
                                 combo_id=disp['combo_id'],
-                                primary_level_id=disp['level_ids'][0] if disp.get('level_ids') else None,
+                                primary_level_id=plid,
+                                subject_exam_totals_override=totals_ov,
                             )
                             if row:
                                 combined_report_data.append(row)
@@ -64249,6 +64689,15 @@ def reports():
                                 if int(l['id']) not in member_level_ids_set
                             ]
                         for lev in levels_to_report:
+                            default_grade_bands, subject_grade_bands, class_grade_bands = (
+                                load_grade_bands_for_exam_context(
+                                    cursor, report_exam_name, academic_year_id, term_id, lev['id'],
+                                )
+                            )
+                            snap = get_exam_context_settings_snapshot(
+                                cursor, report_exam_name, academic_year_id, term_id, lev['id'],
+                            )
+                            totals_ov = (snap or {}).get('subject_exam_totals')
                             row = _build_exam_class_report(
                                 cursor,
                                 [lev['id']],
@@ -64264,6 +64713,7 @@ def reports():
                                 class_grade_bands,
                                 is_combined=False,
                                 primary_level_id=lev['id'],
+                                subject_exam_totals_override=totals_ov,
                             )
                             if row:
                                 report_data.append(row)
@@ -68360,91 +68810,27 @@ def _build_academic_report_payload(cursor, report_type, f):
             return " AND UPPER(TRIM(e.exam_name)) = UPPER(TRIM(%s))", [en]
         return "", []
 
-    def _load_grade_bands_for_reports():
-        default_bands = []
-        subject_bands = {}
-        class_bands = {}
-        try:
-            cursor.execute("""
-                SELECT code, level_label, meaning, start_mark, end_mark, allocation_points
-                FROM grade_registrations
-                WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
-                ORDER BY start_mark DESC, end_mark DESC
-            """)
-            for grow in (cursor.fetchall() or []):
-                if isinstance(grow, dict):
-                    ap = grow.get('allocation_points')
-                    default_bands.append({
-                        'code': (grow.get('code') or '').strip(),
-                        'label': (grow.get('level_label') or '').strip(),
-                        'meaning': (grow.get('meaning') or '').strip(),
-                        'start': float(grow.get('start_mark') or 0),
-                        'end': float(grow.get('end_mark') or 0),
-                        'allocation_points': float(ap) if ap is not None else None,
-                    })
-                else:
-                    apv = grow[5] if len(grow) > 5 else None
-                    default_bands.append({
-                        'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
-                        'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
-                        'meaning': ((grow[2] if len(grow) > 2 else '') or '').strip(),
-                        'start': float(grow[3] or 0) if len(grow) > 3 else 0.0,
-                        'end': float(grow[4] or 0) if len(grow) > 4 else 0.0,
-                        'allocation_points': float(apv) if apv is not None else None,
-                    })
-        except Exception as ge:
-            print(f"Note: grade_registrations lookup skipped on academic reports: {ge}")
-
-        try:
-            cursor.execute("""
-                SELECT subject_id, code, level_label, start_mark, end_mark, allocation_points
-                FROM subject_grade_mark_overrides
-                WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
-                ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
-            """)
-            for srow in (cursor.fetchall() or []):
-                if isinstance(srow, dict):
-                    sid = int(srow.get('subject_id') or 0)
-                    ap = srow.get('allocation_points')
-                    band = {
-                        'code': (srow.get('code') or '').strip(),
-                        'label': (srow.get('level_label') or '').strip(),
-                        'start': float(srow.get('start_mark') or 0),
-                        'end': float(srow.get('end_mark') or 0),
-                        'allocation_points': float(ap) if ap is not None else None,
-                    }
-                else:
-                    sid = int(srow[0] or 0) if len(srow) > 0 else 0
-                    apv = srow[5] if len(srow) > 5 else None
-                    band = {
-                        'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
-                        'label': ((srow[2] if len(srow) > 2 else '') or '').strip(),
-                        'start': float(srow[3] or 0) if len(srow) > 3 else 0.0,
-                        'end': float(srow[4] or 0) if len(srow) > 4 else 0.0,
-                        'allocation_points': float(apv) if apv is not None else None,
-                    }
-                if sid <= 0:
-                    continue
-                if sid not in subject_bands:
-                    subject_bands[sid] = []
-                subject_bands[sid].append(band)
-        except Exception as se:
-            print(f"Note: subject_grade_mark_overrides lookup skipped on academic reports: {se}")
-
-        class_bands = build_class_grade_bands_from_profiles(cursor)
+    def _load_grade_bands_for_reports(report_level_id=None):
+        level_for_snap = report_level_id or lid
+        if exam_name and ay and tid and level_for_snap:
+            default_bands, subject_bands, class_bands = load_grade_bands_for_exam_context(
+                cursor, exam_name, ay, tid, level_for_snap,
+            )
+        else:
+            default_bands, subject_bands, class_bands = load_grade_bands_from_db(cursor)
 
         code_to_default_pts = {}
         for b in default_bands:
             ck = (b.get('code') or '').strip().upper()
             if ck and b.get('allocation_points') is not None:
                 code_to_default_pts[ck] = b['allocation_points']
-        for _sid, blist in subject_bands.items():
+        for _sid, blist in (subject_bands or {}).items():
             for b in blist:
                 if b.get('allocation_points') is None:
                     ck = (b.get('code') or '').strip().upper()
                     if ck in code_to_default_pts:
                         b['allocation_points'] = code_to_default_pts[ck]
-        for _lid, blist in class_bands.items():
+        for _lid, blist in (class_bands or {}).items():
             for b in blist:
                 if b.get('allocation_points') is None:
                     ck = (b.get('code') or '').strip().upper()
