@@ -57,7 +57,7 @@
         {% else %}
         {% set register_columns = none %}
         {% endif %}
-        <div id="level-{{ loop.index }}" class="att-register-card attendance-level-card" data-level-name="{{ level_group.level_name }}">
+        <div id="level-{{ loop.index }}" class="att-register-card attendance-level-card" data-level-name="{{ level_group.level_name }}" data-level-id="{{ level_id|default('') }}">
             <div class="att-register-card__head level-header-card">
                 <h2 class="att-register-card__title">
                     <span class="truncate">{{ level_group.level_name }}</span>
@@ -77,6 +77,26 @@
                 {% endif %}
             </p>
             {% else %}
+            {% if is_teacher_view|default(false) and use_subject_attendance_columns|default(false) and not is_parent_view|default(false) %}
+            {% set attendance_lesson_plans = (attendance_lesson_plans_by_level|default({})).get(level_id, {}) if level_id else {} %}
+            {% include 'dashboards/_attendance_lesson_plan_form.html' %}
+            {% endif %}
+            {% if is_teacher_view|default(false) and use_subject_attendance_columns|default(false) and register_columns is not none and register_columns|length and not is_parent_view|default(false) %}
+            <div class="att-attendance-meta-wrap">
+                <p class="att-attendance-meta__heading"><i class="fas fa-clipboard-check" aria-hidden="true"></i> Attendance register</p>
+                {% for col in register_columns %}
+                {% set learning_area = col.learning_area|default(col.subject_name) %}
+                {% set session_date_display = col.session_date_display|default(col.date_str) %}
+                {% set session_time = col.session_time|default('') %}
+                {% set teacher_name = attendance_teacher_name|default('') %}
+                {% if attendance_teacher_name|default('') %}
+                <div class="att-attendance-meta-item{% if register_columns|length > 1 %}{% if loop.index > 1 %} hidden{% endif %}{% endif %}" data-att-att-meta-session="{{ col.date_str }}__{{ col.subject_id }}">
+                    {% include 'dashboards/_lesson_attendance_session_meta.html' %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
             <p class="att-scroll-hint md:hidden"><i class="fas fa-arrows-alt-h" aria-hidden="true"></i> Swipe for dates</p>
             <div class="att-register-scroll-wrap">
             <div class="att-register-scroll" tabindex="0" role="region" aria-label="{% if use_subject_attendance_columns|default(false) %}Subject attendance register for {{ level_group.level_name }}{% else %}Attendance register for {{ level_group.level_name }}{% endif %}">

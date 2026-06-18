@@ -1,0 +1,110 @@
+{# One professional booklet page per attendance session — print: one sheet per day/session #}
+{% set att = row.attendance|default({}) %}
+<div class="lp-booklet-page lp-booklet-page--attendance" data-session-key="{{ row.session_key }}" id="att-page-{{ row.session_key|replace('__', '-') }}">
+    <div class="lp-booklet-page__frame">
+        <header class="lp-booklet-page__header lp-booklet-page__header--attendance">
+            <div class="lp-booklet-page__brand">
+                <p class="lp-booklet-page__school">{{ school_settings.school_name or 'School' }}</p>
+                {% if school_settings.address or school_settings.location %}
+                <p class="lp-booklet-page__school-sub">{{ school_settings.address or school_settings.location }}</p>
+                {% endif %}
+            </div>
+            <div class="lp-booklet-page__doc-title">
+                <span class="lp-booklet-page__doc-label">Subject attendance</span>
+                {% if term_label|default('') %}<span class="lp-booklet-page__term">{{ term_label }}{% if year_label|default('') %} · {{ year_label }}{% endif %}</span>{% endif %}
+            </div>
+        </header>
+
+        <section class="lp-booklet-page__identity lp-booklet-page__identity--attendance" aria-label="Session details">
+            <dl class="lp-booklet-page__meta-list">
+                <div class="lp-booklet-page__meta-row">
+                    <dt class="lp-booklet-page__meta-label">Learning area</dt>
+                    <dd class="lp-booklet-page__meta-value">{{ row.learning_area|default(row.subject_name, true) }}</dd>
+                </div>
+                <div class="lp-booklet-page__meta-row">
+                    <dt class="lp-booklet-page__meta-label">Class</dt>
+                    <dd class="lp-booklet-page__meta-value">{{ row.level_name or '—' }}</dd>
+                </div>
+                <div class="lp-booklet-page__meta-row">
+                    <dt class="lp-booklet-page__meta-label">Date</dt>
+                    <dd class="lp-booklet-page__meta-value">{{ row.session_date_display|default(row.session_date, true) }}</dd>
+                </div>
+                <div class="lp-booklet-page__meta-row">
+                    <dt class="lp-booklet-page__meta-label">Time</dt>
+                    <dd class="lp-booklet-page__meta-value">{{ row.session_time|default('—', true) }}</dd>
+                </div>
+                <div class="lp-booklet-page__meta-row">
+                    <dt class="lp-booklet-page__meta-label">Teacher</dt>
+                    <dd class="lp-booklet-page__meta-value">{{ row.teacher_name|default(teacher_name, true) }}</dd>
+                </div>
+            </dl>
+        </section>
+
+        {% if att.total|default(0) > 0 %}
+        <section class="lp-att-booklet__summary" aria-label="Attendance summary">
+            <div class="lp-att-booklet__stat lp-att-booklet__stat--present">
+                <span class="lp-att-booklet__stat-label">Present</span>
+                <span class="lp-att-booklet__stat-value">{{ att.present|default(0) }}</span>
+            </div>
+            <div class="lp-att-booklet__stat lp-att-booklet__stat--absent">
+                <span class="lp-att-booklet__stat-label">Absent</span>
+                <span class="lp-att-booklet__stat-value">{{ att.absent|default(0) }}</span>
+            </div>
+            <div class="lp-att-booklet__stat">
+                <span class="lp-att-booklet__stat-label">Total</span>
+                <span class="lp-att-booklet__stat-value">{{ att.total|default(0) }}</span>
+            </div>
+            {% if att.pct is not none %}
+            <div class="lp-att-booklet__stat">
+                <span class="lp-att-booklet__stat-label">Attendance rate</span>
+                <span class="lp-att-booklet__stat-value">{{ att.pct }}%</span>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="lp-att-booklet__lists" aria-label="Student attendance lists">
+            <div class="lp-att-booklet__section">
+                <h3 class="lp-att-booklet__section-title">Present ({{ att.present_students|default([])|length }})</h3>
+                {% if att.present_students|default([])|length %}
+                <ol class="lp-att-booklet__student-list">
+                    {% for st in att.present_students %}
+                    <li class="lp-att-booklet__student-item">
+                        <span class="lp-att-booklet__student-name">{{ st.full_name }}</span>
+                        <span class="lp-att-booklet__student-id">{{ st.student_id }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="lp-att-booklet__empty">No students marked present.</p>
+                {% endif %}
+            </div>
+
+            <div class="lp-att-booklet__section">
+                <h3 class="lp-att-booklet__section-title">Absent ({{ att.absent_students|default([])|length }})</h3>
+                {% if att.absent_students|default([])|length %}
+                <ol class="lp-att-booklet__student-list">
+                    {% for st in att.absent_students %}
+                    <li class="lp-att-booklet__student-item">
+                        <span class="lp-att-booklet__student-name">{{ st.full_name }}</span>
+                        <span class="lp-att-booklet__student-id">{{ st.student_id }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="lp-att-booklet__empty">No students marked absent.</p>
+                {% endif %}
+            </div>
+        </section>
+        {% else %}
+        <section class="lp-att-booklet__empty-page">
+            <p>No attendance was marked for this session.</p>
+        </section>
+        {% endif %}
+
+        <footer class="lp-booklet-page__footer">
+            <span>{{ row.session_date_display|default(row.session_date, true) }}</span>
+            <span>{{ row.level_name or '—' }} · {{ row.learning_area|default(row.subject_name, true) }}</span>
+            <span class="lp-booklet-page__footer-page" data-lp-footer-page></span>
+        </footer>
+    </div>
+</div>

@@ -1,0 +1,34 @@
+{% macro class_student_attendance_link(link_class='', is_active=false, layout='sidebar') %}
+{% set _levels = teacher_class_teacher_levels|default([]) %}
+{% set _url = employee_dash_url('student-management/class-student-attendance') %}
+{% set _notice_title = 'No class assigned as class teacher' %}
+{% set _notice_msg = 'You are not allocated any class as class teacher for the current academic year. Ask your curriculum coordinator to assign you under Class teacher allocation.' %}
+{% if layout == 'tile' %}
+    {% if _levels %}
+    <a href="{{ _url }}" class="{{ link_class }}">
+        <i class="fas fa-user-check text-sky-600 text-lg mb-1"></i>
+        <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Student attendance register</p>
+    </a>
+    {% else %}
+    <button type="button"
+            @click="noticeModalTitle = {{ _notice_title|tojson }}; noticeModalMessage = {{ _notice_msg|tojson }}; noticeModalOpen = true"
+            class="{{ link_class }}">
+        <i class="fas fa-user-check text-sky-600 text-lg mb-1"></i>
+        <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Student attendance register</p>
+    </button>
+    {% endif %}
+{% else %}
+    {% if _levels %}
+    <a href="{{ _url }}"
+       class="sidebar-item {% if is_active %}sidebar-item-active{% endif %}">
+    {% else %}
+    <a href="#"
+       @click.prevent="noticeModalTitle = {{ _notice_title|tojson }}; noticeModalMessage = {{ _notice_msg|tojson }}; noticeModalOpen = true"
+       class="sidebar-item {% if is_active %}sidebar-item-active{% endif %}">
+    {% endif %}
+        <i class="fas fa-user-check w-5"></i>
+        <span>Student attendance register</span>
+        {% if is_active %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    </a>
+{% endif %}
+{% endmacro %}

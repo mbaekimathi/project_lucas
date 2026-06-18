@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ level.level_name if level else 'Academic Level' }} - Classes & Subjects{% endblock %}
+{% block title %}{{ level.level_name if level else 'Academic Level' }} — Subjects{% endblock %}
 
 {% block sidebar_content %}
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
@@ -15,83 +15,87 @@
 
 {% block extra_head %}
 <style>
-  .cs-panel-card {
-    border-radius: 1rem;
+  .cs-list-wrap {
+    border-radius: 0.75rem;
     border: 1px solid rgb(229 231 235);
     background: rgb(255 255 255);
+    overflow: hidden;
   }
-  .dark .cs-panel-card {
+  .dark .cs-list-wrap {
     border-color: rgb(55 65 81);
-    background: rgb(31 41 55 / 0.55);
+    background: rgb(31 41 55 / 0.45);
   }
-  .cs-tab {
-    border-radius: 0.75rem;
-    padding: 0.5rem 0.875rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
+  .cs-list-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr) minmax(5rem, 0.6fr) 2rem;
+    gap: 0.75rem 1rem;
+    padding: 0.65rem 1rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: rgb(107 114 128);
-    border: 1px solid transparent;
-    background: transparent;
-    white-space: nowrap;
+    border-bottom: 1px solid rgb(229 231 235);
+    background: rgb(249 250 251);
   }
-  .cs-tab:hover { color: rgb(55 65 81); background: rgb(243 244 246); }
-  .dark .cs-tab:hover { color: rgb(229 231 235); background: rgb(55 65 81 / 0.5); }
-  .cs-tab--active {
-    color: var(--brand-primary, #800020);
-    background: rgb(255 255 255);
-    border-color: rgb(229 231 235);
-    box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
-  }
-  .dark .cs-tab--active {
-    color: rgb(252 165 165);
-    background: rgb(31 41 55);
-    border-color: rgb(75 85 99);
+  .dark .cs-list-head {
+    color: rgb(156 163 175);
+    border-color: rgb(55 65 81);
+    background: rgb(17 24 39 / 0.6);
   }
   .cs-subject-row {
-    display: block;
-    border-radius: 0.875rem;
-    border: 1px solid rgb(229 231 235);
-    background: rgb(255 255 255);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
     padding: 0.875rem 1rem;
+    border-bottom: 1px solid rgb(243 244 246);
     text-decoration: none;
     color: inherit;
-    transition: border-color 0.15s;
+    transition: background 0.12s;
   }
   .dark .cs-subject-row {
-    border-color: rgb(55 65 81);
-    background: rgb(17 24 39 / 0.45);
+    border-color: rgb(55 65 81 / 0.65);
   }
-  .cs-subject-row:hover { border-color: var(--brand-primary, #800020); }
-  .cs-tt-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .cs-tt-table {
-    border-collapse: collapse;
-    width: max-content;
-    min-width: 100%;
+  .cs-subject-row:last-child { border-bottom: none; }
+  .cs-subject-row:hover { background: rgb(249 250 251); }
+  .dark .cs-subject-row:hover { background: rgb(55 65 81 / 0.35); }
+  @media (min-width: 768px) {
+    .cs-subject-row {
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr) minmax(5rem, 0.6fr) 2rem;
+    }
+    .cs-subject-row__teachers-md { display: block; }
+    .cs-subject-row__teachers-sm { display: none; }
+  }
+  .cs-subject-row__teachers-md { display: none; }
+  .cs-subject-lines__name { font-weight: 600; color: rgb(17 24 39); }
+  .dark .cs-subject-lines__name { color: rgb(243 244 246); }
+  .cs-subject-lines__teachers {
+    font-size: 0.75rem;
+    color: rgb(107 114 128);
+    margin-top: 0.15rem;
+  }
+  .cs-subject-lines__teachers--warn { color: rgb(217 119 6); }
+  .cs-meta-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 9999px;
     font-size: 0.6875rem;
+    font-weight: 600;
+    background: rgb(243 244 246);
+    color: rgb(75 85 99);
   }
-  .cs-tt-table th, .cs-tt-table td {
-    border: 1px solid #d1d5db;
-    padding: 0.35rem 0.45rem;
-    text-align: center;
-    vertical-align: middle;
-    min-width: 4rem;
+  .dark .cs-meta-pill {
+    background: rgb(55 65 81 / 0.55);
+    color: rgb(209 213 219);
   }
-  .dark .cs-tt-table th, .dark .cs-tt-table td { border-color: #4b5563; }
-  .cs-tt-table th { background: #2563eb; color: #fff; font-weight: 600; text-transform: uppercase; }
-  .cs-tt-table td:first-child, .cs-tt-table th:first-child {
-    background: #f3f4f6; font-weight: 600; color: #374151;
-  }
-  .dark .cs-tt-table td:first-child { background: #374151; color: #e5e7eb; }
-  .cs-tt-subject { font-weight: 600; color: #1e40af; line-height: 1.2; }
-  .dark .cs-tt-subject { color: #93c5fd; }
-  .cs-tt-teacher { font-size: 0.625rem; color: #6b7280; margin-top: 0.1rem; }
 </style>
 {% endblock %}
 
 {% block content %}
-{% set aa = attendance_analytics|default({}) %}
-<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto"
-     x-data="{ tab: 'overview' }">
+<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
 
     <a href="{{ employee_dash_url('classes-subjects') }}"
        class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary mb-4">
@@ -111,237 +115,83 @@
     {% set role_hero_icon_class = 'fa-chalkboard' %}
     {% include 'dashboards/includes/role_hero.html' %}
 
-    {# —— Tabs —— #}
-    <div class="flex gap-1.5 overflow-x-auto pb-1 mb-5 -mx-1 px-1" role="tablist" aria-label="Class sections">
-        <button type="button" class="cs-tab" :class="{ 'cs-tab--active': tab === 'overview' }" @click="tab = 'overview'" role="tab" :aria-selected="tab === 'overview'">Overview</button>
-        <button type="button" class="cs-tab" :class="{ 'cs-tab--active': tab === 'subjects' }" @click="tab = 'subjects'" role="tab" :aria-selected="tab === 'subjects'">Subjects</button>
-        <button type="button" class="cs-tab" :class="{ 'cs-tab--active': tab === 'timetable' }" @click="tab = 'timetable'" role="tab" :aria-selected="tab === 'timetable'">Timetable</button>
-        <button type="button" class="cs-tab" :class="{ 'cs-tab--active': tab === 'exams' }" @click="tab = 'exams'" role="tab" :aria-selected="tab === 'exams'">Exams</button>
-        <button type="button" class="cs-tab" :class="{ 'cs-tab--active': tab === 'attendance' }" @click="tab = 'attendance'" role="tab" :aria-selected="tab === 'attendance'">Attendance</button>
+    <div class="flex flex-wrap items-center gap-2 mb-5">
+        <span class="cs-meta-pill"><i class="fas fa-book" aria-hidden="true"></i>{{ level_subjects|length }} subject{{ '' if level_subjects|length == 1 else 's' }}</span>
+        <span class="cs-meta-pill"><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i>{{ total_allocated_teachers|default(0) }} teacher{{ '' if total_allocated_teachers|default(0) == 1 else 's' }}</span>
+        <span class="cs-meta-pill"><i class="fas fa-user-graduate" aria-hidden="true"></i>{{ enrolled_count|default(0) }} student{{ '' if enrolled_count|default(0) == 1 else 's' }}</span>
+        <a href="{{ employee_dash_url('subject-class-allocation') }}"
+           class="ml-auto text-sm font-medium text-brand-primary hover:underline">Manage allocation</a>
     </div>
 
-    {# —— Overview —— #}
-    <section x-show="tab === 'overview'" x-cloak class="space-y-4">
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div class="cs-panel-card p-4">
-                <p class="text-[10px] font-bold uppercase text-gray-500 m-0">Students</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1 m-0">{{ enrolled_count|default(0) }}</p>
-            </div>
-            <div class="cs-panel-card p-4">
-                <p class="text-[10px] font-bold uppercase text-gray-500 m-0">Subjects</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1 m-0">{{ level_subjects|length }}</p>
-            </div>
-            <div class="cs-panel-card p-4">
-                <p class="text-[10px] font-bold uppercase text-gray-500 m-0">Attendance{% if current_term_name %} <span class="normal-case font-normal">({{ current_term_name }})</span>{% endif %}</p>
-                <p class="text-2xl font-bold mt-1 m-0 {% if aa.has_data %}text-emerald-700 dark:text-emerald-300{% else %}text-gray-400{% endif %}">
-                    {% if aa.has_data %}{{ aa.overall_pct }}%{% else %}—{% endif %}
-                </p>
-            </div>
-            <div class="cs-panel-card p-4">
-                <p class="text-[10px] font-bold uppercase text-gray-500 m-0">Exam average</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1 m-0">{{ exam_bundle.class_mean|default(0) }}<span class="text-sm font-normal text-gray-400">/100</span></p>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button type="button" @click="tab = 'subjects'" class="cs-panel-card p-4 text-left hover:border-brand-primary/40 transition">
-                <p class="text-sm font-semibold text-gray-900 dark:text-white m-0"><i class="fas fa-book text-brand-primary mr-2"></i>Subject progress</p>
-                <p class="text-xs text-gray-500 mt-1 m-0">{{ level_subjects|length }} subject{{ '' if level_subjects|length == 1 else 's' }} · tap to view</p>
-            </button>
-            <button type="button" @click="tab = 'timetable'" class="cs-panel-card p-4 text-left hover:border-brand-primary/40 transition">
-                <p class="text-sm font-semibold text-gray-900 dark:text-white m-0"><i class="fas fa-table text-blue-600 mr-2"></i>Class timetable</p>
-                <p class="text-xs text-gray-500 mt-1 m-0">{% if timetable_grid.slot_count %}{{ timetable_grid.slot_count }} lesson slot{{ '' if timetable_grid.slot_count == 1 else 's' }}{% else %}Not set up yet{% endif %}</p>
-            </button>
-            <button type="button" @click="tab = 'exams'" class="cs-panel-card p-4 text-left hover:border-brand-primary/40 transition">
-                <p class="text-sm font-semibold text-gray-900 dark:text-white m-0"><i class="fas fa-chart-line text-violet-600 mr-2"></i>Exam results</p>
-                <p class="text-xs text-gray-500 mt-1 m-0">{{ exam_bundle.student_count|default(0) }} students with marks</p>
-            </button>
-            <button type="button" @click="tab = 'attendance'" class="cs-panel-card p-4 text-left hover:border-brand-primary/40 transition">
-                <p class="text-sm font-semibold text-gray-900 dark:text-white m-0"><i class="fas fa-user-check text-emerald-600 mr-2"></i>Attendance</p>
-                <p class="text-xs text-gray-500 mt-1 m-0">{% if aa.has_data %}{{ aa.present_count }} present · {{ aa.absent_count }} absent{% else %}No records yet{% endif %}</p>
-            </button>
-        </div>
-    </section>
-
-    {# —— Subjects —— #}
-    <section x-show="tab === 'subjects'" x-cloak>
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <p class="text-sm text-gray-500 m-0">Tap a subject for full progress details.</p>
-            {% if level_subjects %}
-            <div class="relative w-full sm:w-56">
-                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                <input id="allocation-search" type="search" placeholder="Search…"
-                       class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm pl-8 pr-3 py-2" />
-            </div>
-            {% endif %}
-        </div>
-
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h2 class="text-base font-bold text-gray-900 dark:text-white m-0">Subjects allocated to this class</h2>
         {% if level_subjects %}
-        <div class="space-y-2">
-            {% for item in level_subjects %}
-            <a href="{{ employee_dash_url('subject-progress/level/' ~ level.id ~ '/subject/' ~ item.subject_id) }}"
-               class="cs-subject-row level-subject-card block"
-               data-subject-name="{{ (item.subject_name or '')|lower }}"
-               data-subject-code="{{ (item.subject_code or '')|lower }}"
-               data-teacher-names="{% for t in item.teachers %}{{ (t.teacher_name or '')|lower }} {% endfor %}">
-                <div class="flex items-center justify-between gap-3">
-                    <div class="min-w-0">
-                        <p class="font-semibold text-gray-900 dark:text-white m-0 truncate">{{ item.subject_name }}</p>
-                        <p class="text-xs text-gray-500 mt-0.5 m-0 truncate">
-                            {% if item.teachers %}{{ item.teachers[0].teacher_name }}{% if item.teachers|length > 1 %} +{{ item.teachers|length - 1 }}{% endif %}{% else %}No teacher{% endif %}
-                        </p>
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                        {% if item.coverage %}
-                        {% with coverage=item.coverage, list=true, bar_base_delay=0 %}
-                        {% include 'dashboards/_subject_progress_coverage.html' %}
-                        {% endwith %}
-                        {% endif %}
-                        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
-                    </div>
+        <div class="relative w-full sm:w-56">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" aria-hidden="true"></i>
+            <input id="allocation-search" type="search" placeholder="Search subject or teacher…"
+                   class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm pl-8 pr-3 py-2" />
+        </div>
+        {% endif %}
+    </div>
+
+    {% if level_subjects %}
+    <div class="cs-list-wrap">
+        <div class="cs-list-head hidden md:grid" aria-hidden="true">
+            <span>Subject</span>
+            <span>Teacher(s)</span>
+            <span>Progress</span>
+            <span></span>
+        </div>
+        {% for item in level_subjects %}
+        <a href="{{ employee_dash_url('subject-progress/level/' ~ level.id ~ '/subject/' ~ item.subject_id) }}"
+           class="cs-subject-row level-subject-card"
+           data-subject-name="{{ (item.subject_name or '')|lower }}"
+           data-subject-code="{{ (item.subject_code or '')|lower }}"
+           data-teacher-names="{% for t in item.teachers %}{{ (t.teacher_name or '')|lower }} {% endfor %}">
+            <div class="min-w-0">
+                <div class="cs-subject-lines__name truncate">
+                    {{ item.subject_name }}{% if item.subject_code %} <span class="font-normal text-gray-400">({{ item.subject_code }})</span>{% endif %}
                 </div>
-            </a>
-            {% endfor %}
-        </div>
-        <p id="allocation-no-results" class="hidden mt-4 text-sm text-gray-500 text-center">No matches.</p>
-        {% else %}
-        <div class="cs-panel-card py-8 text-center text-gray-500">
-            <p class="m-0">No subjects allocated yet.</p>
-            <a href="{{ employee_dash_url('subject-class-allocation') }}" class="text-sm text-brand-primary mt-2 inline-block">Open allocation panel</a>
-        </div>
-        {% endif %}
-    </section>
-
-    {# —— Timetable —— #}
-    <section x-show="tab === 'timetable'" x-cloak>
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <p class="text-sm text-gray-500 m-0">{% if current_term_name %}{{ current_term_name }}{% endif %}{% if timetable_grid.slot_count %} · {{ timetable_grid.slot_count }} slots{% endif %}</p>
-            <a href="{{ employee_dash_url('timetable-management') }}" class="text-sm font-medium text-blue-700 dark:text-blue-300 hover:underline">Manage timetable</a>
-        </div>
-
-        {% if timetable_entries and timetable_entries|length > 0 %}
-        <div class="cs-panel-card cs-tt-scroll p-2">
-            <table class="cs-tt-table">
-                <thead>
-                    <tr>
-                        <th>Day</th>
-                        {% if timetable_grid.rows and timetable_grid.rows[0].cells %}
-                        {% for cell in timetable_grid.rows[0].cells %}
-                        <th>{{ cell.time_label }}</th>
-                        {% endfor %}
-                        {% endif %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in timetable_grid.rows %}
-                    <tr>
-                        <td>{{ row.day_short }}</td>
-                        {% for cell in row.cells %}
-                        <td>
-                            {% if cell.entries %}
-                            {% for entry in cell.entries %}
-                            <div class="cs-tt-subject">{{ entry.subject_code or entry.subject_name or '—' }}</div>
-                            <div class="cs-tt-teacher">{{ entry.teacher_name or '—' }}</div>
-                            {% endfor %}
-                            {% else %}<span class="text-gray-300">—</span>{% endif %}
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <div class="cs-panel-card py-8 text-center text-gray-500">
-            <p class="m-0">No timetable for this class yet.</p>
-            <a href="{{ employee_dash_url('timetable-management/manage-timetable') }}" class="text-sm text-brand-primary mt-2 inline-block">Build timetable</a>
-        </div>
-        {% endif %}
-    </section>
-
-    {# —— Exams —— #}
-    <section x-show="tab === 'exams'" x-cloak>
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <p class="text-sm text-gray-500 m-0">
-                Class mean <strong class="text-gray-900 dark:text-white">{{ exam_bundle.class_mean|default(0) }}/100</strong>
-                · pass rate <strong class="text-gray-900 dark:text-white">{{ exam_bundle.class_pass_rate|default(0) }}%</strong>
-            </p>
-            <a href="{{ employee_dash_url('exam-analytics') }}" class="text-sm font-medium text-violet-700 dark:text-violet-300 hover:underline">Full exam analytics</a>
-        </div>
-
-        <div class="cs-panel-card overflow-hidden">
-            <table class="w-full text-sm">
-                <thead class="bg-gray-50 dark:bg-gray-900/60 text-xs uppercase text-gray-500">
-                    <tr>
-                        <th class="text-left py-2.5 px-3 font-semibold">Subject</th>
-                        <th class="text-right py-2.5 px-3 font-semibold">Average</th>
-                        <th class="text-right py-2.5 px-3 font-semibold">Pass rate</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                    {% for subj in exam_bundle.subjects|default([]) %}
-                    <tr>
-                        <td class="py-2.5 px-3 font-medium text-gray-900 dark:text-white">{{ subj.subject_name }}</td>
-                        <td class="py-2.5 px-3 text-right font-semibold {% if subj.mean >= 50 %}text-emerald-700 dark:text-emerald-300{% else %}text-rose-600{% endif %}">{{ subj.mean }}</td>
-                        <td class="py-2.5 px-3 text-right text-gray-600 dark:text-gray-300">{{ subj.pass_rate }}%</td>
-                    </tr>
+                <div class="cs-subject-row__teachers-sm cs-subject-lines__teachers">
+                    {% if item.teachers %}
+                    <i class="fas fa-chalkboard-teacher text-[10px] mr-0.5 opacity-70" aria-hidden="true"></i>
+                    {% for t in item.teachers %}{{ t.teacher_name }}{% if not loop.last %}, {% endif %}{% endfor %}
                     {% else %}
-                    <tr><td colspan="3" class="py-8 text-center text-gray-500">No exam marks yet.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </section>
-
-    {# —— Attendance —— #}
-    <section x-show="tab === 'attendance'" x-cloak>
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <p class="text-sm text-gray-500 m-0">{{ enrolled_count|default(0) }} students{% if current_term_name %} · {{ current_term_name }}{% endif %}</p>
-            <a href="{{ employee_dash_url('student-management/student-attendance') }}?class_level={{ level.level_name|urlencode }}"
-               class="text-sm font-medium text-sky-700 dark:text-sky-300 hover:underline">Open register</a>
-        </div>
-
-        {% if aa.has_data %}
-        <div class="grid grid-cols-3 gap-3 mb-4">
-            <div class="cs-panel-card p-3 text-center">
-                <p class="text-[10px] uppercase text-gray-500 m-0">Present</p>
-                <p class="text-xl font-bold text-emerald-700 dark:text-emerald-300 m-0 mt-1">{{ aa.present_count }}</p>
+                    <span class="cs-subject-lines__teachers--warn">No teacher assigned</span>
+                    {% endif %}
+                </div>
             </div>
-            <div class="cs-panel-card p-3 text-center">
-                <p class="text-[10px] uppercase text-gray-500 m-0">Absent</p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white m-0 mt-1">{{ aa.absent_count }}</p>
-            </div>
-            <div class="cs-panel-card p-3 text-center">
-                <p class="text-[10px] uppercase text-gray-500 m-0">Rate</p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white m-0 mt-1">{{ aa.overall_pct }}%</p>
-            </div>
-        </div>
-
-        {% if aa.by_day %}
-        <div class="cs-panel-card overflow-hidden" x-data="{ showAll: false }">
-            <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 m-0">Recent days</p>
-                {% if aa.by_day|length > 7 %}
-                <button type="button" class="text-xs text-brand-primary font-medium" @click="showAll = !showAll" x-text="showAll ? 'Show less' : 'Show all ({{ aa.by_day|length }})'"></button>
+            <div class="cs-subject-row__teachers-md min-w-0">
+                {% if item.teachers %}
+                <div class="cs-subject-lines__teachers truncate">
+                    <i class="fas fa-chalkboard-teacher text-[10px] mr-0.5 opacity-70" aria-hidden="true"></i>
+                    {% for t in item.teachers %}{{ t.teacher_name }}{% if not loop.last %}, {% endif %}{% endfor %}
+                </div>
+                {% else %}
+                <span class="cs-subject-lines__teachers cs-subject-lines__teachers--warn">No teacher assigned</span>
                 {% endif %}
             </div>
-            <ul class="divide-y divide-gray-100 dark:divide-gray-700 text-sm m-0 p-0 list-none">
-                {% for row in aa.by_day|reverse %}
-                <li class="flex items-center justify-between px-3 py-2"
-                    x-show="showAll || {{ loop.index0 }} < 7">
-                    <span class="text-gray-900 dark:text-white">{{ row.label }}</span>
-                    <span class="text-gray-500 tabular-nums">{{ row.present }}/{{ row.total }} · {{ row.pct }}%</span>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% else %}
-        <div class="cs-panel-card py-8 text-center text-gray-500">
-            <p class="m-0">No attendance recorded{% if current_term_name %} for {{ current_term_name }}{% endif %}.</p>
-        </div>
-        {% endif %}
-    </section>
+            <div class="hidden md:flex items-center justify-end">
+                {% if item.coverage %}
+                {% with coverage=item.coverage, list=true, bar_base_delay=0 %}
+                {% include 'dashboards/_subject_progress_coverage.html' %}
+                {% endwith %}
+                {% else %}<span class="text-xs text-gray-400">—</span>{% endif %}
+            </div>
+            <div class="flex items-center justify-end text-gray-300">
+                <i class="fas fa-chevron-right text-xs" aria-hidden="true"></i>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    <p id="allocation-no-results" class="hidden mt-4 text-sm text-gray-500 text-center">No subjects match your search.</p>
+    {% else %}
+    <div class="cs-list-wrap py-10 text-center text-gray-500">
+        <i class="fas fa-book-open text-3xl mb-2 opacity-50" aria-hidden="true"></i>
+        <p class="m-0">No subjects allocated to this class yet.</p>
+        <a href="{{ employee_dash_url('subject-class-allocation') }}" class="text-sm text-brand-primary mt-3 inline-block font-medium">Open subject–class allocation</a>
+    </div>
+    {% endif %}
 
     {% else %}
     <div class="py-10 text-center text-gray-500">Class not found.</div>

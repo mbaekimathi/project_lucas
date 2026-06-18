@@ -34,6 +34,7 @@ REQUIRED_TABLES = [
     'fee_structures', 'fee_items', 'student_fee_votes', 'student_payments', 'student_payment_audit',
     'timetables', 'exams', 'exam_supervisors', 'student_marks',
     'backup_settings', 'backup_history', 'student_attendance_records',
+    'subject_attendance_lesson_plans',
     'password_reset_tokens',
     'migrations',
 ]

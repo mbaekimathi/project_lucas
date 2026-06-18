@@ -1,3 +1,4 @@
+{% from 'dashboards/includes/teacher_class_student_attendance_nav.html' import class_student_attendance_link %}
 {% set _tch_nav = teacher_nav_scope|default('all') %}
 
 {% if _tch_nav in ('all', 'classes') %}
@@ -31,17 +32,20 @@
     {% if request.endpoint == 'employee_tpad' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('student-management/student-attendance') }}"
-   class="sidebar-item {% if request.endpoint == 'student_attendance' or (request.path.endswith('/student-attendance') and '/class-student-attendance' not in request.path) %}sidebar-item-active{% endif %}">
+   class="sidebar-item {% if request.endpoint == 'student_attendance' or (request.path.endswith('/student-attendance') and '/class-student-attendance' not in request.path and '/lesson-plans-attendance' not in request.path) %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-list w-5"></i>
     <span>Subject attendance</span>
-    {% if request.endpoint == 'student_attendance' or (request.path.endswith('/student-attendance') and '/class-student-attendance' not in request.path) %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint == 'student_attendance' or (request.path.endswith('/student-attendance') and '/class-student-attendance' not in request.path and '/lesson-plans-attendance' not in request.path) %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
-<a href="{{ employee_dash_url('student-management/class-student-attendance') }}"
-   class="sidebar-item {% if request.endpoint == 'class_student_attendance' or '/class-student-attendance' in request.path %}sidebar-item-active{% endif %}">
-    <i class="fas fa-user-check w-5"></i>
-    <span>Student attendance register</span>
-    {% if request.endpoint == 'class_student_attendance' or '/class-student-attendance' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+<a href="{{ employee_dash_url('student-management/lesson-plans-attendance') }}"
+   class="sidebar-item {% if request.endpoint == 'lesson_plans_attendance_report' or '/lesson-plans-attendance' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-alt w-5"></i>
+    <span>Teaching reports</span>
+    {% if request.endpoint == 'lesson_plans_attendance_report' or '/lesson-plans-attendance' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{{ class_student_attendance_link(
+    is_active=(request.endpoint == 'class_student_attendance' or '/class-student-attendance' in request.path)
+) }}
 {% if _tch_nav == 'all' %}
 <a @click.prevent="comingSoonTitle = 'Assignments / Homework'; comingSoonModalOpen = true"
    class="sidebar-item">

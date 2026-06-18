@@ -1,0 +1,80 @@
+{% set lp_fields = [
+    ('strand', 'Strand'),
+    ('substrand', 'Substrand'),
+    ('lesson_learning_outcomes', 'Lesson learning outcomes'),
+    ('key_inquiry_questions', 'Key inquiry questions'),
+    ('core_competencies', 'Core competencies'),
+    ('lesson_values', 'Values'),
+    ('pcis', 'PCIs'),
+    ('learning_resources', 'Learning resources'),
+    ('organization_of_learning', 'Organization of learning'),
+    ('introduction', 'Introduction'),
+    ('lesson_development', 'Lesson development'),
+] %}
+{% set lp_sessions = register_columns if register_columns is not none and register_columns|length else [] %}
+{% if lp_sessions|length %}
+<div class="att-lesson-plan att-lesson-plan--open" data-att-lesson-plan data-att-lesson-field-count="{{ lp_fields|length }}">
+    <button type="button" class="att-lesson-plan__toggle touch-btn" aria-expanded="true" aria-controls="att-lesson-plan-body-{{ level_id|default('x') }}">
+        <span class="att-lesson-plan__icon-wrap" aria-hidden="true">
+            <i class="fas fa-book-open att-lesson-plan__toggle-icon"></i>
+            <span class="att-lesson-plan__live-dot"></span>
+        </span>
+        <span class="att-lesson-plan__head-text">
+            <span class="att-lesson-plan__title-row">
+                <span class="att-lesson-plan__title">Lesson plan</span>
+                <span class="att-lesson-plan__badge">Optional</span>
+            </span>
+            <span class="att-lesson-plan__subtitle">Fill in before saving attendance — all fields are optional</span>
+        </span>
+        <span class="att-lesson-plan__meta">
+            <span class="att-lesson-plan__progress" data-att-lesson-progress aria-live="polite">0 / {{ lp_fields|length }}</span>
+            <i class="fas fa-chevron-down att-lesson-plan__chevron" aria-hidden="true"></i>
+        </span>
+    </button>
+    <div id="att-lesson-plan-body-{{ level_id|default('x') }}" class="att-lesson-plan__body">
+        <div class="att-lesson-plan__progress-bar" aria-hidden="true">
+            <span class="att-lesson-plan__progress-fill" data-att-lesson-progress-fill style="width:0%"></span>
+        </div>
+        <p class="att-lesson-plan__hint">
+            <i class="fas fa-lightbulb" aria-hidden="true"></i>
+            Capture strand, outcomes, competencies, and lesson flow for this session. Your progress updates as you type.
+        </p>
+        {% if lp_sessions|length > 1 %}
+        <div class="att-lesson-plan__picker-wrap">
+            <label class="att-lesson-plan__picker-label" for="att-lesson-plan-pick-{{ level_id|default('x') }}">Session</label>
+            <select id="att-lesson-plan-pick-{{ level_id|default('x') }}" class="att-lesson-plan__picker att-filter-control" data-att-lesson-plan-picker>
+                {% for col in lp_sessions %}
+                <option value="{{ col.date_str }}__{{ col.subject_id }}">{{ col.header_label|default(col.label) }}{% if col.subject_name and col.subject_name not in (col.header_label|default('')) %} — {{ col.subject_name }}{% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        {% for col in lp_sessions %}
+        {% set lp_key = col.date_str ~ '__' ~ col.subject_id %}
+        {% set lp_existing = (attendance_lesson_plans|default({})).get(lp_key, {}) %}
+        {% set learning_area = col.learning_area|default(col.subject_name) %}
+        {% set session_date_display = col.session_date_display|default(col.date_str) %}
+        {% set session_time = col.session_time|default('') %}
+        {% set teacher_name = attendance_teacher_name|default('') %}
+        <div class="att-lesson-plan__session{% if loop.index > 1 %} hidden{% endif %}" data-att-lesson-session="{{ lp_key }}">
+            {% if attendance_teacher_name|default('') %}
+            {% include 'dashboards/_lesson_attendance_session_meta.html' %}
+            {% endif %}
+            <div class="att-lesson-plan__grid">
+                {% for field_key, field_label in lp_fields %}
+                <div class="att-lesson-plan__field{% if field_key in ('lesson_learning_outcomes', 'key_inquiry_questions', 'organization_of_learning', 'introduction', 'lesson_development') %} att-lesson-plan__field--wide{% endif %}">
+                    <label class="att-lesson-plan__label" for="lp-{{ level_id|default('x') }}-{{ col.date_str }}-{{ col.subject_id }}-{{ field_key }}">{{ field_label }}</label>
+                    <textarea
+                        id="lp-{{ level_id|default('x') }}-{{ col.date_str }}-{{ col.subject_id }}-{{ field_key }}"
+                        name="lp_{{ col.date_str }}__{{ col.subject_id }}__{{ field_key }}"
+                        class="att-lesson-plan__input"
+                        rows="{% if field_key in ('introduction', 'lesson_development', 'lesson_learning_outcomes') %}4{% else %}2{% endif %}"
+                        placeholder="{{ field_label }}…">{{ lp_existing.get(field_key, '') }}</textarea>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

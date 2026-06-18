@@ -1247,6 +1247,57 @@ def inject_setup_guide_status():
         connection.close()
 
 
+def _is_teacher_portal_for_class_teacher_nav():
+    """True when teacher portal nav should expose class-teacher attendance state."""
+    if not session.get('user_id'):
+        return False
+    user_role = (session.get('role') or '').lower().strip()
+    viewing_as = (session.get('viewing_as_employee_role') or '').lower().strip()
+    if user_role in ('teachers', 'teacher'):
+        return True
+    if user_role != 'technician':
+        return False
+    if viewing_as in ('teachers', 'teacher'):
+        return True
+    if has_request_context():
+        path_norm = normalize_allocated_role(portal_role_from_request_path() or '')
+        if path_norm in ('teacher', 'teachers'):
+            return True
+    return False
+
+
+@app.context_processor
+def inject_teacher_class_teacher_context():
+    """Class-teacher allocation for student attendance register links on teacher portal."""
+    empty = {
+        'teacher_class_teacher_levels': [],
+        'teacher_has_class_teacher_assignment': False,
+    }
+    if not _is_teacher_portal_for_class_teacher_nav():
+        return empty
+    teacher_id = _subject_progress_teacher_id()
+    if not teacher_id:
+        return empty
+    connection = get_db_connection()
+    if not connection:
+        return empty
+    try:
+        with connection.cursor() as cursor:
+            levels = _fetch_class_teacher_level_names(cursor, teacher_id)
+        return {
+            'teacher_class_teacher_levels': levels,
+            'teacher_has_class_teacher_assignment': bool(levels),
+        }
+    except Exception as e:
+        print(f"inject_teacher_class_teacher_context: {e}")
+        return empty
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
 # Function to detect if running on hosted server
 def is_hosted():
     """Check if the application is running on the hosted server"""
@@ -1695,6 +1746,699 @@ def ensure_subject_progress_session_log_table(cursor):
         """)
     except Exception as e:
         print(f"ensure_subject_progress_session_log_table: {e}")
+
+
+ATTENDANCE_LESSON_PLAN_FIELDS = (
+    'strand',
+    'substrand',
+    'lesson_learning_outcomes',
+    'key_inquiry_questions',
+    'core_competencies',
+    'lesson_values',
+    'pcis',
+    'learning_resources',
+    'organization_of_learning',
+    'introduction',
+    'lesson_development',
+)
+
+
+def ensure_subject_attendance_lesson_plans_table(cursor):
+    """Optional CBC lesson plan per subject attendance session (level, subject, term, date)."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subject_attendance_lesson_plans (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                academic_level_id INT NOT NULL,
+                subject_id INT NOT NULL,
+                term_id INT NOT NULL,
+                session_date DATE NOT NULL,
+                strand TEXT NULL,
+                substrand TEXT NULL,
+                lesson_learning_outcomes TEXT NULL,
+                key_inquiry_questions TEXT NULL,
+                core_competencies TEXT NULL,
+                lesson_values TEXT NULL,
+                pcis TEXT NULL,
+                learning_resources TEXT NULL,
+                organization_of_learning TEXT NULL,
+                introduction TEXT NULL,
+                lesson_development TEXT NULL,
+                recorded_by_employee_id INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_attendance_lesson_plan (
+                    academic_level_id, subject_id, term_id, session_date
+                ),
+                INDEX idx_att_lesson_plan_date (session_date),
+                INDEX idx_att_lesson_plan_term (term_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+    except Exception as e:
+        print(f"ensure_subject_attendance_lesson_plans_table: {e}")
+
+
+def ensure_subject_attendance_lesson_plans_teacher_scope(cursor):
+    """Per-teacher lesson plans: teacher_id column + unique key includes teacher."""
+    ensure_subject_attendance_lesson_plans_table(cursor)
+    if not _table_has_column(cursor, 'subject_attendance_lesson_plans', 'teacher_id'):
+        try:
+            cursor.execute("""
+                ALTER TABLE subject_attendance_lesson_plans
+                ADD COLUMN teacher_id INT NULL AFTER subject_id
+            """)
+        except Exception as e:
+            print(f"ensure_subject_attendance_lesson_plans_teacher_scope add teacher_id: {e}")
+    try:
+        cursor.execute("""
+            UPDATE subject_attendance_lesson_plans
+            SET teacher_id = recorded_by_employee_id
+            WHERE teacher_id IS NULL AND recorded_by_employee_id IS NOT NULL
+        """)
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE subject_attendance_lesson_plans DROP INDEX uniq_attendance_lesson_plan")
+    except Exception:
+        pass
+    try:
+        cursor.execute("""
+            ALTER TABLE subject_attendance_lesson_plans
+            ADD UNIQUE KEY uniq_attendance_lesson_plan_teacher (
+                academic_level_id, subject_id, term_id, session_date, teacher_id
+            )
+        """)
+    except Exception:
+        pass
+
+
+def _lesson_plan_belongs_to_teacher_sql(lp_alias='lp', teacher_param='%s'):
+    """Lesson plan row owned by this teacher (explicit teacher_id or legacy recorded_by)."""
+    return f"""(
+        ({lp_alias}.teacher_id = {teacher_param})
+        OR (
+            {lp_alias}.teacher_id IS NULL
+            AND {lp_alias}.recorded_by_employee_id = {teacher_param}
+        )
+        OR (
+            {lp_alias}.teacher_id IS NULL
+            AND {lp_alias}.recorded_by_employee_id IS NULL
+            AND EXISTS (
+                SELECT 1 FROM timetables t
+                WHERE t.teacher_id = {teacher_param}
+                  AND t.term_id = {lp_alias}.term_id
+                  AND t.academic_level_id = {lp_alias}.academic_level_id
+                  AND t.subject_id = {lp_alias}.subject_id
+                  AND t.day_of_week = DAYNAME({lp_alias}.session_date)
+            )
+        )
+    )"""
+
+
+def _lesson_plan_teacher_bind_params(teacher_id):
+    """Bind values for the three %s placeholders in _lesson_plan_belongs_to_teacher_sql."""
+    tid = int(teacher_id)
+    return (tid, tid, tid)
+
+
+def _attendance_teacher_bind_params(teacher_id):
+    """Bind values for the two %s placeholders in _attendance_belongs_to_teacher_sql."""
+    tid = int(teacher_id)
+    return (tid, tid)
+
+
+def _attendance_belongs_to_teacher_sql(sar_alias='sar', teacher_param='%s'):
+    """Attendance register row marked by this teacher for their scheduled period."""
+    return f"""(
+        ({sar_alias}.recorded_by_employee_id = {teacher_param})
+        OR (
+            {sar_alias}.recorded_by_employee_id IS NULL
+            AND EXISTS (
+                SELECT 1 FROM timetables t
+                WHERE t.teacher_id = {teacher_param}
+                  AND t.term_id = {sar_alias}.term_id
+                  AND t.academic_level_id = {sar_alias}.academic_level_id
+                  AND t.subject_id = {sar_alias}.subject_id
+                  AND t.day_of_week = DAYNAME({sar_alias}.attendance_date)
+            )
+        )
+    )"""
+
+
+def _attendance_lesson_plan_key(date_str, subject_id):
+    return f"{date_str}__{int(subject_id or 0)}"
+
+
+def _parse_attendance_lesson_plan_form(form):
+    """Parse lp_{date}__{subject_id}__{field} inputs from a submitted attendance form."""
+    plans = {}
+    prefix = 'lp_'
+    for key in form:
+        if not key.startswith(prefix):
+            continue
+        rest = key[len(prefix):]
+        parts = rest.split('__', 2)
+        if len(parts) != 3:
+            continue
+        date_str, subject_id_raw, field_name = parts
+        if field_name not in ATTENDANCE_LESSON_PLAN_FIELDS:
+            continue
+        try:
+            subject_id = int(subject_id_raw or 0)
+        except (TypeError, ValueError):
+            continue
+        if not date_str or subject_id <= 0:
+            continue
+        session_key = _attendance_lesson_plan_key(date_str, subject_id)
+        plans.setdefault(session_key, {'date_str': date_str, 'subject_id': subject_id})
+        plans[session_key][field_name] = (form.get(key) or '').strip()
+    return plans
+
+
+def _fetch_attendance_lesson_plans_for_columns(cursor, term_id, level_id, columns, teacher_id=None):
+    """Return lesson plan field dicts keyed by date__subject_id for this teacher's sessions only."""
+    out = {}
+    if not term_id or not level_id or not columns:
+        return out
+    ensure_subject_attendance_lesson_plans_teacher_scope(cursor)
+    pairs = []
+    for col in columns:
+        date_str = (col.get('date_str') or '').strip()
+        subject_id = int(col.get('subject_id') or 0)
+        if date_str and subject_id > 0:
+            pairs.append((date_str, subject_id))
+    if not pairs:
+        return out
+    lp_teacher_sql = ''
+    params = [term_id, int(level_id)]
+    if teacher_id:
+        lp_teacher_sql = f" AND {_lesson_plan_belongs_to_teacher_sql('lp', '%s')}"
+        params.extend(_lesson_plan_teacher_bind_params(teacher_id))
+    try:
+        placeholders = ', '.join(['(%s, %s)'] * len(pairs))
+        for date_str, subject_id in pairs:
+            params.extend([date_str, subject_id])
+        cursor.execute(f"""
+            SELECT lp.session_date, lp.subject_id, lp.strand, lp.substrand, lp.lesson_learning_outcomes,
+                   lp.key_inquiry_questions, lp.core_competencies, lp.lesson_values, lp.pcis,
+                   lp.learning_resources, lp.organization_of_learning, lp.introduction, lp.lesson_development
+            FROM subject_attendance_lesson_plans lp
+            WHERE lp.term_id = %s AND lp.academic_level_id = %s
+              {lp_teacher_sql}
+              AND (lp.session_date, lp.subject_id) IN ({placeholders})
+        """, tuple(params))
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                date_val = row.get('session_date')
+                subject_id = row.get('subject_id')
+                fields = {f: (row.get(f) or '') for f in ATTENDANCE_LESSON_PLAN_FIELDS}
+            else:
+                date_val = row[0]
+                subject_id = row[1]
+                fields = {f: (row[i + 2] or '') for i, f in enumerate(ATTENDANCE_LESSON_PLAN_FIELDS)}
+            if hasattr(date_val, 'strftime'):
+                date_str = date_val.strftime('%Y-%m-%d')
+            else:
+                date_str = str(date_val or '')[:10]
+            out[_attendance_lesson_plan_key(date_str, subject_id)] = fields
+    except Exception as e:
+        print(f"_fetch_attendance_lesson_plans_for_columns: {e}")
+    return out
+
+
+def _save_attendance_lesson_plans(cursor, form, term_id, level_id, employee_id, week_dates_set):
+    """Upsert optional lesson plans submitted with subject attendance."""
+    if not term_id or not level_id:
+        return 0
+    plans = _parse_attendance_lesson_plan_form(form)
+    if not plans:
+        return 0
+    ensure_subject_attendance_lesson_plans_teacher_scope(cursor)
+    saved = 0
+    teacher_id = int(employee_id) if employee_id else None
+    if not teacher_id:
+        return 0
+    cols = ', '.join(ATTENDANCE_LESSON_PLAN_FIELDS)
+    placeholders = ', '.join(['%s'] * len(ATTENDANCE_LESSON_PLAN_FIELDS))
+    updates = ', '.join(f"{c} = VALUES({c})" for c in ATTENDANCE_LESSON_PLAN_FIELDS)
+    for session in plans.values():
+        date_str = session.get('date_str')
+        subject_id = int(session.get('subject_id') or 0)
+        if not date_str or subject_id <= 0:
+            continue
+        if week_dates_set and date_str not in week_dates_set:
+            continue
+        values = [session.get(f, '') for f in ATTENDANCE_LESSON_PLAN_FIELDS]
+        if not any(v.strip() for v in values):
+            continue
+        cursor.execute("""
+            SELECT id, teacher_id, recorded_by_employee_id
+            FROM subject_attendance_lesson_plans
+            WHERE term_id = %s AND academic_level_id = %s AND subject_id = %s AND session_date = %s
+            LIMIT 1
+        """, (int(term_id), int(level_id), subject_id, date_str))
+        existing = cursor.fetchone()
+        if existing:
+            ex_tid = existing.get('teacher_id') if isinstance(existing, dict) else existing[1]
+            ex_rec = existing.get('recorded_by_employee_id') if isinstance(existing, dict) else existing[2]
+            owner_id = ex_tid or ex_rec
+            if owner_id is not None and int(owner_id) != teacher_id:
+                continue
+        cursor.execute(f"""
+            INSERT INTO subject_attendance_lesson_plans
+                (academic_level_id, subject_id, teacher_id, term_id, session_date, {cols}, recorded_by_employee_id)
+            VALUES (%s, %s, %s, %s, %s, {placeholders}, %s)
+            ON DUPLICATE KEY UPDATE {updates},
+                teacher_id = VALUES(teacher_id),
+                recorded_by_employee_id = VALUES(recorded_by_employee_id)
+        """, (int(level_id), subject_id, teacher_id, int(term_id), date_str, *values, teacher_id))
+        saved += 1
+    return saved
+
+
+ATTENDANCE_LESSON_PLAN_LABELS = (
+    ('strand', 'Strand'),
+    ('substrand', 'Substrand'),
+    ('lesson_learning_outcomes', 'Lesson learning outcomes'),
+    ('key_inquiry_questions', 'Key inquiry questions'),
+    ('core_competencies', 'Core competencies'),
+    ('lesson_values', 'Values'),
+    ('pcis', 'PCIs'),
+    ('learning_resources', 'Learning resources'),
+    ('organization_of_learning', 'Organization of learning'),
+    ('introduction', 'Introduction'),
+    ('lesson_development', 'Lesson development'),
+)
+
+
+def _lesson_plan_has_content(plan_fields):
+    if not plan_fields:
+        return False
+    return any(str(plan_fields.get(f) or '').strip() for f in ATTENDANCE_LESSON_PLAN_FIELDS)
+
+
+def _attendance_session_date_display(date_val):
+    """Human-readable date for lesson plan / attendance headers."""
+    d = _coerce_date_only(date_val)
+    if not d:
+        return str(date_val or '').strip()
+    return d.strftime('%A, %d %B %Y')
+
+
+def _attendance_learning_area_label(subject_name='', subject_code=''):
+    """CBC learning area label from subject allocation."""
+    name = (subject_name or '').strip()
+    code = (subject_code or '').strip()
+    if name and code and code.upper() not in name.upper():
+        return f'{name} ({code})'
+    return name or code or '—'
+
+
+def _attendance_teacher_display_name(cursor, teacher_id):
+    if not teacher_id:
+        return ''
+    try:
+        cursor.execute(
+            "SELECT full_name FROM employees WHERE id = %s LIMIT 1",
+            (int(teacher_id),),
+        )
+        row = cursor.fetchone()
+        if row:
+            return (row.get('full_name') if isinstance(row, dict) else row[0]) or ''
+    except Exception:
+        pass
+    return ''
+
+
+def _fetch_timetable_session_times(cursor, teacher_id, term_id, level_id, weekday_name):
+    """Map subject_id -> comma-separated time_slot for one teacher/level/day."""
+    out = {}
+    if not teacher_id or not term_id or not level_id or not weekday_name:
+        return out
+    try:
+        cursor.execute(
+            """
+            SELECT t.subject_id,
+                   GROUP_CONCAT(DISTINCT t.time_slot ORDER BY t.time_slot SEPARATOR ', ') AS session_times
+            FROM timetables t
+            WHERE t.term_id = %s AND t.academic_level_id = %s AND t.teacher_id = %s
+              AND t.day_of_week = %s AND t.subject_id IS NOT NULL
+            GROUP BY t.subject_id
+            """,
+            (int(term_id), int(level_id), int(teacher_id), str(weekday_name)),
+        )
+        for row in cursor.fetchall() or []:
+            sid = row.get('subject_id') if isinstance(row, dict) else row[0]
+            times = row.get('session_times') if isinstance(row, dict) else (row[1] if len(row) > 1 else '')
+            if sid:
+                out[int(sid)] = (times or '').strip()
+    except Exception as ex:
+        print(f"_fetch_timetable_session_times: {ex}")
+    return out
+
+
+def _enrich_attendance_sessions_with_times(cursor, teacher_id, term_id, sessions):
+    """Attach session_time to session dicts using the teacher timetable."""
+    if not sessions:
+        return sessions
+    cache = {}
+    for entry in sessions:
+        d = _coerce_date_only(entry.get('session_date'))
+        lid = entry.get('academic_level_id')
+        sid = entry.get('subject_id')
+        if not d or not lid or not sid:
+            entry.setdefault('session_time', '')
+            continue
+        weekday = d.strftime('%A')
+        cache_key = (int(lid), weekday)
+        if cache_key not in cache:
+            cache[cache_key] = _fetch_timetable_session_times(
+                cursor, teacher_id, term_id, int(lid), weekday,
+            )
+        entry['session_time'] = cache[cache_key].get(int(sid), '')
+        entry['learning_area'] = _attendance_learning_area_label(
+            entry.get('subject_name'), entry.get('subject_code'),
+        )
+        if not entry.get('session_date_display'):
+            entry['session_date_display'] = _attendance_session_date_display(d)
+    return sessions
+
+
+def _fetch_teacher_lesson_plans_attendance_report(
+    cursor, teacher_id, term_id, date_start=None, date_end=None, level_id=None, subject_id=None,
+):
+    """Sessions with lesson plans and/or subject attendance for one teacher in a term."""
+    rows_out = []
+    summary = {
+        'sessions': 0,
+        'with_lesson_plan': 0,
+        'with_attendance': 0,
+        'students_present': 0,
+        'students_absent': 0,
+    }
+    if not teacher_id or not term_id:
+        return rows_out, summary
+    try:
+        teacher_id = int(teacher_id)
+        term_id = int(term_id)
+    except (TypeError, ValueError):
+        return rows_out, summary
+
+    ensure_student_attendance_schema(cursor)
+    ensure_subject_attendance_lesson_plans_teacher_scope(cursor)
+    term_start, term_end = _get_term_date_bounds(cursor, term_id)
+    if not term_start or not term_end:
+        return rows_out, summary
+
+    range_start = _coerce_date_only(date_start) or term_start
+    range_end = _coerce_date_only(date_end) or term_end
+    if range_start < term_start:
+        range_start = term_start
+    if range_end > term_end:
+        range_end = term_end
+    if range_end < range_start:
+        return rows_out, summary
+
+    level_filter_sql = ''
+    subject_filter_sql = ''
+    extra_params_tail = []
+    if level_id:
+        try:
+            level_filter_sql = ' AND sar.academic_level_id = %s'
+            extra_params_tail.append(int(level_id))
+        except (TypeError, ValueError):
+            level_id = None
+    if subject_id:
+        try:
+            subject_filter_sql = ' AND sar.subject_id = %s'
+            extra_params_tail.append(int(subject_id))
+        except (TypeError, ValueError):
+            subject_id = None
+
+    attended_predicate = _tpad_teacher_attended_records_predicate()
+    teacher_att_sql = _attendance_belongs_to_teacher_sql('sar', '%s')
+    lp_teacher_sql = _lesson_plan_belongs_to_teacher_sql('lp', '%s')
+    sessions = {}
+
+    def _session_key(d_str, lid, sid):
+        return (str(d_str), int(lid or 0), int(sid or 0))
+
+    try:
+        cursor.execute(
+            f"""
+            SELECT sar.attendance_date, sar.academic_level_id, sar.subject_id,
+                   COALESCE(al.level_name, '') AS level_name,
+                   COALESCE(s.subject_name, '') AS subject_name,
+                   COALESCE(s.subject_code, '') AS subject_code
+            FROM student_attendance_records sar
+            LEFT JOIN academic_levels al ON al.id = sar.academic_level_id
+            LEFT JOIN subjects s ON s.id = sar.subject_id
+            WHERE sar.term_id = %s
+              AND sar.attendance_date >= %s AND sar.attendance_date <= %s
+              AND sar.subject_id > 0
+              AND {attended_predicate}
+              AND {teacher_att_sql}
+              {level_filter_sql}
+              {subject_filter_sql}
+            GROUP BY sar.attendance_date, sar.academic_level_id, sar.subject_id,
+                     al.level_name, s.subject_name, s.subject_code
+            ORDER BY sar.attendance_date DESC, al.level_name ASC, s.subject_name ASC
+            """,
+            tuple([term_id, range_start, range_end, teacher_id, *_attendance_teacher_bind_params(teacher_id), *extra_params_tail]),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                d_val = row.get('attendance_date')
+                lid = row.get('academic_level_id')
+                sid = row.get('subject_id')
+                meta = {
+                    'level_name': row.get('level_name') or '',
+                    'subject_name': row.get('subject_name') or '',
+                    'subject_code': row.get('subject_code') or '',
+                }
+            else:
+                d_val = row[0]
+                lid = row[1]
+                sid = row[2]
+                meta = {
+                    'level_name': row[3] or '',
+                    'subject_name': row[4] or '',
+                    'subject_code': row[5] or '',
+                }
+            d = _coerce_date_only(d_val)
+            if not d or not lid or not sid:
+                continue
+            key = _session_key(d.isoformat(), lid, sid)
+            sessions[key] = {
+                'session_date': d.isoformat(),
+                'session_date_display': d.strftime('%a, %d %b %Y'),
+                'academic_level_id': int(lid),
+                'subject_id': int(sid),
+                'level_name': meta['level_name'],
+                'subject_name': meta['subject_name'],
+                'subject_code': meta['subject_code'],
+                'has_attendance': True,
+                'has_lesson_plan': False,
+            }
+    except Exception as ex:
+        print(f"_fetch_teacher_lesson_plans_attendance_report attendance sessions: {ex}")
+
+    lp_level_sql = ''
+    lp_subject_sql = ''
+    lp_params_tail = []
+    if level_id:
+        lp_level_sql = ' AND lp.academic_level_id = %s'
+        lp_params_tail.append(int(level_id))
+    if subject_id:
+        lp_subject_sql = ' AND lp.subject_id = %s'
+        lp_params_tail.append(int(subject_id))
+
+    lp_cols = ', '.join(f'lp.{c}' for c in ATTENDANCE_LESSON_PLAN_FIELDS)
+    try:
+        cursor.execute(
+            f"""
+            SELECT lp.session_date, lp.academic_level_id, lp.subject_id,
+                   COALESCE(al.level_name, '') AS level_name,
+                   COALESCE(s.subject_name, '') AS subject_name,
+                   COALESCE(s.subject_code, '') AS subject_code,
+                   {lp_cols}
+            FROM subject_attendance_lesson_plans lp
+            LEFT JOIN academic_levels al ON al.id = lp.academic_level_id
+            LEFT JOIN subjects s ON s.id = lp.subject_id
+            WHERE lp.term_id = %s
+              AND lp.session_date >= %s AND lp.session_date <= %s
+              AND {lp_teacher_sql}
+              {lp_level_sql}
+              {lp_subject_sql}
+            ORDER BY lp.session_date DESC, al.level_name ASC, s.subject_name ASC
+            """,
+            tuple([term_id, range_start, range_end, *_lesson_plan_teacher_bind_params(teacher_id), *lp_params_tail]),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                d_val = row.get('session_date')
+                lid = row.get('academic_level_id')
+                sid = row.get('subject_id')
+                plan = {f: (row.get(f) or '') for f in ATTENDANCE_LESSON_PLAN_FIELDS}
+                meta = {
+                    'level_name': row.get('level_name') or '',
+                    'subject_name': row.get('subject_name') or '',
+                    'subject_code': row.get('subject_code') or '',
+                }
+            else:
+                d_val = row[0]
+                lid = row[1]
+                sid = row[2]
+                meta = {
+                    'level_name': row[3] or '',
+                    'subject_name': row[4] or '',
+                    'subject_code': row[5] or '',
+                }
+                plan = {f: (row[i + 6] or '') for i, f in enumerate(ATTENDANCE_LESSON_PLAN_FIELDS)}
+            d = _coerce_date_only(d_val)
+            if not d or not lid or not sid:
+                continue
+            if not _lesson_plan_has_content(plan):
+                continue
+            key = _session_key(d.isoformat(), lid, sid)
+            entry = sessions.get(key) or {
+                'session_date': d.isoformat(),
+                'session_date_display': d.strftime('%a, %d %b %Y'),
+                'academic_level_id': int(lid),
+                'subject_id': int(sid),
+                'level_name': meta['level_name'],
+                'subject_name': meta['subject_name'],
+                'subject_code': meta['subject_code'],
+                'has_attendance': False,
+                'has_lesson_plan': False,
+            }
+            entry['lesson_plan'] = plan
+            entry['has_lesson_plan'] = True
+            sessions[key] = entry
+    except Exception as ex:
+        print(f"_fetch_teacher_lesson_plans_attendance_report lesson plans: {ex}")
+
+    for key, entry in sessions.items():
+        d_str, lid, sid = key
+        plan = entry.get('lesson_plan')
+        if not plan:
+            cursor.execute(
+                f"""
+                SELECT {', '.join(ATTENDANCE_LESSON_PLAN_FIELDS)}
+                FROM subject_attendance_lesson_plans lp
+                WHERE lp.term_id = %s AND lp.academic_level_id = %s AND lp.subject_id = %s AND lp.session_date = %s
+                  AND {_lesson_plan_belongs_to_teacher_sql('lp', '%s')}
+                LIMIT 1
+                """,
+                (term_id, lid, sid, d_str, *_lesson_plan_teacher_bind_params(teacher_id)),
+            )
+            prow = cursor.fetchone()
+            if prow:
+                if isinstance(prow, dict):
+                    plan = {f: (prow.get(f) or '') for f in ATTENDANCE_LESSON_PLAN_FIELDS}
+                else:
+                    plan = {f: (prow[i] or '') for i, f in enumerate(ATTENDANCE_LESSON_PLAN_FIELDS)}
+                entry['lesson_plan'] = plan
+                entry['has_lesson_plan'] = _lesson_plan_has_content(plan)
+
+        present_rows = []
+        absent_rows = []
+        try:
+            cursor.execute(
+                f"""
+                SELECT s.student_id, s.full_name, sar.present
+                FROM student_attendance_records sar
+                INNER JOIN students s ON s.student_id = sar.student_id
+                WHERE sar.term_id = %s AND sar.academic_level_id = %s AND sar.subject_id = %s
+                  AND sar.attendance_date = %s
+                  AND {_attendance_belongs_to_teacher_sql('sar', '%s')}
+                ORDER BY s.full_name ASC
+                """,
+                (term_id, lid, sid, d_str, *_attendance_teacher_bind_params(teacher_id)),
+            )
+            for srow in cursor.fetchall() or []:
+                if isinstance(srow, dict):
+                    sid_st = srow.get('student_id')
+                    name = srow.get('full_name') or ''
+                    present = bool(srow.get('present'))
+                else:
+                    sid_st = srow[0]
+                    name = srow[1] or ''
+                    present = bool(srow[2])
+                item = {'student_id': sid_st, 'full_name': name}
+                if present:
+                    present_rows.append(item)
+                else:
+                    absent_rows.append(item)
+        except Exception as ex:
+            print(f"_fetch_teacher_lesson_plans_attendance_report students: {ex}")
+
+        total = len(present_rows) + len(absent_rows)
+        entry['attendance'] = {
+            'present': len(present_rows),
+            'absent': len(absent_rows),
+            'total': total,
+            'pct': round(100 * len(present_rows) / total, 1) if total else None,
+            'present_students': present_rows,
+            'absent_students': absent_rows,
+        }
+        entry['has_attendance'] = total > 0
+        if entry['has_attendance']:
+            summary['with_attendance'] += 1
+            summary['students_present'] += len(present_rows)
+            summary['students_absent'] += len(absent_rows)
+        if entry.get('has_lesson_plan'):
+            summary['with_lesson_plan'] += 1
+        rows_out.append(entry)
+
+    _enrich_attendance_sessions_with_times(cursor, teacher_id, term_id, rows_out)
+    teacher_display = _attendance_teacher_display_name(cursor, teacher_id)
+    filtered_rows = []
+    for entry in rows_out:
+        entry['teacher_name'] = teacher_display
+        if not entry.get('learning_area'):
+            entry['learning_area'] = _attendance_learning_area_label(
+                entry.get('subject_name'), entry.get('subject_code'),
+            )
+        if entry.get('has_lesson_plan') or entry.get('has_attendance'):
+            filtered_rows.append(entry)
+    rows_out = filtered_rows
+
+    rows_out.sort(key=lambda r: (r.get('session_date') or '', r.get('level_name') or '', r.get('subject_name') or ''), reverse=True)
+    summary['sessions'] = len(rows_out)
+    return rows_out, summary
+
+
+def _teacher_report_session_key(entry):
+    """Stable id for selecting/previewing one teacher report session."""
+    d = (entry.get('session_date') or '')[:10]
+    lid = int(entry.get('academic_level_id') or 0)
+    sid = int(entry.get('subject_id') or 0)
+    return f"{d}__{lid}__{sid}"
+
+
+def _enrich_teacher_report_rows_for_ui(rows):
+    """Add session_key and list labels (strand, substrand, date) for pick/print UI."""
+    for entry in rows or []:
+        entry['session_key'] = _teacher_report_session_key(entry)
+        plan = entry.get('lesson_plan') or {}
+        strand = (plan.get('strand') or '').strip()
+        substrand = (plan.get('substrand') or '').strip()
+        entry['strand'] = strand or '—'
+        entry['substrand'] = substrand or '—'
+        date_label = entry.get('session_date_display') or entry.get('session_date') or '—'
+        subject_bit = entry.get('learning_area') or entry.get('subject_name') or ''
+        class_bit = entry.get('level_name') or ''
+        context_bit = ' · '.join(x for x in (class_bit, subject_bit) if x)
+        entry['pick_title'] = ' · '.join(x for x in (strand if strand else 'No strand', substrand if substrand else 'No substrand', date_label) if x)
+        entry['pick_subtitle'] = context_bit
+        att = entry.get('attendance') or {}
+        entry['att_present'] = att.get('present', 0) or 0
+        entry['att_absent'] = att.get('absent', 0) or 0
+        entry['att_total'] = att.get('total', 0) or 0
+        entry['att_pct'] = att.get('pct')
+        entry['att_pick_label'] = date_label
+    return rows
 
 
 _SCHEMA_COLUMN_CACHE = {}
@@ -31310,6 +32054,9 @@ def _build_teacher_level_attendance_columns(cursor, teacher_id, term_id, level_i
                 except Exception:
                     continue
             weekday = dt.strftime('%A')
+            time_by_subject = _fetch_timetable_session_times(
+                cursor, teacher_id, term_id, int(level_id), weekday,
+            )
             cursor.execute("""
                 SELECT DISTINCT t.subject_id, s.subject_name, s.subject_code
                 FROM timetables t
@@ -31325,12 +32072,17 @@ def _build_teacher_level_attendance_columns(cursor, teacher_id, term_id, level_i
                 sname = (row.get('subject_name', '') if isinstance(row, dict) else (row[1] if len(row) > 1 else '')) or ''
                 scode = (row.get('subject_code', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else '')) or ''
                 short = scode or sname
+                sid_int = int(sid)
+                session_time = time_by_subject.get(sid_int, '')
                 columns.append({
                     'date_str': day.get('date_str', ''),
                     'label': day.get('label', ''),
-                    'subject_id': int(sid),
+                    'session_date_display': _attendance_session_date_display(dt),
+                    'subject_id': sid_int,
                     'subject_name': sname,
                     'subject_code': scode,
+                    'learning_area': _attendance_learning_area_label(sname, scode),
+                    'session_time': session_time,
                     'header_label': f"{day.get('label', '')} · {short}",
                 })
     except Exception as e:
@@ -31412,6 +32164,7 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
     attendance_columns_by_level = {}
     class_session_columns = []
     level_id_by_name = {}
+    attendance_lesson_plans_by_level = {}
 
     connection = get_db_connection()
     if connection:
@@ -31731,8 +32484,12 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
                         if lid is None:
                             continue
                         _lg['id'] = int(lid)
-                        attendance_columns_by_level[int(lid)] = _build_teacher_level_attendance_columns(
+                        cols = _build_teacher_level_attendance_columns(
                             cursor, teacher_id, term_id, int(lid), selected_week_days
+                        )
+                        attendance_columns_by_level[int(lid)] = cols
+                        attendance_lesson_plans_by_level[int(lid)] = _fetch_attendance_lesson_plans_for_columns(
+                            cursor, term_id, int(lid), cols, teacher_id=teacher_id,
                         )
                 elif use_class_session_slots and selected_week_days and not class_session_columns:
                     class_session_columns = _build_class_session_attendance_columns(selected_week_days)
@@ -31795,6 +32552,7 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
         'use_class_session_slots': use_class_session_slots,
         'class_session_columns': class_session_columns,
         'attendance_columns_by_level': attendance_columns_by_level,
+        'attendance_lesson_plans_by_level': attendance_lesson_plans_by_level,
         'subject_progress_url': subject_progress_url,
         'attendance_list_meta': attendance_list_meta or {},
     }
@@ -32093,6 +32851,160 @@ def student_attendance():
     return _attendance_register_page(mode)
 
 
+@app.route('/student-management/lesson-plans-attendance', methods=['GET'])
+@login_required
+def lesson_plans_attendance_report():
+    """View and print lesson plans with subject attendance for the logged-in teacher."""
+    if not _teacher_portal_is_teacher_session():
+        flash('Only teachers can view lesson plans and attendance here.', 'error')
+        return redirect(employee_dashboard_path())
+    teacher_id = _subject_progress_teacher_id() or _teacher_portal_employee_pk()
+    if not teacher_id:
+        flash('Sign in as a teacher to view your lesson plans and attendance.', 'error')
+        return redirect(employee_dashboard_path())
+
+    term_id = request.args.get('term_id', type=int)
+    academic_year_id = request.args.get('academic_year_id', type=int)
+    selected_class_level = (request.args.get('class_level') or '').strip()
+    period_start = (request.args.get('period_start') or '').strip()
+    period_end = (request.args.get('period_end') or '').strip()
+    print_mode = (request.args.get('print') or '').strip() == '1'
+    report_type = (request.args.get('report_type') or 'lesson_plan').strip().lower()
+    if report_type not in ('lesson_plan', 'attendance'):
+        report_type = 'lesson_plan'
+
+    class_level_options = _get_attendance_class_level_options(True, teacher_id)
+    level_id = None
+    academic_years = []
+    all_terms = []
+    terms = []
+    teacher_name = ''
+    term_label = ''
+    year_label = ''
+    report_rows = []
+    report_summary = {'sessions': 0, 'with_lesson_plan': 0, 'with_attendance': 0, 'students_present': 0, 'students_absent': 0}
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id, year_name, is_current FROM academic_years ORDER BY id DESC")
+                for r in cursor.fetchall() or []:
+                    academic_years.append({
+                        'id': r.get('id') if isinstance(r, dict) else r[0],
+                        'year_name': r.get('year_name') if isinstance(r, dict) else r[1],
+                        'is_current': r.get('is_current') if isinstance(r, dict) else (r[2] if len(r) > 2 else False),
+                    })
+                cursor.execute("""
+                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name, t.is_current
+                    FROM terms t
+                    LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                    ORDER BY t.academic_year_id DESC, t.id DESC
+                """)
+                for r in cursor.fetchall() or []:
+                    all_terms.append({
+                        'id': r.get('id') if isinstance(r, dict) else r[0],
+                        'term_name': r.get('term_name') if isinstance(r, dict) else r[1],
+                        'academic_year_id': r.get('academic_year_id') if isinstance(r, dict) else r[2],
+                        'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else ''),
+                        'is_current': r.get('is_current') if isinstance(r, dict) else (r[4] if len(r) > 4 else False),
+                    })
+
+                if not academic_year_id and academic_years:
+                    current_year = next((y for y in academic_years if y.get('is_current')), None)
+                    academic_year_id = (current_year or academic_years[0]).get('id')
+                terms = list(all_terms)
+                if academic_year_id:
+                    terms = [t for t in terms if t.get('academic_year_id') == academic_year_id]
+                if term_id and not any(t.get('id') == term_id for t in terms):
+                    term_id = None
+                if not term_id and terms:
+                    current_term = next((t for t in terms if t.get('is_current')), None)
+                    term_id = (current_term or terms[0]).get('id')
+
+                level_id_by_name = _level_name_to_id_map(cursor)
+                if selected_class_level and selected_class_level in level_id_by_name:
+                    level_id = level_id_by_name[selected_class_level]
+                elif len(class_level_options) == 1 and class_level_options[0] in level_id_by_name:
+                    selected_class_level = class_level_options[0]
+                    level_id = level_id_by_name[selected_class_level]
+
+                term_start, term_end = _get_term_date_bounds(cursor, term_id) if term_id else (None, None)
+                if term_id and not period_start and term_start:
+                    period_start = term_start.isoformat()
+                if term_id and not period_end and term_end:
+                    period_end = min(term_end, date_cls.today()).isoformat()
+
+                cursor.execute(
+                    "SELECT full_name FROM employees WHERE id = %s LIMIT 1",
+                    (int(teacher_id),),
+                )
+                trow = cursor.fetchone()
+                if trow:
+                    teacher_name = (trow.get('full_name') if isinstance(trow, dict) else trow[0]) or ''
+
+                if term_id:
+                    for t in terms:
+                        if t.get('id') == term_id:
+                            term_label = t.get('term_name') or ''
+                            year_label = t.get('year_name') or ''
+                            break
+                    report_rows, report_summary = _fetch_teacher_lesson_plans_attendance_report(
+                        cursor, teacher_id, term_id, period_start, period_end, level_id=level_id,
+                    )
+        except Exception as e:
+            print(f"lesson_plans_attendance_report: {e}")
+            flash('Could not load lesson plans and attendance.', 'error')
+        finally:
+            connection.close()
+
+    if report_type == 'lesson_plan':
+        report_rows = [r for r in report_rows if r.get('has_lesson_plan')]
+    else:
+        report_rows = [r for r in report_rows if r.get('has_attendance')]
+    report_rows = _enrich_teacher_report_rows_for_ui(report_rows)
+    report_summary = dict(report_summary or {})
+    report_summary['sessions'] = len(report_rows)
+
+    report_type_labels = {
+        'lesson_plan': 'Lesson plan report',
+        'attendance': 'Attendance report',
+    }
+
+    template_ctx = dict(
+        academic_years=academic_years,
+        all_terms=all_terms,
+        terms=terms,
+        selected_term_id=term_id,
+        selected_academic_year_id=academic_year_id,
+        selected_class_level=selected_class_level,
+        class_level_options=class_level_options,
+        selected_period_start=period_start,
+        selected_period_end=period_end,
+        selected_report_type=report_type,
+        report_type_labels=report_type_labels,
+        teacher_name=teacher_name,
+        term_label=term_label,
+        year_label=year_label,
+        report_rows=report_rows,
+        report_summary=report_summary,
+        lesson_plan_labels=ATTENDANCE_LESSON_PLAN_LABELS,
+        print_mode=print_mode,
+        attendance_register_url=employee_dash_url('student-management/student-attendance'),
+    )
+
+    if (request.args.get('partial') or '').strip() == '1':
+        return render_template(
+            'dashboards/_lesson_plans_attendance_report_results.html',
+            **template_ctx,
+        )
+
+    return render_template(
+        'dashboards/lesson_plans_attendance_report.html',
+        **template_ctx,
+    )
+
+
 @app.route('/student-management/class-student-attendance', methods=['GET', 'POST'])
 @login_required
 def class_student_attendance():
@@ -32296,6 +33208,18 @@ def _attendance_register_page(attendance_mode):
                                 _credit_subject_progress_from_attendance(
                                     cur, lid, subj_id, term_id, sess_date, emp_id
                                 )
+                        if use_subject_attendance_post and post_register_ctx:
+                            post_level_name = (request.form.get('class_level') or selected_class_level or '').strip()
+                            post_level_id = level_id_by_name.get(post_level_name)
+                            if post_level_id is None and students_by_level:
+                                first_lg = students_by_level[0]
+                                post_level_id = first_lg.get('id') or level_id_by_name.get(
+                                    str(first_lg.get('level_name') or '').strip()
+                                )
+                            if post_level_id:
+                                _save_attendance_lesson_plans(
+                                    cur, request.form, term_id, int(post_level_id), emp_id, week_dates_set
+                                )
                         conn.commit()
                     if rows_saved > 0:
                         xhr_saved = True
@@ -32363,12 +33287,27 @@ def _attendance_register_page(attendance_mode):
         attendance_list_meta=attendance_list_meta, attendance_mode=attendance_mode,
     )
     teacher_portal_view = is_teacher and attendance_mode in ('subject', 'class')
+    attendance_teacher_name = ''
+    if teacher_id:
+        conn_tn = get_db_connection()
+        if conn_tn:
+            try:
+                with conn_tn.cursor() as cur_tn:
+                    attendance_teacher_name = _attendance_teacher_display_name(cur_tn, teacher_id)
+            except Exception:
+                pass
+            finally:
+                try:
+                    conn_tn.close()
+                except Exception:
+                    pass
     merged = {
         **ctx,
         'is_teacher_view': teacher_portal_view and not is_class_teacher_view,
         'is_class_teacher_view': is_class_teacher_view,
         'is_subject_teacher_view': is_subject_teacher_view,
         'attendance_mode': attendance_mode,
+        'attendance_teacher_name': attendance_teacher_name,
         'attendance_form_action': (
             url_for('class_student_attendance') if is_class_teacher_view else url_for('student_attendance')
         ),
@@ -43719,6 +44658,123 @@ def _attach_teachers_to_academic_level_subjects(cursor, academic_levels):
     return academic_levels
 
 
+def _fetch_level_subject_allocations_with_teachers(cursor, level_id):
+    """Subjects allocated to one class level, with assigned teachers (exam-column order)."""
+    try:
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return [], 0
+
+    cursor.execute("""
+        SELECT sal.subject_id,
+               s.subject_name,
+               s.subject_code,
+               COALESCE(s.status, 'active') AS subject_status
+        FROM subject_academic_levels sal
+        INNER JOIN subjects s ON sal.subject_id = s.id
+        WHERE sal.academic_level_id = %s
+        ORDER BY s.subject_name ASC
+    """, (level_id,))
+
+    subjects_map = {}
+    for srow in cursor.fetchall() or []:
+        subject_status = (srow.get('subject_status', 'active') if isinstance(srow, dict) else (srow[3] if len(srow) > 3 else 'active'))
+        if str(subject_status or '').lower() == 'inactive':
+            continue
+        subject_id = srow.get('subject_id') if isinstance(srow, dict) else srow[0]
+        if subject_id is None:
+            continue
+        subjects_map[subject_id] = {
+            'subject_id': subject_id,
+            'subject_name': (srow.get('subject_name', '') if isinstance(srow, dict) else (srow[1] if len(srow) > 1 else '')) or 'Subject',
+            'subject_code': (srow.get('subject_code', '') if isinstance(srow, dict) else (srow[2] if len(srow) > 2 else '')) or '',
+            'teachers': [],
+        }
+
+    cursor.execute("""
+        SELECT DISTINCT tsa.subject_id, s.subject_name, s.subject_code, COALESCE(s.status, 'active') AS subject_status
+        FROM teacher_subject_assignments tsa
+        LEFT JOIN subjects s ON tsa.subject_id = s.id
+        WHERE tsa.academic_level_id = %s
+        ORDER BY s.subject_name ASC
+    """, (level_id,))
+    for tsub in cursor.fetchall() or []:
+        subject_status = (tsub.get('subject_status', 'active') if isinstance(tsub, dict) else (tsub[3] if len(tsub) > 3 else 'active'))
+        if str(subject_status or '').lower() == 'inactive':
+            continue
+        subject_id = tsub.get('subject_id') if isinstance(tsub, dict) else tsub[0]
+        if subject_id is None or subject_id in subjects_map:
+            continue
+        subjects_map[subject_id] = {
+            'subject_id': subject_id,
+            'subject_name': (tsub.get('subject_name', '') if isinstance(tsub, dict) else (tsub[1] if len(tsub) > 1 else '')) or 'Subject',
+            'subject_code': (tsub.get('subject_code', '') if isinstance(tsub, dict) else (tsub[2] if len(tsub) > 2 else '')) or '',
+            'teachers': [],
+        }
+
+    cursor.execute(f"""
+        SELECT tsa.subject_id, e.id AS teacher_id, e.full_name AS teacher_name,
+               {_employee_staff_identity_sql('e')} AS teacher_employee_id
+        FROM teacher_subject_assignments tsa
+        LEFT JOIN employees e ON tsa.teacher_id = e.id
+        WHERE tsa.academic_level_id = %s
+        ORDER BY tsa.subject_id ASC, e.full_name ASC
+    """, (level_id,))
+    for trow in cursor.fetchall() or []:
+        subject_id = trow.get('subject_id') if isinstance(trow, dict) else trow[0]
+        if subject_id is None or subject_id not in subjects_map:
+            continue
+        teacher_id = trow.get('teacher_id') if isinstance(trow, dict) else (trow[1] if len(trow) > 1 else None)
+        teacher_name = (trow.get('teacher_name', '') if isinstance(trow, dict) else (trow[2] if len(trow) > 2 else '')) or ''
+        teacher_employee_id = (trow.get('teacher_employee_id', '') if isinstance(trow, dict) else (trow[3] if len(trow) > 3 else '')) or ''
+        if teacher_id is None and not teacher_name:
+            continue
+        existing_ids = {x.get('teacher_id') for x in subjects_map[subject_id]['teachers']}
+        if teacher_id in existing_ids:
+            continue
+        subjects_map[subject_id]['teachers'].append({
+            'teacher_id': teacher_id,
+            'teacher_name': teacher_name or 'Teacher',
+            'teacher_employee_id': teacher_employee_id,
+        })
+
+    if not subjects_map:
+        return [], 0
+
+    ensure_subject_exam_display_order_columns(cursor)
+    ph = ','.join(['%s'] * len(subjects_map))
+    cursor.execute(
+        f"SELECT id, exam_display_order FROM subjects WHERE id IN ({ph})",
+        tuple(subjects_map.keys()),
+    )
+    edo_map = {}
+    for er in cursor.fetchall() or []:
+        eid = er.get('id') if isinstance(er, dict) else er[0]
+        if eid is not None:
+            edo_map[int(eid)] = er.get('exam_display_order') if isinstance(er, dict) else (er[1] if len(er) > 1 else None)
+    bridge = []
+    for sid, val in subjects_map.items():
+        bridge.append({
+            'id': int(sid),
+            'subject_name': val['subject_name'],
+            'subject_code': val['subject_code'],
+            'exam_display_order': edo_map.get(int(sid)),
+            'teachers': val['teachers'],
+        })
+    sort_subjects_list_for_exam_columns(cursor, bridge)
+    level_subjects = [
+        {
+            'subject_id': b['id'],
+            'subject_name': b['subject_name'],
+            'subject_code': b['subject_code'],
+            'teachers': b['teachers'],
+        }
+        for b in bridge
+    ]
+    total_teachers = sum(len(item.get('teachers') or []) for item in level_subjects)
+    return level_subjects, total_teachers
+
+
 def _fetch_class_teacher_for_level(cursor, level_id, academic_year_id=None):
     """Class teacher assigned to one academic level for the current (or given) year."""
     try:
@@ -44316,7 +45372,7 @@ def classes_subjects():
 @app.route('/dashboard/employee/classes-subjects/level/<int:level_id>')
 @login_required
 def classes_subjects_level_detail(level_id):
-    """Academic level detail: subjects, teachers, progress, and attendance."""
+    """Academic level detail: all subjects allocated to the class."""
     if not _academic_classes_portal_allowed():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -44327,16 +45383,8 @@ def classes_subjects_level_detail(level_id):
     level_subjects = []
     total_allocated_teachers = 0
     class_teacher = None
-    attendance_summary = {}
-    attendance_analytics = {}
     current_term_name = None
-    current_year_id = None
-    current_term_id = None
     enrolled_count = 0
-    exam_bundle = {}
-    timetable_entries = []
-    timetable_settings = {}
-    timetable_grid = {}
 
     if connection:
         try:
@@ -44359,128 +45407,12 @@ def classes_subjects_level_detail(level_id):
                     'level_description': row.get('level_description', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
                 }
 
-                cursor.execute("""
-                    SELECT sal.subject_id,
-                           s.subject_name,
-                           s.subject_code,
-                           COALESCE(s.status, 'active') AS subject_status
-                    FROM subject_academic_levels sal
-                    INNER JOIN subjects s ON sal.subject_id = s.id
-                    WHERE sal.academic_level_id = %s
-                    ORDER BY s.subject_name ASC
-                """, (level_id,))
-
-                subjects_map = {}
-                for srow in cursor.fetchall() or []:
-                    subject_status = (srow.get('subject_status', 'active') if isinstance(srow, dict) else (srow[3] if len(srow) > 3 else 'active'))
-                    if str(subject_status or '').lower() == 'inactive':
-                        continue
-                    subject_id = srow.get('subject_id') if isinstance(srow, dict) else srow[0]
-                    if subject_id is None:
-                        continue
-                    subjects_map[subject_id] = {
-                        'subject_id': subject_id,
-                        'subject_name': (srow.get('subject_name', '') if isinstance(srow, dict) else (srow[1] if len(srow) > 1 else '')) or 'Subject',
-                        'subject_code': (srow.get('subject_code', '') if isinstance(srow, dict) else (srow[2] if len(srow) > 2 else '')) or '',
-                        'teachers': [],
-                    }
-
-                cursor.execute("""
-                    SELECT DISTINCT tsa.subject_id, s.subject_name, s.subject_code, COALESCE(s.status, 'active') AS subject_status
-                    FROM teacher_subject_assignments tsa
-                    LEFT JOIN subjects s ON tsa.subject_id = s.id
-                    WHERE tsa.academic_level_id = %s
-                    ORDER BY s.subject_name ASC
-                """, (level_id,))
-                for tsub in cursor.fetchall() or []:
-                    subject_status = (tsub.get('subject_status', 'active') if isinstance(tsub, dict) else (tsub[3] if len(tsub) > 3 else 'active'))
-                    if str(subject_status or '').lower() == 'inactive':
-                        continue
-                    subject_id = tsub.get('subject_id') if isinstance(tsub, dict) else tsub[0]
-                    if subject_id is None or subject_id in subjects_map:
-                        continue
-                    subjects_map[subject_id] = {
-                        'subject_id': subject_id,
-                        'subject_name': (tsub.get('subject_name', '') if isinstance(tsub, dict) else (tsub[1] if len(tsub) > 1 else '')) or 'Subject',
-                        'subject_code': (tsub.get('subject_code', '') if isinstance(tsub, dict) else (tsub[2] if len(tsub) > 2 else '')) or '',
-                        'teachers': [],
-                    }
-
-                cursor.execute(f"""
-                    SELECT tsa.subject_id, e.id AS teacher_id, e.full_name AS teacher_name,
-                           {_employee_staff_identity_sql('e')} AS teacher_employee_id
-                    FROM teacher_subject_assignments tsa
-                    LEFT JOIN employees e ON tsa.teacher_id = e.id
-                    WHERE tsa.academic_level_id = %s
-                    ORDER BY tsa.subject_id ASC, e.full_name ASC
-                """, (level_id,))
-                for trow in cursor.fetchall() or []:
-                    subject_id = trow.get('subject_id') if isinstance(trow, dict) else trow[0]
-                    if subject_id is None or subject_id not in subjects_map:
-                        continue
-                    teacher_id = trow.get('teacher_id') if isinstance(trow, dict) else (trow[1] if len(trow) > 1 else None)
-                    teacher_name = (trow.get('teacher_name', '') if isinstance(trow, dict) else (trow[2] if len(trow) > 2 else '')) or ''
-                    teacher_employee_id = (trow.get('teacher_employee_id', '') if isinstance(trow, dict) else (trow[3] if len(trow) > 3 else '')) or ''
-                    if teacher_id is None and not teacher_name:
-                        continue
-
-                    existing_ids = {x.get('teacher_id') for x in subjects_map[subject_id]['teachers']}
-                    if teacher_id in existing_ids:
-                        continue
-
-                    subjects_map[subject_id]['teachers'].append({
-                        'teacher_id': teacher_id,
-                        'teacher_name': teacher_name or 'Teacher',
-                        'teacher_employee_id': teacher_employee_id,
-                    })
-
-                if subjects_map:
-                    ensure_subject_exam_display_order_columns(cursor)
-                    ph = ','.join(['%s'] * len(subjects_map))
-                    cursor.execute(
-                        f"SELECT id, exam_display_order FROM subjects WHERE id IN ({ph})",
-                        tuple(subjects_map.keys()),
-                    )
-                    edo_map = {}
-                    for er in cursor.fetchall() or []:
-                        eid = er.get('id') if isinstance(er, dict) else er[0]
-                        if eid is not None:
-                            edo_map[int(eid)] = er.get('exam_display_order') if isinstance(er, dict) else (er[1] if len(er) > 1 else None)
-                    bridge = []
-                    for sid, val in subjects_map.items():
-                        bridge.append(
-                            {
-                                'id': int(sid),
-                                'subject_name': val['subject_name'],
-                                'subject_code': val['subject_code'],
-                                'exam_display_order': edo_map.get(int(sid)),
-                                'teachers': val['teachers'],
-                            }
-                        )
-                    sort_subjects_list_for_exam_columns(cursor, bridge)
-                    level_subjects = [
-                        {
-                            'subject_id': b['id'],
-                            'subject_name': b['subject_name'],
-                            'subject_code': b['subject_code'],
-                            'teachers': b['teachers'],
-                        }
-                        for b in bridge
-                    ]
-                else:
-                    level_subjects = []
-                total_allocated_teachers = sum(len(item.get('teachers') or []) for item in level_subjects)
-
-                current_year_id, _yn, current_term_id, current_term_name = _get_current_academic_year_and_term(cursor)
-                class_teacher = _fetch_class_teacher_for_level(cursor, level_id)
-                attendance_summary = _fetch_level_attendance_term_summary(cursor, level_id, current_term_id)
-                attendance_analytics = _fetch_class_attendance_term_analytics(
-                    cursor, level['level_name'], current_term_id,
+                level_subjects, total_allocated_teachers = _fetch_level_subject_allocations_with_teachers(
+                    cursor, level_id,
                 )
-                exam_bundle = _build_class_exam_performance_bundle(cursor, level, None, None)
-                timetable_settings = _get_schedule_settings_for_level(cursor, level_id)
-                timetable_entries = _fetch_class_timetable_entries(cursor, level_id, current_term_id)
-                timetable_grid = _build_timetable_grid_data(timetable_entries, timetable_settings)
+
+                _current_year_id, _yn, current_term_id, current_term_name = _get_current_academic_year_and_term(cursor)
+                class_teacher = _fetch_class_teacher_for_level(cursor, level_id)
                 cursor.execute(
                     """
                     SELECT COUNT(*) AS c FROM students
@@ -44515,16 +45447,8 @@ def classes_subjects_level_detail(level_id):
         level_subjects=level_subjects,
         total_allocated_teachers=total_allocated_teachers,
         class_teacher=class_teacher,
-        attendance_summary=attendance_summary,
-        attendance_analytics=attendance_analytics,
         current_term_name=current_term_name,
-        current_term_id=current_term_id,
-        current_year_id=current_year_id,
         enrolled_count=enrolled_count,
-        exam_bundle=exam_bundle,
-        timetable_entries=timetable_entries,
-        timetable_settings=timetable_settings,
-        timetable_grid=timetable_grid,
     )
 
 

@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block title %}{{ report_type_labels.get(selected_report_type, 'Teaching reports') }} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/role_portal_theme.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/lpa-teaching-reports.css') }}">
+{% endblock %}
+
+{% block sidebar_content %}
+{% set teacher_nav_scope = 'teaching' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="lpa-page page-content max-w-7xl mx-auto role-page role-page--teacher" id="lpa-root" data-report-type="{{ selected_report_type }}">
+    <header class="lpa-head no-print">
+        <div class="lpa-head__main">
+            <h1 class="lpa-head__title"><i class="fas fa-file-alt" aria-hidden="true"></i> Teaching reports</h1>
+            <p class="lpa-head__sub">Adjust filters to update results instantly. Select items, then preview or print.</p>
+        </div>
+        <a href="{{ attendance_register_url }}" class="lpa-head__link touch-btn">
+            <i class="fas fa-clipboard-check" aria-hidden="true"></i><span>Mark attendance</span>
+        </a>
+    </header>
+
+    <form method="GET" action="{{ employee_dash_url('student-management/lesson-plans-attendance') }}" class="lpa-filters no-print" id="lpa-filters-form" aria-label="Report filters">
+        <div class="lpa-filters__head">
+            <p class="lpa-filters__title">Report filters</p>
+            <span class="lpa-live-status" id="lpa-live-status" aria-live="polite">
+                <i class="fas fa-bolt" aria-hidden="true"></i> Live
+            </span>
+        </div>
+        <div class="lpa-filters__list">
+            <div class="lpa-field">
+                <label for="report_type" class="lpa-label">Report type</label>
+                <select name="report_type" id="report_type" class="lpa-control">
+                    <option value="lesson_plan" {% if selected_report_type == 'lesson_plan' %}selected{% endif %}>Lesson plan report</option>
+                    <option value="attendance" {% if selected_report_type == 'attendance' %}selected{% endif %}>Attendance report</option>
+                </select>
+            </div>
+            <div class="lpa-field">
+                <label for="academic_year_id" class="lpa-label">Academic year</label>
+                <select name="academic_year_id" id="academic_year_id" class="lpa-control">
+                    {% for y in academic_years %}
+                    <option value="{{ y.id }}" {% if selected_academic_year_id == y.id %}selected{% endif %}>{{ y.year_name }}{% if y.is_current %} · Current{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="lpa-field">
+                <label for="term_id" class="lpa-label">Term</label>
+                <select name="term_id" id="term_id" class="lpa-control">
+                    {% for t in terms %}
+                    <option value="{{ t.id }}" {% if selected_term_id == t.id %}selected{% endif %}>{{ t.term_name }}{% if t.year_name %} ({{ t.year_name }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="lpa-field">
+                <label for="class_level" class="lpa-label">Class</label>
+                <select name="class_level" id="class_level" class="lpa-control">
+                    <option value="">All classes</option>
+                    {% for class_name in class_level_options|default([], true) %}
+                    <option value="{{ class_name }}" {% if selected_class_level == class_name %}selected{% endif %}>{{ class_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="lpa-field">
+                <label for="period_start" class="lpa-label">Period from</label>
+                <input type="date" name="period_start" id="period_start" value="{{ selected_period_start }}" class="lpa-control">
+            </div>
+            <div class="lpa-field">
+                <label for="period_end" class="lpa-label">Period to</label>
+                <input type="date" name="period_end" id="period_end" value="{{ selected_period_end }}" class="lpa-control">
+            </div>
+        </div>
+    </form>
+
+    <div id="lpa-live-results" class="lpa-live-results" aria-live="polite">
+        {% include 'dashboards/_lesson_plans_attendance_report_results.html' %}
+    </div>
+</div>
+
+<script type="application/json" id="lpa-terms-json">{{ all_terms|default([], true)|tojson }}</script>
+
+<script>
+(function() {
+    var liveTimer = null;
+    var fetchCtrl = null;
+    var DATE_DEBOUNCE_MS = 400;
+
+    function setGeneratedAt(scope) {
+        var el = (scope || document).querySelector('#lpa-generated-at');
+        if (!el) return;
+        try {
+            el.textContent = new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+        } catch (e) {
+            el.textContent = new Date().toLocaleString();
+        }
+    }
+
+    function getTermsData() {
+        var node = document.getElementById('lpa-terms-json');
+        if (!node) return [];
+        try { return JSON.parse(node.textContent || '[]'); } catch (e) { return []; }
+    }
+
+    function syncTermsForYear() {
+        var yearEl = document.getElementById('academic_year_id');
+        var termEl = document.getElementById('term_id');
+        if (!yearEl || !termEl) return;
+        var yearId = parseInt(yearEl.value, 10);
+        var terms = getTermsData().filter(function(t) { return parseInt(t.academic_year_id, 10) === yearId; });
+        var prev = termEl.value;
+        termEl.innerHTML = '';
+        terms.forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t.id;
+            var label = t.term_name || '';
+            if (t.year_name) label += ' (' + t.year_name + ')';
+            opt.textContent = label;
+            termEl.appendChild(opt);
+        });
+        var keep = terms.some(function(t) { return String(t.id) === String(prev); });
+        if (keep) {
+            termEl.value = prev;
+        } else {
+            var current = terms.find(function(t) { return t.is_current; });
+            termEl.value = (current || terms[0] || {}).id || '';
+        }
+    }
+
+    function clampPeriodDates() {
+        var startEl = document.getElementById('period_start');
+        var endEl = document.getElementById('period_end');
+        if (!startEl || !endEl) return;
+        if (startEl.value && endEl.value && endEl.value < startEl.value) {
+            endEl.value = startEl.value;
+        }
+    }
+
+    function buildFilterUrl(includePartial) {
+        var form = document.getElementById('lpa-filters-form');
+        if (!form) return window.location.href;
+        var url = new URL(form.action, window.location.origin);
+        var data = new FormData(form);
+        data.forEach(function(value, key) {
+            if (value !== null && value !== undefined && String(value).trim() !== '') {
+                url.searchParams.set(key, value);
+            }
+        });
+        if (includePartial) url.searchParams.set('partial', '1');
+        else url.searchParams.delete('partial');
+        return url.toString();
+    }
+
+    function setLiveStatus(busy) {
+        var status = document.getElementById('lpa-live-status');
+        if (!status) return;
+        status.classList.toggle('lpa-live-status--busy', !!busy);
+        status.innerHTML = busy
+            ? ' Updating…'
+            : '<i class="fas fa-bolt" aria-hidden="true"></i> Live';
+    }
+
+    function wireLpaPickers(scope) {
+        var root = scope && scope.querySelector ? scope : document;
+        var pageRoot = document.getElementById('lpa-root');
+        var reportType = pageRoot ? pageRoot.getAttribute('data-report-type') : '';
+        if (reportType !== 'lesson_plan' && reportType !== 'attendance') return;
+
+        var picks = Array.prototype.slice.call(root.querySelectorAll('.lpa-pick'));
+        var previewBtn = root.querySelector('#lpa-preview-btn') || document.getElementById('lpa-preview-btn');
+        var printBtn = root.querySelector('#lpa-print-booklet-btn') || document.getElementById('lpa-print-booklet-btn');
+        var printFromPreview = root.querySelector('#lpa-print-from-preview') || document.getElementById('lpa-print-from-preview');
+        var previewModal = root.querySelector('#lpa-preview-modal') || document.getElementById('lpa-preview-modal');
+        var previewBody = root.querySelector('#lpa-preview-body') || document.getElementById('lpa-preview-body');
+        var pickCountWrap = root.querySelector('#lpa-pick-count') || document.getElementById('lpa-pick-count');
+        var pickCountNum = root.querySelector('#lpa-pick-count-num') || document.getElementById('lpa-pick-count-num');
+        var bookletHost = root.querySelector('#lpa-booklet-host') || document.getElementById('lpa-booklet-host');
+
+        function getSelectedKeys() {
+            return picks.filter(function(cb) { return cb.checked; }).map(function(cb) { return cb.value; });
+        }
+
+        function updateRowHighlight() {
+            (root.querySelectorAll ? root : document).querySelectorAll('.lpa-pick-item, .lpa-picker-row').forEach(function(row) {
+                var cb = row.querySelector('.lpa-pick');
+                row.classList.toggle('is-selected', cb && cb.checked);
+            });
+        }
+
+        function updateToolbar() {
+            var keys = getSelectedKeys();
+            var n = keys.length;
+            if (pickCountWrap) pickCountWrap.hidden = n === 0;
+            if (pickCountNum) pickCountNum.textContent = String(n);
+            if (previewBtn) previewBtn.disabled = n === 0;
+            if (printBtn) printBtn.disabled = n === 0;
+            updateRowHighlight();
+        }
+
+        function getPrintSurface() {
+            var surface = document.getElementById('lpa-print-surface');
+            if (!surface) {
+                surface = document.createElement('div');
+                surface.id = 'lpa-print-surface';
+                surface.className = 'lpa-print-surface';
+                surface.setAttribute('aria-hidden', 'true');
+                document.body.appendChild(surface);
+            }
+            return surface;
+        }
+
+        function clearPrintSurface() {
+            var surface = document.getElementById('lpa-print-surface');
+            if (surface) surface.innerHTML = '';
+            document.body.classList.remove('lpa-printing-booklet');
+        }
+
+        function buildPrintSurface(keys) {
+            var surface = getPrintSurface();
+            surface.innerHTML = '';
+            keys.forEach(function(key, idx) {
+                var src = bookletHost.querySelector('.lp-booklet-page[data-session-key="' + key + '"]');
+                if (!src) return;
+                var clone = src.cloneNode(true);
+                clone.classList.remove('lp-booklet-page--preview');
+                clone.classList.add('lp-booklet-page--print');
+                clone.style.display = 'block';
+                var footer = clone.querySelector('[data-lp-footer-page]');
+                if (footer) footer.textContent = 'Page ' + (idx + 1) + ' of ' + keys.length;
+                surface.appendChild(clone);
+            });
+            return surface;
+        }
+
+        function clearPrintFlags() {
+            clearPrintSurface();
+        }
+
+        function setPrintFlags(keys) {
+            buildPrintSurface(keys);
+            document.body.classList.add('lpa-printing-booklet');
+        }
+
+        function openPreview() {
+            var keys = getSelectedKeys();
+            if (!keys.length || !previewBody || !previewModal || !bookletHost) return;
+            previewBody.innerHTML = '';
+            keys.forEach(function(key, idx) {
+                var src = bookletHost.querySelector('.lp-booklet-page[data-session-key="' + key + '"]');
+                if (!src) return;
+                var clone = src.cloneNode(true);
+                clone.classList.add('lp-booklet-page--preview');
+                var footer = clone.querySelector('[data-lp-footer-page]');
+                if (footer) footer.textContent = 'Page ' + (idx + 1) + ' of ' + keys.length;
+                previewBody.appendChild(clone);
+            });
+            previewModal.hidden = false;
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closePreview() {
+            if (!previewModal) return;
+            previewModal.hidden = true;
+            if (previewBody) previewBody.innerHTML = '';
+            document.body.style.overflow = '';
+        }
+
+        function printBooklet() {
+            var keys = getSelectedKeys();
+            if (!keys.length || !bookletHost) return;
+            closePreview();
+            setPrintFlags(keys);
+            window.print();
+            window.addEventListener('afterprint', function onAfter() {
+                clearPrintFlags();
+                window.removeEventListener('afterprint', onAfter);
+            });
+        }
+
+        picks.forEach(function(cb) {
+            cb.addEventListener('change', updateToolbar);
+        });
+
+        var selectAll = root.querySelector('#lpa-select-all') || document.getElementById('lpa-select-all');
+        if (selectAll) {
+            selectAll.onclick = function() {
+                picks.forEach(function(cb) { cb.checked = true; });
+                updateToolbar();
+            };
+        }
+
+        var clearAll = root.querySelector('#lpa-clear-all') || document.getElementById('lpa-clear-all');
+        if (clearAll) {
+            clearAll.onclick = function() {
+                picks.forEach(function(cb) { cb.checked = false; });
+                updateToolbar();
+            };
+        }
+
+        if (previewBtn) previewBtn.onclick = openPreview;
+        if (printBtn) printBtn.onclick = printBooklet;
+        if (printFromPreview) printFromPreview.onclick = printBooklet;
+
+        root.querySelectorAll('[data-lpa-close-preview]').forEach(function(btn) {
+            btn.onclick = closePreview;
+        });
+
+        updateToolbar();
+
+        {% if print_mode %}
+        if (picks.length) {
+            picks.forEach(function(cb) { cb.checked = true; });
+            updateToolbar();
+            window.addEventListener('load', function() { printBooklet(); });
+        }
+        {% endif %}
+    }
+
+    function applyLiveFilters(delay) {
+        clearTimeout(liveTimer);
+        liveTimer = setTimeout(function() {
+            var results = document.getElementById('lpa-live-results');
+            var form = document.getElementById('lpa-filters-form');
+            var pageRoot = document.getElementById('lpa-root');
+            if (!results || !form) return;
+
+            clampPeriodDates();
+            var pageUrl = buildFilterUrl(false);
+            var fetchUrl = buildFilterUrl(true);
+            if (fetchCtrl) fetchCtrl.abort();
+            fetchCtrl = new AbortController();
+
+            setLiveStatus(true);
+            results.classList.add('lpa-live-results--loading');
+
+            fetch(fetchUrl, {
+                method: 'GET',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+                signal: fetchCtrl.signal
+            })
+            .then(function(res) {
+                if (!res.ok) throw new Error('load failed');
+                return res.text();
+            })
+            .then(function(html) {
+                results.innerHTML = html;
+                var sync = results.querySelector('#lpa-filter-sync');
+                if (sync) {
+                    var ps = document.getElementById('period_start');
+                    var pe = document.getElementById('period_end');
+                    var rt = document.getElementById('report_type');
+                    if (ps && sync.getAttribute('data-period-start')) ps.value = sync.getAttribute('data-period-start');
+                    if (pe && sync.getAttribute('data-period-end')) pe.value = sync.getAttribute('data-period-end');
+                    if (rt && sync.getAttribute('data-report-type')) rt.value = sync.getAttribute('data-report-type');
+                    if (pageRoot && sync.getAttribute('data-report-type')) {
+                        pageRoot.setAttribute('data-report-type', sync.getAttribute('data-report-type'));
+                    }
+                } else if (pageRoot) {
+                    var rtEl = document.getElementById('report_type');
+                    if (rtEl) pageRoot.setAttribute('data-report-type', rtEl.value || 'lesson_plan');
+                }
+                history.replaceState(null, '', buildFilterUrl(false));
+                wireLpaPickers(results);
+            })
+            .catch(function(err) {
+                if (err && err.name === 'AbortError') return;
+                window.location.assign(pageUrl);
+            })
+            .finally(function() {
+                setLiveStatus(false);
+                results.classList.remove('lpa-live-results--loading');
+            });
+        }, delay == null ? 0 : delay);
+    }
+
+    function wireLiveFilters() {
+        var form = document.getElementById('lpa-filters-form');
+        if (!form || form.getAttribute('data-lpa-live') === '1') return;
+        form.setAttribute('data-lpa-live', '1');
+
+        form.addEventListener('submit', function(ev) {
+            ev.preventDefault();
+            applyLiveFilters(0);
+        });
+
+        ['report_type', 'academic_year_id', 'term_id', 'class_level'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('change', function() {
+                if (id === 'academic_year_id') syncTermsForYear();
+                if (id === 'term_id') {
+                    var ps = document.getElementById('period_start');
+                    var pe = document.getElementById('period_end');
+                    if (ps) ps.value = '';
+                    if (pe) pe.value = '';
+                }
+                applyLiveFilters(0);
+            });
+        });
+
+        ['period_start', 'period_end'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('change', function() { applyLiveFilters(0); });
+            el.addEventListener('input', function() { applyLiveFilters(DATE_DEBOUNCE_MS); });
+        });
+    }
+
+    document.addEventListener('keydown', function(ev) {
+        if (ev.key !== 'Escape') return;
+        var previewModal = document.getElementById('lpa-preview-modal');
+        if (previewModal && !previewModal.hidden) {
+            previewModal.hidden = true;
+            var previewBody = document.getElementById('lpa-preview-body');
+            if (previewBody) previewBody.innerHTML = '';
+            document.body.style.overflow = '';
+        }
+    });
+
+    wireLiveFilters();
+    wireLpaPickers(document.getElementById('lpa-live-results') || document);
+})();
+</script>
+{% endblock %}

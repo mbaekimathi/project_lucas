@@ -128,7 +128,7 @@
     <header class="att-page-head mb-2 sm:mb-3">
         <div class="min-w-0 flex-1">
             <h1 class="att-page-head__title"><i class="fas fa-clipboard-check" aria-hidden="true"></i> Subject attendance</h1>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Mark present or absent per subject from your timetable. Saves link to subject progress.</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Mark present or absent per subject from your timetable. Optionally add a lesson plan before saving.</p>
         </div>
         <a href="{{ subject_progress_url|default(employee_dash_url('subject-progress')) }}" class="att-page-head__link touch-btn shrink-0" title="Subject progress">
             <i class="fas fa-tasks" aria-hidden="true"></i><span class="hidden sm:inline">Progress</span>
@@ -792,6 +792,377 @@
         .student-attendance-page .att-save-label-full { display: inline; }
     }
 
+    /* Lesson plan — prominent live card (subject attendance) */
+    @keyframes att-lesson-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
+        50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    }
+    @keyframes att-lesson-dot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.55; transform: scale(0.85); }
+    }
+    @keyframes att-lesson-enter {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes att-lesson-nudge {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-3px); }
+        75% { transform: translateX(3px); }
+    }
+    .student-attendance-page .att-lesson-plan {
+        margin: 0 0.75rem 0.875rem;
+        border-radius: 0.875rem;
+        border: 2px solid #6ee7b7;
+        background: linear-gradient(145deg, #ecfdf5 0%, #ffffff 55%, #f0fdfa 100%);
+        box-shadow: 0 8px 24px rgba(5, 150, 105, 0.14), 0 0 0 1px rgba(5, 150, 105, 0.08);
+        overflow: hidden;
+        animation: att-lesson-enter 0.45s ease-out;
+    }
+    .student-attendance-page .att-lesson-plan:not(.att-lesson-plan--open) {
+        animation: att-lesson-pulse 2.4s ease-in-out infinite;
+    }
+    .student-attendance-page .att-lesson-plan.att-lesson-plan--nudge {
+        animation: att-lesson-nudge 0.45s ease-in-out 2;
+    }
+    .dark .student-attendance-page .att-lesson-plan {
+        border-color: #059669;
+        background: linear-gradient(145deg, #022c22 0%, #0f172a 55%, #064e3b 100%);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(16, 185, 129, 0.2);
+    }
+    .student-attendance-page .att-lesson-plan__toggle {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.875rem 1rem;
+        border: none;
+        background: linear-gradient(90deg, rgba(16, 185, 129, 0.12) 0%, rgba(255, 255, 255, 0) 100%);
+        color: #065f46;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.2s ease;
+    }
+    .student-attendance-page .att-lesson-plan__toggle:hover {
+        background: linear-gradient(90deg, rgba(16, 185, 129, 0.2) 0%, rgba(255, 255, 255, 0) 100%);
+    }
+    .dark .student-attendance-page .att-lesson-plan__toggle {
+        color: #a7f3d0;
+        background: linear-gradient(90deg, rgba(16, 185, 129, 0.22) 0%, rgba(15, 23, 42, 0) 100%);
+    }
+    .student-attendance-page .att-lesson-plan__icon-wrap {
+        position: relative;
+        flex-shrink: 0;
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #059669, #14b8a6);
+        box-shadow: 0 4px 10px rgba(5, 150, 105, 0.35);
+    }
+    .student-attendance-page .att-lesson-plan__toggle-icon {
+        color: #fff;
+        font-size: 1.05rem;
+    }
+    .student-attendance-page .att-lesson-plan__live-dot {
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        width: 0.625rem;
+        height: 0.625rem;
+        border-radius: 9999px;
+        background: #22c55e;
+        border: 2px solid #fff;
+        animation: att-lesson-dot 1.6s ease-in-out infinite;
+    }
+    .dark .student-attendance-page .att-lesson-plan__live-dot { border-color: #022c22; }
+    .student-attendance-page .att-lesson-plan--open .att-lesson-plan__live-dot {
+        background: #f59e0b;
+    }
+    .student-attendance-page .att-lesson-plan--has-content .att-lesson-plan__live-dot {
+        background: #22c55e;
+        animation: none;
+    }
+    .student-attendance-page .att-lesson-plan__head-text {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+    }
+    .student-attendance-page .att-lesson-plan__title-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .student-attendance-page .att-lesson-plan__title {
+        font-size: 1rem;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        color: #064e3b;
+    }
+    .dark .student-attendance-page .att-lesson-plan__title { color: #ecfdf5; }
+    .student-attendance-page .att-lesson-plan__badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.125rem 0.5rem;
+        border-radius: 9999px;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #047857;
+        background: #d1fae5;
+        border: 1px solid #6ee7b7;
+    }
+    .dark .student-attendance-page .att-lesson-plan__badge {
+        color: #a7f3d0;
+        background: rgba(6, 78, 59, 0.65);
+        border-color: #059669;
+    }
+    .student-attendance-page .att-lesson-plan__subtitle {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #0f766e;
+        line-height: 1.35;
+    }
+    .dark .student-attendance-page .att-lesson-plan__subtitle { color: #99f6e4; }
+    .student-attendance-page .att-lesson-plan__meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+    .student-attendance-page .att-lesson-plan__progress {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #047857;
+        background: #fff;
+        border: 1px solid #a7f3d0;
+        border-radius: 9999px;
+        padding: 0.2rem 0.55rem;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    .dark .student-attendance-page .att-lesson-plan__progress {
+        color: #6ee7b7;
+        background: rgba(15, 23, 42, 0.8);
+        border-color: #059669;
+    }
+    .student-attendance-page .att-lesson-plan--has-content .att-lesson-plan__progress {
+        color: #fff;
+        background: #059669;
+        border-color: #059669;
+    }
+    .student-attendance-page .att-lesson-plan__chevron {
+        font-size: 0.875rem;
+        color: #059669;
+        transition: transform 0.25s ease;
+    }
+    .student-attendance-page .att-lesson-plan__toggle[aria-expanded="true"] .att-lesson-plan__chevron {
+        transform: rotate(180deg);
+    }
+    .student-attendance-page .att-lesson-plan__body {
+        padding: 0 1rem 1rem;
+        border-top: 1px dashed #a7f3d0;
+        background: rgba(255, 255, 255, 0.72);
+    }
+    .student-attendance-page .att-lesson-plan__body.hidden {
+        display: none;
+    }
+    .dark .student-attendance-page .att-lesson-plan__body {
+        border-color: #047857;
+        background: rgba(2, 44, 34, 0.35);
+    }
+    .student-attendance-page .att-lesson-plan__progress-bar {
+        height: 0.35rem;
+        margin: 0.75rem 0 0.875rem;
+        border-radius: 9999px;
+        background: #d1fae5;
+        overflow: hidden;
+    }
+    .dark .student-attendance-page .att-lesson-plan__progress-bar { background: #134e4a; }
+    .student-attendance-page .att-lesson-plan__progress-fill {
+        display: block;
+        height: 100%;
+        width: 0;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #10b981, #14b8a6);
+        transition: width 0.35s ease;
+    }
+    .student-attendance-page .att-lesson-plan__hint {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        margin: 0 0 0.875rem;
+        padding: 0.625rem 0.75rem;
+        font-size: 0.8125rem;
+        color: #065f46;
+        line-height: 1.45;
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        border-radius: 0.625rem;
+    }
+    .student-attendance-page .att-lesson-plan__hint i {
+        color: #f59e0b;
+        margin-top: 0.1rem;
+    }
+    .dark .student-attendance-page .att-lesson-plan__hint {
+        color: #a7f3d0;
+        background: rgba(6, 78, 59, 0.35);
+        border-color: #047857;
+    }
+    .student-attendance-page .att-lesson-plan__picker-wrap {
+        margin-bottom: 0.875rem;
+        max-width: 22rem;
+    }
+    .student-attendance-page .att-lesson-plan__picker-label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #047857;
+        margin-bottom: 0.3rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .dark .student-attendance-page .att-lesson-plan__picker-label { color: #6ee7b7; }
+    .student-attendance-page .att-lesson-plan__session-label {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin: 0 0 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: #065f46;
+    }
+    .dark .student-attendance-page .att-lesson-plan__session-label { color: #d1fae5; }
+    .student-attendance-page .att-lesson-plan__grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    @media (min-width: 768px) {
+        .student-attendance-page .att-lesson-plan__grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .student-attendance-page .att-lesson-plan__field--wide {
+            grid-column: 1 / -1;
+        }
+    }
+    .student-attendance-page .att-lesson-plan__label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #047857;
+        margin-bottom: 0.3rem;
+    }
+    .dark .student-attendance-page .att-lesson-plan__label { color: #99f6e4; }
+    .student-attendance-page .att-lesson-plan__input {
+        width: 100%;
+        min-height: 2.75rem;
+        padding: 0.55rem 0.7rem;
+        font-size: 0.875rem;
+        line-height: 1.45;
+        border: 1.5px solid #a7f3d0;
+        border-radius: 0.625rem;
+        background: #fff;
+        color: #0f172a;
+        resize: vertical;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+    .student-attendance-page .att-lesson-plan__input:not(:placeholder-shown) {
+        border-color: #34d399;
+        background: #f0fdf4;
+    }
+    .dark .student-attendance-page .att-lesson-plan__input {
+        border-color: #047857;
+        background: #0f172a;
+        color: #f8fafc;
+    }
+    .dark .student-attendance-page .att-lesson-plan__input:not(:placeholder-shown) {
+        border-color: #10b981;
+        background: #022c22;
+    }
+    .student-attendance-page .att-lesson-plan__input:focus {
+        outline: none;
+        border-color: #059669;
+        box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.22);
+        background: #fff;
+    }
+    .dark .student-attendance-page .att-lesson-plan__input:focus {
+        background: #111827;
+    }
+
+    /* Session meta — school, learning area, date/time, teacher */
+    .student-attendance-page .la-session-meta {
+        margin: 0 0 0.875rem;
+        padding: 0.75rem 0.875rem;
+        border-radius: 0.625rem;
+        border: 1px solid #a7f3d0;
+        background: linear-gradient(135deg, #f0fdf4 0%, #fff 100%);
+    }
+    .dark .student-attendance-page .la-session-meta {
+        border-color: #047857;
+        background: linear-gradient(135deg, #022c22 0%, #0f172a 100%);
+    }
+    .student-attendance-page .la-session-meta__grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.5rem 0.75rem;
+        margin: 0;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .la-session-meta__grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+    .student-attendance-page .la-session-meta__item { margin: 0; }
+    .student-attendance-page .la-session-meta__item dt {
+        margin: 0 0 0.15rem;
+        font-size: 0.625rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #047857;
+    }
+    .dark .student-attendance-page .la-session-meta__item dt { color: #6ee7b7; }
+    .student-attendance-page .la-session-meta__item dd {
+        margin: 0;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #0f172a;
+        line-height: 1.35;
+    }
+    .dark .student-attendance-page .la-session-meta__item dd { color: #f1f5f9; }
+    .student-attendance-page .la-session-meta__time { font-weight: 500; color: #0f766e; }
+    .dark .student-attendance-page .la-session-meta__time { color: #99f6e4; }
+    .student-attendance-page .att-attendance-meta-wrap {
+        margin: 0 0.75rem 0.75rem;
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+        border: 1px solid #bfdbfe;
+        background: #eff6ff;
+    }
+    .dark .student-attendance-page .att-attendance-meta-wrap {
+        border-color: #1e40af;
+        background: rgba(30, 58, 138, 0.2);
+    }
+    .student-attendance-page .att-attendance-meta__heading {
+        margin: 0 0 0.625rem;
+        font-size: 0.8125rem;
+        font-weight: 800;
+        color: #1e40af;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .dark .student-attendance-page .att-attendance-meta__heading { color: #93c5fd; }
+    .student-attendance-page .att-attendance-meta-item.hidden { display: none; }
+    .student-attendance-page .att-lesson-plan .la-session-meta { margin-top: 0.25rem; }
+
     /* Pagination */
     .student-attendance-page .att-pagination {
         display: flex;
@@ -1270,6 +1641,68 @@
             });
         }
 
+        function appendLessonPlanFields(formData, root) {
+            if (!ATT_IS_TEACHER_SUBJECT || !root) return;
+            root.querySelectorAll('.att-lesson-plan__input[name^="lp_"]').forEach(function(el) {
+                if (el.name) formData.set(el.name, el.value || '');
+            });
+        }
+
+        function setLessonPlanOpen(panel, open) {
+            if (!panel) return;
+            var toggle = panel.querySelector('.att-lesson-plan__toggle');
+            var body = panel.querySelector('.att-lesson-plan__body');
+            if (!toggle || !body) return;
+            body.classList.toggle('hidden', !open);
+            body.hidden = !open;
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            panel.classList.toggle('att-lesson-plan--open', !!open);
+        }
+
+        function getVisibleLessonPlanSession(panel) {
+            if (!panel) return null;
+            var blocks = panel.querySelectorAll('[data-att-lesson-session]');
+            for (var i = 0; i < blocks.length; i++) {
+                if (!blocks[i].classList.contains('hidden') && !blocks[i].hidden) return blocks[i];
+            }
+            return blocks[0] || null;
+        }
+
+        function updateLessonPlanProgress(panel) {
+            if (!panel) return;
+            var total = parseInt(panel.getAttribute('data-att-lesson-field-count') || '0', 10);
+            if (!total) return;
+            var session = getVisibleLessonPlanSession(panel);
+            var filled = 0;
+            if (session) {
+                session.querySelectorAll('.att-lesson-plan__input').forEach(function(el) {
+                    if ((el.value || '').trim()) filled += 1;
+                });
+            }
+            var pct = total ? Math.round(100 * filled / total) : 0;
+            var progressEl = panel.querySelector('[data-att-lesson-progress]');
+            if (progressEl) progressEl.textContent = filled + ' / ' + total;
+            var fillEl = panel.querySelector('[data-att-lesson-progress-fill]');
+            if (fillEl) fillEl.style.width = pct + '%';
+            panel.classList.toggle('att-lesson-plan--has-content', filled > 0);
+        }
+
+        function expandLessonPlanPanel(levelCard) {
+            if (!ATT_IS_TEACHER_SUBJECT || !levelCard) return;
+            var panel = levelCard.querySelector('[data-att-lesson-plan]');
+            if (!panel) return;
+            setLessonPlanOpen(panel, true);
+            panel.classList.remove('att-lesson-plan--nudge');
+            void panel.offsetWidth;
+            panel.classList.add('att-lesson-plan--nudge');
+            setTimeout(function() { panel.classList.remove('att-lesson-plan--nudge'); }, 1200);
+            var firstInput = getVisibleLessonPlanSession(panel);
+            if (firstInput) {
+                var ta = firstInput.querySelector('.att-lesson-plan__input');
+                if (ta) ta.focus({ preventScroll: true });
+            }
+        }
+
         function copyAttendanceHiddenFields(formData, form) {
             form.querySelectorAll('input[type="hidden"]').forEach(function(h) {
                 if (h.name) formData.set(h.name, h.value);
@@ -1326,6 +1759,7 @@
             }
             formData.set('student_ids', studentIdsCsv);
             appendAttendanceCellsInRoot(formData, levelCard);
+            appendLessonPlanFields(formData, levelCard);
             showAttendanceStatus('Saving…', false, levelCard);
             setAllSaveButtonsDisabled(form, true);
             form.setAttribute('data-attendance-saving', '1');
@@ -1432,6 +1866,7 @@
                 var saveBtn = e.target.closest ? e.target.closest('.att-level-save-btn') : null;
                 if (saveBtn) {
                     e.preventDefault();
+                    expandLessonPlanPanel(levelCard);
                     saveAttendance(levelCard);
                     return;
                 }
@@ -1464,11 +1899,58 @@
             });
         }
 
+        function wireLessonPlanPanels(root) {
+            var scope = root || document;
+            scope.querySelectorAll('[data-att-lesson-plan]').forEach(function(panel) {
+                if (panel.getAttribute('data-att-lesson-wired') === '1') return;
+                panel.setAttribute('data-att-lesson-wired', '1');
+                var toggle = panel.querySelector('.att-lesson-plan__toggle');
+                var body = panel.querySelector('.att-lesson-plan__body');
+                if (toggle && body) {
+                    setLessonPlanOpen(panel, !body.classList.contains('hidden') && !body.hidden);
+                    toggle.addEventListener('click', function() {
+                        var open = body.classList.contains('hidden') || body.hidden;
+                        setLessonPlanOpen(panel, open);
+                    });
+                }
+                panel.addEventListener('input', function(e) {
+                    if (e.target && e.target.classList && e.target.classList.contains('att-lesson-plan__input')) {
+                        updateLessonPlanProgress(panel);
+                    }
+                });
+                var picker = panel.querySelector('[data-att-lesson-plan-picker]');
+                if (picker) {
+                    function syncLessonPlanSession() {
+                        var key = picker.value || '';
+                        panel.querySelectorAll('[data-att-lesson-session]').forEach(function(block) {
+                            var match = block.getAttribute('data-att-lesson-session') === key;
+                            block.classList.toggle('hidden', !match);
+                            block.hidden = !match;
+                        });
+                        var levelCard = panel.closest('.attendance-level-card');
+                        if (levelCard) {
+                            levelCard.querySelectorAll('[data-att-att-meta-session]').forEach(function(block) {
+                                var match = block.getAttribute('data-att-att-meta-session') === key;
+                                block.classList.toggle('hidden', !match);
+                                block.hidden = !match;
+                            });
+                        }
+                        updateLessonPlanProgress(panel);
+                    }
+                    picker.addEventListener('change', syncLessonPlanSession);
+                    syncLessonPlanSession();
+                } else {
+                    updateLessonPlanProgress(panel);
+                }
+            });
+        }
+
         window.__initStudentAttendanceRegister = function() {
             var form = getAttendanceForm();
             if (!form) return;
             form.action = attendanceLiveEndpoint();
             refreshAllAttendanceRows();
+            wireLessonPlanPanels(document.getElementById('attendance-live-shell'));
         };
 
         function wireAttendanceLiveFilters() {

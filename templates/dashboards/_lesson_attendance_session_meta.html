@@ -1,0 +1,24 @@
+{# Session header: school, learning area, date/time, teacher — used on lesson plan & attendance #}
+<div class="la-session-meta" data-la-session-meta>
+    <dl class="la-session-meta__grid">
+        <div class="la-session-meta__item">
+            <dt>School name</dt>
+            <dd>{{ school_name|default(school_settings.school_name or 'School', true) }}</dd>
+        </div>
+        <div class="la-session-meta__item">
+            <dt>Learning area</dt>
+            <dd>{{ learning_area|default('—', true) }}</dd>
+        </div>
+        <div class="la-session-meta__item">
+            <dt>Date &amp; time</dt>
+            <dd>
+                {{ session_date_display|default(session_date|default('—', true), true) }}
+                {% if session_time|default('', true) %}<span class="la-session-meta__time">· {{ session_time }}</span>{% endif %}
+            </dd>
+        </div>
+        <div class="la-session-meta__item">
+            <dt>Teacher's name</dt>
+            <dd>{{ teacher_name|default(attendance_teacher_name|default('—', true), true) }}</dd>
+        </div>
+    </dl>
+</div>

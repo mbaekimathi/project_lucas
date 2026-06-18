@@ -1,3 +1,4 @@
+{% from 'dashboards/includes/teacher_class_student_attendance_nav.html' import class_student_attendance_link %}
 {% set ta = teacher_dashboard_analytics|default({}) %}
 {% set tsp = teacher_subject_progress|default({}, true) %}
 {% set tprof = teacher_profile|default(viewing_as_employee_info|default({}, true), true) %}
@@ -125,10 +126,10 @@
                 <i class="fas fa-clipboard-check text-teal-600 text-lg mb-1"></i>
                 <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Subject attendance</p>
             </a>
-            <a href="{{ employee_dash_url('student-management/class-student-attendance') }}" class="rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-center hover:border-sky-400 hover:bg-sky-50/50 dark:hover:bg-sky-900/10 transition">
-                <i class="fas fa-user-check text-sky-600 text-lg mb-1"></i>
-                <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Student attendance register</p>
-            </a>
+            {{ class_student_attendance_link(
+                link_class='rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-center hover:border-sky-400 hover:bg-sky-50/50 dark:hover:bg-sky-900/10 transition',
+                layout='tile'
+            ) }}
             <a href="{{ employee_dash_url('exam-timetable') }}" class="rounded-xl border border-gray-200 dark:border-gray-600 p-3 text-center hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition">
                 <i class="fas fa-clipboard-list text-indigo-500 text-lg mb-1"></i>
                 <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Exams</p>
