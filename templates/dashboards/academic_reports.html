@@ -114,7 +114,7 @@
         width: 100% !important;
         max-width: none !important;
         margin: 0 !important;
-        padding: 0 8mm !important;
+        padding: 0 !important;
         height: auto !important;
         min-height: 0 !important;
     }
@@ -125,16 +125,6 @@
         height: auto !important;
         max-height: none !important;
         overflow: visible !important;
-    }
-    #ar-preview-wrap .ar-print-page-break {
-        display: block !important;
-        height: 0 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        border: 0 !important;
-        visibility: visible !important;
-        page-break-before: always !important;
-        break-before: page !important;
     }
     /* Single individual report: full viewport width (static flow stays in narrow dashboard column) */
     #ar-preview-wrap.ar-print-single-sheet {
@@ -543,13 +533,10 @@
         page-break-before: always !important;
         break-before: page !important;
     }
-    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual.ar-print-page-follow {
-        page-break-before: always !important;
-        break-before: page !important;
-    }
-    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual:not(:last-of-type) {
-        page-break-after: always !important;
-        break-after: page !important;
+    /* One break only — do not also use break-after or extra break divs (causes blank pages) */
+    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
     }
     #ar-preview-wrap .ar-print-page-sheet,
     #ar-preview-wrap .ar-class-print-sheet,
@@ -680,18 +667,18 @@
     #ar-preview-wrap article.ar-rc-individual {
         margin-bottom: 0 !important;
     }
-    /* Full A4 portrait sheet per student (283mm = 297mm page − 14mm margins) */
+    /* Full A4 portrait sheet per student — min-height only so content does not spill to a 2nd page */
     #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual,
     #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual {
-        min-height: 283mm !important;
-        height: 283mm !important;
-        max-height: 283mm !important;
+        min-height: 276mm !important;
+        height: auto !important;
+        max-height: none !important;
         display: flex !important;
         flex-direction: column !important;
         box-sizing: border-box !important;
         break-inside: avoid !important;
         page-break-inside: avoid !important;
-        overflow: hidden !important;
+        overflow: visible !important;
     }
     #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual {
         page-break-after: avoid !important;
@@ -3794,25 +3781,6 @@
     detailsOpenState = [];
   }
 
-  function removeIndividualReportPageBreaks() {
-    document.querySelectorAll('#ar-preview-wrap .ar-print-page-break').forEach(function(el) {
-      el.remove();
-    });
-  }
-
-  function insertIndividualReportPageBreaks() {
-    removeIndividualReportPageBreaks();
-    var wrap = document.getElementById('ar-preview-wrap');
-    if (!wrap || !wrap.classList.contains('ar-print-individual-batch')) return;
-    var cards = wrap.querySelectorAll('#ar-details-list article.ar-rc-individual');
-    for (var i = 1; i < cards.length; i++) {
-      var br = document.createElement('div');
-      br.className = 'ar-print-page-break';
-      br.setAttribute('aria-hidden', 'true');
-      cards[i].parentNode.insertBefore(br, cards[i]);
-    }
-  }
-
   function detachPreviewForBatchPrint() {
     var wrap = document.getElementById('ar-preview-wrap');
     if (!wrap || !wrap.classList.contains('ar-print-individual-batch')) return;
@@ -3826,7 +3794,6 @@
   }
 
   function restorePreviewAfterPrint() {
-    removeIndividualReportPageBreaks();
     document.documentElement.classList.remove('ar-print-individual-batch-doc');
     var wrap = document.getElementById('ar-preview-wrap');
     if (!printPreviewRestore || !wrap || !printPreviewRestore.parent) {
@@ -3861,7 +3828,6 @@
     expandDetailsForPrint();
     syncPrintPageMode();
     normalizeIndividualReportPrintPages();
-    insertIndividualReportPageBreaks();
     detachPreviewForBatchPrint();
     scrollAcademicReportPaneToTop();
   }
@@ -4966,9 +4932,10 @@
         : ((row.current_grade && String(row.current_grade).trim())
           ? row.current_grade
           : (row.level_name || af.class_level || '-'));
-      const rankVal = classPosition != null ? classPosition : (row.position || '-');
-      const denom = (classSize != null && String(classSize).trim() !== '') ? String(classSize) : '';
-      const rankDisp = denom ? (String(rankVal) + ' / ' + denom) : String(rankVal);
+      const fifthStatLabel = useMultiExam ? 'Exams shown' : 'Subjects';
+      const fifthStatValue = useMultiExam
+        ? String(multiExamCols.length)
+        : String(cardSubjectColumns.length);
       const termExamLabel = useMultiExam
         ? reportCardTermExamLine(af, ew, null)
         : reportCardTermExamLine(af, ew, examLabelOverride);
@@ -4996,7 +4963,7 @@
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
           '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
           '<div class="ar-rc-inner">' +
-            renderReportCardHeader('REPORT CARD', { label: 'Class rank', value: rankDisp }) +
+            renderReportCardHeader('REPORT CARD', null) +
             renderReportCardMetaWithPhoto([
               { label: 'Student name', value: row.full_name || '-' },
               { label: 'Class / section', value: classLabel },
@@ -5010,7 +4977,7 @@
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.mean)) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(grade) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
-                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Class rank</p><p class="ar-rc-stat-value">' + escapeHtml(rankDisp) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">' + escapeHtml(fifthStatLabel) + '</p><p class="ar-rc-stat-value">' + escapeHtml(fifthStatValue) + '</p></div>' +
               '</div>' +
             '</div>' +
             '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegend + '</p>' +
