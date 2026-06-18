@@ -410,19 +410,10 @@ def fetch_petty_cash_book_payload(cursor, account_id, filters, helpers):
         except Exception as e:
             print(f'fetch_petty_cash_book_payload expense particulars: {e}')
 
-    rows = [
-        {
-            'date': '—',
-            'reference': '—',
-            'particulars': 'Opening balance (brought forward)',
-            'receipt_display': '—',
-            'payment_display': '—',
-            'balance_display': _fmt_kes(opening),
-            '_ledger_row': 'opening',
-        },
-    ]
+    rows = []
     running = opening
     total_receipt = total_payment = 0.0
+    transaction_rows = []
     for r in ledger:
         receipt = float(r.get('credit') or 0)
         payment = float(r.get('debit') or 0)
@@ -435,7 +426,7 @@ def fetch_petty_cash_book_payload(cursor, account_id, filters, helpers):
             exp = expense_particulars.get(int(exp_id))
             if exp:
                 particulars = exp.get('particulars') or particulars
-        rows.append({
+        transaction_rows.append({
             'date': r.get('date', '—'),
             'reference': r.get('reference', '—'),
             'particulars': particulars,
@@ -448,6 +439,17 @@ def fetch_petty_cash_book_payload(cursor, account_id, filters, helpers):
     total_payment = round(total_payment, 2)
     closing = round(opening + total_receipt - total_payment, 2)
 
+    transaction_rows.reverse()
+    rows.extend(transaction_rows)
+    rows.append({
+        'date': '—',
+        'reference': '—',
+        'particulars': 'Opening balance (brought forward)',
+        'receipt_display': '—',
+        'payment_display': '—',
+        'balance_display': _fmt_kes(opening),
+        '_ledger_row': 'opening',
+    })
     rows.append({
         'date': '—',
         'reference': '—',

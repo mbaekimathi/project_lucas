@@ -5,12 +5,21 @@
 {% block title %}Students Pocket Money - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-{% include 'dashboards/includes/student_fees_sidebar.html' %}
+{% set accountant_nav_scope = 'accounts' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
 {% include 'dashboards/includes/student_fees_accounts_styles.html' %}
 <script>
+var PM_MPESA_CFG = {
+  darajaReady: {{ mpesa_daraja_enabled|default(false)|tojson }},
+  sandboxConfirm: {{ mpesa_sandbox_confirm|default(false)|tojson }},
+  stkUrl: {{ employee_dash_url('student-fees/pocket-money/mpesa/stk-push')|tojson }},
+  nextReferenceUrl: {{ employee_dash_url('student-fees/pocket-money/next-reference')|tojson }},
+  statusUrlBase: {{ (employee_dash_url('student-fees/mpesa/status') + '/')|tojson }},
+  confirmUrl: {{ employee_dash_url('student-fees/mpesa/confirm-payment')|tojson }},
+};
 document.addEventListener('alpine:init', function () {
   Alpine.data('pocketMoneyPage', function () {
     return {
@@ -18,23 +27,40 @@ document.addEventListener('alpine:init', function () {
       loading: false,
       search: '',
       sort: 'name_asc',
+      academicLevel: '',
       page: 1,
       pages: 1,
       total: 0,
       pageBalanceDisplay: '0.00',
       studentsApi: {{ employee_dash_url('student-fees/pocket-money/students')|tojson }},
       topUpUrl: {{ employee_dash_url('student-fees/pocket-money/top-up')|tojson }},
+      withdrawUrl: {{ employee_dash_url('student-fees/pocket-money/withdraw')|tojson }},
+      auditUrlBase: {{ (employee_dash_url('student-fees/pocket-money/audit') + '/')|tojson }},
       canTopUp: {{ can_top_up|tojson }},
       pocketMoneyAccounts: {{ pocket_money_accounts_picker|default([])|tojson }},
-      paymentModeMap: { 'Cash': 'cash', 'Cheque': 'cheque', 'Mobile Money': 'mpesa' },
-      modalOpen: false,
+      paymentModeMap: { 'Cash': 'cash', 'Cheque': 'cheque', 'M-Pesa': 'mpesa', 'Mobile Money': 'mpesa' },
+      modalType: '',
       selectedStudent: null,
       financeAccountId: '',
       paymentMethod: '',
       paymentReference: '',
+      referenceLoading: false,
+      referenceIsAuto: false,
       topUpAmount: '',
       topUpNotes: '',
+      mpesaPhone: '',
+      mpesaPolling: false,
+      mpesaPollId: null,
+      mpesaPollCount: 0,
+      mpesaCheckoutId: null,
+      mpesaStatusMsg: '',
+      mpesaReceiptInput: '',
+      mpesaAccountRef: '',
+      mpesaCodeReference: '',
+      mpesaSandboxConfirm: PM_MPESA_CFG.sandboxConfirm,
       submitting: false,
+      auditLoading: false,
+      auditData: null,
       flashMessage: '',
       flashError: false,
       summary: {
@@ -45,6 +71,24 @@ document.addEventListener('alpine:init', function () {
       searchTimer: null,
       applySummary: function (summary) {
         if (summary) this.summary = summary;
+      },
+      applyPocketMoneyAccounts: function (accounts) {
+        if (accounts && accounts.length) this.pocketMoneyAccounts = accounts;
+      },
+      updateFinanceAccountBalance: function (result) {
+        if (!result || result.finance_account_id == null) return;
+        var id = String(result.finance_account_id);
+        var bal = result.finance_account_balance;
+        var disp = result.finance_account_balance_display;
+        this.pocketMoneyAccounts = (this.pocketMoneyAccounts || []).map(function (a) {
+          if (String(a.id) === id) {
+            return Object.assign({}, a, {
+              current_balance: bal != null ? bal : a.current_balance,
+              current_balance_display: disp || a.current_balance_display,
+            });
+          }
+          return a;
+        });
       },
       parseJsonResponse: function (r) {
         var ct = (r.headers.get('Content-Type') || '').toLowerCase();
@@ -86,12 +130,14 @@ document.addEventListener('alpine:init', function () {
           + '&per_page=50'
           + '&sort=' + encodeURIComponent(self.sort || 'name_asc');
         if (self.search) url += '&q=' + encodeURIComponent(self.search);
+        if (self.academicLevel) url += '&grade=' + encodeURIComponent(self.academicLevel);
         fetch(url, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
           .then(function (r) { return self.parseJsonResponse(r); })
           .then(function (data) {
             if (data && data.success) {
               self.students = data.students || [];
               self.applySummary(data.summary);
+              self.applyPocketMoneyAccounts(data.pocket_money_accounts);
               var meta = data.meta || {};
               self.page = meta.page || 1;
               self.pages = meta.pages || 1;
@@ -110,32 +156,272 @@ document.addEventListener('alpine:init', function () {
       onSortChange: function () {
         this.fetchStudents(1);
       },
+      onLevelChange: function () {
+        this.fetchStudents(1);
+      },
+      clearLevelFilter: function () {
+        this.academicLevel = '';
+        this.fetchStudents(1);
+      },
       openTopUp: function (student) {
         if (!this.canTopUp || !student) return;
+        this.resetTxnFields();
         this.selectedStudent = student;
+        this.modalType = 'topup';
+      },
+      openWithdraw: function (student) {
+        if (!this.canTopUp || !student) return;
+        if (Number(student.pocket_balance || 0) <= 0) return;
+        this.resetTxnFields();
+        this.selectedStudent = student;
+        this.modalType = 'withdraw';
+      },
+      openAudit: function (student) {
+        if (!student) return;
+        this.selectedStudent = student;
+        this.auditData = null;
+        this.auditLoading = true;
+        this.flashMessage = '';
+        this.flashError = false;
+        this.modalType = 'audit';
+        this.fetchAudit(student.student_id);
+      },
+      resetTxnFields: function () {
+        this.stopMpesaPolling();
         this.financeAccountId = '';
         this.paymentMethod = '';
         this.paymentReference = '';
+        this.referenceLoading = false;
+        this.referenceIsAuto = false;
         this.topUpAmount = '';
         this.topUpNotes = '';
+        this.mpesaPhone = '';
+        this.mpesaCheckoutId = null;
+        this.mpesaReceiptInput = '';
+        this.mpesaAccountRef = '';
+        this.mpesaCodeReference = '';
+        this.mpesaStatusMsg = '';
         this.flashMessage = '';
-        this.modalOpen = true;
+        this.flashError = false;
+      },
+      auditUrl: function (studentId) {
+        var base = String(this.auditUrlBase || '').replace(/\/?$/, '/');
+        return base + encodeURIComponent(studentId || '');
+      },
+      fetchAudit: function (studentId) {
+        var self = this;
+        self.auditLoading = true;
+        fetch(self.auditUrl(studentId), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (r) { return self.parseJsonResponse(r); })
+          .then(function (data) {
+            if (data && data.success) {
+              self.auditData = data.audit || null;
+            } else {
+              self.auditData = null;
+              self.flashMessage = (data && data.message) || 'Could not load audit trail.';
+              self.flashError = true;
+            }
+          })
+          .catch(function () {
+            self.auditData = null;
+            self.flashMessage = 'Could not load audit trail.';
+            self.flashError = true;
+          })
+          .finally(function () { self.auditLoading = false; });
       },
       onTopUpPaymentMethodChange: function () {
         var id = String(this.financeAccountId || '');
-        if (!id) return;
-        var stillValid = (this.filteredPocketMoneyAccounts || []).some(function (a) {
-          return String(a.id) === id;
-        });
-        if (!stillValid) this.financeAccountId = '';
+        if (id) {
+          var stillValid = (this.filteredPocketMoneyAccounts || []).some(function (a) {
+            return String(a.id) === id;
+          });
+          if (!stillValid) this.financeAccountId = '';
+        }
+        if (this.modalType === 'topup' && this.paymentMethod === 'M-Pesa') {
+          this.fetchAutoReference();
+        } else if (this.modalType === 'topup') {
+          this.paymentReference = '';
+          this.referenceIsAuto = false;
+        }
       },
-      closeTopUp: function () {
-        this.modalOpen = false;
+      fetchAutoReference: function () {
+        var self = this;
+        if (!PM_MPESA_CFG.nextReferenceUrl) return;
+        self.referenceLoading = true;
+        self.referenceIsAuto = true;
+        fetch(PM_MPESA_CFG.nextReferenceUrl, {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.success && data.reference) {
+              self.paymentReference = String(data.reference);
+            } else {
+              self.paymentReference = '';
+              self.referenceIsAuto = false;
+            }
+          })
+          .catch(function () {
+            self.paymentReference = '';
+            self.referenceIsAuto = false;
+          })
+          .finally(function () { self.referenceLoading = false; });
+      },
+      closeModal: function () {
+        this.stopMpesaPolling();
+        this.modalType = '';
         this.selectedStudent = null;
-        this.financeAccountId = '';
-        this.paymentMethod = '';
-        this.paymentReference = '';
+        this.auditData = null;
+        this.auditLoading = false;
         this.submitting = false;
+        this.resetTxnFields();
+      },
+      closeTopUp: function () { this.closeModal(); },
+      stopMpesaPolling: function () {
+        if (this.mpesaPollId) { clearInterval(this.mpesaPollId); this.mpesaPollId = null; }
+        this.mpesaPollCount = 0;
+        this.mpesaPolling = false;
+      },
+      mpesaStatusUrl: function (checkoutId) {
+        var base = String(PM_MPESA_CFG.statusUrlBase || '').replace(/\/?$/, '/');
+        return base + encodeURIComponent(checkoutId || '');
+      },
+      handleMpesaCompleted: function (data) {
+        var self = this;
+        self.stopMpesaPolling();
+        self.submitting = false;
+        var codeRef = String((data && (data.mpesa_code_reference || data.mpesa_receipt)) || '').trim();
+        self.mpesaCodeReference = codeRef;
+        self.flashMessage = data.message || (codeRef
+          ? ('M-Pesa top-up recorded. Code reference: ' + codeRef)
+          : 'M-Pesa top-up recorded successfully.');
+        self.flashError = false;
+        self.mpesaCheckoutId = null;
+        setTimeout(function () {
+          self.closeModal();
+          self.fetchStudents(self.page);
+        }, 800);
+      },
+      pollMpesaStatus: function (checkoutId) {
+        var self = this;
+        self.stopMpesaPolling();
+        self.mpesaCheckoutId = checkoutId;
+        self.mpesaPolling = true;
+        self.mpesaStatusMsg = 'Waiting for M-Pesa PIN on the phone…';
+        function tick() {
+          self.mpesaPollCount += 1;
+          fetch(self.mpesaStatusUrl(checkoutId), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+              if (!data || !data.success) return;
+              if (data.sync_warning) self.mpesaStatusMsg = data.sync_warning;
+              else if (data.message) self.mpesaStatusMsg = data.message;
+              var codeRef = String((data.mpesa_code_reference || data.mpesa_receipt) || '').trim();
+              if (codeRef) self.mpesaCodeReference = codeRef;
+              var st = String(data.status || '').toLowerCase();
+              if (st === 'completed') self.handleMpesaCompleted(data);
+              else if (st === 'failed' || st === 'cancelled') {
+                self.stopMpesaPolling();
+                self.submitting = false;
+                self.flashMessage = data.message || 'M-Pesa payment was not completed.';
+                self.flashError = true;
+              }
+            })
+            .catch(function () {});
+          if (self.mpesaPollCount >= 40) {
+            self.stopMpesaPolling();
+            self.submitting = false;
+            self.flashMessage = self.mpesaSandboxConfirm
+              ? 'Timed out. If PIN was entered, use Confirm M-Pesa payment below.'
+              : 'Timed out waiting for M-Pesa confirmation.';
+            self.flashError = true;
+          }
+        }
+        tick();
+        self.mpesaPollId = setInterval(tick, 3000);
+      },
+      confirmMpesaSandbox: function () {
+        var self = this;
+        if (!self.mpesaCheckoutId || !PM_MPESA_CFG.confirmUrl) return;
+        self.submitting = true;
+        self.flashMessage = '';
+        self.flashError = false;
+        fetch(PM_MPESA_CFG.confirmUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({
+            checkout_request_id: self.mpesaCheckoutId,
+            mpesa_receipt: self.mpesaReceiptInput || '',
+            mpesa_code_reference: self.mpesaReceiptInput || '',
+          }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data && data.success && String(data.status || '').toLowerCase() === 'completed') {
+              self.handleMpesaCompleted(data);
+            } else {
+              self.flashMessage = (data && data.message) || 'Could not confirm M-Pesa payment.';
+              self.flashError = true;
+              self.submitting = false;
+            }
+          })
+          .catch(function () {
+            self.flashMessage = 'Could not confirm M-Pesa payment.';
+            self.flashError = true;
+            self.submitting = false;
+          });
+      },
+      submitMpesaStk: function () {
+        var self = this;
+        if (!PM_MPESA_CFG.stkUrl) {
+          self.flashMessage = 'M-Pesa STK is not configured.';
+          self.flashError = true;
+          self.submitting = false;
+          return;
+        }
+        if (!self.mpesaPhone || !String(self.mpesaPhone).trim()) {
+          self.flashMessage = 'Enter the M-Pesa phone number.';
+          self.flashError = true;
+          self.submitting = false;
+          return;
+        }
+        fetch(PM_MPESA_CFG.stkUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({
+            student_id: self.selectedStudent.student_id,
+            finance_account_id: self.financeAccountId,
+            phone: self.mpesaPhone,
+            amount: self.topUpAmount,
+            notes: self.topUpNotes || '',
+          }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data || !data.success) {
+              self.flashMessage = (data && data.message) || 'Could not start M-Pesa payment.';
+              self.flashError = true;
+              self.submitting = false;
+              return;
+            }
+            self.mpesaAccountRef = data.account_reference ? String(data.account_reference) : '';
+            if (data.pocket_money_reference) {
+              self.paymentReference = String(data.pocket_money_reference);
+              self.referenceIsAuto = true;
+            }
+            self.flashError = false;
+            self.flashMessage = data.message || 'Check the phone for the M-Pesa prompt.';
+            if (data.checkout_request_id) self.pollMpesaStatus(data.checkout_request_id);
+            else self.submitting = false;
+          })
+          .catch(function () {
+            self.flashMessage = 'Could not reach the server for M-Pesa STK.';
+            self.flashError = true;
+            self.submitting = false;
+          });
       },
       submitTopUp: function () {
         var self = this;
@@ -150,14 +436,20 @@ document.addEventListener('alpine:init', function () {
           self.flashError = true;
           return;
         }
-        if (!(self.paymentReference || '').trim()) {
-          self.flashMessage = 'Enter the payment reference number.';
-          self.flashError = true;
-          return;
-        }
         var amt = parseFloat(String(self.topUpAmount || '').replace(/,/g, ''));
         if (!amt || amt <= 0) {
           self.flashMessage = 'Enter a valid amount greater than zero.';
+          self.flashError = true;
+          return;
+        }
+        if (self.paymentMethod === 'M-Pesa') {
+          self.submitting = true;
+          self.flashMessage = '';
+          self.submitMpesaStk();
+          return;
+        }
+        if (!(self.paymentReference || '').trim()) {
+          self.flashMessage = 'Enter the payment reference number.';
           self.flashError = true;
           return;
         }
@@ -187,6 +479,7 @@ document.addEventListener('alpine:init', function () {
               self.flashMessage = data.message || 'Top-up recorded.';
               self.flashError = false;
               self.applySummary(data.summary);
+              self.updateFinanceAccountBalance(data.result);
               if (data.result) {
                 var sid = String(data.result.student_id || '');
                 var bal = data.result.balance_after_display;
@@ -201,7 +494,7 @@ document.addEventListener('alpine:init', function () {
                 });
               }
               setTimeout(function () {
-                self.closeTopUp();
+                self.closeModal();
                 self.fetchStudents(self.page);
               }, 600);
             } else {
@@ -217,6 +510,78 @@ document.addEventListener('alpine:init', function () {
             } else {
               self.flashMessage = 'Could not reach the server. Is the app running?';
             }
+            self.flashError = true;
+          })
+          .finally(function () { self.submitting = false; });
+      },
+      submitWithdraw: function () {
+        var self = this;
+        if (!self.selectedStudent || self.submitting) return;
+        if (!self.financeAccountId) {
+          self.flashMessage = 'Select a pocket money account.';
+          self.flashError = true;
+          return;
+        }
+        if (!self.paymentMethod) {
+          self.flashMessage = 'Select a withdrawal mode.';
+          self.flashError = true;
+          return;
+        }
+        if (!(self.paymentReference || '').trim()) {
+          self.flashMessage = 'Enter the payment reference number.';
+          self.flashError = true;
+          return;
+        }
+        var amt = parseFloat(String(self.topUpAmount || '').replace(/,/g, ''));
+        if (!amt || amt <= 0) {
+          self.flashMessage = 'Enter a valid amount greater than zero.';
+          self.flashError = true;
+          return;
+        }
+        var maxBal = Number(self.selectedStudent.pocket_balance || 0);
+        if (amt > maxBal) {
+          self.flashMessage = 'Amount exceeds student balance (KES ' + (self.selectedStudent.pocket_balance_display || '0.00') + ').';
+          self.flashError = true;
+          return;
+        }
+        self.submitting = true;
+        self.flashMessage = '';
+        var fd = new FormData();
+        fd.append('student_id', self.selectedStudent.student_id);
+        fd.append('finance_account_id', self.financeAccountId);
+        fd.append('payment_method', self.paymentMethod);
+        fd.append('payment_reference', (self.paymentReference || '').trim());
+        fd.append('amount', String(amt));
+        fd.append('notes', self.topUpNotes || '');
+        fetch(self.withdrawUrl, {
+          method: 'POST',
+          body: fd,
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })
+          .then(function (r) {
+            return self.parseJsonResponse(r).then(function (data) {
+              return { ok: r.ok, data: data };
+            });
+          })
+          .then(function (res) {
+            var data = res.data || {};
+            if (res.ok && data.success) {
+              self.flashMessage = data.message || 'Withdrawal recorded.';
+              self.flashError = false;
+              self.applySummary(data.summary);
+              self.updateFinanceAccountBalance(data.result);
+              setTimeout(function () {
+                self.closeModal();
+                self.fetchStudents(self.page);
+              }, 600);
+            } else {
+              self.flashMessage = (data && data.message) || 'Could not withdraw.';
+              self.flashError = true;
+            }
+          })
+          .catch(function () {
+            self.flashMessage = 'Could not reach the server.';
             self.flashError = true;
           })
           .finally(function () { self.submitting = false; });
@@ -237,7 +602,7 @@ document.addEventListener('alpine:init', function () {
                 </div>
                 <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Students pocket money</h1>
                 <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
-                    View pocket money balances by admission number and top up student accounts.
+                    View pocket money balances, top up, withdraw, and audit each student’s ledger.
                 </p>
                 <nav class="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-black/20 mt-4" aria-label="Student fees sections">
                     <a href="{{ employee_dash_url('student-fees') }}"
@@ -278,27 +643,55 @@ document.addEventListener('alpine:init', function () {
         </div>
     </header>
 
-    <div class="sf-panel rounded-xl p-4 sm:p-5 mb-5 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div class="relative flex-1 max-w-md">
-            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[var(--acc-muted)] text-sm"></i>
-            <input type="search" x-model="search" @input="onSearchInput()"
-                   placeholder="Search name, admission, grade…"
-                   class="accounts-field w-full rounded-xl pl-9 py-2.5 text-sm" />
+    <div class="sf-panel rounded-xl p-4 sm:p-5 mb-5 space-y-3">
+        <div class="flex flex-col lg:flex-row gap-3 lg:items-end">
+            <div class="relative flex-1 min-w-0 max-w-md">
+                <label for="pm_search" class="mb-1.5 block text-xs font-semibold uppercase text-[var(--acc-muted)]">Search</label>
+                <i class="fas fa-search absolute left-3 bottom-2.5 text-[var(--acc-muted)] text-sm"></i>
+                <input id="pm_search" type="search" x-model="search" @input="onSearchInput()"
+                       placeholder="Name, admission, grade…"
+                       class="accounts-field w-full rounded-xl pl-9 py-2.5 text-sm" />
+            </div>
+            <div class="w-full sm:w-auto sm:min-w-[12rem]">
+                <label for="pm_level" class="mb-1.5 block text-xs font-semibold uppercase text-[var(--acc-muted)]">Academic level</label>
+                <select id="pm_level" x-model="academicLevel" @change="onLevelChange()"
+                        class="accounts-field w-full rounded-lg px-3 py-2.5 text-sm">
+                    <option value="">All academic levels</option>
+                    {% for category, levels in (levels_by_category or {})|dictsort %}
+                    <optgroup label="{{ category }}">
+                        {% for level in levels %}
+                        <option value="{{ level.level_name }}">{{ level.level_name }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="w-full sm:w-auto sm:min-w-[10rem]">
+                <label for="pm_sort" class="mb-1.5 block text-xs font-semibold uppercase text-[var(--acc-muted)]">Sort</label>
+                <select id="pm_sort" x-model="sort" @change="onSortChange()"
+                        class="accounts-field w-full rounded-lg px-3 py-2.5 text-sm">
+                    <option value="name_asc">Name A–Z</option>
+                    <option value="name_desc">Name Z–A</option>
+                    <option value="id_asc">Admission A–Z</option>
+                    <option value="id_desc">Admission Z–A</option>
+                    <option value="grade_asc">Grade A–Z</option>
+                    <option value="grade_desc">Grade Z–A</option>
+                </select>
+            </div>
         </div>
-        <div class="flex items-center gap-2 shrink-0">
-            <label for="pm_sort" class="text-xs font-semibold uppercase text-[var(--acc-muted)]">Sort</label>
-            <select id="pm_sort" x-model="sort" @change="onSortChange()"
-                    class="accounts-field rounded-lg px-3 py-2 text-sm">
-                <option value="name_asc">Name A–Z</option>
-                <option value="name_desc">Name Z–A</option>
-                <option value="id_asc">Admission A–Z</option>
-                <option value="id_desc">Admission Z–A</option>
-                <option value="grade_asc">Grade A–Z</option>
-            </select>
+        <div x-show="academicLevel" x-cloak class="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--acc-line)]">
+            <span class="text-xs font-medium text-[var(--acc-muted)]">Active filter:</span>
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-teal-50 dark:bg-teal-950/40 px-2.5 py-1 text-xs font-semibold text-teal-800 dark:text-teal-200">
+                <i class="fas fa-graduation-cap"></i>
+                <span x-text="academicLevel"></span>
+                <button type="button" @click="clearLevelFilter()" class="opacity-70 hover:opacity-100" aria-label="Clear level filter">
+                    <i class="fas fa-times"></i>
+                </button>
+            </span>
         </div>
     </div>
 
-    <p x-show="flashMessage && !modalOpen" x-cloak
+    <p x-show="flashMessage && !modalType" x-cloak
        class="mb-4 rounded-xl px-4 py-3 text-sm"
        :class="flashError ? 'bg-red-50 text-red-800 border border-red-200 dark:bg-red-950/30 dark:text-red-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-200'"
        x-text="flashMessage"></p>
@@ -307,6 +700,10 @@ document.addEventListener('alpine:init', function () {
         <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-wrap items-center justify-between gap-2">
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 <span x-text="total"></span> students
+                <span x-show="academicLevel" x-cloak>
+                    <span class="text-slate-400">·</span>
+                    <span x-text="academicLevel"></span>
+                </span>
                 <span class="text-slate-400">·</span>
                 Page balance: <span class="tabular-nums text-teal-700 dark:text-teal-400" x-text="'KES ' + pageBalanceDisplay"></span>
             </p>
@@ -344,13 +741,29 @@ document.addEventListener('alpine:init', function () {
                                       x-text="'KES ' + stu.pocket_balance_display"></span>
                             </td>
                             <td class="px-4 py-3 text-right">
-                                <button type="button"
-                                        x-show="canTopUp"
-                                        @click="openTopUp(stu)"
-                                        class="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-3 py-2 transition">
-                                    <i class="fas fa-plus-circle"></i> Top up
-                                </button>
-                                <span x-show="!canTopUp" class="text-xs text-slate-400">—</span>
+                                <div class="inline-flex items-center justify-end gap-1.5 flex-wrap">
+                                    <button type="button"
+                                            @click="openAudit(stu)"
+                                            title="View pocket money audit trail"
+                                            class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 w-8 h-8 transition"
+                                            aria-label="View audit trail">
+                                        <i class="fas fa-eye text-xs"></i>
+                                    </button>
+                                    <button type="button"
+                                            x-show="canTopUp"
+                                            @click="openWithdraw(stu)"
+                                            :disabled="Number(stu.pocket_balance || 0) <= 0"
+                                            title="Withdraw pocket money"
+                                            class="inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-xs font-semibold px-2.5 py-2 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                                        <i class="fas fa-minus-circle"></i> Withdraw
+                                    </button>
+                                    <button type="button"
+                                            x-show="canTopUp"
+                                            @click="openTopUp(stu)"
+                                            class="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-3 py-2 transition">
+                                        <i class="fas fa-plus-circle"></i> Top up
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     </template>
@@ -373,10 +786,10 @@ document.addEventListener('alpine:init', function () {
 </div>
 
 <!-- Top-up modal -->
-<div x-show="modalOpen" x-cloak
+<div x-show="modalType === 'topup'" x-cloak
      class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
-     @keydown.escape.window="closeTopUp()">
-    <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" @click="closeTopUp()"></div>
+     @keydown.escape.window="closeModal()">
+    <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" @click="closeModal()"></div>
     <div x-ref="topUpModalPanel" role="dialog" aria-modal="true" tabindex="-1"
          class="accounts-modal relative z-10 w-full max-w-md rounded-xl bg-white dark:bg-slate-900 overflow-hidden shadow-2xl"
          @click.stop>
@@ -422,8 +835,9 @@ document.addEventListener('alpine:init', function () {
                 </p>
                 <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
                    x-show="!pocketMoneyAccounts.length">
-                    No Pocket money accounts found.
-                    <a href="{{ employee_dash_url('accounts') }}" class="underline font-semibold">Register one</a> under Accounts.
+                    No pocket money accounts found.
+                    <a href="{{ employee_dash_url('accounts') }}" class="underline font-semibold">Register one</a> under Accounts
+                    (category <strong>Pocket money account</strong>, or a name/description containing “pocket money”).
                 </p>
             </div>
 
@@ -434,8 +848,17 @@ document.addEventListener('alpine:init', function () {
                     <option value="">Select mode</option>
                     <option value="Cash">Cash</option>
                     <option value="Cheque">Cheque</option>
-                    <option value="Mobile Money">Mobile Money</option>
+                    {% if mpesa_daraja_enabled|default(false) %}
+                    <option value="M-Pesa">M-Pesa (STK push)</option>
+                    {% endif %}
+                    <option value="Mobile Money">Mobile Money (manual)</option>
                 </select>
+                {% if not mpesa_daraja_enabled|default(false) %}
+                <p x-show="paymentMethod === 'M-Pesa'" x-cloak
+                   class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case">
+                    M-Pesa STK is not enabled. Use manual Mobile Money or enable Daraja under Integration → Finance.
+                </p>
+                {% endif %}
             </div>
 
             <div>
@@ -445,11 +868,65 @@ document.addEventListener('alpine:init', function () {
                        class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
             </div>
 
-            <div>
-                <label for="topup_reference" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Reference number</label>
-                <input type="text" id="topup_reference" maxlength="255" required x-model="paymentReference"
-                       placeholder="Receipt no., M-Pesa code, cheque no., etc."
-                       class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
+            <!-- M-Pesa STK push -->
+            <div x-show="paymentMethod === 'M-Pesa'" x-cloak class="space-y-3">
+                <div>
+                    <label for="topup_mpesa_phone" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">M-Pesa phone</label>
+                    <input type="tel" id="topup_mpesa_phone" x-model="mpesaPhone" placeholder="e.g. 0712345678"
+                           class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
+                </div>
+                <p x-show="mpesaAccountRef" x-cloak
+                   class="text-xs text-teal-800 dark:text-teal-200 bg-teal-50 dark:bg-teal-950/40 border border-teal-200/80 dark:border-teal-800/50 rounded-lg px-3 py-2">
+                    M-Pesa account reference:
+                    <strong class="font-mono" x-text="mpesaAccountRef"></strong>
+                </p>
+                <p x-show="mpesaPolling" class="flex items-center gap-2 text-xs text-teal-700 dark:text-teal-300">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span x-text="mpesaStatusMsg || 'Waiting for PIN on phone…'"></span>
+                </p>
+                <div x-show="mpesaSandboxConfirm && mpesaCheckoutId" x-cloak class="flex gap-2">
+                    <input type="text" x-model="mpesaReceiptInput" placeholder="M-Pesa code reference (optional)"
+                           class="accounts-field flex-1 min-w-0 rounded-lg border px-3 py-2.5 text-sm font-mono dark:text-white" />
+                    <button type="button" @click="confirmMpesaSandbox()"
+                            class="shrink-0 rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-2 text-xs font-semibold text-white">
+                        Confirm
+                    </button>
+                </div>
+            </div>
+
+            <!-- Reference number -->
+            <div x-show="paymentMethod" x-cloak
+                 class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 px-4 py-3 space-y-2">
+                <label for="topup_reference" class="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
+                    Reference number
+                </label>
+                <template x-if="paymentMethod === 'M-Pesa'">
+                    <div class="space-y-1.5">
+                        <div class="relative">
+                            <input type="text" id="topup_reference" readonly
+                                   :value="paymentReference"
+                                   placeholder="Assigning reference…"
+                                   class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm font-mono tabular-nums bg-white/80 dark:bg-slate-900/60 dark:text-white cursor-default" />
+                            <span x-show="referenceLoading" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                <i class="fas fa-spinner fa-spin text-xs"></i>
+                            </span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 normal-case">
+                            Auto-generated for M-Pesa STK push. The M-Pesa confirmation code is stored separately in the audit trail.
+                        </p>
+                    </div>
+                </template>
+                <template x-if="paymentMethod && paymentMethod !== 'M-Pesa'">
+                    <div class="space-y-1.5">
+                        <input type="text" id="topup_reference_manual" maxlength="255" required
+                               x-model="paymentReference"
+                               placeholder="Receipt no., M-Pesa code, cheque no., etc."
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 normal-case">
+                            Enter the receipt, cheque, or mobile money reference for this top-up.
+                        </p>
+                    </div>
+                </template>
             </div>
 
             <div>
@@ -458,22 +935,182 @@ document.addEventListener('alpine:init', function () {
                        placeholder="e.g. Parent deposit, term allowance"
                        class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
             </div>
-            <p x-show="flashMessage && modalOpen" x-cloak
+            <p x-show="flashMessage && modalType === 'topup'" x-cloak
                class="text-sm rounded-lg px-3 py-2"
                :class="flashError ? 'bg-red-50 text-red-700 dark:bg-red-950/30' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30'"
                x-text="flashMessage"></p>
             <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-                <button type="button" @click="closeTopUp()"
+                <button type="button" @click="closeModal()"
                         class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
                     Cancel
                 </button>
                 <button type="submit" :disabled="submitting"
                         class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-                    <i class="fas fa-check" :class="submitting && 'fa-spin'"></i>
-                    <span x-text="submitting ? 'Saving…' : 'Confirm top-up'"></span>
+                    <i class="fas" :class="submitting ? 'fa-spinner fa-spin' : (paymentMethod === 'M-Pesa' ? 'fa-mobile-alt' : 'fa-check')"></i>
+                    <span x-text="submitting ? (paymentMethod === 'M-Pesa' ? 'Sending STK…' : 'Saving…') : (paymentMethod === 'M-Pesa' ? 'Send STK push' : 'Confirm top-up')"></span>
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Withdraw modal -->
+<div x-show="modalType === 'withdraw'" x-cloak
+     class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+     @keydown.escape.window="closeModal()">
+    <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" @click="closeModal()"></div>
+    <div role="dialog" aria-modal="true" tabindex="-1"
+         class="accounts-modal relative z-10 w-full max-w-md rounded-xl bg-white dark:bg-slate-900 overflow-hidden shadow-2xl"
+         @click.stop>
+        <div class="border-b border-slate-200 dark:border-slate-700 px-5 py-4 bg-gradient-to-r from-amber-700 to-amber-900">
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-amber-200">Pocket money</p>
+            <h3 class="mt-1 text-lg font-bold text-white">Withdraw</h3>
+            <template x-if="selectedStudent">
+                <p class="mt-1 text-sm text-amber-100/90">
+                    <span class="font-mono font-semibold" x-text="selectedStudent.admission_number"></span>
+                    · <span x-text="selectedStudent.full_name"></span>
+                </p>
+            </template>
+        </div>
+        <form @submit.prevent="submitWithdraw()" class="p-5 sm:p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+            <div class="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
+                <p class="text-[10px] font-semibold uppercase text-slate-500">Available balance</p>
+                <p class="mt-1 text-lg font-bold tabular-nums text-amber-700 dark:text-amber-400"
+                   x-text="selectedStudent ? ('KES ' + selectedStudent.pocket_balance_display) : 'KES 0.00'"></p>
+            </div>
+            <div>
+                <label for="withdraw_finance_account" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Pocket money account</label>
+                <select id="withdraw_finance_account" required x-model="financeAccountId"
+                        class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
+                    <option value="">Select account</option>
+                    <template x-for="acc in filteredPocketMoneyAccounts" :key="'w-' + acc.id">
+                        <option :value="acc.id"
+                                x-text="acc.account_name + ' — KES ' + acc.current_balance_display"></option>
+                    </template>
+                </select>
+            </div>
+            <div>
+                <label for="withdraw_method" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Withdrawal mode</label>
+                <select id="withdraw_method" required x-model="paymentMethod" @change="onTopUpPaymentMethodChange()"
+                        class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
+                    <option value="">Select mode</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Mobile Money">Mobile Money</option>
+                </select>
+            </div>
+            <div>
+                <label for="withdraw_amount" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Amount (KES)</label>
+                <input type="number" id="withdraw_amount" min="0.01" step="0.01" required x-model="topUpAmount"
+                       class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
+            </div>
+            <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 px-4 py-3 space-y-2">
+                <label for="withdraw_reference" class="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Reference number</label>
+                <input type="text" id="withdraw_reference" maxlength="255" required x-model="paymentReference"
+                       placeholder="Receipt no., M-Pesa code, cheque no., etc."
+                       class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 normal-case">
+                    Enter the payout reference (e.g. cash voucher, cheque, or mobile money code).
+                </p>
+            </div>
+            <div>
+                <label for="withdraw_notes" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Notes <span class="font-normal text-slate-400">(optional)</span></label>
+                <input type="text" id="withdraw_notes" maxlength="500" x-model="topUpNotes"
+                       placeholder="e.g. Student collection, canteen refund"
+                       class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
+            </div>
+            <p x-show="flashMessage && modalType === 'withdraw'" x-cloak
+               class="text-sm rounded-lg px-3 py-2"
+               :class="flashError ? 'bg-red-50 text-red-700 dark:bg-red-950/30' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30'"
+               x-text="flashMessage"></p>
+            <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                <button type="button" @click="closeModal()"
+                        class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                    Cancel
+                </button>
+                <button type="submit" :disabled="submitting"
+                        class="inline-flex justify-center items-center gap-2 rounded-lg bg-amber-600 hover:bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                    <i class="fas" :class="submitting ? 'fa-spinner fa-spin' : 'fa-minus-circle'"></i>
+                    <span x-text="submitting ? 'Saving…' : 'Confirm withdrawal'"></span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Audit trail modal -->
+<div x-show="modalType === 'audit'" x-cloak
+     class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+     @keydown.escape.window="closeModal()">
+    <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" @click="closeModal()"></div>
+    <div role="dialog" aria-modal="true" tabindex="-1"
+         class="accounts-modal relative z-10 w-full max-w-3xl rounded-xl bg-white dark:bg-slate-900 overflow-hidden shadow-2xl"
+         @click.stop>
+        <div class="border-b border-slate-200 dark:border-slate-700 px-5 py-4 bg-gradient-to-r from-slate-800 to-slate-900 flex items-start justify-between gap-3">
+            <div class="min-w-0">
+                <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-300">Pocket money audit</p>
+                <h3 class="mt-1 text-lg font-bold text-white" x-text="auditData ? auditData.full_name : (selectedStudent ? selectedStudent.full_name : 'Student')"></h3>
+                <p class="mt-1 text-sm text-slate-300" x-show="auditData || selectedStudent">
+                    <span class="font-mono font-semibold" x-text="auditData ? auditData.admission_number : (selectedStudent ? selectedStudent.admission_number : '')"></span>
+                    <span x-show="auditData && auditData.current_grade"> · <span x-text="auditData.current_grade"></span></span>
+                </p>
+            </div>
+            <button type="button" @click="closeModal()" class="text-slate-300 hover:text-white shrink-0 p-1" aria-label="Close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="p-5 sm:p-6 overflow-y-auto max-h-[75vh]">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
+                <div>
+                    <p class="text-[10px] font-semibold uppercase text-slate-500">Current balance</p>
+                    <p class="text-xl font-bold tabular-nums text-teal-700 dark:text-teal-400"
+                       x-text="auditData ? ('KES ' + auditData.balance_display) : '—'"></p>
+                </div>
+                <p x-show="auditLoading" class="text-xs text-slate-500"><i class="fas fa-spinner fa-spin mr-1"></i> Loading…</p>
+            </div>
+            <p x-show="flashMessage && modalType === 'audit' && flashError" x-cloak
+               class="mb-4 text-sm rounded-lg px-3 py-2 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-200"
+               x-text="flashMessage"></p>
+            <div class="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                <table class="finance-table min-w-[640px] w-full border-collapse text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                            <th class="px-3 py-2 text-[10px] font-semibold uppercase">Date</th>
+                            <th class="px-3 py-2 text-[10px] font-semibold uppercase">Type</th>
+                            <th class="px-3 py-2 text-[10px] font-semibold uppercase text-right">Amount</th>
+                            <th class="px-3 py-2 text-[10px] font-semibold uppercase text-right">Balance</th>
+                            <th class="px-3 py-2 text-[10px] font-semibold uppercase">Mode</th>
+                            <th class="px-3 py-2 text-[10px] font-semibold uppercase">Reference</th>
+                            <th class="px-3 py-2 text-[10px] font-semibold uppercase">Account</th>
+                            <th class="px-3 py-2 text-[10px] font-semibold uppercase">By</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                        <template x-if="!auditLoading && auditData && !(auditData.transactions || []).length">
+                            <tr>
+                                <td colspan="8" class="px-4 py-10 text-center text-sm text-slate-500">No transactions yet.</td>
+                            </tr>
+                        </template>
+                        <template x-for="tx in (auditData ? auditData.transactions : [])" :key="tx.id || (tx.created_at_display + tx.reference_code)">
+                            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                <td class="px-3 py-2 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap" x-text="tx.created_at_display"></td>
+                                <td class="px-3 py-2 text-xs font-semibold"
+                                    :class="tx.direction === 'credit' ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'"
+                                    x-text="tx.direction_label"></td>
+                                <td class="px-3 py-2 text-xs text-right tabular-nums font-semibold"
+                                    :class="tx.direction === 'credit' ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'"
+                                    x-text="(tx.direction === 'credit' ? '+' : '−') + ' KES ' + tx.amount_display"></td>
+                                <td class="px-3 py-2 text-xs text-right tabular-nums" x-text="'KES ' + tx.balance_after_display"></td>
+                                <td class="px-3 py-2 text-xs" x-text="tx.payment_method"></td>
+                                <td class="px-3 py-2 text-xs font-mono" x-text="tx.reference_code"></td>
+                                <td class="px-3 py-2 text-xs" x-text="tx.finance_account_name"></td>
+                                <td class="px-3 py-2 text-xs text-slate-600 dark:text-slate-400" x-text="tx.recorded_by_name"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 </div>

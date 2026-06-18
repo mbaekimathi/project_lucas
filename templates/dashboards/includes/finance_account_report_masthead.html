@@ -1,5 +1,5 @@
 {# Expects: account, report_title, report_description, report_icon, account_id, date_from, date_to, report_period_label, show_filters, filter_action_url, is_summary #}
-<div class="acr-masthead">
+<div class="acr-masthead{% if compact_masthead|default(false) %} acr-masthead--compact{% endif %}">
     <div class="acr-masthead__band">
         <div class="acr-masthead__inner">
             <div class="min-w-0 flex-1">
@@ -10,16 +10,17 @@
             <div class="acr-masthead__meta">
                 <div><strong>Period:</strong> <span id="acr-masthead-period">{{ report_period_label|default('All dates') }}</span></div>
                 <div><strong>Generated:</strong> <span id="acr-masthead-generated">{{ report_generated_at|default('—') }}</span></div>
-                {% if account.account_category %}
+                {% if account.account_category and not compact_masthead|default(false) %}
                 <div><strong>Category:</strong> {{ account.account_category }}</div>
                 {% endif %}
             </div>
         </div>
     </div>
     <div class="acr-masthead__body">
-        {% if report_description %}
+        {% if report_description and not compact_masthead|default(false) %}
         <p class="acr-masthead__desc">{{ report_description }}</p>
         {% endif %}
+        {% if not compact_masthead|default(false) %}
         <div class="acr-masthead__tags">
             <span class="acr-tag {% if account.account_status != 'suspended' %}acr-tag--ok{% else %}acr-tag--warn{% endif %}">
                 <i class="fas fa-circle text-[6px]" aria-hidden="true"></i>
@@ -32,9 +33,11 @@
             <span class="acr-tag"><i class="fas fa-chart-pie" aria-hidden="true"></i> Account summary</span>
             {% endif %}
         </div>
+        {% endif %}
         {% if show_filters|default(true) and filter_action_url %}
         {% if live_filters|default(false) %}
-        <div class="acr-filters-panel no-print" aria-label="Report filters">
+        <div class="acr-filters-panel no-print{% if compact_filters|default(false) %} acr-filters-panel--compact{% endif %}" aria-label="Report filters">
+            {% if not compact_filters|default(false) %}
             <div class="acr-filters-panel__head">
                 <span class="acr-filters-panel__title">
                     Report filters
@@ -42,10 +45,11 @@
                 </span>
                 <button type="button" id="acr-reset-filters" class="acr-btn acr-btn--ghost">Reset</button>
             </div>
+            {% endif %}
             <form method="get" action="{{ filter_action_url }}" class="acr-filters" id="acr-report-filters">
                 {% if financial_years|default([])|length > 0 %}
                 <div class="acr-field">
-                    <label for="acr-financial-year">Financial year</label>
+                    <label for="acr-financial-year">{% if compact_filters|default(false) %}Year{% else %}Financial year{% endif %}</label>
                     <select id="acr-financial-year" name="financial_year_id">
                         {% for fy in financial_years %}
                         <option value="{{ fy.id }}"
@@ -67,9 +71,14 @@
                     <label for="acr-date-to">To</label>
                     <input type="date" id="acr-date-to" name="date_to" value="{{ date_to|default('') }}" />
                 </div>
+                {% if compact_filters|default(false) %}
+                <button type="button" id="acr-reset-filters" class="acr-btn acr-btn--ghost acr-filters-reset">Reset</button>
+                {% endif %}
             </form>
+            {% if not compact_filters|default(false) %}
             <p id="acr-fy-range-hint" class="acr-filter-fy-hint" aria-live="polite"></p>
             <div id="acr-active-filters" class="acr-active-filters hidden" aria-live="polite"></div>
+            {% endif %}
         </div>
         {% else %}
         <form method="get" action="{{ filter_action_url }}" class="acr-filters no-print" id="acr-report-filters">

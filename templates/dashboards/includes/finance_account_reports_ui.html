@@ -233,6 +233,33 @@
     padding-top: 0;
     border-top: none;
 }
+.acr-filters-panel--compact {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+.acr-filters-panel--compact .acr-filters {
+    align-items: flex-end;
+    gap: 0.5rem 0.65rem;
+}
+.acr-filters-panel--compact .acr-field {
+    flex: 1 1 7.5rem;
+    min-width: 0;
+}
+.acr-filters-panel--compact .acr-field label {
+    margin-bottom: 0.2rem;
+}
+.acr-filters-panel--compact .acr-filters-reset {
+    flex: 0 0 auto;
+    align-self: flex-end;
+    margin-bottom: 0.15rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.75rem;
+}
+.acr-masthead--compact .acr-masthead__body {
+    padding-top: 0.65rem;
+    padding-bottom: 0.85rem;
+}
 .acr-filter-fy-hint {
     margin: 0.5rem 0 0;
     font-size: 0.75rem;
@@ -542,8 +569,80 @@
 }
 .acr-table tfoot .acr-num { color: var(--acr-teal); }
 
+/* Petty cash book — scroll entries; pin summary rows at bottom */
+.acr-pcb-table {
+    display: flex;
+    flex-direction: column;
+    max-height: min(58vh, 560px);
+    border: 1px solid #a8b4c0;
+    border-radius: var(--acr-radius-sm);
+    background: #fffef9;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+    overflow: hidden;
+}
+.dark .acr-pcb-table {
+    background: var(--acr-surface);
+    border-color: #475569;
+    box-shadow: none;
+}
+.acr-pcb-table__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+.acr-pcb-table__foot {
+    flex: 0 0 auto;
+    border-top: 2px solid #94a3b8;
+    background: #f8fafc;
+}
+.dark .acr-pcb-table__foot {
+    border-top-color: #475569;
+    background: #0f172a;
+}
+.acr-pcb-table__foot .acr-table {
+    margin: 0;
+}
+.acr-pcb-table__foot .acr-row-total td {
+    border-top: none;
+}
+.acr-pcb-table__foot .acr-row-total:first-child td {
+    border-top: none;
+}
+.acr-pcb-table table {
+    table-layout: fixed;
+    width: 100%;
+}
+.acr-pcb-col-date { width: 11%; }
+.acr-pcb-col-ref { width: 13%; }
+.acr-pcb-col-part { width: 32%; }
+.acr-pcb-col-rcpt { width: 14%; }
+.acr-pcb-col-pay { width: 14%; }
+.acr-pcb-col-bal { width: 16%; }
+
 /* Mobile stacked rows */
 @media (max-width: 767px) {
+    .acr-pcb-table {
+        max-height: none;
+        overflow: visible;
+        border: none;
+        background: transparent;
+        box-shadow: none;
+    }
+    .acr-pcb-table__scroll {
+        max-height: min(50vh, 420px);
+        border: 1px solid var(--acr-line);
+        border-radius: var(--acr-radius-sm);
+        background: var(--acr-surface);
+    }
+    .acr-pcb-table__foot {
+        margin-top: 0.75rem;
+        border: 1px solid var(--acr-line);
+        border-radius: var(--acr-radius-sm);
+        border-top: 1px solid var(--acr-line);
+    }
     .acr-table-scroll--stack { max-height: none; overflow: visible; }
     .acr-table--stack thead { display: none; }
     .acr-table--stack tbody tr {
@@ -653,6 +752,8 @@
         print-color-adjust: exact;
     }
     .acr-table-scroll { max-height: none; overflow: visible; border-color: #94a3b8; }
+    .acr-pcb-table { max-height: none; overflow: visible; border-color: #94a3b8; }
+    .acr-pcb-table__scroll { max-height: none; overflow: visible; }
     .acr-table thead th,
     .acr-table tbody td,
     .acr-table tfoot td {

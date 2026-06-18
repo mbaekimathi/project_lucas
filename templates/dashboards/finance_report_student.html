@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}Student-Specific Reports - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}{% if is_secretary_finance|default(false) %}Fees reports{% else %}Student-Specific Reports{% endif %} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
+{% if is_secretary_finance|default(false) %}
+{% set secretary_nav_scope = 'reports' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% else %}
 {% set finance_report_slug = report_slug %}
 {% include 'dashboards/includes/finance_reports_page_sidebar.html' %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -13,27 +18,36 @@
     'studentsApi': employee_dash_url('finance-overview/students'),
     'summaryApi': employee_dash_url('finance-overview/summary'),
     'invoiceBase': employee_dash_url('student-fees/generate-invoice/'),
-    'receiptBase': employee_dash_url('student-fees/download-receipt/')
+    'receiptBase': employee_dash_url('student-fees/download-receipt/'),
+    'autoViewMode': 'all' if is_secretary_finance|default(false) else ''
 }|tojson }}</script>
 
 <div class="fr-report-shell page-content">
     <div class="fr-inner">
         <div class="fr-toolbar no-print">
+            {% if not is_secretary_finance|default(false) %}
             <nav class="fr-breadcrumb" aria-label="Breadcrumb">
                 <a href="{{ employee_dash_url('finance-overview') }}">Accounts reports</a>
                 <span aria-hidden="true">/</span>
                 <span class="fr-breadcrumb__current">Student reports</span>
             </nav>
-            <div class="fr-toolbar__actions">
+            {% endif %}
+            <div class="fr-toolbar__actions{% if is_secretary_finance|default(false) %} ml-auto{% endif %}">
                 <button type="button" class="fr-btn fr-btn--ghost" onclick="window.print()">
                     <i class="fas fa-print" aria-hidden="true"></i> Print
                 </button>
             </div>
         </div>
 
+        {% if is_secretary_finance|default(false) %}
+        {% with report_title='Fees reports', report_description='View each student fee balance for the current term and download or print their individual fee report.', report_period_label='Current enrolment', report_generated_at=report_generated_at %}
+        {% include 'dashboards/includes/finance_school_report_masthead.html' %}
+        {% endwith %}
+        {% else %}
         {% with report_title='Student-specific reports', report_description='Per-student fee balances, class roll-ups, and printable invoices.', report_period_label='Current enrolment', report_generated_at=report_generated_at %}
         {% include 'dashboards/includes/finance_school_report_masthead.html' %}
         {% endwith %}
+        {% endif %}
 
     <section class="fr-report-panel no-print" aria-label="Report view">
         <div class="fr-report-panel__head">
@@ -48,7 +62,7 @@
                         <label for="fo-view-mode" class="sr-only">Report view</label>
                         <select id="fo-view-mode">
                             <option value="">— Select —</option>
-                            <option value="all">All students (fee balances)</option>
+                            <option value="all"{% if is_secretary_finance|default(false) %} selected{% endif %}>All students (fee balances)</option>
                             <option value="by_class">One class only</option>
                             <option value="class_summary">Totals by class (no names)</option>
                         </select>
@@ -71,31 +85,12 @@
         </div>
     </section>
 
-    <div id="fo-empty-state" class="fr-report-state no-print">
+    <div id="fo-empty-state" class="fr-report-state no-print{% if is_secretary_finance|default(false) %} hidden{% endif %}">
         <i class="fas fa-hand-pointer fr-report-state__icon" aria-hidden="true"></i>
         <p class="fr-report-state__title">Choose a report view above to load data</p>
     </div>
 
-    <div id="fo-workspace" class="hidden">
-        <div class="fr-report-kpis" aria-label="Summary">
-            <article class="fr-kpi fr-kpi--sky">
-                <p class="fr-kpi__label" id="fo-card-students-label">Students</p>
-                <p class="fr-kpi__value" id="fo-card-students-count">—</p>
-            </article>
-            <article class="fr-kpi fr-kpi--violet">
-                <p class="fr-kpi__label">Total billed</p>
-                <p class="fr-kpi__value" id="fo-card-billed">—</p>
-            </article>
-            <article class="fr-kpi fr-kpi--emerald">
-                <p class="fr-kpi__label">Total paid</p>
-                <p class="fr-kpi__value" id="fo-card-paid">—</p>
-            </article>
-            <article class="fr-kpi fr-kpi--amber">
-                <p class="fr-kpi__label">Outstanding</p>
-                <p class="fr-kpi__value" id="fo-card-outstanding">—</p>
-            </article>
-        </div>
-
+    <div id="fo-workspace" class="{% if not is_secretary_finance|default(false) %}hidden{% endif %}">
         <section id="fo-section-student-table" class="hidden mb-4">
             <h2 class="fr-report-section-title">
                 <i class="fas fa-users" aria-hidden="true"></i>
@@ -182,7 +177,7 @@
                                 <th class="text-right">Total</th>
                                 <th class="text-right">Paid</th>
                                 <th class="text-right">Balance</th>
-                                <th class="text-center">Invoice</th>
+                                <th class="text-center">{% if is_secretary_finance|default(false) %}Fee report{% else %}Invoice{% endif %}</th>
                                 <th class="text-center">Receipt</th>
                             </tr>
                         </thead>

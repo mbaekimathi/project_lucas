@@ -53,6 +53,7 @@ document.addEventListener('alpine:init', function () {
       financeAccounts: cfg.financeAccounts || [],
       expenseVotes: cfg.expenseVotes || [],
       expenseAccountId: cfg.defaultAccountId != null && cfg.defaultAccountId !== '' ? String(cfg.defaultAccountId) : '',
+      expenseVoteOptions: [],
       expenseVote: '',
       expenseAmount: '',
       expensePhone: '',
@@ -84,22 +85,20 @@ document.addEventListener('alpine:init', function () {
       selectedFinanceAccount: function () {
         var id = String(this.expenseAccountId || '');
         if (!id) return null;
-        return (this.financeAccounts || []).find(function (a) {
+        return (this.pettyCashAccounts || []).find(function (a) {
           return String(a.id) === id;
-        }) || (this.pettyCashAccounts || []).find(function (a) {
+        }) || (this.financeAccounts || []).find(function (a) {
           return String(a.id) === id;
         }) || null;
       },
       selectedPettyCashAccount: function () {
         return this.selectedFinanceAccount();
       },
-      filteredFinanceAccounts: function () {
+      filteredPettyCashAccounts: function () {
         var mode = this.paymentModeMap[this.expensePaymentMethod] || '';
-        var list = this.financeAccounts || [];
+        var list = this.pettyCashAccounts || [];
         if (!mode) return list;
         return list.filter(function (acc) {
-          var cat = (acc.account_category || '').toLowerCase();
-          if (cat === 'income') return true;
           var modes = acc.payment_modes || [];
           return !modes.length || modes.indexOf(mode) >= 0;
         });
@@ -145,7 +144,10 @@ document.addEventListener('alpine:init', function () {
           .then(function (res) {
             var data = res.data || {};
             if (res.ok && data.success) {
-              if (data.petty_cash_accounts) self.pettyCashAccounts = data.petty_cash_accounts;
+              if (data.petty_cash_accounts) {
+                self.pettyCashAccounts = data.petty_cash_accounts;
+                self.refreshExpenseVoteOptions();
+              }
               if (data.finance_accounts) self.financeAccounts = data.finance_accounts;
               if (data.next_expense_reference) self.expenseBookReference = data.next_expense_reference;
               if (data.html) {
@@ -179,7 +181,7 @@ document.addEventListener('alpine:init', function () {
       onExpensePaymentMethodChange: function () {
         var id = String(this.expenseAccountId || '');
         if (!id) return;
-        var stillValid = (this.filteredFinanceAccounts() || []).some(function (a) {
+        var stillValid = (this.filteredPettyCashAccounts() || []).some(function (a) {
           return String(a.id) === id;
         });
         if (!stillValid) this.expenseAccountId = '';
@@ -196,34 +198,71 @@ document.addEventListener('alpine:init', function () {
         this.$watch('expenseModalOpen', function (open) {
           if (open) self.registerModalOpen = false;
           document.body.classList.toggle('overflow-hidden', !!(open || self.registerModalOpen));
-          if (!open) self.resetExpenseForm();
+          if (!open) {
+            self.resetExpenseForm();
+            return;
+          }
+          self.refreshExpenseVoteOptions();
         });
         this.$watch('expenseAccountId', function () {
-          var allowed = self.expenseVotesForAccount();
+          self.refreshExpenseVoteOptions();
           var current = String(self.expenseVote || '').toUpperCase();
           if (!current) return;
-          var ok = allowed.some(function (v) {
+          var ok = (self.expenseVoteOptions || []).some(function (v) {
             return String(v.name || '').toUpperCase() === current;
           });
           if (!ok) self.expenseVote = '';
         });
+        self.refreshExpenseVoteOptions();
+      },
+      refreshExpenseVoteOptions: function () {
+        this.expenseVoteOptions = this.expenseVotesForAccount();
+        var self = this;
+        this.$nextTick(function () { self.paintExpenseVoteSelect(); });
+      },
+      paintExpenseVoteSelect: function () {
+        var sel = document.getElementById('pcb_expense_vote');
+        if (!sel) return;
+        var votes = this.expenseVoteOptions || [];
+        var current = String(this.expenseVote || '');
+        sel.innerHTML = '';
+        var blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = votes.length ? 'Select vote' : 'No expense votes found';
+        sel.appendChild(blank);
+        votes.forEach(function (v) {
+          var opt = document.createElement('option');
+          opt.value = v.name;
+          opt.textContent = v.name;
+          sel.appendChild(opt);
+        });
+        if (current && votes.some(function (v) { return String(v.name) === current; })) {
+          sel.value = current;
+        } else {
+          sel.value = '';
+          this.expenseVote = '';
+        }
       },
       expenseVotesForAccount: function () {
-        var all = this.expenseVotes || [];
-        var acct = this.selectedFinanceAccount();
+        var all = (this.expenseVotes || []).slice();
+        var byName = {};
+        all.forEach(function (v) {
+          var key = String((v && v.name) || '').toUpperCase();
+          if (key) byName[key] = v;
+        });
         var pc = (this.pettyCashAccounts || []).find(function (a) {
           return String(a.id) === String(this.expenseAccountId || '');
         }.bind(this));
-        if (pc) acct = pc;
-        if (!acct || !acct.expense_votes || !acct.expense_votes.length) {
-          return all;
-        }
-        var allowed = {};
-        (acct.expense_votes || []).forEach(function (n) {
-          allowed[String(n || '').toUpperCase()] = true;
+        var linked = pc && pc.expense_votes && pc.expense_votes.length ? pc.expense_votes : [];
+        linked.forEach(function (name) {
+          var key = String(name || '').toUpperCase();
+          if (key && !byName[key]) {
+            byName[key] = { name: key, description: null };
+            all.push(byName[key]);
+          }
         });
-        return all.filter(function (v) {
-          return allowed[String(v.name || '').toUpperCase()];
+        return all.sort(function (a, b) {
+          return String(a.name || '').localeCompare(String(b.name || ''));
         });
       },
       pickExpenseVote: function (vote) {
@@ -262,13 +301,20 @@ document.addEventListener('alpine:init', function () {
       },
       openExpenseModal: function () {
         this.resetExpenseForm();
+        var id = String(this.expenseAccountId || '');
+        if (id && !(this.pettyCashAccounts || []).some(function (a) {
+          return String(a.id) === id;
+        })) {
+          this.expenseAccountId = '';
+        }
         if (!this.expenseAccountId && this.pettyCashAccounts.length) {
           this.expenseAccountId = String(this.pettyCashAccounts[0].id);
         }
-        this.fetchNextExpenseReference();
         this.expenseModalOpen = true;
+        this.fetchNextExpenseReference();
+        this.refreshExpenseVoteOptions();
         this.$nextTick(function () {
-          var el = document.getElementById('pcb_expense_account');
+          var el = document.getElementById('pcb_expense_phone');
           if (el) el.focus();
         });
       },
@@ -446,24 +492,34 @@ document.addEventListener('alpine:init', function () {
           return;
         }
         if (!this.expenseAccountId) {
-          this.showFlash('Select the account name.', 'error');
+          this.showFlash('Select the petty cash account.', 'error');
+          return;
+        }
+        if (!(this.pettyCashAccounts || []).some(function (a) {
+          return String(a.id) === String(this.expenseAccountId || '');
+        }.bind(this))) {
+          this.showFlash('Payments from this page must use a petty cash account.', 'error');
+          return;
+        }
+        if (!this.expenseVoteOptions.length) {
+          this.showFlash('No expense votes found. Add fee votes under Student fees or link votes to this petty cash account.', 'error');
           return;
         }
         if (!String(this.expenseVote || '').trim()) {
-          this.showFlash('Select the expense vote (category).', 'error');
+          this.showFlash('Select the expense vote.', 'error');
           return;
         }
         if (!this.expensePaymentMethod) {
-          this.showFlash('Select a payment mode (Cash, Cheque, or Mobile Money).', 'error');
-          return;
-        }
-        if (!(this.expensePayeeName || '').trim()) {
-          this.showFlash('Enter the company or person paid to.', 'error');
+          this.showFlash('Select a payment mode.', 'error');
           return;
         }
         var digits = (this.expensePhone || '').replace(/\D/g, '');
         if (!digits || digits.length < 9) {
-          this.showFlash('Enter a valid contact number (at least 9 digits).', 'error');
+          this.showFlash('Enter a valid company number (at least 9 digits).', 'error');
+          return;
+        }
+        if (!(this.expensePayeeName || '').trim()) {
+          this.showFlash('Enter the company name.', 'error');
           return;
         }
         var acct = this.selectedFinanceAccount();
@@ -494,6 +550,7 @@ document.addEventListener('alpine:init', function () {
           payment_reference: (this.expenseExternalReference || '').trim(),
           external_payment_reference: (this.expenseExternalReference || '').trim(),
           notes: (this.expenseNotes || '').trim(),
+          description: (this.expenseNotes || '').trim(),
           financial_year_id: fyEl && fyEl.value ? fyEl.value : this.expenseFinancialYearId,
           date_from: dfEl && dfEl.value ? dfEl.value : this.expenseDateFrom,
           date_to: dtEl && dtEl.value ? dtEl.value : this.expenseDateTo,
@@ -705,7 +762,7 @@ document.addEventListener('alpine:init', function () {
             'financeAccountId': account_id
         }|tojson }}</script>
 
-        {% with report_title='Petty cash book', report_description='Receipts and payments with running balance for petty cash accounts.', show_filters=not petty_cash_empty, filter_action_url=filter_url, live_filters=not petty_cash_empty, is_summary=false %}
+        {% with report_title='Petty cash book', report_description='', show_filters=not petty_cash_empty, filter_action_url=filter_url, live_filters=not petty_cash_empty, is_summary=false, compact_filters=true, compact_masthead=true %}
         {% include 'dashboards/includes/finance_account_report_masthead.html' %}
         {% endwith %}
 
@@ -846,27 +903,13 @@ document.addEventListener('alpine:init', function () {
         <div class="absolute inset-0 z-0 bg-slate-900/70 backdrop-blur-sm" @click="closeExpenseModal()" aria-hidden="true"></div>
         <div x-ref="expenseModalPanel" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="pcb-expense-title"
              class="accounts-modal relative z-10 w-full max-w-lg rounded-xl bg-white dark:bg-slate-900 max-h-[90vh] overflow-hidden flex flex-col">
-            <div class="border-b border-slate-700 px-5 py-4 sm:px-6 flex items-start justify-between gap-3 bg-gradient-to-r from-slate-800 to-teal-900 shrink-0">
-                <div>
-                    <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-200">Petty cash book</p>
-                    <template x-if="selectedFinanceAccount()">
-                        <div>
-                            <h3 id="pcb-expense-title" class="mt-1 text-lg font-bold text-white uppercase" x-text="selectedFinanceAccount().account_name"></h3>
-                            <p class="mt-1 text-xs text-slate-300 normal-case tabular-nums">
-                                Available balance
-                                <span class="font-semibold text-amber-300" x-text="'KES ' + selectedFinanceAccount().current_balance_display"></span>
-                            </p>
-                            <p class="mt-1 text-[10px] text-teal-200/80 normal-case">
-                                Expense is debited from imprest and charged to the selected vote.
-                            </p>
-                        </div>
-                    </template>
-                    <template x-if="!selectedFinanceAccount()">
-                        <div>
-                            <h3 id="pcb-expense-title" class="mt-1 text-lg font-bold text-white">Record expense</h3>
-                            <p class="mt-1 text-xs text-slate-300 normal-case">Select a petty cash account to pay from.</p>
-                        </div>
-                    </template>
+            <div class="border-b border-slate-700 px-5 py-4 sm:px-6 flex items-center justify-between gap-3 bg-gradient-to-r from-slate-800 to-teal-900 shrink-0">
+                <div class="min-w-0">
+                    <h3 id="pcb-expense-title" class="text-lg font-bold text-white">Record expense</h3>
+                    <p class="mt-0.5 text-xs text-slate-300 normal-case tabular-nums" x-show="selectedFinanceAccount()">
+                        <span x-text="selectedFinanceAccount().account_name"></span>
+                        · <span class="text-amber-300 font-semibold" x-text="'KES ' + selectedFinanceAccount().current_balance_display"></span>
+                    </p>
                 </div>
                 <button type="button" @click="closeExpenseModal()"
                         class="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-white/10" aria-label="Close">
@@ -874,114 +917,63 @@ document.addEventListener('alpine:init', function () {
                 </button>
             </div>
 
-            <form @submit="submitExpense($event)" class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+            <form @submit="submitExpense($event)" class="p-5 sm:p-6 space-y-3.5 overflow-y-auto flex-1">
 
                 <div>
-                    <label for="pcb_expense_account" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Account name</label>
+                    <label for="pcb_expense_account" class="mb-1 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Petty cash account</label>
                     <select id="pcb_expense_account" name="finance_account_id" required
                             x-model="expenseAccountId"
                             class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
                         <option value="">Select account</option>
-                        <template x-for="acct in filteredFinanceAccounts()" :key="acct.id">
+                        <template x-for="acct in filteredPettyCashAccounts()" :key="acct.id">
                             <option :value="String(acct.id)"
-                                    x-text="acct.account_name + ' (' + acct.account_category + ') — KES ' + acct.current_balance_display"></option>
+                                    x-text="acct.account_name + ' — KES ' + acct.current_balance_display"></option>
                         </template>
                     </select>
-                    <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedFinanceAccount()">
-                        Available balance:
-                        <span class="font-semibold tabular-nums text-teal-700 dark:text-teal-400"
-                              x-text="'KES ' + (selectedFinanceAccount() ? selectedFinanceAccount().current_balance_display : '0.00')"></span>
-                    </p>
                     <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
-                       x-show="expensePaymentMethod && !filteredFinanceAccounts().length && financeAccounts.length">
-                        No accounts match this payment mode.
-                    </p>
-                    <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
-                       x-show="!financeAccounts.length">
-                        No accounts available. Add accounts under Accounts first.
+                       x-show="!pettyCashAccounts.length">
+                        No petty cash accounts yet.
                     </p>
                 </div>
 
-                <div>
-                    <label for="pcb_expense_payment_method" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Payment mode</label>
-                    <select id="pcb_expense_payment_method" name="payment_method" required
-                            x-model="expensePaymentMethod"
-                            @change="onExpensePaymentMethodChange()"
-                            class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
-                        <option value="">Select mode</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Cheque">Cheque</option>
-                        <option value="Mobile Money">Mobile Money</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Expense vote (category) <span class="text-red-500">*</span></label>
-                    <input type="hidden" name="vote_name" :value="expenseVote">
-                    <div class="pcb-votes-grid max-h-44 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 p-2 bg-slate-50/80 dark:bg-slate-900/40"
-                         x-show="expenseVotesForAccount().length">
-                        <template x-for="vote in expenseVotesForAccount()" :key="vote.name">
-                            <label class="pcb-vote-chip" :class="isExpenseVoteSelected(vote) ? 'border-teal-500' : ''">
-                                <input type="radio" class="mt-0.5 shrink-0 border-gray-300 text-teal-600 focus:ring-teal-500"
-                                       :value="vote.name" :checked="isExpenseVoteSelected(vote)"
-                                       @change="pickExpenseVote(vote)">
-                                <span class="min-w-0 flex-1">
-                                    <span class="pcb-vote-chip__name" x-text="vote.name"></span>
-                                    <span class="pcb-vote-chip__desc"
-                                          x-text="vote.description ? vote.description : 'No description'"></span>
-                                </span>
-                            </label>
-                        </template>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label for="pcb_expense_payment_method" class="mb-1 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Payment mode</label>
+                        <select id="pcb_expense_payment_method" name="payment_method" required
+                                x-model="expensePaymentMethod"
+                                @change="onExpensePaymentMethodChange()"
+                                class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
+                            <option value="">Select</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Mobile Money">Mobile Money</option>
+                        </select>
                     </div>
-                    <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
-                       x-show="expenseAccountId && !expenseVotesForAccount().length">
-                        No expense votes are linked to this account. Edit the account or register votes when creating it.
-                    </p>
-                    <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
-                       x-show="!expenseVotes.length && !expenseAccountId">
-                        No fee votes found. Add fee structure items under Student fees.
-                    </p>
-                    <p class="mt-1 text-xs text-slate-500 normal-case" x-show="expenseVote">
-                        Selected:
-                        <span class="font-semibold text-teal-700 dark:text-teal-400" x-text="expenseVote"></span>
-                    </p>
-                </div>
-
-                <div>
-                    <label class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Book reference</label>
-                    <div class="flex items-center gap-2 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-950/30 px-3 py-2.5">
-                        <i class="fas fa-hashtag text-teal-600 dark:text-teal-400" aria-hidden="true"></i>
-                        <span class="font-mono text-sm font-bold text-teal-800 dark:text-teal-200 tabular-nums"
-                              x-text="expenseBookReference || '—'"></span>
-                        <span class="ml-auto text-[10px] text-teal-700/80 dark:text-teal-300/80 normal-case">Assigned on save</span>
+                    <div>
+                        <label for="pcb_expense_vote" class="mb-1 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Expense vote</label>
+                        <select id="pcb_expense_vote" name="vote_name" required
+                                @change="expenseVote = $event.target.value"
+                                class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
+                        </select>
                     </div>
-                    <p class="mt-1 text-xs text-slate-500 normal-case">Internal petty cash book number (e.g. PCASH-00001).</p>
                 </div>
 
                 <div>
-                    <label for="pcb_expense_external_ref" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">External payment reference <span class="font-normal text-slate-500">(optional)</span></label>
-                    <input type="text" id="pcb_expense_external_ref" name="external_payment_reference" maxlength="255"
-                           x-model="expenseExternalReference"
-                           placeholder="M-Pesa code, cheque no., receipt no., etc."
+                    <label for="pcb_expense_phone" class="mb-1 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company number</label>
+                    <input type="tel" id="pcb_expense_phone" name="paid_to_phone" required maxlength="20"
+                           x-model="expensePhone"
+                           @input="onExpensePhoneInput()"
+                           placeholder="e.g. 0712 345 678"
                            class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
-                    <p class="mt-1 text-xs text-slate-500 normal-case">Leave blank to use the book reference only.</p>
-                </div>
-
-                <div>
-                    <label for="pcb_expense_notes" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Notes <span class="font-normal text-slate-500">(optional)</span></label>
-                    <textarea id="pcb_expense_notes" name="notes" rows="3" maxlength="2000"
-                              x-model="expenseNotes"
-                              placeholder="Purpose, items bought, approval details, etc."
-                              class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm normal-case dark:text-white resize-y min-h-[4.5rem]"></textarea>
                 </div>
 
                 <div class="relative">
-                    <label for="pcb_expense_name" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company name paid to</label>
+                    <label for="pcb_expense_name" class="mb-1 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company name</label>
                     <input type="text" id="pcb_expense_name" name="paid_to_name" required maxlength="255"
                            x-model="expensePayeeName"
                            @input="onExpenseNameInput()"
                            @blur="tryRegisterSupplierLive()"
-                           placeholder="SUPPLIER / PERSON NAME"
+                           placeholder="Supplier or person name"
                            autocomplete="off"
                            class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm uppercase dark:text-white" />
                     <div x-show="showNameDropdown" x-cloak
@@ -997,38 +989,29 @@ document.addEventListener('alpine:init', function () {
                 </div>
 
                 <div>
-                    <label for="pcb_expense_phone" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company number</label>
-                    <input type="tel" id="pcb_expense_phone" name="paid_to_phone" required maxlength="20"
-                           x-model="expensePhone"
-                           @input="onExpensePhoneInput()"
-                           placeholder="e.g. 0712 345 678"
-                           class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
-                    <p class="mt-1 text-xs uppercase"
-                       :class="supplierLookupStatus === 'found' ? 'text-emerald-600' : (supplierLookupStatus === 'error' ? 'text-red-600' : 'text-slate-500')"
-                       x-show="supplierLookupMessage" x-text="supplierLookupMessage"></p>
-                </div>
-
-                <div>
-                    <label for="pcb_expense_amount" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Amount paid (KES)</label>
+                    <label for="pcb_expense_amount" class="mb-1 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Amount (KES)</label>
                     <input type="number" id="pcb_expense_amount" name="amount" required min="0.01" step="0.01"
                            x-model="expenseAmount"
                            class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
-                    <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedFinanceAccount()">
-                        Maximum available:
-                        <span class="font-semibold tabular-nums" x-text="'KES ' + selectedFinanceAccount().current_balance_display"></span>
-                    </p>
                 </div>
 
-                <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                <div>
+                    <label for="pcb_expense_description" class="mb-1 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Description</label>
+                    <textarea id="pcb_expense_description" name="description" rows="2" maxlength="2000"
+                              x-model="expenseNotes"
+                              placeholder="What was bought or paid for, e.g. stationery, transport, repairs…"
+                              class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm normal-case dark:text-white resize-y min-h-[3.5rem]"></textarea>
+                </div>
+
+                <div class="flex flex-col-reverse gap-2.5 pt-1 sm:flex-row sm:justify-end">
                     <button type="button" @click="closeExpenseModal()"
-                            class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                            class="inline-flex justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
                         Cancel
                     </button>
                     <button type="submit" :disabled="expenseSubmitting"
-                            class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                            class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
                         <i class="fas fa-spinner fa-spin" x-show="expenseSubmitting"></i>
-                        <i class="fas fa-check" x-show="!expenseSubmitting"></i>
-                        <span x-text="expenseSubmitting ? 'Processing…' : 'Post to petty cash book'"></span>
+                        <span x-text="expenseSubmitting ? 'Saving…' : 'Save expense'"></span>
                     </button>
                 </div>
             </form>

@@ -573,6 +573,10 @@
         if (state.page < state.pages) fetchStudents(state.page + 1);
       });
     }
+    if (cfg.autoViewMode && modeEl) {
+      modeEl.value = cfg.autoViewMode;
+      applyViewMode();
+    }
   }
 
   if (document.readyState === 'loading') {

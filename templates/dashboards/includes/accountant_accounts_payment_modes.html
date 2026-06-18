@@ -73,14 +73,6 @@
                     <dd class="font-medium text-[var(--acc-ink)]" x-text="{{ pm_mpesa_biz }} || '—'"></dd>
                 </div>
                 <div x-show="{{ pm_mpesa_type }} === 'paybill'" x-cloak>
-                    <dt class="text-[10px] font-semibold uppercase text-[var(--acc-muted)]">Paybill number</dt>
-                    <dd class="font-mono font-semibold text-[var(--acc-ink)]" x-text="{{ pm_mpesa_paybill }} || '—'"></dd>
-                </div>
-                <div x-show="{{ pm_mpesa_type }} === 'till'" x-cloak>
-                    <dt class="text-[10px] font-semibold uppercase text-[var(--acc-muted)]">Till number</dt>
-                    <dd class="font-mono font-semibold text-[var(--acc-ink)]" x-text="{{ pm_mpesa_acct }} || '—'"></dd>
-                </div>
-                <div x-show="{{ pm_mpesa_type }} === 'paybill'" x-cloak>
                     <dt class="text-[10px] font-semibold uppercase text-[var(--acc-muted)]">Account reference</dt>
                     <dd class="font-medium text-[var(--acc-ink)] normal-case" x-text="mpesaPaybillRefLabel('{{ payment_scope }}')"></dd>
                 </div>

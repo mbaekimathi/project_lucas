@@ -55,8 +55,6 @@ def normalize_mpesa_account_presets(raw) -> list:
             acct_id = f'{acct_id}-{i + 1}'
         seen_ids.add(acct_id)
         biz = (item.get('business_name') or '').strip()
-        paybill = (item.get('paybill_number') or item.get('mpesa_shortcode') or '').strip()
-        till = (item.get('till_number') or item.get('account_number') or '').strip()
         ref_mode = (item.get('paybill_ref_mode') or 'admission').strip().lower()
         if ref_mode not in ('admission', 'account_number'):
             ref_mode = 'admission'
@@ -71,8 +69,6 @@ def normalize_mpesa_account_presets(raw) -> list:
             'label': label,
             'mpesa_type': mt,
             'business_name': biz,
-            'paybill_number': paybill if mt == 'paybill' else '',
-            'till_number': till if mt == 'till' else '',
             'paybill_ref_mode': ref_mode if mt == 'paybill' else 'admission',
             'paybill_account_number': paybill_acct if mt == 'paybill' and ref_mode == 'account_number' else '',
         })

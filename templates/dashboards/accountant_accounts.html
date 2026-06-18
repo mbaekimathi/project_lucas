@@ -1076,11 +1076,13 @@ function accountsPage() {
         findMatchingMpesaPreset: function (mpesa) {
             if (!mpesa) return '';
             var mt = (mpesa.mpesa_type || 'paybill').toLowerCase();
+            var biz = String(mpesa.business_name || '').toUpperCase();
             var presets = this.schoolMpesaPresets || [];
             for (var i = 0; i < presets.length; i++) {
                 var p = presets[i];
                 if ((p.mpesa_type || 'paybill').toLowerCase() !== mt) continue;
-                if (mt === 'paybill' && String(p.paybill_number || '') === String(mpesa.mpesa_shortcode || '')) {
+                if (String(p.business_name || '').toUpperCase() !== biz) continue;
+                if (mt === 'paybill') {
                     var refMode = (p.paybill_ref_mode || 'admission').toLowerCase();
                     var storedNum = String(mpesa.account_number || '');
                     if (refMode === 'account_number') {
@@ -1088,8 +1090,7 @@ function accountsPage() {
                     } else if (this.isPaybillAdmissionRef(storedNum)) {
                         return String(p.id);
                     }
-                }
-                if (mt === 'till' && String(p.till_number || '') === String(mpesa.account_number || '')) {
+                } else if (mt === 'till') {
                     return String(p.id);
                 }
             }
@@ -1156,9 +1157,11 @@ function accountsPage() {
         mpesaPresetLabel: function (p) {
             if (!p) return '';
             var type = (p.mpesa_type || '').toLowerCase() === 'till' ? 'Till' : 'Paybill';
-            var num = (p.mpesa_type || '').toLowerCase() === 'till' ? p.till_number : p.paybill_number;
             var bits = [p.label || 'M-Pesa', type];
-            if (num) bits.push(String(num));
+            if (type === 'Paybill') {
+                var refMode = (p.paybill_ref_mode || 'admission').toLowerCase();
+                bits.push(refMode === 'account_number' ? 'Fixed acct' : 'Admission no.');
+            }
             return bits.join(' · ');
         },
         applyMpesaPreset: function (scope, presetId) {
@@ -1175,18 +1178,18 @@ function accountsPage() {
                 this.regMpesaPresetId = String(preset.id);
                 this.regMpesaType = mt;
                 this.regMpesaBusinessName = String(preset.business_name || '').toUpperCase();
-                this.regMpesaPaybill = mt === 'paybill' ? String(preset.paybill_number || '') : '';
+                this.regMpesaPaybill = '';
                 this.regMpesaAccountNumber = mt === 'till'
-                    ? String(preset.till_number || '')
+                    ? ''
                     : this.paybillAccountFromPreset(preset);
             } else {
                 this.editPaymentModes.mpesa = true;
                 this.editMpesaPresetId = String(preset.id);
                 this.editMpesaType = mt;
                 this.editMpesaBusinessName = String(preset.business_name || '').toUpperCase();
-                this.editMpesaPaybill = mt === 'paybill' ? String(preset.paybill_number || '') : '';
+                this.editMpesaPaybill = '';
                 this.editMpesaAccountNumber = mt === 'till'
-                    ? String(preset.till_number || '')
+                    ? ''
                     : this.paybillAccountFromPreset(preset);
             }
             this.syncPaymentModeCheckboxes(scope);
@@ -1237,19 +1240,9 @@ function accountsPage() {
                     alert('The selected M-Pesa profile is missing a business name. Update it under Integration → Finance.');
                     return false;
                 }
-                if (mt === 'paybill' && !String(mpaybill || '').trim()) {
-                    if (e) e.preventDefault();
-                    alert('The selected M-Pesa profile is missing a paybill number. Update it under Integration → Finance.');
-                    return false;
-                }
                 if (mt === 'paybill' && !this.isPaybillAdmissionRef(macct) && !String(macct || '').trim()) {
                     if (e) e.preventDefault();
                     alert('The selected M-Pesa profile is missing a paybill account number. Update it under Integration → Finance.');
-                    return false;
-                }
-                if (mt === 'till' && !String(macct || '').trim()) {
-                    if (e) e.preventDefault();
-                    alert('The selected M-Pesa profile is missing a till number. Update it under Integration → Finance.');
                     return false;
                 }
             }

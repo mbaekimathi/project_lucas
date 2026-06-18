@@ -36,6 +36,12 @@
     <span>Petty cash book</span>
     {% if _petty_cash_book %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('student-fees/pocket-money') }}"
+   class="sidebar-item {% if request.endpoint == 'student_pocket_money' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-wallet w-5"></i>
+    <span>Students pocket money</span>
+    {% if request.endpoint == 'student_pocket_money' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 {% endif %}
 
 {% if _acct_nav in ('all', 'fees') %}
@@ -72,12 +78,6 @@
     <i class="fas fa-history w-5"></i>
     <span>Payments audit</span>
     {% if request.endpoint == 'payments_audit' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
-<a href="{{ employee_dash_url('student-fees/pocket-money') }}"
-   class="sidebar-item {% if request.endpoint == 'student_pocket_money' %}sidebar-item-active{% endif %}">
-    <i class="fas fa-wallet w-5"></i>
-    <span>Students pocket money</span>
-    {% if request.endpoint == 'student_pocket_money' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}
 
@@ -186,7 +186,7 @@
 <a href="{{ employee_dash_url('finance-settings') }}"
    class="sidebar-item {% if request.endpoint == 'accountant_finance_settings' %}sidebar-item-active{% endif %}">
     <i class="fas fa-cog w-5"></i>
-    <span>Finance settings</span>
+    <span>Financial year settings</span>
     {% if request.endpoint == 'accountant_finance_settings' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% set acal_hide_manage = true %}

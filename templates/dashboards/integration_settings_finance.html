@@ -42,8 +42,6 @@ function darajaFinanceSettings() {
     ac.paybill_ref_mode = ac.paybill_ref_mode === 'account_number' ? 'account_number' : 'admission';
     ac.label = ac.label || '';
     ac.business_name = ac.business_name || '';
-    ac.paybill_number = ac.paybill_number || '';
-    ac.till_number = ac.till_number || '';
     ac.paybill_account_number = ac.paybill_account_number || '';
     return ac;
   }
@@ -53,8 +51,6 @@ function darajaFinanceSettings() {
       label: '',
       mpesa_type: 'paybill',
       business_name: '',
-      paybill_number: '',
-      till_number: '',
       paybill_ref_mode: 'admission',
       paybill_account_number: '',
     });
@@ -343,7 +339,6 @@ function darajaFinanceSettings() {
                         <span>Name <span class="text-red-500">*</span></span>
                         <span>Type</span>
                         <span>Business</span>
-                        <span>Number</span>
                         <span>Account ref</span>
                         <span></span>
                     </div>
@@ -363,13 +358,6 @@ function darajaFinanceSettings() {
                             <div class="mf-field">
                                 <span class="mf-field__label mf-hide-lg">Business</span>
                                 <input type="text" x-model="acct.business_name" placeholder="Business" maxlength="255" class="mf-input">
-                            </div>
-                            <div class="mf-field">
-                                <span class="mf-field__label mf-hide-lg">Number</span>
-                                <input x-show="acct.mpesa_type === 'paybill'" type="text" x-model="acct.paybill_number"
-                                       placeholder="Paybill" maxlength="20" class="mf-input mf-input--mono">
-                                <input x-show="acct.mpesa_type === 'till'" type="text" x-model="acct.till_number"
-                                       placeholder="Till" maxlength="20" class="mf-input mf-input--mono">
                             </div>
                             <div class="mf-field">
                                 <span class="mf-field__label mf-hide-lg">Account ref</span>
@@ -397,8 +385,9 @@ function darajaFinanceSettings() {
             </template>
 
             <p x-show="accounts.length > 0" class="mf-footnote">
-                <strong>Admission no.</strong> — each student’s ID on STK ·
-                <strong>Fixed acct no.</strong> — same reference for every payment.
+                Paybill / till numbers are set under <strong>STK push credentials</strong> above.
+                <strong>Admission no.</strong> — each student’s admission number is sent as the M-Pesa account reference ·
+                <strong>Fixed acct no.</strong> — the account number you enter is sent on every payment.
             </p>
 
             <div class="mf-actions">

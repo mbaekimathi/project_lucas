@@ -178,9 +178,60 @@
                 {% if p.report_type == 'general-ledger' %}Ledger entries{% elif p.report_type == 'petty-cash-book' %}Petty cash book entries{% elif p.report_type == 'student-ledger' %}Student payments{% elif p.report_type == 'cash-flow' %}Cash flow by period{% else %}Transaction detail{% endif %}
             </h2>
         </div>
-        <span class="acr-section__count">{{ p.rows|length }} row{{ 's' if p.rows|length != 1 else '' }}</span>
+        <span class="acr-section__count">{{ p.transaction_count|default(p.rows|length) }} entr{{ 'ies' if (p.transaction_count|default(p.rows|length)) != 1 else 'y' }}</span>
     </div>
     {% if p.rows %}
+    {% if p.report_type == 'petty-cash-book' %}
+    <div class="acr-pcb-table">
+        <div class="acr-pcb-table__scroll acr-table-scroll acr-table-scroll--stack">
+            <table class="acr-table acr-table--stack">
+                <colgroup>
+                    <col class="acr-pcb-col-date"><col class="acr-pcb-col-ref"><col class="acr-pcb-col-part">
+                    <col class="acr-pcb-col-rcpt"><col class="acr-pcb-col-pay"><col class="acr-pcb-col-bal">
+                </colgroup>
+                <thead>
+                    <tr>
+                        {% for col in p.columns %}
+                        <th class="{% if col.align == 'right' %}acr-num{% endif %}">{{ col.label }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in p.rows %}
+                    {% if not row._ledger_row %}
+                    <tr>
+                        {% for col in p.columns %}
+                        <td class="{% if col.align == 'right' %}acr-num{% endif %} {% if col.key == 'reference' %}acr-mono{% endif %}"
+                            data-label="{{ col.label }}">{{ row[col.key]|default('—') }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="acr-pcb-table__foot" aria-label="Petty cash book summary">
+            <table class="acr-table acr-table--stack">
+                <colgroup>
+                    <col class="acr-pcb-col-date"><col class="acr-pcb-col-ref"><col class="acr-pcb-col-part">
+                    <col class="acr-pcb-col-rcpt"><col class="acr-pcb-col-pay"><col class="acr-pcb-col-bal">
+                </colgroup>
+                <tbody>
+                    {% for row in p.rows %}
+                    {% if row._ledger_row in ('opening', 'total', 'closing') %}
+                    <tr class="acr-row-total">
+                        {% for col in p.columns %}
+                        <td class="{% if col.align == 'right' %}acr-num{% endif %} {% if col.key == 'reference' %}acr-mono{% endif %}"
+                            data-label="{{ col.label }}">{{ row[col.key]|default('—') }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
     <div class="acr-table-scroll acr-table-scroll--stack">
         <table class="acr-table acr-table--stack">
             <thead>
@@ -202,6 +253,7 @@
             </tbody>
         </table>
     </div>
+    {% endif %}
     {% else %}
     <div class="acr-empty">
         <i class="fas fa-{% if p.empty_state %}coins{% else %}file-alt{% endif %}" aria-hidden="true"></i>

@@ -250,7 +250,12 @@
                     {% if student.parent_name %}
                     <div>
                         <div class="field__label">Parent / guardian</div>
-                        <div class="field__value">{{ student.parent_name }}{% if student.parent_phone %} · {{ student.parent_phone }}{% endif %}</div>
+                        <div class="field__value">{{ student.parent_name }}{% if student.parent_contact %} · {{ student.parent_contact }}{% elif student.parent_phone %} · {{ student.parent_phone }}{% endif %}</div>
+                    </div>
+                    {% elif student.parent_contact or student.parent_phone %}
+                    <div>
+                        <div class="field__label">Parent contact</div>
+                        <div class="field__value">{{ student.parent_contact or student.parent_phone }}</div>
                     </div>
                     {% endif %}
                     {% if fee_structure and fee_structure.fee_name %}
@@ -279,7 +284,34 @@
                     {% endif %}
                 </div>
 
-                {% if fee_items %}
+                {% if fee_votes %}
+                <div class="section-title">Fee votes</div>
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Fee vote</th>
+                            <th class="num">Expected (KES)</th>
+                            <th class="num">Paid (KES)</th>
+                            <th class="num">Balance (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in fee_votes %}
+                        <tr>
+                            <td>
+                                {{ v.vote_name }}
+                                {% if v.vote_description %}
+                                <div style="font-size:0.75rem;color:#64748b;font-weight:400;margin-top:2px;">{{ v.vote_description }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="num">{{ "{:,.2f}".format(v.expected_amount) }}</td>
+                            <td class="num">{{ "{:,.2f}".format(v.paid_amount) }}</td>
+                            <td class="num">{{ "{:,.2f}".format(v.balance) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% elif fee_items %}
                 <div class="section-title">Fee breakdown</div>
                 <table class="data">
                     <thead>

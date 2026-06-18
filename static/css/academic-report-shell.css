@@ -1,0 +1,2538 @@
+<style>
+/* Class registers & exam entry: stable columns on screen and in print */
+#ar-details-list table.ar-register-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+/* Print letterhead & footer — hidden on screen */
+.ar-print-only-hidden {
+    display: none !important;
+}
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 6mm 8mm 8mm 8mm;
+    }
+    /*
+      Dashboard shell uses a fixed-height main + inner overflow-y-auto.
+      Browsers often clip print/PDF to that viewport unless we expand for print.
+    */
+    html:has(#ar-preview-wrap),
+    body:has(#ar-preview-wrap),
+    html.ar-print-academic-report,
+    html.ar-print-academic-report body {
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    main:has(#ar-preview-wrap),
+    html.ar-print-academic-report main.overflow-hidden {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        flex: none !important;
+        padding-bottom: 0 !important;
+    }
+    main:has(#ar-preview-wrap) > div.overflow-y-auto,
+    html.ar-print-academic-report main.overflow-hidden > div.overflow-y-auto {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        flex: none !important;
+        min-height: 0 !important;
+    }
+    body:has(#ar-preview-wrap) .max-w-7xl.mx-auto,
+    html.ar-print-academic-report body .max-w-7xl.mx-auto,
+    html.ar-print-academic-report .ar-page,
+    html.ar-print-academic-report .ar-preview-panel {
+        max-width: none !important;
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    body * {
+        visibility: hidden !important;
+    }
+    #ar-preview-wrap,
+    #ar-preview-wrap * {
+        visibility: visible !important;
+    }
+    /*
+      Break out of the dashboard column: fixed full-viewport layer so print/PDF
+      uses the entire A4 sheet, not just the on-screen preview pane width.
+    */
+    #ar-preview-wrap {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 10mm 8mm 10mm !important;
+        overflow: visible !important;
+        background: #fff !important;
+        color: #111827 !important;
+        box-sizing: border-box !important;
+        z-index: 2147483647 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    /* Multi-student cards: fixed traps all pages in one viewport — use normal flow */
+    html.ar-print-individual-batch-doc body > *:not(#ar-preview-wrap) {
+        display: none !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch {
+        position: static !important;
+        left: auto !important;
+        top: auto !important;
+        right: auto !important;
+        z-index: auto !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: auto !important;
+        min-height: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch > div.rounded-xl,
+    #ar-preview-wrap.ar-print-individual-batch #ar-details-list,
+    #ar-preview-wrap.ar-print-individual-batch #ar-chunked-cards-root {
+        display: block !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    /* Single individual report: full viewport width (static flow stays in narrow dashboard column) */
+    #ar-preview-wrap.ar-print-single-sheet {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        z-index: 2147483647 !important;
+    }
+    /* Drop on-screen “card” chrome so content uses the full printable A4 width */
+    #ar-preview-wrap > div.rounded-xl {
+        width: 100% !important;
+        max-width: none !important;
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        overflow: visible !important;
+        --tw-ring-width: 0 !important;
+        --tw-ring-offset-width: 0 !important;
+    }
+    #ar-print-letterhead,
+    #ar-preview-wrap #ar-details-list,
+    #ar-preview-wrap #ar-details-list > *,
+    #ar-preview-wrap .space-y-4,
+    #ar-preview-wrap details,
+    #ar-preview-wrap details > div,
+    #ar-preview-wrap .ar-fit-sheet,
+    #ar-preview-wrap .overflow-x-auto,
+    #ar-preview-wrap article.ar-rc,
+    #ar-preview-wrap .ar-rc-inner {
+        width: 100% !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+    #ar-preview-wrap > div.rounded-xl > div.shrink-0 {
+        padding: 0 0 2px !important;
+        border-bottom: 1px solid #94a3b8 !important;
+        background: #fff !important;
+    }
+    #ar-preview-wrap > div.rounded-xl > div.shrink-0 .flex.flex-col,
+    #ar-preview-wrap > div.rounded-xl > div.shrink-0 .flex.sm\\:flex-row {
+        gap: 0.15rem !important;
+        align-items: center !important;
+    }
+    #ar-preview-wrap > div.rounded-xl > div.shrink-0 .flex.items-start {
+        gap: 0.25rem !important;
+    }
+    #ar-preview-wrap > div.rounded-xl > div.shrink-0 img {
+        width: 18px !important;
+        height: 18px !important;
+        max-width: 18px !important;
+        max-height: 18px !important;
+        border-radius: 2px !important;
+        border-width: 1px !important;
+    }
+    #ar-preview-wrap > div.rounded-xl > div.shrink-0 h2 {
+        font-size: 7pt !important;
+        line-height: 1.1 !important;
+        margin: 0 !important;
+        font-weight: 700 !important;
+    }
+    #ar-preview-wrap > div.rounded-xl > div.shrink-0 #ar-generated-at {
+        font-size: 5.5pt !important;
+        margin-top: 0 !important;
+        line-height: 1.1 !important;
+    }
+    #ar-preview-wrap #ar-details-list.ar-preview-scroll {
+        width: 100% !important;
+        max-width: none !important;
+        padding: 0 !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        flex: none !important;
+        background: #fff !important;
+    }
+    .no-print {
+        display: none !important;
+    }
+    /* Official print letterhead replaces on-screen preview header */
+    #ar-preview-wrap > div.rounded-xl > div.shrink-0:first-of-type {
+        display: none !important;
+    }
+    /* No global report title / filter / generated block — each sheet uses its own header */
+    #ar-print-letterhead {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-grid {
+        display: flex !important;
+        align-items: center !important;
+        gap: 4mm !important;
+        margin-bottom: 2mm !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-logo {
+        width: 16mm !important;
+        height: 16mm !important;
+        max-width: 16mm !important;
+        max-height: 16mm !important;
+        object-fit: contain !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 2px !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-kicker {
+        font-size: 7.5pt !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.08em !important;
+        text-transform: uppercase !important;
+        color: #475569 !important;
+        margin: 0 0 0.5mm !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-school {
+        font-size: 15pt !important;
+        font-weight: 700 !important;
+        color: #0f172a !important;
+        margin: 0 !important;
+        line-height: 1.15 !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-contact {
+        font-size: 8.5pt !important;
+        color: #475569 !important;
+        margin: 0.5mm 0 0 !important;
+        line-height: 1.25 !important;
+    }
+    #ar-print-letterhead #ar-print-report-title {
+        font-size: 13pt !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.04em !important;
+        color: #0f2744 !important;
+        margin: 0 0 1mm !important;
+        line-height: 1.2 !important;
+    }
+    #ar-print-letterhead .ar-print-report-meta {
+        font-size: 10pt !important;
+        color: #334155 !important;
+        line-height: 1.35 !important;
+        margin: 0 !important;
+    }
+    #ar-print-letterhead .ar-print-generated {
+        font-weight: 600 !important;
+        color: #0f172a !important;
+    }
+    #ar-print-page-footer {
+        display: block !important;
+        visibility: visible !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        font-size: 8pt !important;
+        color: #64748b !important;
+        text-align: center !important;
+        padding: 2mm 10mm !important;
+        border-top: 1px solid #cbd5e1 !important;
+        background: #fff !important;
+    }
+    #ar-preview-wrap .ar-rc-doc-title-row {
+        margin-top: 1mm !important;
+    }
+    #ar-preview-wrap .overflow-x-auto,
+    #ar-preview-wrap .overflow-hidden {
+        overflow: visible !important;
+    }
+    #ar-preview-wrap table {
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: auto !important;
+        border-collapse: collapse !important;
+        border: 1px solid #64748b !important;
+    }
+    /* Dense grid like a spreadsheet — minimal cell padding */
+    #ar-preview-wrap th,
+    #ar-preview-wrap td {
+        white-space: normal !important;
+        word-break: break-word !important;
+        font-size: 10pt !important;
+        line-height: 1.25 !important;
+        padding: 2px 3px !important;
+        box-sizing: border-box !important;
+        vertical-align: middle !important;
+        border: 1px solid #94a3b8 !important;
+    }
+    /* Class marks matrix — portrait A4: scale to fit printable width */
+    #ar-preview-wrap table.ar-marks-matrix {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed !important;
+        border-collapse: collapse !important;
+        border: 1px solid #64748b !important;
+        font-size: 8.5pt !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix th,
+    #ar-preview-wrap table.ar-marks-matrix td {
+        font-size: inherit !important;
+        line-height: 1.2 !important;
+        padding: 1px 2px !important;
+        border: 1px solid #94a3b8 !important;
+        box-sizing: border-box !important;
+        vertical-align: middle !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-mark {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade {
+        display: inline-flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 2px 4px;
+        line-height: 1.2;
+        min-width: 0;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-sep {
+        opacity: 0.55;
+        font-weight: 600;
+        font-size: 0.75em;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-pct {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-grd {
+        font-size: 0.82em;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+    }
+    #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-sum,
+    #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-grade {
+        white-space: nowrap !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--dense {
+        font-size: 8pt !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--dense th,
+    #ar-preview-wrap table.ar-marks-matrix--dense td {
+        padding: 0.5px 0.5px !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--xdense {
+        font-size: 7.5pt !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--xxdense {
+        font-size: 7pt !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--xxdense th,
+    #ar-preview-wrap table.ar-marks-matrix--xxdense td {
+        padding: 0 0.5px !important;
+        letter-spacing: -0.02em;
+    }
+    #ar-preview-wrap table.ar-marks-matrix col.ar-col-sum {
+        width: 5% !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix col.ar-col-grade {
+        width: 7% !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
+        text-align: left !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        max-width: none !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        padding-left: 3px !important;
+        padding-right: 4px !important;
+        font-weight: 600 !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
+        max-width: 6.5mm !important;
+        padding-left: 1px !important;
+        padding-right: 1px !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-sum {
+        max-width: none !important;
+        min-width: 10mm !important;
+        padding-left: 2px !important;
+        padding-right: 2px !important;
+        font-weight: 600 !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-grade {
+        max-width: none !important;
+        min-width: 14mm !important;
+        width: 7% !important;
+        padding-left: 2px !important;
+        padding-right: 3px !important;
+        font-weight: 600 !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix col.ar-col-subj {
+        width: auto !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix th.ar-col-subj {
+        text-align: center !important;
+        font-size: 0.92em !important;
+        font-weight: 700 !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        hyphens: auto !important;
+        line-height: 1.05 !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--xdense th.ar-col-subj,
+    #ar-preview-wrap table.ar-marks-matrix--xxdense th.ar-col-subj {
+        font-size: 0.88em !important;
+        letter-spacing: -0.03em;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-mark,
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-sum,
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-grade {
+        text-align: center !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix th.ar-col-sum,
+    #ar-preview-wrap table.ar-marks-matrix th.ar-col-grade {
+        font-size: 0.85em !important;
+        letter-spacing: -0.02em;
+    }
+    #ar-preview-wrap .ar-fit-sheet:has(table.ar-marks-matrix) {
+        overflow: visible !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    /* Let long tables split across pages (avoiding every-row avoid loses content on some engines). */
+    #ar-preview-wrap tbody tr {
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+    }
+    #ar-preview-wrap thead {
+        display: table-header-group !important;
+    }
+    #ar-preview-wrap tfoot {
+        display: table-footer-group !important;
+    }
+    #ar-preview-wrap details,
+    #ar-preview-wrap summary {
+        display: block !important;
+        overflow: visible !important;
+    }
+    #ar-preview-wrap .rounded-xl,
+    #ar-preview-wrap .rounded-lg,
+    #ar-preview-wrap .rounded-2xl {
+        border-radius: 0 !important;
+    }
+    /* Registers / entry lists: fit full width, avoid clipped mark columns */
+    #ar-preview-wrap table.ar-register-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
+        min-width: 0 !important;
+    }
+    #ar-preview-wrap table.ar-register-table thead tr:nth-child(1) th,
+    #ar-preview-wrap table.ar-register-table thead tr:nth-child(2) th {
+        padding: 1px 3px !important;
+    }
+    #ar-preview-wrap table.ar-register-table thead tr:nth-child(1) th .text-base {
+        font-size: 9pt !important;
+        line-height: 1.15 !important;
+    }
+    #ar-preview-wrap table.ar-register-table thead tr:nth-child(2) th .flex.flex-wrap {
+        gap: 0.35rem !important;
+        font-size: 8pt !important;
+    }
+    #ar-preview-wrap table.ar-register-table col.ar-col-num {
+        width: 2.5% !important;
+    }
+    #ar-preview-wrap table.ar-register-table col.ar-col-class {
+        width: 7% !important;
+    }
+    #ar-preview-wrap table.ar-register-table col.ar-col-mark {
+        width: 7% !important;
+    }
+    #ar-preview-wrap table.ar-register-table col.ar-col-entry {
+        width: 6% !important;
+    }
+    /* Plain handwriting cells — compact row height */
+    #ar-preview-wrap table.ar-register-table td.ar-cell-blank {
+        min-height: 14px !important;
+        background: #fff !important;
+    }
+    #ar-preview-wrap .ar-register-sheet {
+        overflow: visible !important;
+        border: 1px solid #64748b !important;
+        box-shadow: none !important;
+    }
+    /* Each report sheet / class / student card starts on its own printed page */
+    #ar-preview-wrap .ar-print-page-follow,
+    #ar-preview-wrap .ar-class-print-follow,
+    #ar-preview-wrap .ar-register-class-wrap.ar-register-follow {
+        page-break-before: always !important;
+        break-before: page !important;
+    }
+    /* One break only — do not also use break-after or extra break divs (causes blank pages) */
+    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+    }
+    #ar-preview-wrap .ar-print-page-sheet,
+    #ar-preview-wrap .ar-class-print-sheet,
+    #ar-preview-wrap .ar-register-class-wrap {
+        width: 100% !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+    #ar-preview-wrap article.ar-rc-individual.ar-print-page-sheet {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    #ar-preview-wrap details.ar-class-print-sheet > div {
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+    }
+    #ar-preview-wrap .ar-class-print-sheet > summary {
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+    }
+    #ar-preview-wrap .space-y-4 > .h-4 {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+    }
+    #ar-preview-wrap .shadow-sm,
+    #ar-preview-wrap .shadow-md {
+        box-shadow: none !important;
+    }
+    #ar-preview-wrap .bg-gradient-to-r {
+        background: #e5e7eb !important;
+        color: #111827 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    /* Cohort blocks: flat bordered panel, compact summary row */
+    #ar-preview-wrap details {
+        border: 1px solid #64748b !important;
+        margin: 0 0 3px !important;
+        padding: 0 !important;
+        background: #fff !important;
+    }
+    #ar-preview-wrap details > summary {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        gap: 0.15rem !important;
+        padding: 1px 3px !important;
+        min-height: 0 !important;
+        font-size: 8pt !important;
+        font-weight: 600 !important;
+        background: #e5e7eb !important;
+        color: #111 !important;
+        border-bottom: 1px solid #94a3b8 !important;
+        page-break-after: avoid !important;
+    }
+    #ar-preview-wrap details > summary .h-9.w-9,
+    #ar-preview-wrap details > summary .flex.h-9 {
+        display: none !important;
+    }
+    #ar-preview-wrap details > summary .rounded-full {
+        padding: 0 4px !important;
+        font-size: 7pt !important;
+        line-height: 1.1 !important;
+        border-radius: 2px !important;
+        gap: 0.15rem !important;
+    }
+    #ar-preview-wrap details > summary .text-base {
+        font-size: inherit !important;
+        line-height: 1.15 !important;
+    }
+    /* Drop redundant “Class cohort” micro-label in print */
+    #ar-preview-wrap details > summary .min-w-0 > p:first-of-type {
+        display: none !important;
+    }
+    #ar-preview-wrap details > summary .gap-3 {
+        gap: 0.25rem !important;
+    }
+    #ar-preview-wrap details > summary span,
+    #ar-preview-wrap details > summary p {
+        font-size: inherit !important;
+        line-height: 1.2 !important;
+        margin: 0 !important;
+    }
+    #ar-preview-wrap details > div {
+        padding: 2px !important;
+        background: #fff !important;
+    }
+    /* Fallback: cohort details after the first (All classes exam report) */
+    #ar-preview-wrap #ar-details-list .space-y-4 > details.ar-class-print-follow {
+        page-break-before: always !important;
+        break-before: page !important;
+    }
+    /* Register sheet title row: avoid flex shrink quirks in print engines */
+    #ar-preview-wrap table.ar-register-table thead th .flex.flex-wrap.justify-between {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: flex-start !important;
+        width: 100% !important;
+        gap: 0.75rem !important;
+    }
+    /* Report cards: keep one sheet together; wide class matrices may paginate */
+    #ar-preview-wrap article.ar-rc:has(.ar-rc-body-grid--split) {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        max-width: 100% !important;
+    }
+    #ar-preview-wrap .ar-rc-inner {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-header {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        margin-bottom: 1px !important;
+    }
+    #ar-preview-wrap .ar-rc-doc-title-row {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-body-grid--split {
+        grid-template-columns: 1fr !important;
+        gap: 0 !important;
+    }
+    #ar-preview-wrap article.ar-rc-individual {
+        margin-bottom: 0 !important;
+    }
+    /* Full A4 portrait sheet per student — min-height only so content does not spill to a 2nd page */
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual,
+    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual {
+        min-height: 276mm !important;
+        height: auto !important;
+        max-height: none !important;
+        display: flex !important;
+        flex-direction: column !important;
+        box-sizing: border-box !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        overflow: visible !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet #ar-print-page-footer,
+    #ar-preview-wrap.ar-print-individual-batch #ar-print-page-footer {
+        display: none !important;
+    }
+    #ar-preview-wrap .ar-rc-individual,
+    #ar-preview-wrap .ar-rc-individual .ar-rc-main-body,
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table,
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects {
+        width: 100% !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-header {
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-header-band {
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects {
+        table-layout: fixed !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table .ar-rc-td-num,
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table thead th:not(.ar-rc-th-subj):not(.ar-rc-th-feedback) {
+        max-width: none !important;
+        width: 11% !important;
+    }
+    /* Individual report: drop redundant print letterhead (details are on the report card) */
+    #ar-preview-wrap.ar-print-single-sheet #ar-print-letterhead {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-header-band,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-header-band {
+        display: block !important;
+        padding: 4mm 5mm !important;
+        background: linear-gradient(128deg, #0f2744 0%, #1e3a5f 55%, #166534 100%) !important;
+        color: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-school-name,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-school-name {
+        font-size: 14pt !important;
+        color: #fff !important;
+        line-height: 1.15 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-school-contact,
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-kicker,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-school-contact,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-kicker {
+        color: rgba(255, 255, 255, 0.85) !important;
+        font-size: 7.5pt !important;
+        line-height: 1.2 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-logo-wrap,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-logo-wrap {
+        width: 16mm !important;
+        height: 16mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-title,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-title {
+        font-size: 14pt !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-doc-title-row,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-doc-title-row {
+        margin: 2mm 0 3mm !important;
+        padding: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-inner,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-inner {
+        flex: 1 1 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        padding: 0 2mm !important;
+        min-height: 0 !important;
+        height: 100% !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-main-body,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-main-body {
+        flex: 0 0 auto !important;
+        display: block !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-panel--with-photo,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-panel--with-photo {
+        display: grid !important;
+        grid-template-columns: 1fr 24mm !important;
+        gap: 4mm !important;
+        align-items: start !important;
+        padding: 3mm 4mm !important;
+        margin-bottom: 3mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-grid,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-grid {
+        gap: 2mm 4mm !important;
+        font-size: 10pt !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-label,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-label {
+        font-size: 8pt !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-value,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-value {
+        font-size: 11pt !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-meta-photo-wrap .ar-rc-photo,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-meta-photo-wrap .ar-rc-photo {
+        width: 22mm !important;
+        height: 28mm !important;
+        margin: 0 auto !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--subjects thead th,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--subjects thead th {
+        font-size: 8.5pt !important;
+        padding: 1.5mm 1.5mm !important;
+        line-height: 1.15 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--subjects tbody td,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--subjects tbody td {
+        font-size: 9.5pt !important;
+        padding: 1.2mm 1.5mm !important;
+        line-height: 1.2 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--subjects .ar-rc-td-subj,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--subjects .ar-rc-td-subj {
+        width: auto !important;
+        font-size: 9.5pt !important;
+        font-weight: 600 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-subj,
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-subj,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-subj,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-subj {
+        width: 7% !important;
+        min-width: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-exam-col,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-exam-col {
+        font-size: 7pt !important;
+        line-height: 1.1 !important;
+        padding: 1mm 0.6mm !important;
+        word-break: break-word;
+        hyphens: auto;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-avg,
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-avg,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-avg,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-avg {
+        width: 7% !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam thead th:not(.ar-rc-th-subj):not(.ar-rc-th-feedback):not(.ar-rc-th-exam-col),
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-num:not(.ar-rc-td-avg),
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam thead th:not(.ar-rc-th-subj):not(.ar-rc-th-feedback):not(.ar-rc-th-exam-col),
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-num:not(.ar-rc-td-avg) {
+        width: 6% !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-feedback,
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-feedback,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-th-feedback,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-table--multi-exam .ar-rc-td-feedback {
+        width: 14% !important;
+        font-size: 6.5pt !important;
+        line-height: 1.12 !important;
+        padding: 0.8mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-stats-row--5,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-stats-row--5 {
+        grid-template-columns: repeat(5, 1fr) !important;
+        gap: 2.5mm !important;
+        margin: 3mm 0 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-stat,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-stat {
+        padding: 2.5mm 2mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-stat-label,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-stat-label {
+        font-size: 7.5pt !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-stat-value,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-stat-value {
+        font-size: 12pt !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-grade-scale,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-grade-scale {
+        font-size: 7.5pt !important;
+        margin: 2mm 0 !important;
+        line-height: 1.25 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback {
+        flex: 1 1 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        margin-top: 2mm !important;
+        min-height: 32mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback-title,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback-title {
+        font-size: 9pt !important;
+        margin-bottom: 1.5mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback-lines,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback-lines {
+        flex: 1 1 auto !important;
+        min-height: 28mm !important;
+        padding: 2.5mm 3mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback-line,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback-line {
+        height: 6mm !important;
+        margin-bottom: 1.5mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-signatures,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-signatures {
+        flex: 0 0 auto !important;
+        margin-top: auto !important;
+        padding-top: 3mm !important;
+        font-size: 8.5pt !important;
+        gap: 4mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-sig-title,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-sig-title {
+        font-size: 8pt !important;
+        margin-bottom: 4mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-sig-block p,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-sig-block p {
+        margin: 0.8mm 0 !important;
+        line-height: 1.25 !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-summary-box {
+        display: none !important;
+    }
+    /* Report “cards” → compact bordered sheet (Excel-like) */
+    #ar-preview-wrap {
+        font-size: 10pt !important;
+        font-family: 'Segoe UI', Arial, sans-serif !important;
+    }
+    #ar-preview-wrap .ar-rc {
+        border: 1px solid #64748b !important;
+        box-shadow: none !important;
+        margin-bottom: 2px !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+        border-radius: 0 !important;
+        overflow: visible !important;
+    }
+    #ar-preview-wrap .ar-rc-deco,
+    #ar-preview-wrap .ar-rc-doc-title-accent {
+        display: none !important;
+    }
+    #ar-preview-wrap .ar-rc-header-band {
+        padding: 2px 4px !important;
+        background: #e5e7eb !important;
+        color: #111 !important;
+    }
+    #ar-preview-wrap .ar-rc-header-band::before {
+        display: none !important;
+    }
+    #ar-preview-wrap .ar-rc-header-band-inner {
+        gap: 0.25rem !important;
+        align-items: center !important;
+    }
+    #ar-preview-wrap .ar-rc-kicker,
+    #ar-preview-wrap .ar-rc-school-name,
+    #ar-preview-wrap .ar-rc-school-contact {
+        color: #111 !important;
+    }
+    #ar-preview-wrap .ar-rc-kicker {
+        font-size: 5pt !important;
+        letter-spacing: 0.06em !important;
+        margin: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-school-name {
+        font-size: 8pt !important;
+        line-height: 1.1 !important;
+    }
+    #ar-preview-wrap .ar-rc-school-contact {
+        font-size: 5.5pt !important;
+        margin: 0 !important;
+        max-width: none !important;
+        line-height: 1.15 !important;
+    }
+    #ar-preview-wrap .ar-rc-logo-wrap {
+        width: 1.35rem !important;
+        height: 1.35rem !important;
+        padding: 0 !important;
+        border-radius: 2px !important;
+        box-shadow: none !important;
+    }
+    #ar-preview-wrap .ar-rc-badge {
+        padding: 1px 3px !important;
+        min-width: 0 !important;
+        border-radius: 2px !important;
+        background: #f1f5f9 !important;
+        border: 1px solid #94a3b8 !important;
+    }
+    #ar-preview-wrap .ar-rc-badge-label {
+        font-size: 5pt !important;
+    }
+    #ar-preview-wrap .ar-rc-badge-value {
+        font-size: 8pt !important;
+        color: #111 !important;
+    }
+    #ar-preview-wrap .ar-rc-title {
+        font-size: 9pt !important;
+        letter-spacing: 0.04em !important;
+        color: #111 !important;
+    }
+    #ar-preview-wrap .ar-rc-doc-title-row {
+        padding: 1px 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-meta-panel {
+        padding: 2px 3px !important;
+        margin-bottom: 2px !important;
+        border-radius: 0 !important;
+        background: #f8fafc !important;
+        border: 1px solid #94a3b8 !important;
+    }
+    #ar-preview-wrap .ar-rc-meta-grid {
+        gap: 1px 4px !important;
+        font-size: 9pt !important;
+    }
+    #ar-preview-wrap .ar-rc-meta-label {
+        font-size: 8pt !important;
+    }
+    #ar-preview-wrap .ar-rc-meta-value {
+        font-size: 9.5pt !important;
+        color: #111 !important;
+    }
+    #ar-preview-wrap .ar-rc-photo {
+        width: 1.85rem !important;
+        height: 2.25rem !important;
+        border-width: 1px !important;
+        border-radius: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-summary-box {
+        font-size: 8.5pt !important;
+        border-width: 1px !important;
+        border-radius: 0 !important;
+        margin-top: 2px !important;
+    }
+    #ar-preview-wrap .ar-rc-summary-box th,
+    #ar-preview-wrap .ar-rc-summary-box td {
+        padding: 2px 3px !important;
+        font-size: 8.5pt !important;
+    }
+    #ar-preview-wrap .ar-rc-summary-box th {
+        background: #e2e8f0 !important;
+        color: #111 !important;
+        border: 1px solid #94a3b8 !important;
+    }
+    #ar-preview-wrap .ar-rc-table thead th {
+        background: #e2e8f0 !important;
+        color: #111 !important;
+        border: 1px solid #94a3b8 !important;
+        border-bottom: 1px solid #64748b !important;
+        font-size: 8.5pt !important;
+        padding: 2px 3px !important;
+        text-transform: none !important;
+        letter-spacing: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-table tbody td {
+        padding: 2px 3px !important;
+        font-size: 9pt !important;
+    }
+    #ar-preview-wrap .ar-rc-table .ar-rc-th-subj {
+        width: 42% !important;
+    }
+    #ar-preview-wrap .ar-rc-table .ar-rc-td-num {
+        width: 12% !important;
+        max-width: 14mm !important;
+    }
+    #ar-preview-wrap .ar-rc-table thead th.ar-rc-th-feedback,
+    #ar-preview-wrap .ar-rc-table .ar-rc-td-feedback {
+        width: 30% !important;
+        max-width: none !important;
+        text-align: left !important;
+        font-size: 7.5pt !important;
+        line-height: 1.25 !important;
+    }
+    #ar-preview-wrap .ar-rc-stats-row {
+        gap: 2px !important;
+        margin: 2px 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-stat {
+        padding: 1px 3px !important;
+        border-radius: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-stat-label {
+        font-size: 6.5pt !important;
+        margin: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-stat-value {
+        font-size: 9pt !important;
+        color: #111 !important;
+    }
+    #ar-preview-wrap .ar-rc-grade-scale {
+        font-size: 7pt !important;
+        margin-top: 2px !important;
+        line-height: 1.2 !important;
+    }
+    #ar-preview-wrap .ar-rc-feedback {
+        margin-top: 2px !important;
+    }
+    #ar-preview-wrap .ar-rc-feedback-title {
+        font-size: 7pt !important;
+        margin: 0 0 1px !important;
+    }
+    #ar-preview-wrap .ar-rc-feedback-lines {
+        min-height: 1.25rem !important;
+        padding: 2px !important;
+        border-radius: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-feedback-line {
+        height: 0.65rem !important;
+        margin-bottom: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-signatures {
+        gap: 3px !important;
+        margin-top: 3px !important;
+        font-size: 7pt !important;
+    }
+    #ar-preview-wrap .ar-rc-sig-title {
+        margin: 0 0 0.35rem !important;
+        font-size: 7pt !important;
+    }
+    #ar-preview-wrap .ar-rc-class-banner {
+        margin-bottom: 1px !important;
+    }
+    #ar-preview-wrap .ar-rc-class-banner .ar-rc {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-class-banner .ar-rc-inner {
+        padding-bottom: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-class-banner .ar-rc-header {
+        margin-bottom: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-class-banner .ar-rc-header-band {
+        padding: 1px 3px !important;
+    }
+    #ar-preview-wrap .ar-rc-class-banner .text-xs {
+        font-size: 6.5pt !important;
+        line-height: 1.15 !important;
+        margin: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-class-banner .ar-rc-title {
+        font-size: 7.5pt !important;
+        letter-spacing: 0.02em !important;
+        line-height: 1.1 !important;
+        font-weight: 600 !important;
+    }
+    #ar-preview-wrap .ar-rc-class-banner .ar-rc-doc-title-row {
+        padding: 0 !important;
+        gap: 0.2rem !important;
+    }
+    /* Class marks / fit tables: neutral header strip (not heavy brand fill) */
+    #ar-preview-wrap table.ar-marks-matrix thead th,
+    #ar-preview-wrap table.ar-fit-table thead th,
+    #ar-preview-wrap table.ar-timetable-grid thead th {
+        background: #e2e8f0 !important;
+        color: #111 !important;
+        font-weight: 600 !important;
+        border: 1px solid #94a3b8 !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix tbody td,
+    #ar-preview-wrap table.ar-fit-table tbody td {
+        font-variant-numeric: tabular-nums !important;
+    }
+    /* Grade chips in matrices — single-line cell */
+    #ar-preview-wrap table.ar-marks-matrix .inline-flex {
+        display: inline !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        font-size: inherit !important;
+        font-weight: 600 !important;
+        background: transparent !important;
+    }
+    /* ===== Full A4 width — all report types (registers, matrices, tables, timetables) ===== */
+    html.ar-print-academic-report .ar-page,
+    html.ar-print-academic-report .ar-preview-panel,
+    #ar-preview-wrap,
+    #ar-preview-wrap > div.rounded-xl,
+    #ar-preview-wrap #ar-details-list,
+    #ar-preview-wrap #ar-details-list > *,
+    #ar-preview-wrap .space-y-4,
+    #ar-preview-wrap .space-y-8,
+    #ar-preview-wrap .ar-fit-sheet,
+    #ar-preview-wrap .ar-register-sheet,
+    #ar-preview-wrap .ar-register-class-wrap,
+    #ar-preview-wrap .ar-class-print-sheet,
+    #ar-preview-wrap .ar-rc-class-banner,
+    #ar-preview-wrap article.ar-rc {
+        width: 100% !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+  /* Class marks matrix — full sheet width */
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix {
+        font-size: 9pt !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
+        width: 20% !important;
+        min-width: 0 !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
+        max-width: none !important;
+        width: auto !important;
+        white-space: normal !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-subj-mark-grade .ar-subj-grd {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-grade,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-grade {
+        max-width: none !important;
+        min-width: 14mm !important;
+        width: 7% !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-sum {
+        max-width: none !important;
+        min-width: 10mm !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner,
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner + article.ar-rc {
+        width: 100% !important;
+    }
+  /* Attendance / exam entry registers (sheet banner has school name) */
+    #ar-preview-wrap.ar-print-register-batch #ar-print-letterhead {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch .ar-register-class-wrap,
+    #ar-preview-wrap.ar-print-register-batch .ar-register-sheet {
+        width: 100% !important;
+        max-width: none !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table {
+        font-size: 9.5pt !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-num {
+        width: 3% !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-class {
+        width: 8% !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-mark,
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-entry {
+        width: 6% !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table colgroup > col:not([class]) {
+        width: auto !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table td.ar-cell-blank {
+        min-height: 18px !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table thead tr:nth-child(1) th .text-base {
+        font-size: 11pt !important;
+    }
+  /* Timetables & generic data tables */
+    #ar-preview-wrap.ar-print-data-table .ar-fit-sheet,
+    #ar-preview-wrap.ar-print-data-table table.ar-fit-table,
+    #ar-preview-wrap.ar-print-data-table table.ar-simple-table,
+    #ar-preview-wrap.ar-print-data-table table.ar-timetable-grid {
+        width: 100% !important;
+        max-width: none !important;
+        table-layout: fixed !important;
+        font-size: 9pt !important;
+    }
+    #ar-preview-wrap.ar-print-data-table table.ar-timetable-grid th,
+    #ar-preview-wrap.ar-print-data-table table.ar-timetable-grid td {
+        font-size: 8.5pt !important;
+        padding: 1.5mm 1mm !important;
+    }
+  /* Multiple individual report cards — one student per page (ar-print-page-follow on each card after the first) */
+    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual {
+        width: 100% !important;
+        max-width: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch #ar-print-letterhead {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+    }
+    /* Flatten class cohort wrappers so each student card paginates independently */
+    #ar-preview-wrap.ar-print-individual-batch details.ar-class-print-sheet {
+        border: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch details.ar-class-print-sheet > summary {
+        display: none !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch details.ar-class-print-sheet > div {
+        padding: 0 !important;
+        background: transparent !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch .space-y-6 > * + *,
+    #ar-preview-wrap.ar-print-individual-batch #ar-chunked-cards-root > article + article {
+        margin-top: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch #ar-chunked-cards-root {
+        display: block !important;
+    }
+    /* Container queries use preview pane width — disable for print so all reports use full A4 */
+    #ar-preview-wrap {
+        container-type: normal !important;
+    }
+}
+/* Responsive preview: scales with panel width; wide tables scroll on small screens */
+#ar-preview-wrap {
+    container-type: inline-size;
+    container-name: ar-preview;
+}
+#ar-details-list {
+    overflow-x: auto;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+}
+#ar-details-list .ar-fit-sheet,
+#ar-preview-wrap .ar-fit-sheet {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+    box-sizing: border-box;
+}
+@container ar-preview (max-width: 480px) {
+    #ar-details-list .ar-marks-matrix { font-size: 0.5625rem; }
+    #ar-details-list .ar-marks-matrix--dense { font-size: 0.5rem; }
+    #ar-details-list .ar-marks-matrix--xdense,
+    #ar-details-list .ar-marks-matrix--xxdense { font-size: 0.46875rem; }
+    #ar-details-list .ar-timetable-grid { font-size: 0.5625rem; }
+    #ar-details-list .ar-simple-table { font-size: 0.6875rem; }
+}
+@container ar-preview (min-width: 481px) and (max-width: 768px) {
+    #ar-details-list .ar-marks-matrix { font-size: clamp(0.5625rem, 1.3cqi, 0.75rem); }
+    #ar-details-list .ar-timetable-grid { font-size: clamp(0.5625rem, 1.1cqi, 0.75rem); }
+}
+@container ar-preview (min-width: 769px) {
+    #ar-details-list .ar-marks-matrix { font-size: clamp(0.6875rem, 0.6rem + 0.4cqi, 0.875rem); }
+}
+#ar-details-list .ar-fit-table,
+#ar-preview-wrap .ar-fit-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+    border-collapse: collapse;
+    box-sizing: border-box;
+}
+#ar-details-list .ar-marks-matrix {
+    font-size: clamp(0.6875rem, 0.55rem + 0.35vw, 0.9375rem);
+}
+#ar-details-list .ar-marks-matrix--dense {
+    font-size: clamp(0.625rem, 0.5rem + 0.28vw, 0.8125rem);
+}
+#ar-details-list .ar-marks-matrix--xdense {
+    font-size: clamp(0.5625rem, 0.46rem + 0.18vw, 0.75rem);
+}
+#ar-details-list .ar-marks-matrix--xxdense {
+    font-size: clamp(0.5rem, 0.42rem + 0.12vw, 0.6875rem);
+}
+#ar-details-list .ar-marks-matrix col.ar-col-sum { width: 5%; }
+#ar-details-list .ar-marks-matrix col.ar-col-grade { width: 7%; }
+#ar-details-list .ar-marks-matrix th,
+#ar-details-list .ar-marks-matrix td,
+#ar-details-list .ar-fit-table th,
+#ar-details-list .ar-fit-table td {
+    padding: 0.28rem 0.22rem;
+    line-height: 1.2;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+#ar-details-list .ar-marks-matrix tbody td.ar-col-mark {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+}
+#ar-details-list .ar-marks-matrix .ar-subj-mark-grade {
+    display: inline-flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 2px 4px;
+    line-height: 1.2;
+}
+#ar-details-list .ar-marks-matrix .ar-subj-mark-grade .ar-subj-sep {
+    opacity: 0.55;
+    font-weight: 600;
+    font-size: 0.75em;
+}
+#ar-details-list .ar-marks-matrix .ar-subj-mark-grade .ar-subj-pct {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+#ar-details-list .ar-marks-matrix .ar-subj-mark-grade .ar-subj-grd {
+    font-size: 0.82em;
+    font-weight: 700;
+}
+#ar-details-list .ar-marks-matrix .ar-col-mark,
+#ar-details-list .ar-marks-matrix .ar-col-sum,
+#ar-details-list .ar-marks-matrix .ar-col-grade {
+    white-space: nowrap;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+#ar-details-list .ar-marks-matrix .ar-col-student {
+    text-align: left;
+    white-space: normal;
+    word-break: break-word;
+    overflow: visible;
+    text-overflow: clip;
+    font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix .ar-col-mark {
+    max-width: 2.1rem;
+}
+#ar-details-list .ar-marks-matrix .ar-col-sum {
+    max-width: none;
+    min-width: 2.75rem;
+    font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix .ar-col-grade {
+    max-width: none;
+    min-width: 3.25rem;
+    width: 7%;
+    overflow: visible;
+    text-overflow: clip;
+    font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix .ar-col-grade .inline-flex {
+    max-width: none;
+    overflow: visible;
+    white-space: nowrap;
+}
+#ar-details-list .ar-marks-matrix .ar-col-sum {
+    overflow: visible;
+    text-overflow: clip;
+}
+#ar-details-list .ar-marks-matrix th.ar-col-subj {
+    text-align: center;
+    white-space: normal;
+    word-break: break-word;
+    hyphens: auto;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+#ar-details-list .ar-marks-matrix .ar-col-mark {
+    text-align: center;
+}
+#ar-details-list .ar-marks-matrix .ar-col-sum {
+    text-align: right;
+    font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix thead th {
+    font-size: 0.95em;
+}
+#ar-details-list .ar-timetable-grid {
+    font-size: clamp(0.5625rem, 0.48rem + 0.25vw, 0.8125rem);
+}
+#ar-details-list .ar-timetable-grid th,
+#ar-details-list .ar-timetable-grid td {
+    padding: 0.2rem 0.15rem;
+    white-space: normal;
+    word-break: break-word;
+    vertical-align: top;
+}
+#ar-details-list .ar-timetable-grid .ar-col-date {
+    white-space: nowrap;
+    font-weight: 700;
+}
+#ar-details-list .ar-simple-table {
+    font-size: clamp(0.6875rem, 0.55rem + 0.3vw, 0.9375rem);
+}
+#ar-details-list .ar-simple-table th,
+#ar-details-list .ar-simple-table td {
+    padding: 0.35rem 0.4rem;
+    white-space: normal;
+    word-break: break-word;
+}
+#ar-details-list .ar-register-sheet.ar-fit-sheet {
+    overflow: hidden;
+    max-width: 100%;
+}
+#ar-details-list table.ar-register-table {
+    table-layout: fixed;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+@media print {
+    #ar-preview-wrap .ar-fit-sheet {
+        overflow: visible !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix,
+    #ar-preview-wrap table.ar-fit-table,
+    #ar-preview-wrap table.ar-timetable-grid {
+        table-layout: fixed !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+}
+/* Report card — professional typography & modern header */
+.ar-rc {
+    --ar-rc-navy: #0f2744;
+    --ar-rc-navy-mid: #1e3a5f;
+    --ar-rc-green: var(--brand-primary, #166534);
+    --ar-rc-accent: var(--brand-secondary, #22c55e);
+    --ar-rc-font-display: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+    --ar-rc-font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    position: relative;
+    font-family: var(--ar-rc-font-body);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    background: #fff;
+    color: #1e293b;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0 0 1.35rem;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.04),
+        0 12px 40px -12px rgba(15, 23, 42, 0.12);
+    -webkit-font-smoothing: antialiased;
+}
+@media not print {
+.dark .ar-rc {
+    background: rgb(30 41 59);
+    color: rgb(226 232 240);
+    border-color: rgb(51 65 85);
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.25),
+        0 12px 40px -12px rgba(0, 0, 0, 0.5);
+}
+.dark .ar-rc-doc-title-row {
+    background: rgb(30 41 59);
+}
+.dark .ar-rc-title {
+    color: rgb(248 250 252);
+}
+.dark .ar-rc-meta-panel {
+    background: linear-gradient(180deg, rgb(51 65 85) 0%, rgb(30 41 59) 100%);
+    border-color: rgb(71 85 105);
+}
+.dark .ar-rc-meta-label {
+    color: rgb(148 163 184);
+}
+.dark .ar-rc-meta-value {
+    color: rgb(241 245 249);
+}
+.dark .ar-rc-table tbody td {
+    border-color: rgb(71 85 105);
+    color: rgb(241 245 249);
+}
+.dark .ar-rc-table tbody tr:nth-child(even) td {
+    background: rgb(51 65 85 / 0.55);
+}
+.dark .ar-rc-table tbody tr:nth-child(odd) td {
+    background: rgb(30 41 59);
+}
+.dark .ar-rc-summary-box {
+    border-color: rgb(71 85 105);
+}
+.dark .ar-rc-summary-box td {
+    border-color: rgb(71 85 105);
+    color: rgb(226 232 240);
+}
+.dark .ar-rc-summary-box td:first-child {
+    background: rgb(51 65 85);
+    color: rgb(248 250 252);
+}
+.dark .ar-rc-stat {
+    background: rgb(51 65 85 / 0.65);
+    border-color: rgb(71 85 105);
+}
+.dark .ar-rc-stat-label {
+    color: rgb(148 163 184);
+}
+.dark .ar-rc-stat-value {
+    color: rgb(248 250 252);
+}
+.dark .ar-rc-feedback-title {
+    color: rgb(226 232 240);
+}
+.dark .ar-rc-feedback-lines {
+    background: rgb(30 41 59);
+    border-color: rgb(71 85 105);
+}
+.dark .ar-rc-feedback-line {
+    border-bottom-color: rgb(71 85 105);
+}
+.dark .ar-rc-grade-scale {
+    color: rgb(148 163 184);
+}
+.dark .ar-rc-sig-block {
+    border-top-color: rgb(100 116 139);
+}
+.dark .ar-rc-sig-title {
+    color: rgb(203 213 225);
+}
+.dark .ar-rc-photo {
+    border-color: rgb(100 116 139);
+    background: rgb(51 65 85);
+}
+.dark .ar-chooser-toolbar {
+    border-top-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 18%, transparent);
+}
+.dark .ar-student-roster-table td {
+    color: rgb(226 232 240);
+}
+.dark .ar-student-roster-empty {
+    color: rgb(148 163 184);
+}
+}
+.ar-rc-deco {
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+    opacity: 0.5;
+}
+.ar-rc-deco--tr {
+    top: 0;
+    right: 0;
+    width: 40%;
+    height: 5.5rem;
+    background: radial-gradient(ellipse at 100% 0%, rgba(255, 255, 255, 0.12) 0%, transparent 70%);
+}
+.ar-rc-deco--bl {
+    display: none;
+}
+.ar-rc-inner {
+    position: relative;
+    z-index: 1;
+    padding: 0 1.35rem;
+}
+.ar-rc-header {
+    margin: 0 -1.35rem 1.15rem;
+}
+.ar-rc-header-band {
+    position: relative;
+    padding: 1.15rem 1.35rem 1.05rem;
+    background: linear-gradient(
+        128deg,
+        var(--ar-rc-navy) 0%,
+        var(--ar-rc-navy-mid) 42%,
+        color-mix(in srgb, var(--ar-rc-green) 88%, var(--ar-rc-navy)) 100%
+    );
+    color: #fff;
+    overflow: hidden;
+}
+.ar-rc-header-band::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(105deg, transparent 55%, rgba(255, 255, 255, 0.06) 100%),
+        url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    opacity: 0.9;
+    pointer-events: none;
+}
+.ar-rc-header-band-inner {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.ar-rc-header-main {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-width: 0;
+    flex: 1;
+}
+.ar-rc-logo-wrap {
+    flex-shrink: 0;
+    width: 4.5rem;
+    height: 4.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: #fff;
+    padding: 0.35rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.ar-rc-logo {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+.ar-rc-title-block {
+    min-width: 0;
+    flex: 1;
+}
+.ar-rc-kicker {
+    font-family: var(--ar-rc-font-body);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72);
+    margin: 0 0 0.35rem;
+}
+.ar-rc-school-name {
+    font-family: var(--ar-rc-font-display);
+    font-size: clamp(1.15rem, 2.8vw, 1.5rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: #fff;
+    margin: 0;
+}
+.ar-rc-school-contact {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.78);
+    line-height: 1.5;
+    margin: 0.35rem 0 0;
+    max-width: 28rem;
+}
+.ar-rc-doc-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.85rem 1.35rem 0;
+    background: #fff;
+}
+.ar-rc-doc-title-accent {
+    flex-shrink: 0;
+    width: 4px;
+    height: 1.75rem;
+    border-radius: 2px;
+    background: linear-gradient(180deg, var(--ar-rc-accent), var(--ar-rc-green));
+}
+.ar-rc-title {
+    font-family: var(--ar-rc-font-display);
+    font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ar-rc-navy);
+    margin: 0;
+    line-height: 1;
+}
+.ar-rc-badge {
+    flex-shrink: 0;
+    text-align: center;
+    min-width: 4.25rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(6px);
+}
+.ar-rc-badge-label {
+    font-family: var(--ar-rc-font-body);
+    font-size: 0.5625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: rgba(255, 255, 255, 0.75);
+    margin: 0 0 0.15rem;
+}
+.ar-rc-badge-value {
+    font-family: var(--ar-rc-font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.ar-rc-meta-panel--with-photo {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: start;
+}
+.ar-rc-meta-photo-wrap {
+    flex-shrink: 0;
+    text-align: center;
+}
+.ar-rc-individual .ar-rc-main-body {
+    margin-top: 0.25rem;
+}
+.ar-rc-stats-row--5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (min-width: 640px) {
+    .ar-rc-individual .ar-rc-photo {
+        width: 5.5rem;
+        height: 6.75rem;
+    }
+}
+.ar-rc-meta-panel {
+    margin-bottom: 1.1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+}
+.ar-rc-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1.25rem;
+    font-size: 0.8125rem;
+}
+.ar-rc-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+.ar-rc-meta-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.ar-rc-meta-value {
+    font-family: var(--ar-rc-font-display);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--ar-rc-navy);
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    word-break: break-word;
+}
+.ar-rc-body-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+@media (min-width: 768px) {
+    .ar-rc-body-grid--split {
+        grid-template-columns: 1fr min(7.5rem, 22%);
+    }
+}
+.ar-rc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    table-layout: fixed;
+}
+.ar-rc-table thead th {
+    font-family: var(--ar-rc-font-display);
+    background: var(--ar-rc-navy);
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.7rem;
+    padding: 0.45rem 0.3rem;
+    border: none;
+    border-bottom: 2px solid var(--ar-rc-accent);
+    text-align: center;
+    vertical-align: middle;
+}
+.ar-rc-table thead th.ar-rc-th-subj {
+    text-align: left;
+    padding-left: 0.5rem;
+}
+.ar-rc-table tbody td {
+    border: 1px solid #d1d5db;
+    padding: 0.35rem 0.4rem;
+    vertical-align: middle;
+    color: #111827;
+}
+.ar-rc-table tbody tr:nth-child(even) td {
+    background: #f9fafb;
+}
+.ar-rc-table .ar-rc-td-subj {
+    text-align: left;
+    font-weight: 600;
+}
+.ar-rc-table .ar-rc-td-num {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    width: 11%;
+    max-width: 3.25rem;
+}
+.ar-rc-table thead th.ar-rc-th-feedback {
+    font-size: 0.58rem;
+    line-height: 1.2;
+    text-align: left;
+    width: 28%;
+    max-width: none;
+}
+.ar-rc-table .ar-rc-td-feedback {
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 500;
+    line-height: 1.35;
+    vertical-align: top;
+    word-break: break-word;
+    width: 28%;
+}
+.ar-rc-table thead th:not(.ar-rc-th-subj):not(.ar-rc-th-feedback) {
+    width: 11%;
+    max-width: 3.25rem;
+}
+.ar-rc-table thead th.ar-rc-th-subj,
+.ar-rc-table .ar-rc-td-subj {
+    width: auto;
+    min-width: 0;
+}
+.ar-rc-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+.ar-rc-table--multi-exam thead th.ar-rc-th-exam-col,
+.ar-rc-table--multi-exam thead th.ar-rc-th-avg {
+    font-size: 0.58rem;
+    line-height: 1.15;
+    text-align: center;
+    vertical-align: bottom;
+    min-width: 2.5rem;
+    max-width: 4.5rem;
+    word-break: break-word;
+}
+.ar-rc-table--multi-exam .ar-rc-td-avg {
+    background: #f1f5f9;
+    font-weight: 700;
+}
+.dark .ar-rc-table--multi-exam .ar-rc-td-avg {
+    background: rgba(30, 41, 59, 0.5);
+}
+.ar-rc-table--multi-exam thead th.ar-rc-th-subj {
+    width: 22%;
+    min-width: 5rem;
+}
+.ar-rc-summary-box {
+    border: 2px solid var(--ar-rc-navy);
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 0.75rem;
+}
+.ar-rc-summary-box table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.ar-rc-summary-box th {
+    background: var(--ar-rc-navy);
+    color: #fff;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    padding: 0.4rem 0.35rem;
+    border: 1px solid #152a45;
+}
+.ar-rc-summary-box td {
+    border: 1px solid #d1d5db;
+    padding: 0.35rem 0.4rem;
+    font-weight: 600;
+    text-align: center;
+}
+.ar-rc-summary-box td:first-child {
+    text-align: left;
+    font-weight: 700;
+    background: #f3f4f6;
+}
+.ar-rc-stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+    gap: 0.5rem;
+    margin: 0.85rem 0;
+}
+.ar-rc-stat {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 0.45rem 0.5rem;
+    text-align: center;
+    background: #f9fafb;
+}
+.ar-rc-stat-label {
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #64748b;
+    margin: 0 0 0.2rem;
+}
+.ar-rc-stat-value {
+    font-family: var(--ar-rc-font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--ar-rc-navy);
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+.ar-rc-feedback {
+    margin-top: 0.85rem;
+}
+.ar-rc-feedback-title {
+    font-family: var(--ar-rc-font-display);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ar-rc-navy);
+    margin: 0 0 0.5rem;
+}
+.ar-rc-feedback-lines {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 0.5rem 0.65rem;
+    min-height: 3.5rem;
+    background: #fff;
+}
+.ar-rc-feedback-line {
+    border-bottom: 1px solid #cbd5e1;
+    height: 1.35rem;
+    margin-bottom: 0.35rem;
+}
+.ar-rc-feedback-line:last-child {
+    margin-bottom: 0;
+    border-bottom: none;
+}
+.ar-rc-grade-scale {
+    font-size: 0.68rem;
+    color: #4b5563;
+    margin-top: 0.5rem;
+    line-height: 1.4;
+}
+.ar-rc-signatures {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin-top: 1rem;
+    font-size: 0.68rem;
+}
+.ar-rc-sig-block {
+    border-top: 1px solid #9ca3af;
+    padding-top: 0.35rem;
+}
+.ar-rc-sig-title {
+    font-family: var(--ar-rc-font-display);
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #475569;
+    margin: 0 0 1.25rem;
+}
+.ar-rc-photo {
+    width: 4.5rem;
+    height: 5.5rem;
+    object-fit: cover;
+    border: 2px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+}
+.ar-rc-class-banner {
+    margin-bottom: 1rem;
+}
+.ar-rc-class-banner .ar-rc {
+    margin-bottom: 0;
+}
+/* Smaller than full report cards — “Class performance · Form 4X” strip */
+.ar-rc-class-banner .ar-rc-doc-title-row {
+    padding: 0.35rem 0.75rem 0;
+    gap: 0.4rem;
+}
+.ar-rc-class-banner .ar-rc-title {
+    font-size: clamp(0.65rem, 1vw, 0.8125rem);
+    letter-spacing: 0.05em;
+    line-height: 1.2;
+}
+#ar-preview-wrap .ar-rc table.ar-marks-matrix thead th {
+    background: var(--ar-rc-navy) !important;
+    color: #fff !important;
+    border-color: #152a45 !important;
+}
+/* Workspace: compact, responsive; preview scrolls inside viewport on large screens */
+.ar-page {
+    width: 100%;
+    max-width: 80rem;
+    margin-left: auto;
+    margin-right: auto;
+}
+.ar-chooser-zone {
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 18%, #e2e8f0);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--brand-primary, #166534) 10%, #fff) 0%,
+        color-mix(in srgb, var(--brand-primary, #166534) 4%, #fff) 100%
+    );
+    padding: 0.5rem 0.625rem;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8);
+}
+.dark .ar-chooser-zone {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 28%, #334155);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--brand-primary, #166534) 28%, rgb(15 23 42)) 0%,
+        color-mix(in srgb, var(--brand-primary, #166534) 14%, rgb(15 23 42)) 100%
+    );
+}
+.ar-section-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 0.125rem;
+}
+.ar-section-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-weight: 600;
+}
+.ar-chooser-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 10%, transparent);
+}
+.ar-chooser-toolbar .ar-filter-label {
+    margin-bottom: 0;
+    margin-right: 0.15rem;
+}
+.ar-chooser-toolbar .ar-filter-control {
+    width: auto;
+    min-width: 8.5rem;
+    max-width: 14rem;
+}
+.ar-report-zone {
+    margin-top: 0.45rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 12%, transparent);
+}
+.dark .ar-report-zone {
+    border-top-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 20%, transparent);
+}
+.ar-report-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem;
+}
+@media (min-width: 640px) {
+    .ar-report-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.4rem;
+    }
+}
+@media (min-width: 1024px) {
+    .ar-report-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+.ar-report-tile {
+    text-align: left;
+    border-radius: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 20%, #e2e8f0);
+    background: #fff;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.dark .ar-report-tile {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 25%, #475569);
+    background: rgb(30 41 59 / 0.85);
+}
+.ar-report-tile:hover {
+    border-color: var(--brand-primary, #166534);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 8%, #fff);
+}
+.dark .ar-report-tile:hover {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 22%, rgb(30 41 59));
+}
+.ar-report-tile--active {
+    border-color: var(--brand-primary, #166534);
+    background: var(--brand-primary, #166534);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--brand-primary, #166534) 35%, transparent);
+}
+.dark .ar-report-tile--active {
+    background: var(--brand-primary, #166534);
+    border-color: var(--brand-secondary, #22c55e);
+}
+.ar-report-tile__label {
+    display: block;
+    font-weight: 700;
+    color: rgb(15 23 42);
+}
+.ar-report-tile--active .ar-report-tile__label {
+    color: #fff;
+}
+.dark .ar-report-tile__label {
+    color: rgb(248 250 252);
+}
+.dark .ar-report-tile--active .ar-report-tile__label {
+    color: #fff;
+}
+.ar-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+@media (min-width: 1024px) {
+    .ar-page--workspace {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        min-height: 0;
+    }
+    .ar-preview-panel {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        flex: 1 1 auto;
+    }
+    .ar-preview-scroll {
+        flex: 1 1 auto;
+        min-height: 18rem;
+        max-height: min(78vh, 72rem);
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+}
+.ar-filters-panel {
+    position: relative;
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 28%, #cbd5e1);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 6%, #f8fafc);
+    padding: 0.5rem 0.625rem;
+    box-shadow: 0 2px 8px -4px color-mix(in srgb, var(--brand-primary, #166534) 30%, transparent);
+    overflow: hidden;
+}
+.dark .ar-filters-panel {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 35%, #475569);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 18%, rgb(15 23 42));
+    box-shadow: 0 2px 12px -6px rgba(0, 0, 0, 0.45);
+}
+.ar-filters-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem 0.625rem;
+}
+@media (min-width: 640px) {
+    .ar-filters-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+.ar-filters-grid--compact {
+    gap: 0.4rem 0.5rem;
+}
+@media (min-width: 768px) {
+    .ar-filters-grid--compact {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 2fr) minmax(0, 1fr);
+    }
+    .ar-filters-grid--compact.ar-filters-grid--dynamic {
+        grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    }
+    .ar-filters-grid--compact > #ar-filter-wrap-exam:not(.hidden),
+    .ar-filters-grid--compact > #ar-filter-wrap-level:not(.hidden) {
+        grid-column: auto;
+    }
+}
+.ar-filter-hint {
+    font-size: 0.6875rem;
+    line-height: 1.35;
+    color: rgb(71 85 105);
+    margin: 0 0 0.35rem;
+}
+.dark .ar-filter-hint {
+    color: rgb(148 163 184);
+}
+.ar-filter-hint strong {
+    font-weight: 600;
+    color: var(--brand-primary, #166534);
+}
+.dark .ar-filter-hint strong {
+    color: var(--brand-secondary, #4ade80);
+}
+#ar-report-desc:not(.hidden) {
+    display: block;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: rgb(71 85 105);
+    margin: 0 0 0.35rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--brand-primary, #166534) 6%, #f8fafc);
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 15%, #e2e8f0);
+}
+.dark #ar-report-desc:not(.hidden) {
+    color: rgb(203 213 225);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 20%, rgb(15 23 42));
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 25%, #475569);
+}
+.ar-filters-grid > div:not(.hidden) {
+    min-width: 0;
+}
+.ar-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+/* Tailwind .hidden loses to .ar-filter-field { display:flex } without this */
+.ar-filter-field.hidden,
+#ar-wrap-student.hidden,
+#ar-wrap-exam-scope.hidden,
+#ar-filter-main-grid.hidden,
+#ar-extra-filters.hidden,
+#ar-filters-panel.hidden {
+    display: none !important;
+}
+.ar-filter-label {
+    display: block;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--brand-primary, #166534);
+    margin-bottom: 0;
+    line-height: 1.2;
+}
+.dark .ar-filter-label {
+    color: var(--brand-secondary, #4ade80);
+}
+.ar-filter-control {
+    width: 100%;
+    padding: 0.3rem 0.45rem;
+    border-radius: 0.375rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 28%, #94a3b8);
+    background: #fff;
+    color: rgb(15 23 42);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.25;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ar-filter-control:focus {
+    outline: none;
+    border-color: var(--brand-primary, #166534);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary, #166534) 20%, transparent);
+}
+.dark .ar-filter-control {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 40%, #64748b);
+    background: rgb(15 23 42 / 0.6);
+    color: rgb(248 250 252);
+}
+.dark .ar-filter-control:focus {
+    background: rgb(15 23 42);
+}
+.ar-filters-panel #ar-wrap-student:not(.hidden) {
+    padding: 0.35rem 0;
+    margin-bottom: 0.35rem;
+    border-bottom: 1px dashed color-mix(in srgb, var(--brand-primary, #166534) 18%, transparent);
+}
+#ar-extra-filters:not(.hidden) {
+    margin-top: 0.4rem !important;
+    padding-top: 0.4rem !important;
+    border-top: 1px dashed color-mix(in srgb, var(--brand-primary, #166534) 20%, transparent) !important;
+}
+.ar-student-roster-list {
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 28%, #cbd5e1);
+    border-radius: 0.5rem;
+    background: #fff;
+    max-height: 14rem;
+    overflow-y: auto;
+}
+.dark .ar-student-roster-list {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 35%, #475569);
+    background: rgb(15 23 42 / 0.6);
+}
+.ar-student-roster-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+.ar-student-roster-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    text-align: left;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--brand-primary, #166534);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 8%, #f8fafc);
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+.dark .ar-student-roster-table th {
+    color: var(--brand-secondary, #4ade80);
+    background: rgb(30 41 59);
+    border-bottom-color: #475569;
+}
+.ar-student-roster-table td {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+.dark .ar-student-roster-table td {
+    border-bottom-color: #334155;
+}
+.ar-student-roster-row {
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.ar-student-roster-row:hover {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 10%, #fff);
+}
+.dark .ar-student-roster-row:hover {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 25%, rgb(30 41 59));
+}
+.ar-student-roster-row--active {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 14%, #fff) !important;
+    outline: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 40%, transparent);
+}
+.dark .ar-student-roster-row--active {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 35%, rgb(30 41 59)) !important;
+}
+.ar-student-roster-empty {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.75rem;
+    color: #64748b;
+    text-align: center;
+}
+/* Report scope summary card (above preview) */
+.ar-report-filter-card {
+    border-radius: 1rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 18%, #e2e8f0);
+    background: linear-gradient(135deg, #fff 0%, #f8fafc 45%, color-mix(in srgb, var(--brand-primary, #166534) 6%, #fff) 100%);
+    box-shadow: 0 10px 28px -12px rgba(15, 23, 42, 0.18);
+}
+.dark .ar-report-filter-card {
+    border-color: rgba(148, 163, 184, 0.35);
+    background: linear-gradient(135deg, rgb(15 23 42) 0%, rgb(30 41 59) 55%, color-mix(in srgb, var(--brand-primary, #22c55e) 12%, rgb(15 23 42)) 100%);
+    box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.45);
+}
+.ar-report-filter-card-inner {
+    padding: 1rem 1.15rem;
+}
+@media (min-width: 640px) {
+    .ar-report-filter-card-inner { padding: 1.15rem 1.35rem; }
+}
+.ar-report-filter-card-head {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+.ar-report-filter-icon {
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+    background: linear-gradient(135deg, var(--brand-primary, #166534), var(--brand-secondary, #15803d));
+    color: #fff;
+    font-size: 1rem;
+    box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--brand-primary, #166534) 55%, transparent);
+}
+.ar-report-filter-head-text { min-width: 0; flex: 1; }
+.ar-report-filter-kicker {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--brand-primary, #166534);
+}
+.dark .ar-report-filter-kicker {
+    color: var(--brand-secondary, #4ade80);
+}
+.ar-report-filter-title {
+    margin-top: 0.2rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.35;
+    color: #0f172a;
+}
+.dark .ar-report-filter-title { color: #f8fafc; }
+.ar-report-filter-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+    margin-top: 1rem;
+}
+@media (min-width: 640px) {
+    .ar-report-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+    .ar-report-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.ar-report-filter-item {
+    border-radius: 0.65rem;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    background: rgba(255, 255, 255, 0.92);
+    padding: 0.55rem 0.75rem;
+}
+.dark .ar-report-filter-item {
+    border-color: rgba(71, 85, 105, 0.55);
+    background: rgba(30, 41, 59, 0.65);
+}
+.ar-report-filter-dt {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.dark .ar-report-filter-dt { color: #94a3b8; }
+.ar-report-filter-dd {
+    margin: 0.15rem 0 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #0f172a;
+}
+.dark .ar-report-filter-dd { color: #f1f5f9; }
+.ar-report-filter-foot {
+    margin-top: 0.85rem;
+    font-size: 0.6875rem;
+    color: #64748b;
+}
+.dark .ar-report-filter-foot { color: #94a3b8; }
+</style>

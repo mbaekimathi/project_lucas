@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Fees reports - {{ school_settings.school_name or 'School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% if is_secretary_finance|default(false) %}
+{% set secretary_nav_scope = 'reports' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% else %}
+{% set finance_report_slug = 'student-specific' %}
+{% include 'dashboards/includes/finance_reports_page_sidebar.html' %}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/academic-report-shell.css') }}">
+
+{% set role_theme = portal_page_variant|default('secretary') %}
+{% set role_hero_title = 'Fees reports' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-file-invoice-dollar' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<script type="application/json" id="fr-page-config">{{ {
+    'generateApi': employee_dash_url('api/employee/fees-reports/generate'),
+    'rosterApi': employee_dash_url('api/employee/academic-reports/search-students'),
+    'school': {
+        'name': school_settings.school_name or 'School',
+        'location': school_settings.school_location or '',
+        'phone': school_settings.school_phone or '',
+        'email': school_settings.school_email or '',
+        'logo': (url_for('static', filename=school_settings.school_logo) if school_settings.school_logo else '')
+    }
+}|tojson }}</script>
+
+<div class="ar-page ar-page--workspace portal-page-root role-page role-page--{{ portal_page_variant|default('secretary') }} print:p-2 mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4">
+    <section class="no-print ar-workspace mb-3 sm:mb-4 rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-md shadow-slate-200/25 dark:shadow-none overflow-hidden">
+        <div class="p-3 sm:p-4">
+            <div class="ar-filters-panel" id="fr-filters-panel">
+                <div class="ar-filters-grid ar-filters-grid--compact">
+                    <div class="ar-filter-field">
+                        <label for="fr-report-type" class="ar-filter-label">Report type</label>
+                        <select id="fr-report-type" class="ar-filter-control">
+                            <option value="payment" selected>Fee payment report</option>
+                            <option value="transactions">Fee transaction report</option>
+                        </select>
+                    </div>
+                    <div class="ar-filter-field">
+                        <label for="fr-level" class="ar-filter-label">Class</label>
+                        <select id="fr-level" class="ar-filter-control">
+                            <option value="" disabled selected>Select class…</option>
+                            {% for lv in academic_levels %}
+                            <option value="{{ lv.id }}">{{ lv.level_name }}{% if lv.level_category %} ({{ lv.level_category }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="ar-filter-field">
+                        <label for="fr-student-select" class="ar-filter-label">Student</label>
+                        <select id="fr-student-select" class="ar-filter-control" disabled>
+                            <option value="">All students</option>
+                        </select>
+                        <input type="hidden" id="fr-student" value="">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div id="ar-preview-wrap" class="ar-preview-panel mt-2 lg:mt-3 min-w-0">
+        <div class="rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-none overflow-hidden ring-1 ring-black/[0.03] dark:ring-white/[0.06] flex flex-col min-h-0">
+            <div class="px-3 sm:px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900 shrink-0 no-print">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p id="ar-generated-at" class="text-xs text-slate-500 dark:text-slate-400">Generated: —</p>
+                    <button type="button"
+                            id="ar-download-pdf-btn"
+                            title="Save as PDF via your browser print dialog"
+                            class="inline-flex items-center px-3 py-2 rounded-lg border border-brand-primary text-brand-primary dark:text-brand-secondary dark:border-brand-secondary bg-white dark:bg-slate-800 text-sm font-semibold hover:bg-brand-primary/5 transition-all">
+                        <i class="fas fa-file-pdf mr-2"></i>Download PDF
+                    </button>
+                </div>
+            </div>
+
+            <div id="ar-print-letterhead" class="ar-print-letterhead ar-print-only-hidden px-3 sm:px-5 pt-3 sm:pt-4" aria-hidden="true">
+                <div class="ar-print-letterhead-grid">
+                    {% if school_settings.school_logo %}
+                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="ar-print-letterhead-logo">
+                    {% endif %}
+                    <div class="ar-print-letterhead-text min-w-0">
+                        <p class="ar-print-letterhead-kicker" id="ar-print-letterhead-kicker">Official fee statement</p>
+                        <h1 class="ar-print-letterhead-school">{{ school_settings.school_name or 'School' }}</h1>
+                        <p id="ar-print-school-contact" class="ar-print-letterhead-contact"></p>
+                    </div>
+                </div>
+            </div>
+            <div id="ar-print-page-footer" class="ar-print-only-hidden" aria-hidden="true"></div>
+            <div id="ar-details-list" class="ar-preview-scroll p-3 sm:p-5 lg:p-6 bg-slate-50/40 dark:bg-slate-950/30">
+                <p class="text-sm text-slate-500 dark:text-slate-400">Select a class to generate fee reports.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="ar-print-pdf-toast" class="no-print hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md px-4 py-3 rounded-xl border border-brand-primary/30 bg-white dark:bg-slate-800 shadow-xl text-sm text-slate-700 dark:text-slate-200" role="status">
+    <p class="font-semibold text-brand-primary dark:text-brand-secondary mb-1"><i class="fas fa-file-pdf mr-1"></i> Save as PDF</p>
+    <p class="leading-snug">In the print dialog: set <strong>Destination</strong> to <strong>Save as PDF</strong>. Turn on <strong>Background graphics</strong>.</p>
+</div>
+
+<script>
+{% include 'dashboards/includes/fees_reports_loader.js' %}
+</script>
+{% endblock %}
