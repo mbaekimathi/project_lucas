@@ -810,11 +810,36 @@ html.dark .split-hero--readable .split-hero__chip {
 #site-header.site-header--marketing .site-header__brand-mark--has-logo {
   box-shadow: none;
   background: transparent !important;
-  overflow: visible;
+  overflow: hidden;
   border-radius: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  max-width: 2.5rem;
+  max-height: 2.5rem;
+  flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+  #site-header.site-header--marketing .site-header__brand-mark--has-logo {
+    width: 2.75rem;
+    height: 2.75rem;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    max-width: 2.75rem;
+    max-height: 2.75rem;
+  }
 }
 
 #site-header.site-header--marketing .site-header__brand-mark--has-logo .site-header__logo-img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: center;
   filter: drop-shadow(0 3px 10px rgba(15, 23, 42, 0.2));
 }
 
