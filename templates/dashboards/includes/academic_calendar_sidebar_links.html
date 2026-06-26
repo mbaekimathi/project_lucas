@@ -2,7 +2,7 @@
 {% set _acal_href = acal_href|default(employee_dash_url('academic-calendar')) %}
 {% set _acal_manage_href = acal_manage_href|default(employee_dash_url('academic-calendar/manage')) %}
 {% set _role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
-{% set _can_manage = _role in ('head of institution', 'deputy head of institution', 'secretary') or session.get('role', '').lower() == 'technician' %}
+{% set _can_manage = _role in ('head of institution', 'deputy head of institution', 'secretary', 'curriculum coordinator') or session.get('role', '').lower() == 'technician' %}
 {% set _view_active = request.endpoint == 'academic_calendar' %}
 {% set _manage_active = request.endpoint == 'academic_calendar_manage' %}
 

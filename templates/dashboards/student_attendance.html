@@ -2,8 +2,6 @@
 
 {% block title %}{% if is_parent_view|default(false) %}Attendance (read-only){% elif is_class_teacher_view|default(false) %}Student attendance{% elif is_teacher_view|default(false) %}Subject attendance{% else %}Attendance register{% endif %} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block extra_head %}{% if (is_teacher_view|default(false) or is_class_teacher_view|default(false)) and not is_parent_view|default(false) %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endif %}{% endblock %}
-
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
 
 

@@ -1,3 +1,4 @@
+{% set hub_notifications = parent_hub_notifications|default(parent_calendar_notifications|default([])) %}
 <section id="notifications-hub"
          class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden"
          aria-labelledby="parent-notifications-hub-heading">
@@ -12,58 +13,126 @@
                         <h2 id="parent-notifications-hub-heading" class="text-base sm:text-lg font-bold text-gray-900 dark:text-white m-0">
                             Notifications Hub
                         </h2>
-                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/40 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">
-                            Coming soon
+                        {% if hub_notifications %}
+                        <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/40 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-800 dark:text-violet-200">
+                            {{ hub_notifications|length }} update{{ '' if hub_notifications|length == 1 else 's' }}
                         </span>
+                        {% else %}
+                        <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                            Up to date
+                        </span>
+                        {% endif %}
                     </div>
                     <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 m-0 mt-0.5">
-                        School announcements, alerts, and messages for {% if stu %}{{ stu.full_name }}&apos;s{% else %}your child&apos;s{% endif %} family will appear here.
+                        Fee deadlines, released exam results, school events, and calendar updates for {% if stu %}{{ stu.full_name }}&apos;s{% else %}your child&apos;s{% endif %} family.
                     </p>
                 </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 shrink-0">
+                <a href="{{ parent_dash_url('student-fees') }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}"
+                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-700 dark:text-orange-300 hover:underline">
+                    <i class="fas fa-wallet"></i> View fees
+                </a>
+                <a href="{{ parent_dash_url('academic-calendar') }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}"
+                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:underline">
+                    <i class="fas fa-calendar-alt"></i> Full calendar
+                </a>
             </div>
         </div>
     </div>
 
     <div class="p-4 sm:p-5">
+        {% if hub_notifications %}
+        <div class="space-y-3">
+            {% for note in hub_notifications %}
+            {% if note.type == 'fee_deadline' %}
+            <article class="rounded-xl border p-4
+                {% if note.urgency == 'overdue' %}border-red-200 dark:border-red-900/60 bg-red-50/70 dark:bg-red-950/20
+                {% elif note.urgency == 'due_soon' %}border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20
+                {% else %}border-orange-200 dark:border-orange-900/50 bg-orange-50/50 dark:bg-orange-950/15{% endif %}">
+                <div class="flex items-start gap-3">
+                    <span class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0
+                        {% if note.urgency == 'overdue' %}bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300
+                        {% elif note.urgency == 'due_soon' %}bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300
+                        {% else %}bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-300{% endif %}">
+                        <i class="fas {% if note.urgency == 'overdue' %}fa-exclamation-triangle{% else %}fa-wallet{% endif %} text-sm" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-bold text-gray-900 dark:text-white m-0 uppercase">{{ note.title }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-300 m-0 mt-0.5">{{ note.student_name }} · {{ note.fee_name }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1">{{ note.subtitle }}</p>
+                        {% if note.payment_status_label %}
+                        <p class="text-[11px] font-semibold m-0 mt-1.5
+                            {% if note.urgency == 'overdue' %}text-red-600 dark:text-red-400
+                            {% elif note.urgency == 'due_soon' %}text-amber-700 dark:text-amber-300
+                            {% else %}text-orange-700 dark:text-orange-300{% endif %}">
+                            {{ note.payment_status_label }}
+                        </p>
+                        {% endif %}
+                        <a href="{{ parent_dash_url('student-fees') }}?student_id={{ note.student_id }}"
+                           class="inline-flex items-center gap-1 text-xs font-semibold mt-2 text-orange-700 dark:text-orange-300 hover:underline">
+                            <i class="fas fa-arrow-right text-[10px]"></i> View fees &amp; pay
+                        </a>
+                    </div>
+                </div>
+            </article>
+            {% elif note.type == 'exam_results' %}
+            <article class="rounded-xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/70 dark:bg-violet-950/20 p-4">
+                <div class="flex items-start gap-3">
+                    <span class="w-9 h-9 rounded-lg bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 flex items-center justify-center shrink-0">
+                        <i class="fas fa-clipboard-check text-sm" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-bold text-gray-900 dark:text-white m-0 uppercase">{{ note.title }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-300 m-0 mt-0.5">
+                            {{ note.student_name }} · {{ note.exam_name }}{% if note.exam_type %} ({{ note.exam_type }}){% endif %}
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1">
+                            {% if note.gazetted_at_display %}Released {{ note.gazetted_at_display }}{% if note.subtitle %} · {% endif %}{% endif %}{{ note.subtitle }}
+                        </p>
+                        <a href="{{ parent_dash_url('exam-progress/' ~ note.student_id) }}"
+                           class="inline-flex items-center gap-1 text-xs font-semibold mt-2 text-violet-700 dark:text-violet-300 hover:underline">
+                            <i class="fas fa-arrow-right text-[10px]"></i> View exam results
+                        </a>
+                    </div>
+                </div>
+            </article>
+            {% else %}
+            <article class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-4">
+                <div class="flex items-start gap-3">
+                    <span class="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
+                        <i class="fas fa-bullhorn text-sm" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-bold text-gray-900 dark:text-white m-0 uppercase">{{ note.activity_title }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-0.5">
+                            {{ note.activity_date_display }}{% if note.end_date_display and note.end_date_display != note.activity_date_display %} — {{ note.end_date_display }}{% endif %}
+                            · {{ note.category_label }}
+                        </p>
+                        {% if not note.affects_all_levels %}
+                        <p class="text-[11px] text-violet-600 dark:text-violet-400 m-0 mt-0.5">
+                            <i class="fas fa-layer-group mr-0.5"></i>{{ note.levels_affected_label }}
+                        </p>
+                        {% endif %}
+                        {% if note.activity_about %}
+                        <p class="text-sm text-gray-600 dark:text-gray-300 m-0 mt-2 leading-relaxed">{{ note.activity_about }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </article>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% else %}
         <div class="rounded-xl border border-dashed border-violet-200 dark:border-violet-800/60 bg-violet-50/40 dark:bg-violet-950/15 px-4 sm:px-6 py-8 sm:py-10 text-center">
             <span class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-2xl shadow-md mb-4">
                 <i class="fas fa-inbox" aria-hidden="true"></i>
             </span>
-            <h3 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white m-0">Your communications feed is on the way</h3>
+            <h3 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white m-0">No notifications right now</h3>
             <p class="text-sm text-gray-600 dark:text-gray-400 mt-2 mb-0 max-w-xl mx-auto leading-relaxed">
-                This hub will bring together everything the school sends to parents — so you never miss an important update.
+                Fee payment reminders, released exam results, and school calendar updates for your child&apos;s class will appear here automatically.
             </p>
         </div>
-
-        <div class="mt-4 sm:mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div class="rounded-xl border border-gray-200/80 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-4 opacity-75">
-                <span class="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 flex items-center justify-center mb-2">
-                    <i class="fas fa-bullhorn text-sm" aria-hidden="true"></i>
-                </span>
-                <p class="text-sm font-bold text-gray-900 dark:text-white m-0">Announcements</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1 leading-snug">Events, notices, and school-wide news.</p>
-            </div>
-            <div class="rounded-xl border border-gray-200/80 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-4 opacity-75">
-                <span class="w-9 h-9 rounded-lg bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-300 flex items-center justify-center mb-2">
-                    <i class="fas fa-wallet text-sm" aria-hidden="true"></i>
-                </span>
-                <p class="text-sm font-bold text-gray-900 dark:text-white m-0">Fee alerts</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1 leading-snug">Payment reminders and balance updates.</p>
-            </div>
-            <div class="rounded-xl border border-gray-200/80 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-4 opacity-75">
-                <span class="w-9 h-9 rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 flex items-center justify-center mb-2">
-                    <i class="fas fa-user-check text-sm" aria-hidden="true"></i>
-                </span>
-                <p class="text-sm font-bold text-gray-900 dark:text-white m-0">Attendance</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1 leading-snug">Absence alerts and attendance summaries.</p>
-            </div>
-            <div class="rounded-xl border border-gray-200/80 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-4 opacity-75">
-                <span class="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center mb-2">
-                    <i class="fas fa-envelope text-sm" aria-hidden="true"></i>
-                </span>
-                <p class="text-sm font-bold text-gray-900 dark:text-white m-0">Messages</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1 leading-snug">Notes from teachers and school staff.</p>
-            </div>
-        </div>
+        {% endif %}
     </div>
 </section>

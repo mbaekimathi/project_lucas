@@ -1,11 +1,18 @@
 {% extends "base.html" %}
 
-{% block title %}Gallery - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}{{ gallery_page_title|default('Gallery — ' ~ (school_settings.school_name or 'Our school')) }}{% endblock %}
+
+{% block extra_head %}
+<meta name="description" content="{{ gallery_meta_description|default('Photo gallery of ' ~ (school_settings.school_name or 'our school') ~ ' — campus, classrooms, sports, and community life.')|e }}">
+{% if gallery_items %}
+<meta name="robots" content="index, follow">
+{% endif %}
+{% endblock %}
 
 {% block body_class %}public-site school-public{% endblock %}
 
 {% block content %}
-{% set hero_img = 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1920&q=80&auto=format&fit=crop' %}
+{% set hero_img = (gallery_items[0].image_src if gallery_items and gallery_items[0].image_src else 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1920&q=80&auto=format&fit=crop') %}
 
 <section class="edu-hero edu-hero--page edu-hero--cinematic">
     <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="School community"></div>
@@ -16,21 +23,30 @@
             <div class="max-w-3xl mx-auto text-center">
                 <p class="edu-eyebrow text-white/90 mb-3">Life at {{ school_settings.school_name or 'our school' }}</p>
                 <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-white mb-4">Gallery</h1>
-                <p class="text-lg text-white/90">Moments from learning, celebration, and community.</p>
+                <p class="text-lg text-white/90">Moments from learning, celebration, and community at {{ school_settings.school_name or 'our school' }}{% if school_settings.school_location %} — {{ school_settings.school_location|replace('\n', ' · ')|e }}{% endif %}.</p>
             </div>
         </div>
     </div>
 </section>
 
-<section class="py-14 md:py-20 edu-section--tint edu-section--mesh">
+<section class="py-14 md:py-20 edu-section--tint edu-section--mesh" aria-label="School photo gallery">
     <div class="container mx-auto px-4 lg:px-8">
         {% if gallery_items %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
             {% for item in gallery_items %}
-            <article class="edu-card overflow-hidden group fade-in-section">
-                {% if item.image_url %}
+            <article class="edu-card overflow-hidden group fade-in-section" itemscope itemtype="https://schema.org/ImageObject">
+                {% set img_src = item.image_src or item.image_url %}
+                {% if img_src %}
                 <div class="edu-frame h-56 md:h-64">
-                    <img src="{{ item.image_url }}" alt="{{ item.title }}" class="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500">
+                    <img src="{{ img_src }}"
+                         alt="{{ item.title }}"
+                         title="{{ item.title }}"
+                         class="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                         width="600"
+                         height="400"
+                         loading="lazy"
+                         decoding="async"
+                         itemprop="contentUrl">
                 </div>
                 {% else %}
                 <div class="h-56 md:h-64 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center">
@@ -38,20 +54,22 @@
                 </div>
                 {% endif %}
                 <div class="p-6">
-                    <h3 class="text-lg font-bold text-brand-primary mb-2">{{ item.title }}</h3>
+                    <h2 class="text-lg font-bold text-brand-primary mb-2" itemprop="name">{{ item.title }}</h2>
                     {% if item.description %}
-                    <p class="text-gray-600 dark:text-gray-400 text-sm leading-relaxed mb-4">{{ item.description }}</p>
+                    <p class="text-gray-600 dark:text-gray-400 text-sm leading-relaxed mb-4" itemprop="description">{{ item.description }}</p>
                     {% endif %}
                     <div class="flex items-center text-xs font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
-                        <i class="fas fa-calendar-alt mr-2 text-brand-primary"></i>
-                        {{ item.created_at.strftime('%B %d, %Y') if item.created_at else 'Recent' }}
+                        <i class="fas fa-calendar-alt mr-2 text-brand-primary" aria-hidden="true"></i>
+                        <time datetime="{{ item.created_at.strftime('%Y-%m-%d') if item.created_at else '' }}" itemprop="uploadDate">
+                            {{ item.created_at.strftime('%B %d, %Y') if item.created_at else 'Recent' }}
+                        </time>
                     </div>
                 </div>
             </article>
             {% endfor %}
         </div>
         {% else %}
-        <p class="text-center text-gray-600 dark:text-gray-400 mb-10 max-w-xl mx-auto">Sample highlights — add photos in your admin gallery to replace these placeholders.</p>
+        <p class="text-center text-gray-600 dark:text-gray-400 mb-10 max-w-xl mx-auto">Sample highlights — add photos in <strong>System Settings → School Profile</strong> to showcase your campus online.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
             {% for row in [
                 {'title': 'Graduation', 'icon': 'fa-graduation-cap', 'blurb': 'Celebrating milestones and achievement.', 'img': 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=600&q=80&auto=format&fit=crop'},
@@ -62,7 +80,7 @@
                 {'title': 'Library & literacy', 'icon': 'fa-book-reader', 'blurb': 'Reading, research, and quiet study.', 'img': 'https://images.unsplash.com/photo-1521587760476-6c12a4b0402b?w=600&q=80&auto=format&fit=crop'}
             ] %}
             <article class="edu-card overflow-hidden fade-in-section">
-                <div class="h-52 bg-cover bg-center edu-frame" style="background-image: url('{{ row.img }}');"></div>
+                <div class="h-52 bg-cover bg-center edu-frame" style="background-image: url('{{ row.img }}');" role="img" aria-label="{{ row.title }}"></div>
                 <div class="p-6">
                     <div class="edu-icon-tile w-12 h-12 text-base mb-4"><i class="fas {{ row.icon }}"></i></div>
                     <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ row.title }}</h3>
@@ -79,13 +97,13 @@
     <div class="container mx-auto px-4 lg:px-8 max-w-2xl">
         <h2 class="edu-display text-2xl text-gray-900 dark:text-white mb-3">Plan a visit</h2>
         <p class="text-gray-600 dark:text-gray-400 mb-8">See {{ school_settings.school_name or 'our campus' }} in person — we’ll arrange a tour.</p>
-        <a href="/contact" class="edu-btn-primary inline-flex"><i class="fas fa-envelope"></i> Contact {{ school_settings.school_name or 'us' }}</a>
+        <a href="{{ url_for('contact') }}" class="edu-btn-primary inline-flex"><i class="fas fa-envelope"></i> Contact {{ school_settings.school_name or 'us' }}</a>
     </div>
 </section>
 
 <div class="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
     <div class="container mx-auto px-4 lg:px-8 py-6 flex justify-end">
-        <a href="/team" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 transition-opacity shadow-md">
+        <a href="{{ url_for('team') }}" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 transition-opacity shadow-md">
             <span>Next</span>
             <i class="fas fa-arrow-right text-sm"></i>
         </a>

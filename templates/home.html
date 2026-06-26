@@ -1,22 +1,44 @@
 {% extends "base.html" %}
 {% block title %}{{ school_settings.school_name or 'School' }} — Portal{% endblock %}
-{% block body_class %}public-site cbc-saas school-public home-landing-page{% endblock %}
+{% block body_class %}public-site cbc-saas school-public home-landing-page{% if school_settings.school_hero_image %} home-landing-page--has-photo{% endif %}{% endblock %}
 {% block header_subtitle %}{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/home-landing.css') }}">
+{% if school_settings.school_hero_image %}
+<link rel="preload" as="image" href="{{ url_for('static', filename=school_settings.school_hero_image) }}" fetchpriority="high">
+{% endif %}
 {% endblock %}
 
 {% block content %}{% endblock %}
 
 {% block content_full_bleed %}
-<section class="home-landing" aria-label="School portal welcome">
+{% set campus_photo = school_settings.school_hero_image if school_settings.school_hero_image else none %}
+{% set campus_url = url_for('static', filename=campus_photo) if campus_photo else '' %}
+{% set _gallery = gallery_items|default([]) %}
+{% set _gallery_preview = _gallery[:6] %}
+
+<section class="home-landing{% if campus_photo %} home-landing--has-photo{% endif %}" aria-label="School portal welcome">
+    {% if campus_photo %}
+    <div class="home-landing__photo" aria-hidden="true">
+        <img src="{{ campus_url }}"
+             alt=""
+             class="home-landing__photo-img"
+             width="1600"
+             height="900"
+             loading="eager"
+             fetchpriority="high"
+             decoding="async">
+        <div class="home-landing__photo-scrim"></div>
+    </div>
+    {% else %}
     <div class="home-landing__bg" aria-hidden="true"></div>
+    {% endif %}
     <div class="home-landing__grid-pattern" aria-hidden="true"></div>
 
     <div class="home-landing__inner">
         {% if employee_in_portal %}
-        <div class="home-landing__signed-in lg:col-span-2">
+        <div class="home-landing__signed-in home-landing__panel lg:col-span-2">
             {% if school_settings.school_logo %}
             <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="home-landing__logo" width="200" height="80">
             {% else %}
@@ -68,6 +90,19 @@
             </div>
         </div>
 
+        {% if not campus_photo %}
+        {% if _gallery_preview %}
+        <aside class="home-landing__gallery-mosaic" aria-label="School photo highlights">
+            {% for item in _gallery_preview[:4] %}
+            <a href="{{ url_for('gallery') }}" class="home-landing__gallery-tile{% if loop.first %} home-landing__gallery-tile--lead{% endif %}" title="{{ item.title }}">
+                {% if item.image_src %}
+                <img src="{{ item.image_src }}" alt="{{ item.title }}" width="400" height="300" loading="lazy" decoding="async">
+                {% endif %}
+                <span class="home-landing__gallery-tile-caption">{{ item.title }}</span>
+            </a>
+            {% endfor %}
+        </aside>
+        {% else %}
         <div class="home-landing__bento" aria-hidden="true">
             <div class="home-landing__tile home-landing__tile--wide">
                 <div class="home-landing__tile-icon" style="background: linear-gradient(135deg, #059669, #10b981);">
@@ -107,6 +142,87 @@
             </div>
         </div>
         {% endif %}
+        {% else %}
+        <aside class="home-landing__showcase" aria-label="Campus highlights">
+            <div class="home-landing__showcase-card home-landing__panel">
+                <p class="home-landing__showcase-eyebrow"><i class="fas fa-school" aria-hidden="true"></i> Our campus</p>
+                <p class="home-landing__showcase-text">A welcoming place to learn, grow, and belong.</p>
+                {% if school_settings.school_location %}
+                <p class="home-landing__showcase-location"><i class="fas fa-location-dot" aria-hidden="true"></i> {{ school_settings.school_location|replace('\n', ' · ')|e }}</p>
+                {% endif %}
+            </div>
+        </aside>
+        {% endif %}
+        {% endif %}
     </div>
 </section>
+
+{% if _gallery %}
+<section class="home-landing-gallery" aria-label="School photo gallery">
+    <div class="home-landing-gallery__inner">
+        <header class="home-landing-gallery__header">
+            <p class="home-landing-gallery__eyebrow"><i class="fas fa-images" aria-hidden="true"></i> Gallery</p>
+            <h2 class="home-landing-gallery__title">Life at {{ school_settings.school_name or 'our school' }}</h2>
+            <p class="home-landing-gallery__lead">Explore campus moments, classrooms, sports, and community events{% if school_settings.school_location %} in {{ school_settings.school_location|replace('\n', ' · ')|e }}{% endif %}.</p>
+        </header>
+        <div class="home-landing-gallery__grid">
+            {% for item in _gallery_preview %}
+            <article class="home-landing-gallery__card" itemscope itemtype="https://schema.org/ImageObject">
+                <a href="{{ url_for('gallery') }}" class="home-landing-gallery__media" title="{{ item.title }}">
+                    {% if item.image_src %}
+                    <img src="{{ item.image_src }}"
+                         alt="{{ item.title }}"
+                         width="480"
+                         height="360"
+                         loading="lazy"
+                         decoding="async"
+                         itemprop="contentUrl">
+                    {% else %}
+                    <div class="home-landing-gallery__placeholder"><i class="fas fa-image" aria-hidden="true"></i></div>
+                    {% endif %}
+                </a>
+                <div class="home-landing-gallery__body">
+                    <h3 class="home-landing-gallery__card-title" itemprop="name">{{ item.title }}</h3>
+                    {% if item.description %}
+                    <p class="home-landing-gallery__card-text" itemprop="description">{{ item.description|truncate(140, True, '…') }}</p>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        <div class="home-landing-gallery__footer">
+            <a href="{{ url_for('gallery') }}" class="home-landing-gallery__link">
+                View full gallery
+                {% if _gallery|length > _gallery_preview|length %}
+                <span class="home-landing-gallery__count">({{ _gallery|length }} photos)</span>
+                {% endif %}
+                <i class="fas fa-arrow-right" aria-hidden="true"></i>
+            </a>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if campus_photo and not employee_in_portal %}
+<section class="home-landing-cta" aria-label="Visit our school">
+    <div class="home-landing-cta__media" aria-hidden="true">
+        <img src="{{ campus_url }}" alt="" class="home-landing-cta__img" width="1600" height="600" loading="lazy" decoding="async">
+        <div class="home-landing-cta__scrim"></div>
+    </div>
+    <div class="home-landing-cta__glow" aria-hidden="true"></div>
+    <div class="home-landing-cta__inner">
+        <p class="home-landing-cta__eyebrow">Experience {{ school_settings.school_name or 'our school' }}</p>
+        <h2 class="home-landing-cta__title">Plan a campus visit</h2>
+        <p class="home-landing-cta__text">See our classrooms, meet our team, and discover how we support every learner.</p>
+        <div class="home-landing-cta__actions">
+            <a href="{{ url_for('demo') }}" class="home-landing-cta__btn home-landing-cta__btn--solid">
+                <i class="fas fa-calendar-check" aria-hidden="true"></i> Schedule a tour
+            </a>
+            <a href="{{ url_for('admission') }}" class="home-landing-cta__btn home-landing-cta__btn--outline">
+                <i class="fas fa-file-signature" aria-hidden="true"></i> Apply online
+            </a>
+        </div>
+    </div>
+</section>
+{% endif %}
 {% endblock %}

@@ -72,11 +72,11 @@
     <span>Timetable management</span>
     {% if request.endpoint == 'timetable_management' or 'timetable-management' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
-<a href="{{ employee_dash_url('exams-assessments') }}"
-   class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
+<a href="{{ employee_dash_url('exams-overview' if _is_deputy else 'exams-assessments') }}"
+   class="sidebar-item {% if request.endpoint in ('exams_overview', 'exams_overview_classes') or (_is_deputy and request.endpoint == 'students_by_academic_level') or (_is_deputy and request.endpoint == 'exam_evaluation_registered_detail') or (not _is_deputy and request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level')) or (not _is_deputy and request.path.endswith('/exams-assessments')) %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exams &amp; results</span>
-    {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or request.path.endswith('/exams-assessments') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint in ('exams_overview', 'exams_overview_classes') or (_is_deputy and request.endpoint == 'students_by_academic_level') or (_is_deputy and request.endpoint == 'exam_evaluation_registered_detail') or (not _is_deputy and request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level')) or (not _is_deputy and request.path.endswith('/exams-assessments')) %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('exams-assessments/exam-audits') }}"
    class="sidebar-item {% if request.endpoint == 'exam_audits' or '/exam-audits' in request.path %}sidebar-item-active{% endif %}">

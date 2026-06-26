@@ -83,4 +83,250 @@ aside.app-sidebar .sys-settings-sidebar__empty {
         font-size: 0.8125rem;
     }
 }
+
+/* School logo upload — transparent checkerboard stage + floating mark */
+.school-logo-stage {
+    width: 8.5rem;
+    height: 8.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem;
+    border-radius: 1rem;
+    border: 2px dashed rgba(148, 163, 184, 0.55);
+    background-color: #f8fafc;
+    background-image:
+        linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+        linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+        linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.dark .school-logo-stage {
+    background-color: #0f172a;
+    border-color: rgba(100, 116, 139, 0.65);
+    background-image:
+        linear-gradient(45deg, #1e293b 25%, transparent 25%),
+        linear-gradient(-45deg, #1e293b 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1e293b 75%),
+        linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+}
+
+.school-logo-float {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 18px rgba(15, 23, 42, 0.22));
+}
+
+.dark .school-logo-float {
+    filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.45));
+}
+
+.school-logo-stage__empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    opacity: 0.65;
+}
+
+/* Campus hero upload — website mockup previews */
+.campus-image-previews {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 768px) {
+    .campus-image-previews {
+        grid-template-columns: 1.35fr 1fr;
+        gap: 1.25rem;
+    }
+}
+
+.campus-preview-card__label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 0.5rem;
+}
+
+.dark .campus-preview-card__label {
+    color: #94a3b8;
+}
+
+.campus-preview-hero,
+.campus-preview-cta {
+    position: relative;
+    overflow: hidden;
+    border-radius: 0.875rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    box-shadow: 0 10px 28px -8px rgba(15, 23, 42, 0.18);
+    background: #0f172a;
+}
+
+.dark .campus-preview-hero,
+.dark .campus-preview-cta {
+    border-color: rgba(71, 85, 105, 0.65);
+    box-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.45);
+}
+
+.campus-preview-hero {
+    aspect-ratio: 16 / 9;
+    min-height: 9.5rem;
+}
+
+.campus-preview-cta {
+    aspect-ratio: 21 / 8;
+    min-height: 6.5rem;
+}
+
+.campus-preview-hero__img,
+.campus-preview-cta__img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    transform: scale(1.02);
+}
+
+.campus-preview-hero__placeholder,
+.campus-preview-cta__placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(148, 163, 184, 0.55);
+    font-size: 2rem;
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+}
+
+.campus-preview-hero__mesh {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #0d9488) 55%, transparent) 0%, transparent 55%),
+        linear-gradient(to top, rgba(15, 23, 42, 0.72) 0%, rgba(15, 23, 42, 0.15) 50%, transparent 100%);
+}
+
+.campus-preview-hero__caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    padding: 0.85rem 1rem;
+    pointer-events: none;
+}
+
+.campus-preview-hero__eyebrow {
+    display: block;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.campus-preview-hero__title {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.8rem;
+    font-weight: 800;
+    line-height: 1.2;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.campus-preview-cta__scrim {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(160deg, color-mix(in srgb, var(--brand-primary, #0d9488) 38%, rgba(15, 23, 42, 0.5)) 0%, rgba(15, 23, 42, 0.62) 100%),
+        linear-gradient(to top, rgba(0, 0, 0, 0.35) 0%, transparent 50%);
+}
+
+.campus-preview-cta__text {
+    position: absolute;
+    left: 1rem;
+    bottom: 0.85rem;
+    z-index: 2;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+
+/* School profile — gallery uploads */
+.school-gallery-item,
+.school-gallery-new-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: 0.875rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(248, 250, 252, 0.65);
+}
+
+.dark .school-gallery-item,
+.dark .school-gallery-new-row {
+    background: rgba(15, 23, 42, 0.45);
+    border-color: rgba(71, 85, 105, 0.55);
+}
+
+@media (min-width: 640px) {
+    .school-gallery-item,
+    .school-gallery-new-row {
+        grid-template-columns: 8.5rem 1fr;
+        align-items: start;
+    }
+}
+
+.school-gallery-item__thumb,
+.school-gallery-new-row__preview {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: 0.65rem;
+    overflow: hidden;
+    background: #e2e8f0;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dark .school-gallery-item__thumb,
+.dark .school-gallery-new-row__preview {
+    background: #1e293b;
+}
+
+.school-gallery-item__img,
+.school-gallery-new-row__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.school-gallery-item__placeholder {
+    color: #94a3b8;
+    font-size: 1.75rem;
+}
 </style>

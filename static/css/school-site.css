@@ -755,6 +755,10 @@ html.dark .split-hero--readable .split-hero__chip {
   filter: brightness(0) invert(1);
 }
 
+#site-header.site-header--marketing.site-header--glass .site-header__brand-mark--has-logo .site-header__logo-img {
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.35));
+}
+
 #site-header.site-header--marketing.site-header--solid .site-header__logo-img {
   filter: none;
 }
@@ -801,6 +805,17 @@ html.dark .split-hero--readable .split-hero__chip {
   box-shadow:
     0 4px 14px color-mix(in srgb, var(--brand-primary, #800020) 28%, transparent),
     0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+}
+
+#site-header.site-header--marketing .site-header__brand-mark--has-logo {
+  box-shadow: none;
+  background: transparent !important;
+  overflow: visible;
+  border-radius: 0;
+}
+
+#site-header.site-header--marketing .site-header__brand-mark--has-logo .site-header__logo-img {
+  filter: drop-shadow(0 3px 10px rgba(15, 23, 42, 0.2));
 }
 
 /* Mobile slide-down menu */

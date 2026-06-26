@@ -790,10 +790,10 @@ document.addEventListener('alpine:init', function () {
             this.showFlash('Select at least one invoice to pay.', 'error');
             return;
           }
-          var expectedTotal = this.selectedInvoicesTotal;
-          if (Math.abs(amt - expectedTotal) > 0.005) {
+          var maxPay = this.selectedInvoicesTotal;
+          if (amt > maxPay + 0.005) {
             this.showFlash(
-              'Amount must match the selected invoice total (KES '
+              'Payment cannot exceed the selected invoice total (KES '
               + this.selectedInvoicesTotalDisplay + ').',
               'error'
             );
@@ -1386,7 +1386,7 @@ document.addEventListener('alpine:init', function () {
                             </span>
                         </p>
                         <p class="mt-1 text-xs text-slate-500 normal-case" x-show="supplierInvoiceOptions.length">
-                            Open the list and tick invoices to pay. Delivery note — reference · balance. Amount updates automatically.
+                            Open the list and tick invoices to pay. Delivery note — reference · balance. Amount defaults to the selected total; edit below to pay a partial amount.
                         </p>
                         <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
                            x-show="selectedSupplier && !supplierInvoiceOptions.length" x-cloak>
@@ -1465,19 +1465,15 @@ document.addEventListener('alpine:init', function () {
                         <label for="pay_amount" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Amount paid (KES)</label>
                         <input type="number" name="amount_paid" id="pay_amount" min="0.01" step="0.01" required
                                x-model="amountPaid"
-                               :readonly="!!selectedSupplier"
-                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white"
-                               :class="selectedSupplier ? 'bg-slate-100 dark:bg-slate-800 cursor-default' : ''" />
-                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedSupplier">
-                            Auto-calculated from selected invoices.
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
+                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedSupplier && selectedInvoiceIds.length">
+                            <span x-text="selectedInvoiceIds.length"></span> invoice(s) selected · balance
+                            <span class="font-semibold tabular-nums" x-text="'KES ' + selectedInvoicesTotalDisplay"></span>.
+                            Amount defaults to that total — edit to pay less.
                         </p>
                         <p class="mt-1 text-xs text-red-600 dark:text-red-400 font-semibold normal-case"
                            x-show="payAmountExceedsBalance" x-cloak>
                             Insufficient funds in the selected account. Reduce the amount or choose another account.
-                        </p>
-                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedSupplier && selectedInvoiceIds.length">
-                            Paying <span x-text="selectedInvoiceIds.length"></span> invoice(s) —
-                            total <span class="font-semibold tabular-nums" x-text="'KES ' + selectedInvoicesTotalDisplay"></span>
                         </p>
                         <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedRecord && !selectedSupplier">
                             Maximum:

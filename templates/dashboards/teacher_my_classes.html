@@ -3,8 +3,6 @@
 {% block title %}My Classes - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 
-{% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
-
 {% block sidebar_content %}
 {% set teacher_nav_scope = 'classes' %}
 {% include 'dashboards/includes/teacher_page_sidebar.html' %}

@@ -1083,7 +1083,7 @@ header .container > div > div:not(.header-datetime):not(.header-datetime-mobile)
 }
 
 /* Tablet Login Form */
-@media (min-width: 641px) and (max-width: 768px) {
+@media (min-width: 640px) and (max-width: 768px) {
     .login-modal {
         max-width: 90%;
     }
@@ -1124,7 +1124,7 @@ header .container > div > div:not(.header-datetime):not(.header-datetime-mobile)
     }
 }
 
-@media (min-width: 641px) and (max-width: 768px) {
+@media (min-width: 640px) and (max-width: 768px) {
     .login-modal {
         max-width: 90%;
     }
@@ -1311,7 +1311,7 @@ header .container > div > div:not(.header-datetime):not(.header-datetime-mobile)
     }
 }
 
-@media (min-width: 641px) and (max-width: 768px) {
+@media (min-width: 640px) and (max-width: 768px) {
     .admission-modal {
         max-width: 95%;
         margin: 1rem;
@@ -1566,7 +1566,7 @@ header .container > div > div:not(.header-datetime):not(.header-datetime-mobile)
     }
 }
 
-@media (min-width: 641px) and (max-width: 768px) {
+@media (min-width: 640px) and (max-width: 768px) {
     .employee-modal {
         max-width: 95%;
         margin: 1rem;
@@ -1718,7 +1718,7 @@ header .container > div > div:not(.header-datetime):not(.header-datetime-mobile)
     }
 }
 
-@media (min-width: 641px) and (max-width: 768px) {
+@media (min-width: 640px) and (max-width: 768px) {
     .login-button-modern {
         padding: 0.625rem 1rem;
         font-size: 0.9rem;
@@ -2070,7 +2070,7 @@ aside.sidebar-position {
     }
 }
 
-@media (min-width: 641px) and (max-width: 1024px) {
+@media (min-width: 640px) and (max-width: 1024px) {
     .team-card-modern {
         height: 400px;
     }

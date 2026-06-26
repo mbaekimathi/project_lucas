@@ -179,23 +179,11 @@ body.role-portal-layout main > div > .container.mx-auto {
     .role-hero-icon-wrap { width: 3.5rem; height: 3.5rem; }
 }
 
-/* Themed page-hero (legacy pages) — accounts gradient via portal_unified_accounts_look */
-body.role-portal-layout .page-hero {
-    background: linear-gradient(125deg, #0f172a 0%, #1e3a5f 38%, #134e4a 100%);
-}
-
 /* Main content area — unified shell for all portal pages */
 body.role-portal-layout main > div > .container.mx-auto {
     padding-top: 0 !important;
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px)) !important;
 }
-body.role-portal-layout {
-    --rp-page-bg: linear-gradient(180deg, #ecfdf5 0%, #eef2f6 45%, #f8fafc 100%);
-}
-.dark body.role-portal-layout {
-    --rp-page-bg: linear-gradient(180deg, #0b1120 0%, #0f172a 50%, #020617 100%);
-}
-
 body.role-portal-layout .page-content {
     max-width: 80rem;
     margin-left: auto;
@@ -340,13 +328,13 @@ body.role-portal-layout .role-page .bg-white.dark\:bg-gray-800.rounded-2xl.shado
     border-radius: 1rem;
 }
 
-/* === Portal compact typography — all logged-in dashboard pages === */
+/* === Portal compact typography — html rem scale; Tailwind utilities inherit === */
 html.role-portal-scroll {
-    font-size: 87.5%; /* 14px base — scales Tailwind rem utilities app-wide */
+    font-size: 87.5%; /* 14px base on 16px root */
 }
 @media (max-width: 639px) {
     html.role-portal-scroll {
-        font-size: 75%; /* 12px base on phones */
+        font-size: 81.25%; /* 13px base on phones */
     }
 }
 
@@ -375,28 +363,10 @@ body.role-portal-layout main h6 {
     line-height: 1.35;
 }
 
-/* Tailwind text utilities in page content */
-body.role-portal-layout main .text-xs { font-size: 0.6875rem !important; line-height: 1.35 !important; }
-body.role-portal-layout main .text-sm { font-size: 0.75rem !important; line-height: 1.4 !important; }
-body.role-portal-layout main .text-base { font-size: 0.8125rem !important; line-height: 1.45 !important; }
-body.role-portal-layout main .text-lg { font-size: 0.875rem !important; line-height: 1.4 !important; }
-body.role-portal-layout main .text-xl { font-size: 0.9375rem !important; line-height: 1.35 !important; }
-body.role-portal-layout main .text-2xl { font-size: 1.0625rem !important; line-height: 1.3 !important; }
-body.role-portal-layout main .text-3xl { font-size: 1.2rem !important; line-height: 1.25 !important; }
-body.role-portal-layout main .text-4xl { font-size: 1.35rem !important; line-height: 1.2 !important; }
-
 @media (max-width: 639px) {
     body.role-portal-layout main h1:not(.role-hero-title) { font-size: 1.05rem; }
     body.role-portal-layout main h2 { font-size: 0.9375rem; }
     body.role-portal-layout main h3 { font-size: 0.875rem; }
-    body.role-portal-layout main .text-xs { font-size: 0.625rem !important; }
-    body.role-portal-layout main .text-sm { font-size: 0.6875rem !important; }
-    body.role-portal-layout main .text-base { font-size: 0.75rem !important; }
-    body.role-portal-layout main .text-lg { font-size: 0.8125rem !important; }
-    body.role-portal-layout main .text-xl { font-size: 0.875rem !important; }
-    body.role-portal-layout main .text-2xl { font-size: 0.9375rem !important; }
-    body.role-portal-layout main .text-3xl { font-size: 1.05rem !important; }
-    body.role-portal-layout main .text-4xl { font-size: 1.125rem !important; }
     body.role-portal-layout .role-hero-title { font-size: 1rem !important; }
     body.role-portal-layout .role-hero-sub { font-size: 0.6875rem !important; }
     body.role-portal-layout .role-hero-eyebrow { font-size: 0.5625rem !important; }

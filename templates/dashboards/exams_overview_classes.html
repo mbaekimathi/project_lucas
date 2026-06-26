@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}{{ exam_meta.exam_name }} — Classes - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.eoc-page {
+    --eoc-card-radius: 1rem;
+}
+.eoc-stat {
+    border-radius: var(--eoc-card-radius);
+    border: 1px solid rgb(229 231 235 / 0.9);
+    background: linear-gradient(145deg, rgb(255 255 255) 0%, rgb(249 250 251) 100%);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.04);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.dark .eoc-stat {
+    border-color: rgb(55 65 81 / 0.8);
+    background: linear-gradient(145deg, rgb(17 24 39) 0%, rgb(31 41 55) 100%);
+}
+.eoc-panel {
+    border-radius: 1.25rem;
+    border: 1px solid rgb(229 231 235 / 0.95);
+    background: rgb(255 255 255);
+    box-shadow: 0 4px 24px -8px rgb(0 0 0 / 0.08);
+    overflow: hidden;
+}
+.dark .eoc-panel {
+    border-color: rgb(55 65 81 / 0.7);
+    background: rgb(17 24 39);
+    box-shadow: 0 4px 28px -10px rgb(0 0 0 / 0.45);
+}
+.eoc-thead {
+    background: linear-gradient(90deg, var(--brand-primary, #047857), color-mix(in srgb, var(--brand-primary, #047857) 75%, var(--brand-secondary, #065f46)));
+}
+.eoc-row {
+    transition: background-color 0.15s ease;
+}
+.eoc-row:hover {
+    background: color-mix(in srgb, var(--brand-primary, #047857) 6%, transparent);
+}
+.dark .eoc-row:hover {
+    background: color-mix(in srgb, var(--brand-primary, #047857) 14%, transparent);
+}
+.eoc-class-icon {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.875rem;
+    background: linear-gradient(135deg, var(--brand-primary, #047857), var(--brand-secondary, #065f46));
+    box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--brand-primary, #047857) 45%, transparent);
+}
+.eoc-btn-results {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(90deg, var(--brand-primary, #047857), var(--brand-secondary, #065f46));
+    box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--brand-primary, #047857) 40%, transparent);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.eoc-btn-results:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--brand-primary, #047857) 50%, transparent);
+    opacity: 0.95;
+}
+.eoc-mobile-card {
+    border-radius: var(--eoc-card-radius);
+    border: 1px solid rgb(229 231 235 / 0.95);
+    background: rgb(255 255 255);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.eoc-mobile-card:active {
+    border-color: color-mix(in srgb, var(--brand-primary, #047857) 35%, rgb(229 231 235));
+    box-shadow: 0 4px 20px -8px color-mix(in srgb, var(--brand-primary, #047857) 25%, transparent);
+}
+.dark .eoc-mobile-card {
+    border-color: rgb(55 65 81 / 0.8);
+    background: rgb(31 41 55 / 0.6);
+}
+.eoc-search {
+    border-radius: 0.75rem;
+    border: 1px solid rgb(209 213 219);
+    background: rgb(249 250 251);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.eoc-search:focus {
+    outline: none;
+    border-color: var(--brand-primary, #047857);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary, #047857) 18%, transparent);
+}
+.dark .eoc-search {
+    border-color: rgb(75 85 99);
+    background: rgb(17 24 39);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set _page_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role') or '')|lower %}
+{% set role_theme = 'deputy' if _page_role == 'deputy head of institution' else 'leadership' %}
+{% set total_students = classes | sum(attribute='student_count') %}
+{% set total_subjects = classes | sum(attribute='subject_slots') %}
+
+<script>
+window.examClassesData = {{ classes|tojson|safe }};
+function examClassesList() {
+    return {
+        classes: window.examClassesData || [],
+        search: '',
+        get filteredClasses() {
+            const q = (this.search || '').trim().toLowerCase();
+            if (!q) return this.classes;
+            return this.classes.filter(c =>
+                (c.level_name && c.level_name.toLowerCase().includes(q)) ||
+                (c.level_category && c.level_category.toLowerCase().includes(q))
+            );
+        },
+        resultsUrl(cls) {
+            const base = {{ employee_dash_url('exams-assessments/level')|tojson }};
+            return `${base}/${cls.academic_level_id}/students?year={{ exam_meta.academic_year_id }}&term={{ exam_meta.term_id }}&exam=${cls.exam_row_id}`;
+        },
+    };
+}
+</script>
+
+<div class="eoc-page p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--{{ role_theme }}"
+     x-data="examClassesList()">
+
+    <a href="{{ employee_dash_url('exams-overview') }}"
+       class="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-brand-primary dark:text-gray-400 dark:hover:text-brand-secondary mb-5 transition-colors">
+        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+            <i class="fas fa-arrow-left text-xs"></i>
+        </span>
+        Back to all exams
+    </a>
+
+    {% set role_hero_title = exam_meta.exam_name %}
+    {% set role_hero_subtitle = 'Choose a class below to open the student results sheet for this exam.' %}
+    {% set role_hero_icon_class = 'fa-layer-group' %}
+    {% set role_hero_chips = [
+        {'icon': 'fa-tag', 'text': exam_meta.exam_type or 'Exam'},
+        {'icon': 'fa-calendar', 'text': exam_meta.year_name or '—'},
+        {'icon': 'fa-bookmark', 'text': exam_meta.term_name or '—'},
+    ] %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    <div class="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
+        <div class="eoc-stat p-4 sm:p-5 text-center">
+            <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Classes</p>
+            <p class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tabular-nums">{{ classes|length }}</p>
+        </div>
+        <div class="eoc-stat p-4 sm:p-5 text-center">
+            <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Students</p>
+            <p class="text-2xl sm:text-3xl font-bold text-brand-primary dark:text-brand-secondary tabular-nums">{{ total_students }}</p>
+        </div>
+        <div class="eoc-stat p-4 sm:p-5 text-center">
+            <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Subjects</p>
+            <p class="text-2xl sm:text-3xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{{ total_subjects }}</p>
+        </div>
+    </div>
+
+    <div class="eoc-panel">
+        <div class="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+                <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <i class="fas fa-chalkboard-teacher text-brand-primary dark:text-brand-secondary text-sm"></i>
+                    Classes
+                </h2>
+                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span x-text="filteredClasses.length"></span> class<span x-show="filteredClasses.length !== 1">es</span> in this exam
+                </p>
+            </div>
+            <div class="relative w-full sm:max-w-xs">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                <input type="search"
+                       x-model="search"
+                       placeholder="Search class…"
+                       class="eoc-search w-full pl-9 pr-3 py-2.5 text-sm text-gray-900 dark:text-white"
+                       autocomplete="off">
+            </div>
+        </div>
+
+        <div x-show="filteredClasses.length === 0" class="px-6 py-16 text-center">
+            <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                <i class="fas fa-search text-xl text-gray-400"></i>
+            </div>
+            <p class="text-sm font-medium text-gray-600 dark:text-gray-300">No classes match your search.</p>
+            <button type="button" @click="search = ''" class="mt-2 text-xs font-semibold text-brand-primary hover:underline">Clear search</button>
+        </div>
+
+        <!-- Desktop list -->
+        <div class="hidden md:block overflow-x-auto" x-show="filteredClasses.length > 0">
+            <table class="w-full border-collapse">
+                <thead class="eoc-thead text-white">
+                    <tr>
+                        <th class="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wide">Class</th>
+                        <th class="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wide">Category</th>
+                        <th class="px-5 py-3.5 text-center text-xs font-bold uppercase tracking-wide w-28">Students</th>
+                        <th class="px-5 py-3.5 text-center text-xs font-bold uppercase tracking-wide w-28">Subjects</th>
+                        <th class="px-5 py-3.5 text-right text-xs font-bold uppercase tracking-wide w-36">Results</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    <template x-for="cls in filteredClasses" :key="cls.academic_level_id">
+                        <tr class="eoc-row">
+                            <td class="px-5 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="eoc-class-icon shrink-0 flex items-center justify-center text-white">
+                                        <i class="fas fa-graduation-cap text-sm"></i>
+                                    </div>
+                                    <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="cls.level_name"></span>
+                                </div>
+                            </td>
+                            <td class="px-5 py-4">
+                                <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                      x-text="cls.level_category || '—'"></span>
+                            </td>
+                            <td class="px-5 py-4 text-center">
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white tabular-nums" x-text="cls.student_count"></span>
+                            </td>
+                            <td class="px-5 py-4 text-center">
+                                <span class="text-sm font-semibold text-gray-700 dark:text-gray-300 tabular-nums" x-text="cls.subject_slots"></span>
+                            </td>
+                            <td class="px-5 py-4 text-right">
+                                <a :href="resultsUrl(cls)" class="eoc-btn-results whitespace-nowrap">
+                                    <i class="fas fa-chart-bar text-[10px]"></i>
+                                    View results
+                                </a>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Mobile list -->
+        <div class="md:hidden divide-y divide-gray-100 dark:divide-gray-800" x-show="filteredClasses.length > 0">
+            <template x-for="cls in filteredClasses" :key="'m-' + cls.academic_level_id">
+                <a :href="resultsUrl(cls)" class="eoc-mobile-card block m-3 p-4">
+                    <div class="flex items-start gap-3">
+                        <div class="eoc-class-icon shrink-0 flex items-center justify-center text-white">
+                            <i class="fas fa-graduation-cap text-sm"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-base font-bold text-gray-900 dark:text-white truncate" x-text="cls.level_name"></p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-text="cls.level_category || 'General'"></p>
+                            <div class="flex flex-wrap gap-3 mt-2.5 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                <span class="inline-flex items-center gap-1.5">
+                                    <i class="fas fa-user-graduate text-brand-primary text-[10px]"></i>
+                                    <span x-text="cls.student_count + ' students'"></span>
+                                </span>
+                                <span class="inline-flex items-center gap-1.5">
+                                    <i class="fas fa-book text-indigo-500 text-[10px]"></i>
+                                    <span x-text="cls.subject_slots + ' subjects'"></span>
+                                </span>
+                            </div>
+                        </div>
+                        <span class="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary dark:text-brand-secondary">
+                            <i class="fas fa-chevron-right text-xs"></i>
+                        </span>
+                    </div>
+                </a>
+            </template>
+        </div>
+    </div>
+</div>
+{% endblock %}

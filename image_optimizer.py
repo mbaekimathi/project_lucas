@@ -8,7 +8,7 @@ import io
 import os
 
 try:
-    from PIL import Image, ImageOps
+    from PIL import Image, ImageOps, ImageFilter
 
     _PILLOW_AVAILABLE = True
 except ImportError:
@@ -21,7 +21,8 @@ PRESETS = {
     'profile': {'max_px': 400, 'quality': 82},
     'student_photo': {'max_px': 480, 'quality': 82},
     'store': {'max_px': 800, 'quality': 84},
-    'hero': {'max_px': 1920, 'max_h': 1080, 'quality': 85},
+    'hero': {'max_px': 1600, 'max_h': 900, 'quality': 82, 'prefer_webp': True},
+    'gallery': {'max_px': 1200, 'quality': 84, 'prefer_webp': True},
     'logo': {'max_px': 480, 'quality': 88, 'keep_png_alpha': True},
     'payment_proof': {'max_px': 1400, 'quality': 82},
     'attachment': {'max_px': 1200, 'quality': 82},
@@ -51,6 +52,103 @@ def _has_transparency(img):
         except Exception:
             return False
     return False
+
+
+def _sample_flat_background_rgb(img):
+    """Estimate a solid backdrop colour from corners and edge midpoints."""
+    rgba = img.convert('RGBA')
+    w, h = rgba.size
+    pixels = rgba.load()
+    points = [
+        (0, 0),
+        (w - 1, 0),
+        (0, h - 1),
+        (w - 1, h - 1),
+        (w // 2, 0),
+        (w // 2, h - 1),
+        (0, h // 2),
+        (w - 1, h // 2),
+    ]
+    rs = gs = bs = 0
+    for x, y in points:
+        r, g, b, _a = pixels[x, y]
+        rs += r
+        gs += g
+        bs += b
+    n = len(points)
+    return (rs // n, gs // n, bs // n)
+
+
+def _remove_flat_background(img, tolerance=42):
+    """Make pixels similar to the detected edge background transparent."""
+    rgba = img.convert('RGBA')
+    bg = _sample_flat_background_rgb(rgba)
+    tol_sq = tolerance * tolerance
+    soft_sq = int(tol_sq * 2.25)
+    data = list(rgba.getdata())
+    out = []
+    for r, g, b, a in data:
+        dist_sq = (r - bg[0]) ** 2 + (g - bg[1]) ** 2 + (b - bg[2]) ** 2
+        if dist_sq <= tol_sq:
+            out.append((r, g, b, 0))
+        elif dist_sq <= soft_sq:
+            fade = 1.0 - (dist_sq - tol_sq) / max(1, soft_sq - tol_sq)
+            out.append((r, g, b, int(a * max(0.0, min(1.0, fade)))))
+        else:
+            out.append((r, g, b, a))
+    rgba.putdata(out)
+    return rgba
+
+
+def _trim_transparent(img, padding=10):
+    rgba = img.convert('RGBA')
+    bbox = rgba.getbbox()
+    if not bbox:
+        return rgba
+    left, top, right, bottom = bbox
+    w, h = rgba.size
+    left = max(0, left - padding)
+    top = max(0, top - padding)
+    right = min(w, right + padding)
+    bottom = min(h, bottom + padding)
+    return rgba.crop((left, top, right, bottom))
+
+
+def _prepare_logo_image(img):
+    """Strip flat backdrops and crop excess padding for school logos."""
+    if _has_transparency(img):
+        rgba = img.convert('RGBA') if img.mode != 'RGBA' else img
+        return _trim_transparent(rgba)
+    return _trim_transparent(_remove_flat_background(img))
+
+
+def _crop_to_aspect(img, aspect_w=16, aspect_h=9):
+    """Center-crop to a target aspect ratio (e.g. 16:9 hero banners)."""
+    w, h = img.size
+    if w < 2 or h < 2:
+        return img
+    target = aspect_w / float(aspect_h)
+    current = w / float(h)
+    if abs(current - target) < 0.02:
+        return img
+    if current > target:
+        new_w = max(1, int(h * target))
+        left = (w - new_w) // 2
+        return img.crop((left, 0, left + new_w, h))
+    new_h = max(1, int(w / target))
+    top = (h - new_h) // 2
+    return img.crop((0, top, w, top + new_h))
+
+
+def _prepare_hero_image(img):
+    """Crop to 16:9, convert to RGB, and lightly sharpen for crisp hero photos."""
+    rgb = img.convert('RGB')
+    rgb = _crop_to_aspect(rgb, 16, 9)
+    try:
+        rgb = rgb.filter(ImageFilter.UnsharpMask(radius=1, percent=75, threshold=2))
+    except Exception:
+        pass
+    return rgb
 
 
 def _fit_image(img, max_px, max_h=None):
@@ -114,9 +212,15 @@ def optimize_image_bytes(data, preset='profile'):
     except Exception:
         return data, None
 
+    if preset == 'logo':
+        img = _prepare_logo_image(img)
+    elif preset == 'hero':
+        img = _prepare_hero_image(img)
+
     img = _fit_image(img, cfg['max_px'], cfg.get('max_h'))
     quality = int(cfg.get('quality', 82))
-    keep_alpha = cfg.get('keep_png_alpha') and _has_transparency(img)
+    keep_alpha = cfg.get('keep_png_alpha') and (_has_transparency(img) or preset == 'logo')
+    prefer_webp = bool(cfg.get('prefer_webp')) and not keep_alpha
 
     out = io.BytesIO()
     if keep_alpha:
@@ -127,6 +231,11 @@ def optimize_image_bytes(data, preset='profile'):
 
     if img.mode not in ('RGB', 'L'):
         img = img.convert('RGB')
+
+    if prefer_webp:
+        img.save(out, format='WEBP', quality=quality, method=4)
+        return out.getvalue(), 'webp'
+
     img.save(out, format='JPEG', quality=quality, optimize=True, progressive=True)
     return out.getvalue(), 'jpg'
 

@@ -9,56 +9,55 @@
 
 {% block extra_head %}
 <style>
-    .dashboard-card {
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border: 1px solid rgba(128, 0, 32, 0.1);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    .exam-eval-page {
+        --ee-radius: 0.75rem;
+        --ee-radius-lg: 1rem;
+        --ee-border: color-mix(in srgb, var(--brand-primary) 10%, #e5e7eb);
+        --ee-muted: #6b7280;
+        --ee-surface: #ffffff;
+        --ee-surface-2: #f9fafb;
     }
-    
-    .dashboard-card:hover {
-        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.1);
+    .dark .exam-eval-page {
+        --ee-border: rgba(255, 255, 255, 0.1);
+        --ee-muted: #9ca3af;
+        --ee-surface: rgba(17, 24, 39, 0.92);
+        --ee-surface-2: rgba(31, 41, 55, 0.55);
     }
-    
-    .dark .dashboard-card {
-        background: rgba(17, 24, 39, 0.95);
-        border-color: rgba(255, 255, 255, 0.1);
+
+    .exam-eval-page .dashboard-card {
+        background: var(--ee-surface);
+        border: 1px solid var(--ee-border);
+        border-radius: var(--ee-radius-lg);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     }
-    
-    .modern-input {
-        transition: all 0.3s ease;
+    .exam-eval-page .dashboard-card:hover {
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     }
-    
-    .modern-input:focus {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(128, 0, 32, 0.15);
+
+    .exam-eval-page .modern-input {
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    
-    .modern-btn {
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    .exam-eval-page .modern-input:focus {
+        transform: none;
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 16%, transparent);
     }
-    
-    .modern-btn:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.25);
+
+    .exam-eval-page .modern-btn {
+        transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
     }
-    
-    .allocation-card {
-        background: rgba(255, 255, 255, 0.8);
-        backdrop-filter: blur(5px);
-        border: 2px solid rgba(128, 0, 32, 0.1);
-        transition: all 0.3s ease;
+    .exam-eval-page .modern-btn:hover:not(:disabled) {
+        transform: none;
     }
-    
-    .allocation-card:hover {
-        border-color: rgba(128, 0, 32, 0.3);
-        box-shadow: 0 4px 12px rgba(128, 0, 32, 0.1);
+
+    .exam-eval-page .allocation-card {
+        background: var(--ee-surface);
+        border: 1px solid var(--ee-border);
+        border-radius: var(--ee-radius);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    
-    .dark .allocation-card {
-        background: rgba(17, 24, 39, 0.8);
-        border-color: rgba(255, 255, 255, 0.1);
+    .exam-eval-page .allocation-card:hover {
+        border-color: color-mix(in srgb, var(--brand-primary) 22%, #e5e7eb);
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
     }
     
     /* Tables: horizontal scroll only when content needs it; smooth touch panning */
@@ -89,43 +88,344 @@
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
     }
 
+    .exam-eval-section-title {
+        font-size: 0.9375rem;
+        font-weight: 700;
+        color: #111827;
+        letter-spacing: -0.01em;
+    }
+    .dark .exam-eval-section-title { color: #f9fafb; }
+
+    .exam-eval-section-hint {
+        font-size: 0.8125rem;
+        line-height: 1.45;
+        color: var(--ee-muted);
+    }
+
+    .exam-eval-field-label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 0.375rem;
+    }
+    .dark .exam-eval-field-label { color: #d1d5db; }
+
+    .exam-eval-divider {
+        border-top: 1px solid var(--ee-border);
+        margin-top: 1.25rem;
+        padding-top: 1.25rem;
+    }
+
     .exam-eval-chip {
         display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
-        padding: 0.2rem 0.5rem;
-        border-radius: 0.375rem;
-        border: 1px solid color-mix(in srgb, var(--brand-primary) 18%, #e5e7eb);
-        background: #fff;
+        gap: 0.4rem;
+        padding: 0.35rem 0.65rem;
+        border-radius: 9999px;
+        border: 1px solid var(--ee-border);
+        background: var(--ee-surface-2);
         font-size: 0.75rem;
         line-height: 1.2;
         cursor: pointer;
-        transition: border-color 0.15s, background 0.15s;
+        transition: border-color 0.15s, background 0.15s, color 0.15s;
     }
     .exam-eval-chip:has(input:checked) {
-        border-color: color-mix(in srgb, var(--brand-primary) 45%, transparent);
-        background: color-mix(in srgb, var(--brand-primary) 8%, #fff);
+        border-color: color-mix(in srgb, var(--brand-primary) 40%, transparent);
+        background: color-mix(in srgb, var(--brand-primary) 10%, #fff);
+        color: var(--brand-primary);
+        font-weight: 600;
     }
     .dark .exam-eval-chip {
-        background: rgba(17, 24, 39, 0.6);
-        border-color: rgba(255, 255, 255, 0.12);
+        background: rgba(31, 41, 55, 0.6);
     }
     .dark .exam-eval-chip:has(input:checked) {
-        background: color-mix(in srgb, var(--brand-primary) 18%, #111827);
+        background: color-mix(in srgb, var(--brand-primary) 20%, #111827);
+        color: color-mix(in srgb, var(--brand-primary) 75%, #fff);
     }
+
     .exam-eval-group {
-        border: 1px solid color-mix(in srgb, var(--brand-primary) 16%, #e5e7eb);
-        border-radius: 0.5rem;
-        background: color-mix(in srgb, var(--brand-primary) 4%, #fff);
+        border: 1px solid var(--ee-border);
+        border-radius: var(--ee-radius);
+        background: var(--ee-surface-2);
     }
     .dark .exam-eval-group {
-        border-color: rgba(255, 255, 255, 0.1);
-        background: rgba(17, 24, 39, 0.5);
+        background: rgba(31, 41, 55, 0.45);
+    }
+
+    .exam-eval-segment {
+        display: inline-flex;
+        padding: 0.2rem;
+        gap: 0.15rem;
+        border-radius: 9999px;
+        background: var(--ee-surface-2);
+        border: 1px solid var(--ee-border);
+    }
+    .dark .exam-eval-segment { background: rgba(31, 41, 55, 0.65); }
+    .exam-eval-segment label {
+        border: none !important;
+        border-radius: 9999px !important;
+        padding: 0.45rem 1rem !important;
+        font-weight: 600;
+        color: var(--ee-muted);
+        background: transparent !important;
     }
     .exam-eval-segment label:has(input:checked) {
+        background: var(--brand-primary) !important;
+        color: #fff !important;
+        box-shadow: 0 1px 3px color-mix(in srgb, var(--brand-primary) 35%, transparent);
+    }
+
+    .exam-eval-session-pill {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        padding: 0.5rem 0.65rem;
+        border-radius: var(--ee-radius);
+        border: 1px solid var(--ee-border);
+        background: var(--ee-surface);
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+    }
+    .exam-eval-session-pill:has(input:checked) {
+        border-color: color-mix(in srgb, var(--brand-primary) 45%, transparent);
+        background: color-mix(in srgb, var(--brand-primary) 8%, #fff);
+        color: var(--brand-primary);
+        font-weight: 600;
+    }
+    .dark .exam-eval-session-pill:has(input:checked) {
+        background: color-mix(in srgb, var(--brand-primary) 18%, #111827);
+    }
+
+    .exam-eval-toolbar-btn {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        padding: 0.3rem 0.65rem;
+        border-radius: 9999px;
+        border: 1px solid var(--ee-border);
+        background: var(--ee-surface);
+        color: #374151;
+        transition: background 0.15s;
+    }
+    .exam-eval-toolbar-btn:hover { background: var(--ee-surface-2); }
+    .dark .exam-eval-toolbar-btn {
+        background: rgba(31, 41, 55, 0.6);
+        color: #e5e7eb;
+    }
+
+    .exam-eval-days-panel {
+        border: 1px solid var(--ee-border);
+        border-radius: var(--ee-radius);
+        background: var(--ee-surface-2);
+        padding: 1rem;
+    }
+    .dark .exam-eval-days-panel { background: rgba(31, 41, 55, 0.35); }
+
+    .exam-eval-days-stat {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.65rem;
+        border-radius: 9999px;
+        background: color-mix(in srgb, var(--brand-primary) 10%, #fff);
+        color: var(--brand-primary);
+        font-size: 0.75rem;
+        font-weight: 700;
+    }
+    .dark .exam-eval-days-stat {
+        background: color-mix(in srgb, var(--brand-primary) 22%, #111827);
+    }
+
+    .exam-eval-cal-nav {
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 0.4rem 0.75rem;
+        border-radius: var(--ee-radius);
+        border: 1px solid var(--ee-border);
+        background: var(--ee-surface);
+        color: #374151;
+    }
+    .exam-eval-cal-nav:hover { background: var(--ee-surface-2); }
+    .dark .exam-eval-cal-nav {
+        background: rgba(31, 41, 55, 0.6);
+        color: #e5e7eb;
+    }
+
+    .exam-eval-cal-day--selected {
+        border-color: var(--brand-primary) !important;
+        background: color-mix(in srgb, var(--brand-primary) 12%, #fff) !important;
+        color: var(--brand-primary) !important;
+        font-weight: 700;
+    }
+    .dark .exam-eval-cal-day--selected {
+        background: color-mix(in srgb, var(--brand-primary) 22%, #111827) !important;
+    }
+
+    .exam-eval-date-tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.55rem;
+        border-radius: 0.375rem;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        background: color-mix(in srgb, var(--brand-primary) 10%, #fff);
+        color: var(--brand-primary);
+        border: 1px solid color-mix(in srgb, var(--brand-primary) 18%, transparent);
+    }
+
+    .exam-eval-alert {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        padding: 0.75rem 1rem;
+        border-radius: var(--ee-radius);
+        font-size: 0.8125rem;
+        line-height: 1.4;
+    }
+    .exam-eval-alert--success {
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+    }
+    .dark .exam-eval-alert--success {
+        background: rgba(6, 95, 70, 0.15);
+        border-color: rgba(52, 211, 153, 0.25);
+        color: #6ee7b7;
+    }
+    .exam-eval-alert--error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+    }
+    .dark .exam-eval-alert--error {
+        background: rgba(127, 29, 29, 0.15);
+        border-color: rgba(248, 113, 113, 0.25);
+        color: #fca5a5;
+    }
+    .exam-eval-alert--warn {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        color: #92400e;
+    }
+    .dark .exam-eval-alert--warn {
+        background: rgba(146, 64, 14, 0.12);
+        border-color: rgba(251, 191, 36, 0.25);
+        color: #fcd34d;
+    }
+
+    .exam-eval-btn-primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1rem;
+        border-radius: var(--ee-radius);
         background: var(--brand-primary);
         color: #fff;
-        border-color: var(--brand-primary);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    }
+    .exam-eval-btn-primary:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--brand-primary) 88%, #000);
+    }
+    .exam-eval-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .exam-eval-btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1rem;
+        border-radius: var(--ee-radius);
+        border: 1px solid var(--ee-border);
+        background: var(--ee-surface);
+        color: #374151;
+        font-size: 0.8125rem;
+        font-weight: 600;
+    }
+    .dark .exam-eval-btn-secondary { color: #e5e7eb; }
+    .exam-eval-btn-secondary:hover:not(:disabled) { background: var(--ee-surface-2); }
+
+    .exam-eval-thead th {
+        background: var(--ee-surface-2);
+        color: #374151;
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border-bottom: 2px solid color-mix(in srgb, var(--brand-primary) 20%, #e5e7eb);
+    }
+    .dark .exam-eval-thead th {
+        background: rgba(31, 41, 55, 0.65);
+        color: #e5e7eb;
+        border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .exam-eval-count-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.35rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background: color-mix(in srgb, var(--brand-primary) 10%, #fff);
+        color: var(--brand-primary);
+        border: 1px solid color-mix(in srgb, var(--brand-primary) 15%, transparent);
+    }
+    .dark .exam-eval-count-badge {
+        background: color-mix(in srgb, var(--brand-primary) 18%, #111827);
+    }
+
+    .exam-eval-empty {
+        padding: 2.5rem 1rem;
+        text-align: center;
+        color: var(--ee-muted);
+    }
+    .exam-eval-empty-icon {
+        width: 3rem;
+        height: 3rem;
+        margin: 0 auto 0.75rem;
+        border-radius: 9999px;
+        background: var(--ee-surface-2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #9ca3af;
+    }
+
+    .exam-eval-page select,
+    .exam-eval-page input[type="text"],
+    .exam-eval-page input[type="date"],
+    .exam-eval-page input[type="time"],
+    .exam-eval-page input[type="number"],
+    .exam-eval-page input[type="datetime-local"] {
+        border-width: 1px;
+    }
+
+    .exam-eval-page .exam-eval-group {
+        padding: 0.75rem;
+    }
+
+    .exam-eval-session-pill:has(input:checked)::before {
+        content: '';
+        width: 0.4rem;
+        height: 0.4rem;
+        border-radius: 9999px;
+        background: currentColor;
+        flex-shrink: 0;
+    }
+
+    .exam-eval-page .fixed.inset-0 [class*="from-emerald-600"] {
+        background: #059669 !important;
+        background-image: none !important;
+    }
+    .exam-eval-page .fixed.inset-0 [class*="from-amber-600"] {
+        background: #d97706 !important;
+        background-image: none !important;
     }
     .exam-eval-group--shared {
         border-color: color-mix(in srgb, var(--brand-primary) 40%, #e5e7eb);
@@ -362,58 +662,52 @@
 {% endblock %}
 
 {% block content %}
-<div class="exam-eval-page p-3 sm:p-4 lg:p-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 max-w-[100vw] overflow-x-hidden portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="examEvaluation()" x-init="init()">
-    <div class="mb-4 scroll-reveal">
-        <h1 class="text-base sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2 sm:gap-2.5">
-            <div class="w-7 h-7 sm:w-9 sm:h-9 shrink-0 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-md shadow-brand-primary/15">
-                <i class="fas fa-clipboard-check text-white text-[10px] sm:text-sm"></i>
-            </div>
-            <span>Exam &amp; Evaluation</span>
-        </h1>
-        <p class="mt-1 text-[11px] sm:text-sm text-gray-500 dark:text-gray-400">Register exams and manage timetables.</p>
-    </div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Exam & Evaluation' %}
+{% set role_hero_subtitle = 'Register exams, build timetables, and manage allocations.' %}
+{% set role_hero_icon_class = 'fa-clipboard-check' %}
+<div class="exam-eval-page p-4 sm:p-6 lg:p-8 min-h-screen bg-gray-50 dark:bg-gray-950 max-w-[100vw] overflow-x-hidden portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="examEvaluation()" x-init="init()">
+    {% include 'dashboards/includes/role_hero.html' %}
 
     <!-- Register Exam + Allocations -->
-    <div class="dashboard-card rounded-xl shadow-lg p-3 sm:p-5 mb-3 sm:mb-4">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 sm:mb-4">
-            <h2 class="text-sm sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <div class="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm">
-                    <i class="fas fa-plus-circle text-white text-[10px] sm:text-xs"></i>
-                </div>
-                Register exam
-            </h2>
+    <div class="dashboard-card p-4 sm:p-6 mb-4 sm:mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+                <h2 class="exam-eval-section-title">Register exam</h2>
+                <p class="exam-eval-section-hint mt-0.5">Set up a new exam with auto or manual scheduling.</p>
+            </div>
             <button type="button"
                     @click="toggleRegisterExamPanel()"
-                    class="modern-btn w-full sm:w-auto px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-lg font-semibold transition-all shadow-md">
-                <i class="fas fa-plus mr-1.5 text-xs"></i>
-                <span x-text="showRegisterExamPanel ? 'Hide' : 'New exam'"></span>
+                    class="exam-eval-btn-primary modern-btn w-full sm:w-auto">
+                <i class="fas text-xs" :class="showRegisterExamPanel ? 'fa-chevron-up' : 'fa-plus'"></i>
+                <span x-text="showRegisterExamPanel ? 'Hide form' : 'New exam'"></span>
             </button>
         </div>
 
-        <div x-show="showRegisterExamPanel" x-cloak>
+        <div x-show="showRegisterExamPanel" x-cloak class="border-t border-gray-100 dark:border-gray-800 pt-4 sm:pt-5">
 
         <!-- Success Message -->
-        <div x-show="successMessage" x-cloak class="mb-3 sm:mb-4 p-2.5 sm:p-4 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded-lg flex items-center shadow-sm text-xs sm:text-sm">
-            <i class="fas fa-check-circle text-green-600 dark:text-green-400 mr-2 sm:mr-3 text-sm sm:text-xl shrink-0"></i>
-            <span class="text-green-800 dark:text-green-300 font-medium" x-text="successMessage"></span>
+        <div x-show="successMessage" x-cloak class="exam-eval-alert exam-eval-alert--success mb-4">
+            <i class="fas fa-check-circle shrink-0 mt-0.5"></i>
+            <span class="font-medium" x-text="successMessage"></span>
         </div>
 
         <!-- Error Message -->
-        <div x-show="errorMessage" x-cloak class="mb-3 sm:mb-4 p-2.5 sm:p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg flex items-center shadow-sm text-xs sm:text-sm">
-            <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400 mr-2 sm:mr-3 text-sm sm:text-xl shrink-0"></i>
-            <span class="text-red-800 dark:text-red-300 font-medium" x-text="errorMessage"></span>
+        <div x-show="errorMessage" x-cloak class="exam-eval-alert exam-eval-alert--error mb-4">
+            <i class="fas fa-exclamation-circle shrink-0 mt-0.5"></i>
+            <span class="font-medium" x-text="errorMessage"></span>
         </div>
 
         <!-- Client conflict warning -->
-        <div x-show="clientConflictMessage" x-cloak class="mb-3 p-2.5 sm:p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded-lg flex items-center text-xs sm:text-sm">
-            <i class="fas fa-exclamation-triangle text-yellow-700 dark:text-yellow-400 mr-2"></i>
-            <span class="text-yellow-900 dark:text-yellow-200 font-medium" x-text="clientConflictMessage"></span>
+        <div x-show="clientConflictMessage" x-cloak class="exam-eval-alert exam-eval-alert--warn mb-4">
+            <i class="fas fa-exclamation-triangle shrink-0 mt-0.5"></i>
+            <span class="font-medium" x-text="clientConflictMessage"></span>
         </div>
 
-        <form @submit.prevent="saveExam()" class="space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <form @submit.prevent="saveExam()" class="space-y-5">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Academic year <span class="text-red-500">*</span></label>
+                    <label class="exam-eval-field-label">Academic year <span class="text-red-500">*</span></label>
                     <select x-model="examForm.academic_year_id"
                             @change="loadTerms(); generateExamName()"
                             required
@@ -426,7 +720,7 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Term <span class="text-red-500">*</span></label>
+                    <label class="exam-eval-field-label">Term <span class="text-red-500">*</span></label>
                     <select x-model="examForm.term_id"
                             @change="generateExamName()"
                             required
@@ -440,7 +734,7 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Exam type <span class="text-red-500">*</span></label>
+                    <label class="exam-eval-field-label">Exam type <span class="text-red-500">*</span></label>
                     <select x-model="examForm.exam_type"
                             @change="generateExamName()"
                             required
@@ -455,31 +749,31 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                <label class="exam-eval-field-label">
                     Exam name <span class="text-red-500">*</span>
                 </label>
                 <input type="text"
                        x-model="examForm.exam_name"
                        readonly
                        required
-                       class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white cursor-not-allowed uppercase font-semibold"
+                       class="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800/80 text-gray-900 dark:text-white cursor-not-allowed uppercase font-semibold tracking-wide"
                        style="text-transform: uppercase;">
             </div>
 
-            <p x-show="!isHeaderValid" class="text-xs text-gray-500 dark:text-gray-400">
+            <p x-show="!isHeaderValid" class="text-sm text-gray-500 dark:text-gray-400">
                 Select year, term, and exam type to continue.
             </p>
 
-            <div x-show="isHeaderValid" x-cloak class="space-y-4">
+            <div x-show="isHeaderValid" x-cloak class="space-y-5">
             <!-- Registration mode -->
-            <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
-                <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Mode</p>
-                <div class="exam-eval-segment inline-flex rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden text-xs sm:text-sm font-semibold">
-                    <label class="cursor-pointer px-3 py-1.5 sm:px-4 sm:py-2 border-r border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-colors">
+            <div class="exam-eval-divider">
+                <p class="exam-eval-field-label mb-2">Scheduling mode</p>
+                <div class="exam-eval-segment text-xs sm:text-sm font-semibold">
+                    <label class="cursor-pointer">
                         <input type="radio" name="registrationMode" value="auto" x-model="registrationMode" @change="onRegistrationModeChange()" class="sr-only">
                         Auto schedule
                     </label>
-                    <label class="cursor-pointer px-3 py-1.5 sm:px-4 sm:py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-colors">
+                    <label class="cursor-pointer">
                         <input type="radio" name="registrationMode" value="manual" x-model="registrationMode" @change="onRegistrationModeChange()" class="sr-only">
                         Manual
                     </label>
@@ -487,7 +781,7 @@
             </div>
 
             <!-- Academic levels — manual (single class or combined shared timetable) -->
-            <div class="pt-4 border-t border-gray-200 dark:border-gray-700" x-show="registrationMode === 'manual'">
+            <div class="exam-eval-divider" x-show="registrationMode === 'manual'">
                 <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
                     <div class="min-w-0 flex-1">
                         <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">
@@ -500,16 +794,16 @@
                         </p>
                     </div>
                     <div class="flex gap-1.5 shrink-0">
-                        <button type="button" @click="selectAllLevels(); onManualLevelsChange()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white">All</button>
-                        <button type="button" @click="clearLevels(); onManualLevelsChange()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Clear</button>
+                        <button type="button" @click="selectAllLevels(); onManualLevelsChange()" class="exam-eval-toolbar-btn">All</button>
+                        <button type="button" @click="clearLevels(); onManualLevelsChange()" class="exam-eval-toolbar-btn">Clear</button>
                     </div>
                 </div>
 
                 <div class="space-y-2" x-show="levelCombinations.length > 0">
                     <template x-for="combo in levelCombinations" :key="'manual-combo-' + combo.combo_id">
-                        <div class="exam-eval-group p-2 transition-colors"
+                        <div class="exam-eval-group p-3 transition-colors"
                              :class="isComboShareEnabled(combo.combo_id) && includedCountForCombo(combo.combo_id) >= 2 ? 'exam-eval-group--shared' : ''">
-                            <div class="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-gray-100 dark:border-gray-700">
+                            <div class="flex flex-wrap items-center gap-2 mb-2 pb-2 border-b border-gray-100 dark:border-gray-700/80">
                                 <span class="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate" x-text="combo.level_name || 'Combined group'"></span>
                                 <span class="exam-eval-share-badge shrink-0"
                                       x-show="isComboShareEnabled(combo.combo_id) && includedCountForCombo(combo.combo_id) >= 2"
@@ -548,7 +842,7 @@
 
                 <div class="mt-2" x-show="ungroupedLevels.length > 0">
                     <p class="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1" x-show="levelCombinations.length > 0">Other classes</p>
-                    <div class="flex flex-wrap gap-1 p-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40 max-h-32 overflow-y-auto">
+                    <div class="flex flex-wrap gap-1.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/30 max-h-36 overflow-y-auto">
                         <template x-for="level in ungroupedLevels" :key="'manual-ung-' + level.id">
                             <label class="exam-eval-chip">
                                 <input type="checkbox"
@@ -574,7 +868,7 @@
             </div>
 
             <!-- Academic levels — auto (multi) -->
-            <div class="pt-4 border-t border-gray-200 dark:border-gray-700" x-show="registrationMode === 'auto'">
+            <div class="exam-eval-divider" x-show="registrationMode === 'auto'">
                 <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
                     <div class="min-w-0 flex-1">
                         <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">
@@ -587,16 +881,16 @@
                         </p>
                     </div>
                     <div class="flex gap-1.5 shrink-0">
-                        <button type="button" @click="selectAllLevels()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white">All</button>
-                        <button type="button" @click="clearLevels()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Clear</button>
+                        <button type="button" @click="selectAllLevels()" class="exam-eval-toolbar-btn">All</button>
+                        <button type="button" @click="clearLevels()" class="exam-eval-toolbar-btn">Clear</button>
                     </div>
                 </div>
 
                 <div class="space-y-2" x-show="levelCombinations.length > 0">
                     <template x-for="combo in levelCombinations" :key="'combo-' + combo.combo_id">
-                        <div class="exam-eval-group p-2 transition-colors"
+                        <div class="exam-eval-group p-3 transition-colors"
                              :class="isComboShareEnabled(combo.combo_id) && includedCountForCombo(combo.combo_id) >= 2 ? 'exam-eval-group--shared' : ''">
-                            <div class="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-gray-100 dark:border-gray-700">
+                            <div class="flex flex-wrap items-center gap-2 mb-2 pb-2 border-b border-gray-100 dark:border-gray-700/80">
                                 <span class="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate" x-text="combo.level_name || 'Combined group'"></span>
                                 <span class="exam-eval-share-badge shrink-0"
                                       x-show="isComboShareEnabled(combo.combo_id) && includedCountForCombo(combo.combo_id) >= 2"
@@ -635,7 +929,7 @@
 
                 <div class="mt-2" x-show="ungroupedLevels.length > 0">
                     <p class="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1" x-show="levelCombinations.length > 0">Other classes</p>
-                    <div class="flex flex-wrap gap-1 p-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40 max-h-32 overflow-y-auto">
+                    <div class="flex flex-wrap gap-1.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/30 max-h-36 overflow-y-auto">
                         <template x-for="level in ungroupedLevels" :key="'ung-' + level.id">
                             <label class="exam-eval-chip">
                                 <input type="checkbox"
@@ -650,29 +944,29 @@
 
                 <p class="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400" x-show="selectedLevelIds.length === 0">Select at least one class.</p>
 
-                <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
-                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Start date <span class="text-red-500">*</span></label>
+                    <label class="exam-eval-field-label">Start date <span class="text-red-500">*</span></label>
                     <input type="date" x-model="autoBaseDate"
-                           class="modern-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                           class="modern-input w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
 
                 </div>
 
                 <div>
-                    <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                        <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <label class="exam-eval-field-label mb-0">
                             Sessions <span class="text-red-500">*</span>
                         </label>
                         <div class="flex gap-1.5">
-                            <button type="button" @click="selectAllSessions()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white">All</button>
-                            <button type="button" @click="clearSessions()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Clear</button>
+                            <button type="button" @click="selectAllSessions()" class="exam-eval-toolbar-btn">All</button>
+                            <button type="button" @click="clearSessions()" class="exam-eval-toolbar-btn">Clear</button>
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                         <template x-for="s in autoSessionOptions" :key="'sess-' + s.value">
-                            <label class="flex items-center gap-1.5 text-xs text-gray-800 dark:text-gray-200 cursor-pointer">
+                            <label class="exam-eval-session-pill text-gray-700 dark:text-gray-200">
                                 <input type="checkbox"
-                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary h-3.5 w-3.5"
+                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary h-3.5 w-3.5 sr-only"
                                        :checked="selectedSessionTypes.includes(s.value)"
                                        @change="toggleSession(s.value)">
                                 <span x-text="s.label"></span>
@@ -711,25 +1005,44 @@
                     </div>
                 </div>
 
-                <div class="mt-3 p-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white/70 dark:bg-gray-800/40 lg:col-span-2">
-                        <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-                            <span class="font-semibold text-gray-800 dark:text-gray-200">Exam days</span>
-                            <span class="text-gray-500 dark:text-gray-400">
+                <div class="exam-eval-days-panel lg:col-span-2">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <span class="exam-eval-field-label mb-0">Exam days</span>
+                            <span class="exam-eval-days-stat">
                                 <span x-text="autoRequiredDays"></span> days ·
-                                <span x-text="autoActiveSubjectCount"></span> subjects ·
-                                <span x-text="autoSessionsPerDay"></span>/day
+                                <span x-text="autoSessionsPerDay"></span> session<span x-show="autoSessionsPerDay !== 1">s</span>/day
                             </span>
+                        </div>
+                        <div class="mt-2 space-y-1" x-show="autoScheduleUnits.length > 0" x-cloak>
+                            <template x-for="unit in autoScheduleUnits" :key="unit.key">
+                                <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-600 dark:text-gray-400">
+                                    <span class="font-semibold text-gray-700 dark:text-gray-300" x-text="unit.label"></span>
+                                    <span x-show="unit.isShared" class="exam-eval-share-badge shrink-0">shared</span>
+                                    <span class="text-gray-500 dark:text-gray-500">
+                                        <span x-text="unit.subjectCount"></span> exam<span x-show="unit.subjectCount !== 1">s</span>
+                                        → <span x-text="unit.requiredDays"></span> day<span x-show="unit.requiredDays !== 1">s</span>
+                                    </span>
+                                    <span class="text-amber-600 dark:text-amber-400 font-medium"
+                                          x-show="unit.subjectCount === 0"
+                                          x-text="unit.isShared ? '(no common subjects — assign shared subjects or disable sharing)' : '(no allocated subjects)'"></span>
+                                </div>
+                            </template>
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 pt-0.5"
+                               x-show="autoScheduleUnits.length > 1 && autoRequiredDays > 0">
+                                Calendar uses <span class="font-semibold text-gray-700 dark:text-gray-300" x-text="autoRequiredDays"></span>
+                                day<span x-show="autoRequiredDays !== 1">s</span> — the longest schedule among selected classes.
+                            </p>
                         </div>
 
                     <div class="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <button type="button"
-                                class="text-xs font-semibold w-full sm:w-auto px-3 py-2 sm:py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:opacity-90"
+                                class="exam-eval-cal-nav w-full sm:w-auto"
                                     @click="autoCalendarPrevMonth()">
                                 <i class="fas fa-chevron-left mr-1"></i>Prev
                             </button>
-                            <div class="text-sm font-semibold text-gray-800 dark:text-gray-200" x-text="autoCalendarTitle"></div>
+                            <div class="text-sm font-semibold text-gray-800 dark:text-gray-200 text-center" x-text="autoCalendarTitle"></div>
                             <button type="button"
-                                class="text-xs font-semibold w-full sm:w-auto px-3 py-2 sm:py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:opacity-90"
+                                class="exam-eval-cal-nav w-full sm:w-auto"
                                     @click="autoCalendarNextMonth()">
                                 Next<i class="fas fa-chevron-right ml-1"></i>
                             </button>
@@ -744,14 +1057,14 @@
                             <div class="mt-2 grid grid-cols-7 gap-1.5 sm:gap-2">
                                 <template x-for="cell in autoCalendarCells" :key="cell.key">
                                     <button type="button"
-                                        class="h-8 rounded-md border text-xs font-semibold transition-all min-w-0"
+                                        class="h-9 rounded-lg border text-xs font-medium transition-colors min-w-0"
                                             :disabled="!cell.inMonth || cell.beforeBase"
                                             :class="cell.beforeBase
-                                                ? 'border-gray-100 dark:border-gray-700 bg-gray-100/60 dark:bg-gray-800/30 text-gray-400 cursor-not-allowed'
+                                                ? 'border-transparent bg-gray-100/80 dark:bg-gray-800/40 text-gray-300 cursor-not-allowed'
                                                 : (cell.selected
-                                                    ? 'border-brand-primary bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20'
+                                                    ? 'exam-eval-cal-day--selected'
                                                     : (cell.inMonth
-                                                        ? 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:border-gray-300'
+                                                        ? 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                                                         : 'border-transparent bg-transparent text-transparent'))"
                                             @click="autoToggleDay(cell.dateStr)"
                                             x-text="cell.day">
@@ -765,9 +1078,9 @@
                             <div class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
                                 Selected exam days (<span x-text="autoExamDates.length"></span>/<span x-text="autoRequiredDays"></span>)
                             </div>
-                        <div class="flex flex-wrap gap-2 max-h-28 overflow-y-auto pr-1">
+                        <div class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
                                 <template x-for="d in autoExamDates" :key="'sel-' + d">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20 text-[10px] font-semibold" x-text="d"></span>
+                                    <span class="exam-eval-date-tag" x-text="d"></span>
                                 </template>
                             </div>
                         </div>
@@ -775,16 +1088,16 @@
                 </div>
                 </div>
 
-                <div class="mt-3 sm:mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <div class="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-800">
                     <button type="button"
                             @click="resetAll()"
                             :disabled="savingExam"
-                            class="modern-btn order-2 sm:order-1 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
-                        <i class="fas fa-redo mr-1.5 text-xs"></i>Reset
+                            class="exam-eval-btn-secondary modern-btn order-2 sm:order-1 disabled:opacity-50">
+                        <i class="fas fa-redo text-xs"></i>Reset
                     </button>
                     <button type="submit"
                             :disabled="isRegisterDisabled"
-                            class="modern-btn order-1 sm:order-2 px-4 py-1.5 sm:px-5 sm:py-2 text-xs sm:text-sm bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-lg font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto sm:ml-auto">
+                            class="exam-eval-btn-primary modern-btn order-1 sm:order-2 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto sm:ml-auto">
                         <i class="fas fa-save text-xs" x-show="!savingExam"></i>
                         <i class="fas fa-spinner fa-spin text-xs" x-show="savingExam"></i>
                         <span x-text="savingExam ? 'Saving…' : 'Register exam'"></span>
@@ -793,19 +1106,17 @@
             </div>
 
             <!-- Allocations -->
-            <div class="pt-4 border-t border-gray-200 dark:border-gray-700" x-show="registrationMode === 'manual' && manualLevelsReady">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-4">
-                    <h3 class="text-sm sm:text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                        <div class="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-2 sm:mr-3 shadow-md">
-                            <i class="fas fa-tasks text-white text-[10px] sm:text-sm"></i>
-                        </div>
-                        Subject Allocations
-                    </h3>
+            <div class="exam-eval-divider" x-show="registrationMode === 'manual' && manualLevelsReady">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
+                    <div>
+                        <h3 class="exam-eval-section-title">Subject allocations</h3>
+                        <p class="exam-eval-section-hint mt-0.5">Assign each subject to a date, session, and supervisor.</p>
+                    </div>
                     <button type="button"
                             @click="addAllocation()"
                             :disabled="!manualLevelsReady"
-                            class="modern-btn px-3 py-1.5 sm:px-4 sm:py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
-                        <i class="fas fa-plus mr-2"></i>Add Allocation
+                            class="exam-eval-btn-primary modern-btn disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-plus text-xs"></i>Add allocation
                     </button>
                 </div>
 
@@ -964,10 +1275,10 @@
 
                 <!-- Desktop table -->
                 <div class="hidden md:block responsive-table">
-                    <div class="overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700">
+                    <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
                         <table class="w-full border-collapse">
-                            <thead>
-                                <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                            <thead class="exam-eval-thead">
+                                <tr>
                                     <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Date</th>
                                     <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Session / Time</th>
                                     <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject</th>
@@ -1115,23 +1426,23 @@
                     </table>
                 </div>
 
-                <div x-show="allocations.length === 0" class="text-center py-8 text-sm text-gray-600 dark:text-gray-300">
-                    No allocations yet. Click <span class="font-semibold">Add Allocation</span>.
+                <div x-show="allocations.length === 0" class="exam-eval-empty text-sm">
+                    No allocations yet. Click <span class="font-semibold text-gray-700 dark:text-gray-300">Add allocation</span>.
                 </div>
             </div>
 
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
                 <button type="button"
                         @click="resetAll()"
                         :disabled="savingExam"
-                        class="modern-btn px-4 py-2 sm:px-6 sm:py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
-                    <i class="fas fa-redo mr-1.5 sm:mr-2"></i>Reset
+                        class="exam-eval-btn-secondary modern-btn disabled:opacity-50">
+                    <i class="fas fa-redo text-xs"></i>Reset
                 </button>
                 <button type="submit"
                         :disabled="isRegisterDisabled"
-                        class="modern-btn px-4 py-2 sm:px-6 sm:py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
-                    <i class="fas fa-save mr-1.5 sm:mr-2" x-show="!savingExam"></i>
-                    <i class="fas fa-spinner fa-spin mr-1.5 sm:mr-2" x-show="savingExam"></i>
+                        class="exam-eval-btn-primary modern-btn disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fas fa-save text-xs" x-show="!savingExam"></i>
+                    <i class="fas fa-spinner fa-spin text-xs" x-show="savingExam"></i>
                     <span x-text="savingExam ? 'Registering...' : (registrationMode === 'auto' ? 'Register exam (auto-schedule all levels)' : (manualSharedTimetableActive ? 'Register shared timetable' : 'Register Exam & Save Allocations'))"></span>
                 </button>
             </div>
@@ -1141,39 +1452,35 @@
     </div>
 
     <!-- Registered Exam Allocations: open full timetables on dedicated page -->
-    <div class="dashboard-card rounded-xl shadow-lg p-3 sm:p-5">
-        <div class="flex flex-col gap-3 sm:gap-4 mb-3 sm:mb-4">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-                <h2 class="text-sm sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 min-w-0">
-                    <div class="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm shrink-0">
-                        <i class="fas fa-list text-white text-[10px] sm:text-xs"></i>
-                    </div>
-                    Registered exams
-                </h2>
-                <span class="px-3 py-1 sm:px-4 sm:py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-xs sm:text-sm shrink-0 self-start sm:self-center">
-                    <span x-text="uniqueExams.length"></span> exam(s)
-                </span>
+    <div class="dashboard-card p-4 sm:p-6">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+            <div>
+                <h2 class="exam-eval-section-title">Registered exams</h2>
+                <p class="exam-eval-section-hint mt-1">
+                    <i class="fas fa-star text-amber-500 text-[10px]"></i> current exam for marks sheets ·
+                    <i class="fas fa-clock text-emerald-600 dark:text-emerald-400 text-[10px]"></i> marks entry deadline · open a row for timetable
+                </p>
             </div>
-            <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 leading-snug">
-                <i class="fas fa-star text-amber-500"></i> = current exam for marks sheets ·
-                <i class="fas fa-clock text-emerald-600 dark:text-emerald-400"></i> = set when marks entry closes · open a row for timetable.
-            </p>
+            <span class="exam-eval-count-badge shrink-0">
+                <span x-text="uniqueExams.length"></span> exam<span x-show="uniqueExams.length !== 1">s</span>
+            </span>
         </div>
 
-        <div x-show="errorMessage" x-cloak class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg flex items-center shadow-sm">
-            <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400 mr-3 text-xl"></i>
-            <span class="text-red-800 dark:text-red-300 font-medium" x-text="errorMessage"></span>
+        <div x-show="errorMessage" x-cloak class="exam-eval-alert exam-eval-alert--error mb-4">
+            <i class="fas fa-exclamation-circle shrink-0 mt-0.5"></i>
+            <span class="font-medium" x-text="errorMessage"></span>
         </div>
-        <div x-show="successMessage" x-cloak class="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded-lg flex items-center shadow-sm">
-            <i class="fas fa-check-circle text-green-600 dark:text-green-400 mr-3 text-xl"></i>
-            <span class="text-green-800 dark:text-green-300 font-medium" x-text="successMessage"></span>
+        <div x-show="successMessage" x-cloak class="exam-eval-alert exam-eval-alert--success mb-4">
+            <i class="fas fa-check-circle shrink-0 mt-0.5"></i>
+            <span class="font-medium" x-text="successMessage"></span>
         </div>
 
-        <div x-show="uniqueExams.length === 0" class="text-center py-8 sm:py-12">
-            <div class="w-14 h-14 sm:w-20 sm:h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-                <i class="fas fa-inbox text-gray-400 text-xl sm:text-3xl"></i>
+        <div x-show="uniqueExams.length === 0" class="exam-eval-empty">
+            <div class="exam-eval-empty-icon">
+                <i class="fas fa-inbox text-lg"></i>
             </div>
-            <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-lg">No exams registered yet.</p>
+            <p class="text-sm font-medium text-gray-600 dark:text-gray-400">No exams registered yet.</p>
+            <p class="text-xs text-gray-500 dark:text-gray-500 mt-1">Use <strong>New exam</strong> above to get started.</p>
         </div>
 
         <div x-show="uniqueExams.length > 0" class="space-y-3 sm:space-y-4 md:space-y-0">
@@ -1191,8 +1498,16 @@
                                    x-text="exam.exam_name"></a>
                                 <span x-show="registeredCurrentExamKey && exam._key === registeredCurrentExamKey"
                                       class="ml-2 align-middle text-[10px] font-bold uppercase tracking-wide text-white bg-brand-primary px-1.5 py-0.5 rounded">Current</span>
-                                <span x-show="exam.is_locked" class="ml-2 text-amber-600 dark:text-amber-400 text-xs font-bold align-middle" title="Locked">
+                                <span x-show="exam.is_locked && !exam.is_submitted" class="ml-2 text-amber-600 dark:text-amber-400 text-xs font-bold align-middle" title="Locked">
                                     <i class="fas fa-lock"></i>
+                                </span>
+                                <span x-show="exam.is_gazetted"
+                                      class="ml-2 align-middle text-[10px] font-bold uppercase tracking-wide text-white bg-violet-600 px-1.5 py-0.5 rounded">
+                                    Gazetted
+                                </span>
+                                <span x-show="exam.is_submitted && !exam.is_gazetted"
+                                      class="ml-2 align-middle text-[10px] font-bold uppercase tracking-wide text-white bg-emerald-600 px-1.5 py-0.5 rounded">
+                                    Submitted
                                 </span>
                             </div>
                             <button type="button"
@@ -1221,25 +1536,25 @@
                         </dl>
                         <div class="flex flex-col gap-2 sm:gap-3 pt-2 sm:pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop>
                             <a :href="registeredExamDetailUrl(exam)"
-                               class="modern-btn inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg sm:rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 dark:bg-brand-primary/20 dark:hover:bg-brand-primary/30 text-xs sm:text-sm font-semibold w-full">
+                               class="exam-eval-btn-secondary modern-btn w-full text-xs sm:text-sm">
                                 <i class="fas fa-calendar-alt text-[10px] sm:text-xs"></i>
-                                <span>Open allocation timetable</span>
+                                <span>Open timetable</span>
                             </a>
                             <div class="flex flex-wrap gap-1.5 sm:gap-2">
                                 <button type="button"
                                         @click="editRegistration(exam)"
-                                        :disabled="!exam.id || exam.is_locked || savingExam"
+                                        :disabled="!exam.id || exam.is_locked || exam.is_submitted || savingExam"
                                         class="modern-btn flex-1 min-w-[40%] px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white">
                                     <i class="fas fa-edit mr-1"></i>Edit
                                 </button>
                                 <button type="button"
                                         @click="deleteRegistration(exam)"
-                                        :disabled="!exam.id || exam.is_locked || savingExam"
+                                        :disabled="!exam.id || exam.is_locked || exam.is_submitted || savingExam"
                                         class="modern-btn flex-1 min-w-[40%] px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-700 text-white">
                                     <i class="fas fa-trash mr-1"></i>Delete
                                 </button>
                             </div>
-                            <div class="flex flex-col gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop>
+                            <div class="flex flex-col gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop x-show="!exam.is_submitted">
                                 <button type="button"
                                         @click.stop="openMarksLockModal(exam)"
                                         :disabled="lockingExam || savingMarksLockKey === exam._key"
@@ -1259,6 +1574,23 @@
                                 </template>
                             </div>
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
+                                <span class="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Release</span>
+                                <template x-if="exam.is_submitted">
+                                    <span class="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                                        <i class="fas fa-check-circle mr-0.5"></i>Submitted — view only
+                                    </span>
+                                </template>
+                                <template x-if="!exam.is_submitted && isCurriculumCoordinator">
+                                    <button type="button"
+                                            @click="authorizeExamRelease(exam)"
+                                            :disabled="authorizingRelease"
+                                            class="modern-btn w-full sm:w-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 text-white">
+                                        <i class="fas fa-paper-plane mr-1"></i>
+                                        <span>Authorize release</span>
+                                    </button>
+                                </template>
+                            </div>
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1" x-show="!exam.is_submitted">
                                 <span class="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Allocation lock</span>
                                 <span x-show="exam.is_locked"
                                       class="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
@@ -1282,10 +1614,10 @@
 
             <!-- Tablet/desktop: table -->
             <div class="hidden md:block responsive-table-exams">
-                <div class="rounded-xl border-2 border-gray-200 dark:border-gray-700">
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                     <table class="w-full border-collapse min-w-[720px]">
-                    <thead>
-                        <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                    <thead class="exam-eval-thead">
+                        <tr>
                             <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold w-12" title="School-wide current exam">
                                 <i class="fas fa-star opacity-95" aria-hidden="true"></i>
                                 <span class="sr-only">Current</span>
@@ -1305,6 +1637,7 @@
                                     Marks deadline
                                 </span>
                             </th>
+                            <th class="p-3 sm:p-4 text-right text-xs sm:text-sm font-bold min-w-[8rem]">Release</th>
                             <th class="p-3 sm:p-4 text-right text-xs sm:text-sm font-bold">Allocation lock</th>
                         </tr>
                     </thead>
@@ -1331,8 +1664,16 @@
                                        x-text="exam.exam_name"></a>
                                     <span x-show="registeredCurrentExamKey && exam._key === registeredCurrentExamKey"
                                           class="ml-2 text-[10px] font-bold uppercase tracking-wide text-white bg-brand-primary px-1.5 py-0.5 rounded whitespace-nowrap">Current</span>
-                                    <span x-show="exam.is_locked" class="ml-2 text-amber-600 dark:text-amber-400 text-xs font-bold whitespace-nowrap" title="Locked">
+                                    <span x-show="exam.is_locked && !exam.is_submitted" class="ml-2 text-amber-600 dark:text-amber-400 text-xs font-bold whitespace-nowrap" title="Locked">
                                         <i class="fas fa-lock"></i>
+                                    </span>
+                                    <span x-show="exam.is_gazetted"
+                                          class="ml-2 text-[10px] font-bold uppercase tracking-wide text-white bg-violet-600 px-1.5 py-0.5 rounded whitespace-nowrap">
+                                        Gazetted
+                                    </span>
+                                    <span x-show="exam.is_submitted && !exam.is_gazetted"
+                                          class="ml-2 text-[10px] font-bold uppercase tracking-wide text-white bg-emerald-600 px-1.5 py-0.5 rounded whitespace-nowrap">
+                                        Submitted
                                     </span>
                                 </td>
                                 <td class="p-3 sm:p-4 align-middle text-sm text-gray-900 dark:text-white" x-text="exam.exam_type || '—'"></td>
@@ -1340,7 +1681,7 @@
                                 <td class="p-3 sm:p-4 align-middle text-sm text-gray-900 dark:text-white" x-text="exam.term_name || '—'"></td>
                                 <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
                                     <a :href="registeredExamDetailUrl(exam)"
-                                       class="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 dark:bg-brand-primary/20 dark:hover:bg-brand-primary/30 text-xs font-semibold w-full sm:w-auto"
+                                       class="exam-eval-btn-secondary modern-btn text-xs px-3 py-1.5"
                                        title="Open allocation timetable page">
                                         <i class="fas fa-calendar-alt"></i>
                                         <span>Allocation</span>
@@ -1350,14 +1691,14 @@
                                     <div class="inline-flex items-center gap-2">
                                         <button type="button"
                                                 @click="editRegistration(exam)"
-                                                :disabled="!exam.id || exam.is_locked || savingExam"
+                                                :disabled="!exam.id || exam.is_locked || exam.is_submitted || savingExam"
                                                 class="modern-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white"
                                                 title="Edit exam registration details">
                                             <i class="fas fa-edit mr-1"></i>Edit
                                         </button>
                                         <button type="button"
                                                 @click="deleteRegistration(exam)"
-                                                :disabled="!exam.id || exam.is_locked || savingExam"
+                                                :disabled="!exam.id || exam.is_locked || exam.is_submitted || savingExam"
                                                 class="modern-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-700 text-white"
                                                 title="Delete exam registration">
                                             <i class="fas fa-trash mr-1"></i>Delete
@@ -1365,7 +1706,7 @@
                                     </div>
                                 </td>
                                 <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
-                                    <div class="inline-flex flex-col items-center gap-1 min-w-[7rem]">
+                                    <div class="inline-flex flex-col items-center gap-1 min-w-[7rem]" x-show="!exam.is_submitted">
                                         <button type="button"
                                                 @click="openMarksLockModal(exam)"
                                                 :disabled="lockingExam || savingMarksLockKey === exam._key"
@@ -1384,9 +1725,28 @@
                                             </button>
                                         </template>
                                     </div>
+                                    <span x-show="exam.is_submitted" class="text-xs text-gray-400">—</span>
                                 </td>
                                 <td class="p-3 sm:p-4 align-middle text-right" @click.stop>
-                                    <div class="flex flex-col items-end gap-1">
+                                    <template x-if="exam.is_submitted">
+                                        <span class="text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                                            <i class="fas fa-check-circle mr-0.5"></i>Submitted
+                                        </span>
+                                    </template>
+                                    <template x-if="!exam.is_submitted && isCurriculumCoordinator">
+                                        <button type="button"
+                                                @click="authorizeExamRelease(exam)"
+                                                :disabled="authorizingRelease"
+                                                class="modern-btn whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                title="Authorize exam for release (permanent lock)">
+                                            <i class="fas fa-paper-plane mr-1"></i>Authorize
+                                        </button>
+                                    </template>
+                                    <span x-show="!exam.is_submitted && !isCurriculumCoordinator" class="text-xs text-gray-400">—</span>
+                                </td>
+                                <td class="p-3 sm:p-4 align-middle text-right" @click.stop>
+                                    <span x-show="exam.is_submitted" class="text-xs font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">View only</span>
+                                    <div class="flex flex-col items-end gap-1" x-show="!exam.is_submitted">
                                         <span x-show="exam.is_locked"
                                               class="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
                                             <i class="fas fa-lock mr-0.5"></i>Locked
@@ -1863,6 +2223,8 @@ function examEvaluation() {
 
         savingExam: false,
         lockingExam: false,
+        authorizingRelease: false,
+        isCurriculumCoordinator: {{ is_curriculum_coordinator|default(false)|tojson }},
         savingMarksLockKey: '',
         marksLockDrafts: {},
         marksLockModalExam: null,
@@ -2206,12 +2568,69 @@ function examEvaluation() {
             row.level_assignments = la;
         },
 
+        getSubjectIdSetForLevel(levelId) {
+            const ids = new Set();
+            (this.teacherSubjectPairs || []).forEach(p => {
+                if (String(p.academic_level_id) === String(levelId) && p.subject_id) {
+                    ids.add(String(p.subject_id));
+                }
+            });
+            return ids;
+        },
+
         getSubjectsForLevel(levelId) {
-            const pairs = (this.teacherSubjectPairs || []).filter(
-                p => String(p.academic_level_id) === String(levelId)
-            );
-            const subjectIds = new Set(pairs.map(p => String(p.subject_id)));
+            const subjectIds = this.getSubjectIdSetForLevel(levelId);
             return (this.subjects || []).filter(s => subjectIds.has(String(s.id)));
+        },
+
+        getAutoScheduleUnits() {
+            const sessionsPerDay = this.autoSessionsPerDay;
+            const selectedIds = (this.selectedLevelIds || []).map(id => String(id));
+            if (!selectedIds.length || !sessionsPerDay) return [];
+
+            const sharedClassIds = new Set();
+            const units = [];
+
+            (this.levelCombinations || []).forEach(c => {
+                const cid = String(c.combo_id);
+                if (!this.comboShareEnabled[cid]) return;
+                const includedMembers = (c.members || []).filter(m => this.isLevelIncluded(m.id));
+                if (includedMembers.length < 2) return;
+
+                includedMembers.forEach(m => sharedClassIds.add(String(m.id)));
+
+                let common = null;
+                for (const m of includedMembers) {
+                    const sset = this.getSubjectIdSetForLevel(m.id);
+                    common = common === null
+                        ? new Set(sset)
+                        : new Set([...common].filter(x => sset.has(x)));
+                }
+                const subjectCount = common ? common.size : 0;
+                units.push({
+                    key: 'share-' + cid,
+                    label: String(c.level_name || 'Combined group'),
+                    subjectCount,
+                    requiredDays: subjectCount > 0 ? Math.ceil(subjectCount / sessionsPerDay) : 0,
+                    isShared: true,
+                    levelIds: includedMembers.map(m => m.id),
+                });
+            });
+
+            for (const lid of selectedIds) {
+                if (sharedClassIds.has(lid)) continue;
+                const subjectCount = this.getSubjectIdSetForLevel(lid).size;
+                units.push({
+                    key: 'level-' + lid,
+                    label: this.getLevelLabel(lid),
+                    subjectCount,
+                    requiredDays: subjectCount > 0 ? Math.ceil(subjectCount / sessionsPerDay) : 0,
+                    isShared: false,
+                    levelIds: [lid],
+                });
+            }
+
+            return units;
         },
 
         getAllocatedTeachersForSubject(subjectId, levelId) {
@@ -2467,15 +2886,20 @@ function examEvaluation() {
             return (this.selectedSessionTypes || []).length;
         },
 
-        get autoActiveSubjectCount() {
-            return (this.subjects || []).length;
+        get autoScheduleUnits() {
+            return this.getAutoScheduleUnits();
+        },
+
+        get autoShareGroupInvalid() {
+            return this.autoScheduleUnits.some(u => u.isShared && u.subjectCount === 0);
         },
 
         get autoRequiredDays() {
-            const sessionsPerDay = this.autoSessionsPerDay;
-            const subjCount = this.autoActiveSubjectCount;
-            if (!sessionsPerDay || sessionsPerDay <= 0 || !subjCount || subjCount <= 0) return 0;
-            return Math.ceil(subjCount / sessionsPerDay);
+            const units = this.autoScheduleUnits;
+            if (!units.length) return 0;
+            const withExams = units.filter(u => u.subjectCount > 0);
+            if (!withExams.length) return 0;
+            return Math.max(...withExams.map(u => u.requiredDays));
         },
 
         get autoExamDates() {
@@ -2576,6 +3000,11 @@ function examEvaluation() {
                     if (m && (!maxMla || String(m) > String(maxMla))) maxMla = m;
                 }
                 const rep = arr[0];
+                const isGazetted = arr.some((x) => String(x.status || '').toLowerCase() === 'gazetted');
+                const isSubmitted = arr.some((x) => {
+                    const st = String(x.status || '').toLowerCase();
+                    return st === 'submitted' || st === 'gazetted';
+                });
                 out.push({
                     id: rep.id,
                     exam_name: rep.exam_name,
@@ -2596,6 +3025,9 @@ function examEvaluation() {
                     level_name: rep.level_name,
                     level_category: rep.level_category,
                     is_locked: arr.some((x) => !!x.is_locked),
+                    is_gazetted: isGazetted,
+                    is_submitted: isSubmitted,
+                    status: isGazetted ? 'gazetted' : (isSubmitted ? 'submitted' : (rep.status || 'scheduled')),
                     marks_lock_at: maxMla,
                     _key: key
                 });
@@ -2639,12 +3071,14 @@ function examEvaluation() {
             if (this.savingExam || !this.isHeaderValid || !!this.clientConflictMessage || this.hasAnySupervisorConflict()) return true;
             if (this.registrationMode === 'auto') {
                 if (!this.autoBaseDate || this.selectedLevelIds.length === 0 || this.selectedSessionTypes.length === 0) return true;
+                if (this.autoShareGroupInvalid) return true;
+                if (!this.autoRequiredDays) return true;
                 if (this.selectedSessionTypes.includes('CUSTOM')) {
                     const start = String(this.autoCustomStartTime || '').trim();
                     const dur = parseInt(this.autoCustomDurationMinutes || '');
                     if (!start || isNaN(dur) || dur <= 0 || !this.autoCustomEndTime) return true;
                 }
-                if (this.autoRequiredDays > 0 && this.autoExamDates.length !== this.autoRequiredDays) return true;
+                if (this.autoExamDates.length !== this.autoRequiredDays) return true;
                 return false;
             }
             if (this.selectedLevelIds.length > 1 && !this.manualSharedTimetableActive) return true;
@@ -3257,6 +3691,10 @@ function examEvaluation() {
                 this.errorMessage = 'Cannot change lock: missing year or term on this record.';
                 return;
             }
+            if (exam.is_submitted) {
+                this.errorMessage = 'This exam has been submitted for release and cannot be unlocked.';
+                return;
+            }
             const wantLock = !exam.is_locked;
             if (!wantLock) {
                 this.openUnlockModal(exam);
@@ -3291,6 +3729,48 @@ function examEvaluation() {
                 this.errorMessage = 'Could not update lock. Please try again.';
             } finally {
                 this.lockingExam = false;
+            }
+        },
+
+        async authorizeExamRelease(exam) {
+            if (!this.isCurriculumCoordinator || !exam) return;
+            if (exam.is_submitted) {
+                this.errorMessage = 'This exam has already been submitted for release.';
+                return;
+            }
+            if (!exam.exam_name || exam.academic_year_id == null || exam.term_id == null) {
+                this.errorMessage = 'Cannot authorize release: missing exam details.';
+                return;
+            }
+            const msg = 'Authorize this exam for release?\n\nThis will permanently lock all allocations, set the exam status to Submitted, and prevent any further edits or unlocking. You will only be able to view the exam.';
+            if (!confirm(msg)) return;
+
+            this.authorizingRelease = true;
+            this.errorMessage = '';
+            this.successMessage = '';
+            try {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/authorize-release') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        exam_name: exam.exam_name,
+                        exam_type: exam.exam_type || '',
+                        academic_year_id: parseInt(exam.academic_year_id, 10),
+                        term_id: parseInt(exam.term_id, 10),
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Exam authorized for release.';
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not authorize release.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not authorize release. Please try again.';
+            } finally {
+                this.authorizingRelease = false;
             }
         },
 
@@ -3549,6 +4029,10 @@ function examEvaluation() {
         },
 
         editExam(exam) {
+            if (exam.is_submitted) {
+                this.errorMessage = 'This exam has been submitted for release and cannot be edited.';
+                return;
+            }
             if (exam.is_locked) {
                 this.errorMessage = 'This exam is locked. Unlock it before editing allocations.';
                 return;
@@ -3579,6 +4063,10 @@ function examEvaluation() {
 
         editRegistration(exam) {
             if (!exam) return;
+            if (exam.is_submitted) {
+                this.errorMessage = 'This exam has been submitted for release and cannot be edited.';
+                return;
+            }
             if (exam.is_locked) {
                 this.errorMessage = 'This exam is locked. Unlock it before editing registration details.';
                 return;
@@ -3659,6 +4147,10 @@ function examEvaluation() {
 
         async deleteRegistration(exam) {
             if (!exam) return;
+            if (exam.is_submitted) {
+                this.errorMessage = 'This exam has been submitted for release and cannot be deleted.';
+                return;
+            }
             if (exam.is_locked) {
                 this.errorMessage = 'This exam is locked. Unlock it before deleting this registration.';
                 return;

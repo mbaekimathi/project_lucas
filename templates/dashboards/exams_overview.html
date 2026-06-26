@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+
+{% block title %}Exams &amp; Results Overview - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set _nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role') or '')|lower %}
+{% if _nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% else %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<script>
+window.examsOverviewData = {{ exam_groups|tojson|safe }};
+function examsOverview() {
+    return {
+        exams: window.examsOverviewData || [],
+        isDeputy: {{ is_deputy|default(false)|tojson }},
+        gazettingKey: '',
+        returningKey: '',
+        successMessage: '',
+        errorMessage: '',
+        filters: {
+            search: '',
+            status: '',
+            year: '',
+            term: '',
+        },
+        get uniqueYears() {
+            return [...new Set(this.exams.map(e => e.year_name).filter(Boolean))].sort();
+        },
+        get uniqueTerms() {
+            return [...new Set(this.exams.map(e => e.term_name).filter(Boolean))].sort();
+        },
+        get filteredExams() {
+            let rows = this.exams || [];
+            const q = (this.filters.search || '').trim().toLowerCase();
+            if (q) {
+                rows = rows.filter(e =>
+                    (e.exam_name && e.exam_name.toLowerCase().includes(q)) ||
+                    (e.exam_type && e.exam_type.toLowerCase().includes(q)) ||
+                    (e.year_name && e.year_name.toLowerCase().includes(q)) ||
+                    (e.term_name && e.term_name.toLowerCase().includes(q))
+                );
+            }
+            if (this.filters.status) {
+                rows = rows.filter(e => (e.status || '').toLowerCase() === this.filters.status);
+            }
+            if (this.filters.year) {
+                rows = rows.filter(e => e.year_name === this.filters.year);
+            }
+            if (this.filters.term) {
+                rows = rows.filter(e => e.term_name === this.filters.term);
+            }
+            return rows;
+        },
+        statusCounts() {
+            const counts = { scheduled: 0, ongoing: 0, completed: 0, submitted: 0, gazetted: 0, cancelled: 0 };
+            (this.exams || []).forEach(e => {
+                const s = (e.status || 'scheduled').toLowerCase();
+                if (counts[s] !== undefined) counts[s] += 1;
+                else counts.scheduled += 1;
+            });
+            return counts;
+        },
+        statusLabel(status) {
+            const s = (status || 'scheduled').toLowerCase();
+            if (s === 'gazetted') return 'Gazetted';
+            return s.charAt(0).toUpperCase() + s.slice(1);
+        },
+        statusBadgeClass(status) {
+            const s = (status || 'scheduled').toLowerCase();
+            if (s === 'gazetted') return 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300';
+            if (s === 'submitted') return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300';
+            if (s === 'ongoing') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
+            if (s === 'completed') return 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-200';
+            if (s === 'cancelled') return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300';
+            return 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300';
+        },
+        classesUrl(exam) {
+            const params = new URLSearchParams({
+                exam_name: exam.exam_name || '',
+                academic_year_id: String(exam.academic_year_id || ''),
+                term_id: String(exam.term_id || ''),
+            });
+            if (exam.exam_type) params.set('exam_type', exam.exam_type);
+            return {{ employee_dash_url('exams-overview/classes')|tojson }} + '?' + params.toString();
+        },
+        clearFilters() {
+            this.filters = { search: '', status: '', year: '', term: '' };
+        },
+        examKey(exam) {
+            return (exam.exam_name || '') + '|' + (exam.exam_type || '') + '|' + exam.academic_year_id + '|' + exam.term_id;
+        },
+        async gazetteResults(exam) {
+            if (!this.isDeputy || !exam || !exam.can_gazette) return;
+            const msg = 'Gazette results for “' + (exam.exam_name || 'this exam') + '”?\n\nThis officially releases the results. This action cannot be undone.';
+            if (!confirm(msg)) return;
+            const key = this.examKey(exam);
+            this.gazettingKey = key;
+            this.errorMessage = '';
+            this.successMessage = '';
+            try {
+                const body = {
+                    exam_name: exam.exam_name,
+                    academic_year_id: parseInt(exam.academic_year_id, 10),
+                    term_id: parseInt(exam.term_id, 10),
+                };
+                if (exam.exam_type) body.exam_type = exam.exam_type;
+                const response = await fetch({{ employee_dash_url('exams-overview/gazette-results')|tojson }}, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Results gazetted.';
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not gazette results.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not gazette results. Please try again.';
+            } finally {
+                this.gazettingKey = '';
+            }
+        },
+        async returnExam(exam) {
+            if (!this.isDeputy || !exam || !exam.can_return) return;
+            const msg = 'Return “' + (exam.exam_name || 'this exam') + '” to the curriculum coordinator?\n\nThis unlocks the exam so marks can be edited again. It must be re-submitted before results can be gazetted.';
+            if (!confirm(msg)) return;
+            const key = this.examKey(exam);
+            this.returningKey = key;
+            this.errorMessage = '';
+            this.successMessage = '';
+            try {
+                const body = {
+                    exam_name: exam.exam_name,
+                    academic_year_id: parseInt(exam.academic_year_id, 10),
+                    term_id: parseInt(exam.term_id, 10),
+                };
+                if (exam.exam_type) body.exam_type = exam.exam_type;
+                const response = await fetch({{ employee_dash_url('exams-overview/return-exam')|tojson }}, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Exam returned for editing.';
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not return exam.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not return exam. Please try again.';
+            } finally {
+                this.returningKey = '';
+            }
+        },
+    };
+}
+</script>
+
+{% set _page_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role') or '')|lower %}
+{% set role_theme = 'deputy' if _page_role == 'deputy head of institution' else 'leadership' %}
+
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gray-50 dark:bg-gray-950 portal-page-root role-page role-page--{{ role_theme }}"
+     x-data="examsOverview()">
+    {% set role_hero_title = 'Exams & Results' %}
+    {% set role_hero_subtitle = 'Review exam status, gazette or return results, and open class result sheets.' %}
+    {% set role_hero_icon_class = 'fa-clipboard-check' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    <div x-show="successMessage" x-cloak class="mb-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200" x-text="successMessage"></div>
+    <div x-show="errorMessage" x-cloak class="mb-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-800 dark:text-red-200" x-text="errorMessage"></div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-6">
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 sm:p-4 text-center">
+            <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Scheduled</p>
+            <p class="text-xl sm:text-2xl font-bold text-green-700 dark:text-green-300" x-text="statusCounts().scheduled"></p>
+        </div>
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 sm:p-4 text-center">
+            <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Ongoing</p>
+            <p class="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-300" x-text="statusCounts().ongoing"></p>
+        </div>
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 sm:p-4 text-center">
+            <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Completed</p>
+            <p class="text-xl sm:text-2xl font-bold text-slate-700 dark:text-slate-200" x-text="statusCounts().completed"></p>
+        </div>
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 sm:p-4 text-center">
+            <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Submitted</p>
+            <p class="text-xl sm:text-2xl font-bold text-emerald-700 dark:text-emerald-300" x-text="statusCounts().submitted"></p>
+        </div>
+        <div class="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/20 p-3 sm:p-4 text-center">
+            <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">Gazetted</p>
+            <p class="text-xl sm:text-2xl font-bold text-violet-700 dark:text-violet-300" x-text="statusCounts().gazetted"></p>
+        </div>
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 sm:p-4 text-center col-span-2 sm:col-span-1">
+            <p class="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Total</p>
+            <p class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white" x-text="exams.length"></p>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Search</label>
+                <input type="text" x-model="filters.search" placeholder="Exam name, type, year…"
+                       class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Status</label>
+                <select x-model="filters.status"
+                        class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-3 py-2 text-sm">
+                    <option value="">All statuses</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="ongoing">Ongoing</option>
+                    <option value="completed">Completed</option>
+                    <option value="submitted">Submitted (awaiting gazettement)</option>
+                    <option value="gazetted">Gazetted</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Academic year</label>
+                <select x-model="filters.year"
+                        class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-3 py-2 text-sm">
+                    <option value="">All years</option>
+                    <template x-for="y in uniqueYears" :key="y">
+                        <option :value="y" x-text="y"></option>
+                    </template>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Term</label>
+                <select x-model="filters.term"
+                        class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-3 py-2 text-sm">
+                    <option value="">All terms</option>
+                    <template x-for="t in uniqueTerms" :key="t">
+                        <option :value="t" x-text="t"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+        <div class="mt-3 flex justify-end">
+            <button type="button" @click="clearFilters()"
+                    class="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-brand-primary underline">
+                Clear filters
+            </button>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div x-show="filteredExams.length === 0" class="p-10 sm:p-14 text-center text-sm text-gray-500 dark:text-gray-400">
+            <i class="fas fa-inbox text-2xl mb-3 opacity-40"></i>
+            <p>No exams match your filters.</p>
+        </div>
+
+        <div class="hidden md:block overflow-x-auto" x-show="filteredExams.length > 0">
+            <table class="w-full border-collapse">
+                <thead class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                    <tr>
+                        <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Exam</th>
+                        <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Lock</th>
+                        <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Status</th>
+                        <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold min-w-[10rem]">Actions</th>
+                        <th class="p-3 sm:p-4 text-right text-xs sm:text-sm font-bold">Classes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="exam in filteredExams" :key="exam.exam_name + '|' + exam.exam_type + '|' + exam.academic_year_id + '|' + exam.term_id">
+                        <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                            <td class="p-3 sm:p-4 align-middle">
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="exam.exam_name"></span>
+                            </td>
+                            <td class="p-3 sm:p-4 align-middle text-center">
+                                <span x-show="exam.is_gazetted" class="text-xs font-bold text-violet-700 dark:text-violet-300"><i class="fas fa-bullhorn mr-0.5"></i> Gazetted</span>
+                                <span x-show="exam.is_submitted && !exam.is_gazetted" class="text-xs font-bold text-emerald-700 dark:text-emerald-300"><i class="fas fa-check-circle mr-0.5"></i> Submitted</span>
+                                <span x-show="!exam.is_submitted && !exam.is_gazetted && exam.is_locked" class="text-xs font-bold text-amber-700 dark:text-amber-300"><i class="fas fa-lock"></i> Locked</span>
+                                <span x-show="!exam.is_submitted && !exam.is_gazetted && !exam.is_locked" class="text-xs text-gray-400">Open</span>
+                            </td>
+                            <td class="p-3 sm:p-4 align-middle text-center">
+                                <span class="px-2.5 py-1 rounded-full text-xs font-semibold"
+                                      :class="statusBadgeClass(exam.status)"
+                                      x-text="statusLabel(exam.status)"></span>
+                                <p x-show="exam.results_gazetted_at" class="text-[10px] text-gray-500 dark:text-gray-400 mt-1" x-text="exam.results_gazetted_at"></p>
+                            </td>
+                            <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
+                                <div class="inline-flex flex-col items-center gap-1.5">
+                                    <template x-if="exam.is_gazetted">
+                                        <span class="text-xs font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                                            <i class="fas fa-check-double"></i> Released
+                                        </span>
+                                    </template>
+                                    <template x-if="exam.can_gazette && isDeputy">
+                                        <button type="button"
+                                                @click="gazetteResults(exam)"
+                                                :disabled="gazettingKey === examKey(exam) || returningKey === examKey(exam)"
+                                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 transition-colors">
+                                            <i class="fas fa-bullhorn"></i>
+                                            <span x-text="gazettingKey === examKey(exam) ? 'Releasing…' : 'Gazette results'"></span>
+                                        </button>
+                                    </template>
+                                    <template x-if="exam.can_return && isDeputy">
+                                        <button type="button"
+                                                @click="returnExam(exam)"
+                                                :disabled="returningKey === examKey(exam) || gazettingKey === examKey(exam)"
+                                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-amber-500 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50 transition-colors">
+                                            <i class="fas fa-undo"></i>
+                                            <span x-text="returningKey === examKey(exam) ? 'Returning…' : 'Return'"></span>
+                                        </button>
+                                    </template>
+                                    <span x-show="exam.can_gazette && !isDeputy" class="text-xs text-gray-400">Awaiting deputy</span>
+                                    <span x-show="!exam.can_gazette && !exam.is_gazetted && !exam.can_return" class="text-xs text-gray-400">—</span>
+                                </div>
+                            </td>
+                            <td class="p-3 sm:p-4 align-middle text-right">
+                                <a :href="classesUrl(exam)"
+                                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-primary hover:opacity-90 text-white">
+                                    <i class="fas fa-users"></i> Classes
+                                </a>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="md:hidden divide-y divide-gray-200 dark:divide-gray-700" x-show="filteredExams.length > 0">
+            <template x-for="exam in filteredExams" :key="'m-' + exam.exam_name + '|' + exam.exam_type + '|' + exam.academic_year_id + '|' + exam.term_id">
+                <div class="p-4 space-y-2">
+                    <div class="flex items-start justify-between gap-3">
+                        <p class="text-sm font-bold text-gray-900 dark:text-white" x-text="exam.exam_name"></p>
+                        <span class="px-2 py-1 rounded-full text-[10px] font-semibold shrink-0"
+                              :class="statusBadgeClass(exam.status)"
+                              x-text="statusLabel(exam.status)"></span>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                        <span x-show="exam.is_gazetted" class="font-semibold text-violet-700 dark:text-violet-300">Gazetted</span>
+                        <span x-show="exam.is_submitted && !exam.is_gazetted" class="font-semibold text-emerald-700 dark:text-emerald-300">Submitted — awaiting gazettement</span>
+                        <span x-show="!exam.is_submitted && !exam.is_gazetted && exam.is_locked" class="font-semibold text-amber-700 dark:text-amber-300"><i class="fas fa-lock"></i> Locked</span>
+                        <span x-show="!exam.is_submitted && !exam.is_gazetted && !exam.is_locked">Open</span>
+                    </p>
+                    <button type="button"
+                            x-show="exam.can_gazette && isDeputy"
+                            @click="gazetteResults(exam)"
+                            :disabled="gazettingKey === examKey(exam) || returningKey === examKey(exam)"
+                            class="inline-flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50">
+                        <i class="fas fa-bullhorn"></i>
+                        <span x-text="gazettingKey === examKey(exam) ? 'Gazetting…' : 'Gazette results'"></span>
+                    </button>
+                    <button type="button"
+                            x-show="exam.can_return && isDeputy"
+                            @click="returnExam(exam)"
+                            :disabled="returningKey === examKey(exam) || gazettingKey === examKey(exam)"
+                            class="inline-flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-lg text-xs font-semibold border border-amber-500 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50">
+                        <i class="fas fa-undo"></i>
+                        <span x-text="returningKey === examKey(exam) ? 'Returning…' : 'Return for editing'"></span>
+                    </button>
+                    <a :href="classesUrl(exam)"
+                       class="inline-flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-lg text-xs font-semibold bg-brand-primary text-white">
+                        <i class="fas fa-users"></i> View classes &amp; results
+                    </a>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+{% endblock %}

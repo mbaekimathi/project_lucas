@@ -2,8 +2,6 @@
 
 {% block title %}{{ page_title }} — choose a child - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
-
 {% block sidebar_content %}
 {% set parent_nav_scope = 'exams' %}
 {% include 'dashboards/includes/parent_page_sidebar.html' %}

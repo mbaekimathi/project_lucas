@@ -27,10 +27,10 @@
         <span>Timetable</span>
         <small>Schedules and teaching periods</small>
     </a>
-    <a href="{{ employee_dash_url('exams-assessments') }}" class="role-quick-card">
+    <a href="{{ employee_dash_url('exams-overview' if _home_deputy else 'exams-assessments') }}" class="role-quick-card">
         <i class="fas fa-clipboard-check text-amber-600 dark:text-amber-400"></i>
         <span>Exams &amp; results</span>
-        <small>Assessments, marks, and analytics</small>
+        <small>{% if _home_deputy %}All registered exams and their status{% else %}Assessments, marks, and analytics{% endif %}</small>
     </a>
     <a href="{{ employee_dash_url('finance-overview') }}" class="role-quick-card">
         <i class="fas fa-chart-pie text-emerald-600 dark:text-emerald-400"></i>

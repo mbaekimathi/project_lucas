@@ -186,7 +186,7 @@
                     <span class="acal-ref-badge acal-ref-badge-lg shrink-0"
                           style="background:{{ item.color_badge }};">{{ item.ref }}</span>
                     <div class="min-w-0 flex-1">
-                        <p class="font-semibold text-gray-900 dark:text-white m-0">{{ item.activity_title }}</p>
+                        <p class="font-semibold text-gray-900 dark:text-white m-0 uppercase">{{ item.activity_title }}</p>
                         <p class="text-xs text-gray-500 mt-1 m-0">
                             {{ item.activity_date_display }}
                             {% if item.end_date_display and item.end_date_display != item.activity_date_display %}
@@ -195,8 +195,8 @@
                             · {{ item.category_label }}
                             {% if item.term_label %} · {{ item.term_label }}{% endif %}
                         </p>
-                        {% if item.description %}
-                        <p class="text-sm text-gray-600 dark:text-gray-300 mt-1.5 m-0">{{ item.description }}</p>
+                        {% if item.activity_about %}
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mt-1.5 m-0">{{ item.activity_about }}</p>
                         {% endif %}
                     </div>
                     <span class="text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 shrink-0"

@@ -481,7 +481,7 @@
                 {% endif %}
             </div>
             <div class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 w-full lg:w-auto">
-                {% if not exam_meta.is_locked and not erd_teacher_view %}
+                {% if not exam_meta.is_locked and not exam_meta.is_submitted and not erd_teacher_view %}
                 <button type="button"
                         id="erd-open-add-modal"
                         class="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4 sm:py-3 rounded-lg sm:rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-md w-full sm:w-auto">
@@ -489,7 +489,12 @@
                     Allocate Other Class
                 </button>
                 {% endif %}
-                {% if exam_meta.is_locked %}
+                {% if exam_meta.is_submitted %}
+                <div class="flex items-start sm:items-center gap-2 px-3 py-2 sm:px-4 sm:py-3 rounded-lg sm:rounded-xl bg-emerald-50 dark:bg-emerald-900/25 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs sm:text-sm font-medium shrink-0 w-full lg:w-auto leading-snug">
+                    <i class="fas fa-check-circle mt-0.5 sm:mt-0"></i>
+                    This exam has been submitted for release. All timetables are view-only and cannot be unlocked.
+                </div>
+                {% elif exam_meta.is_locked %}
                 <div class="flex items-start sm:items-center gap-2 px-3 py-2 sm:px-4 sm:py-3 rounded-lg sm:rounded-xl bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs sm:text-sm font-medium shrink-0 w-full lg:w-auto leading-snug">
                     <i class="fas fa-lock mt-0.5 sm:mt-0"></i>
                     This exam is locked. Timetables are view-only until it is unlocked on the registration page.
@@ -591,8 +596,8 @@
                                 <p><span class="font-semibold">Venue:</span> {{ slot.venue or '—' }}</p>
                             </div>
                             <div class="mt-2 sm:mt-3">
-                                {% if exam_meta.is_locked or erd_teacher_view %}
-                                <span class="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">{% if erd_teacher_view and not exam_meta.is_locked %}View only{% else %}Locked{% endif %}</span>
+                                {% if exam_meta.is_locked or exam_meta.is_submitted or erd_teacher_view %}
+                                <span class="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">{% if exam_meta.is_submitted %}Submitted{% elif erd_teacher_view and not exam_meta.is_locked %}View only{% else %}Locked{% endif %}</span>
                                 {% else %}
                                 <div class="grid grid-cols-2 gap-1.5 sm:gap-2">
                                     <button type="button"
@@ -631,8 +636,8 @@
                             </thead>
                             <tbody>
                                 {% for slot in block.slots %}
-                                <tr class="border-t border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50 {% if not exam_meta.is_locked and not erd_teacher_view %}cursor-pointer{% endif %}"
-                                    {% if not exam_meta.is_locked and not erd_teacher_view %}data-edit-exam-id="{{ slot.id }}"{% endif %}>
+                                <tr class="border-t border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50 {% if not exam_meta.is_locked and not exam_meta.is_submitted and not erd_teacher_view %}cursor-pointer{% endif %}"
+                                    {% if not exam_meta.is_locked and not exam_meta.is_submitted and not erd_teacher_view %}data-edit-exam-id="{{ slot.id }}"{% endif %}>
                                     <td class="p-3 text-gray-900 dark:text-white whitespace-nowrap font-medium">
                                         {% if slot.start_time or slot.end_time %}
                                             {{ (slot.start_time or '—')[:5] }} – {{ (slot.end_time or '—')[:5] }}
@@ -660,14 +665,16 @@
                                             {% elif st == 'ongoing' %}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300
                                             {% elif st == 'completed' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300
                                             {% elif st == 'cancelled' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300
+                                            {% elif st == 'submitted' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300
+                                            {% elif st == 'gazetted' %}bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300
                                             {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{% endif %}">
                                             {{ slot.status or 'scheduled' }}
                                         </span>
                                     </td>
                                     {% if not erd_teacher_view %}
                                     <td class="p-3 text-center whitespace-nowrap">
-                                        {% if exam_meta.is_locked %}
-                                        <span class="text-xs text-gray-400 dark:text-gray-500" title="Unlock the exam on the registration page first">—</span>
+                                        {% if exam_meta.is_locked or exam_meta.is_submitted %}
+                                        <span class="text-xs text-gray-400 dark:text-gray-500" title="{% if exam_meta.is_submitted %}Submitted for release{% else %}Unlock the exam on the registration page first{% endif %}">—</span>
                                         {% else %}
                                         <button type="button"
                                            class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white mr-1 min-h-[34px]"

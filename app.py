@@ -673,8 +673,9 @@ STUDENT_PHOTO_FOLDER = 'static/uploads/student_photos'
 PAYMENT_PROOF_FOLDER = 'static/uploads/payment_proofs'
 COMMUNICATION_ATTACHMENT_FOLDER = 'static/uploads/communication'
 STORE_INVENTORY_FOLDER = 'static/uploads/store_inventory'
+GALLERY_UPLOAD_FOLDER = 'static/uploads/gallery'
 BACKUP_FOLDER = 'static/uploads/backups'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 ALLOWED_COMMUNICATION_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'}
 
 # Create backup folder if it doesn't exist
@@ -690,6 +691,7 @@ os.makedirs(STUDENT_PHOTO_FOLDER, exist_ok=True)
 os.makedirs(PAYMENT_PROOF_FOLDER, exist_ok=True)
 os.makedirs(COMMUNICATION_ATTACHMENT_FOLDER, exist_ok=True)
 os.makedirs(STORE_INVENTORY_FOLDER, exist_ok=True)
+os.makedirs(GALLERY_UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_communication_attachment(filename):
     """Attachments for communication centre broadcasts."""
@@ -850,6 +852,208 @@ def _save_student_profile_image(file_storage, student_id):
         preset='student_photo',
     )
 
+
+MAX_SCHOOL_GALLERY_ITEMS = 36
+_SCHOOL_GALLERY_TABLE_READY = False
+
+
+def ensure_school_gallery_table(cursor):
+    """Public website gallery photos (school profile uploads)."""
+    global _SCHOOL_GALLERY_TABLE_READY
+    if _SCHOOL_GALLERY_TABLE_READY:
+        return True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS gallery (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                image_url VARCHAR(500),
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        """)
+        if not _table_has_column(cursor, 'gallery', 'sort_order'):
+            cursor.execute(
+                "ALTER TABLE gallery ADD COLUMN sort_order INT NOT NULL DEFAULT 0 AFTER image_url"
+            )
+        if not _table_has_column(cursor, 'gallery', 'updated_at'):
+            cursor.execute(
+                "ALTER TABLE gallery ADD COLUMN updated_at TIMESTAMP "
+                "DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at"
+            )
+        _SCHOOL_GALLERY_TABLE_READY = True
+        return True
+    except Exception as e:
+        print(f"ensure_school_gallery_table: {e}")
+        return False
+
+
+def _gallery_static_path(relative_path):
+    if not relative_path:
+        return ''
+    rel = str(relative_path).strip().replace('\\', '/').lstrip('/')
+    if rel.lower().startswith('static/'):
+        rel = rel[7:]
+    return rel
+
+
+def _gallery_image_public_url(relative_path):
+    rel = _gallery_static_path(relative_path)
+    if not rel:
+        return ''
+    try:
+        return url_for('static', filename=rel)
+    except Exception:
+        return ''
+
+
+def _remove_gallery_image_file(relative_path):
+    rel = _gallery_static_path(relative_path)
+    if not rel or not rel.startswith('uploads/gallery/'):
+        return
+    file_path = os.path.join('static', rel)
+    if os.path.isfile(file_path):
+        try:
+            os.remove(file_path)
+        except OSError as e:
+            print(f"_remove_gallery_image_file: {e}")
+
+
+def _save_school_gallery_image(file_storage, item_id=None):
+    if not file_storage or not getattr(file_storage, 'filename', None):
+        return None
+    filename = (file_storage.filename or '').strip()
+    if not filename or not allowed_file(filename):
+        return None
+    stamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    suffix = secure_filename(str(item_id or 'new'))[:20] or 'new'
+    return _save_optimized_image(
+        file_storage,
+        GALLERY_UPLOAD_FOLDER,
+        f'gallery_{stamp}_{suffix}',
+        preset='gallery',
+    )
+
+
+def _normalize_gallery_seo_title(value):
+    text = re.sub(r'\s+', ' ', (value or '').strip())
+    return text[:255]
+
+
+def _normalize_gallery_seo_description(value):
+    text = re.sub(r'\s+', ' ', (value or '').strip())
+    return text[:2000]
+
+
+def _serialize_gallery_row(row):
+    if not row:
+        return None
+    if isinstance(row, dict):
+        image_url = row.get('image_url') or ''
+        created_at = row.get('created_at')
+        return {
+            'id': row.get('id'),
+            'title': row.get('title') or '',
+            'description': row.get('description') or '',
+            'image_url': image_url,
+            'image_src': _gallery_image_public_url(image_url),
+            'sort_order': int(row.get('sort_order') or 0),
+            'created_at': created_at,
+        }
+    return {
+        'id': row[0] if len(row) > 0 else None,
+        'title': row[1] if len(row) > 1 else '',
+        'description': row[2] if len(row) > 2 else '',
+        'image_url': row[3] if len(row) > 3 else '',
+        'image_src': _gallery_image_public_url(row[3] if len(row) > 3 else ''),
+        'sort_order': int(row[4] if len(row) > 4 else 0),
+        'created_at': row[5] if len(row) > 5 else None,
+    }
+
+
+def load_school_gallery_items(cursor):
+    ensure_school_gallery_table(cursor)
+    cursor.execute("""
+        SELECT id, title, description, image_url, sort_order, created_at
+        FROM gallery
+        ORDER BY sort_order ASC, created_at DESC, id DESC
+    """)
+    rows = cursor.fetchall() or []
+    return [_serialize_gallery_row(r) for r in rows if r]
+
+
+def _process_school_gallery_on_profile_save(cursor, req):
+    """Apply gallery title/description updates, deletions, and new uploads from school profile form."""
+    ensure_school_gallery_table(cursor)
+
+    for key in list(req.form.keys()):
+        if not key.startswith('gallery_title_'):
+            continue
+        gid_raw = key[len('gallery_title_'):]
+        if not str(gid_raw).isdigit():
+            continue
+        gid = int(gid_raw)
+        title = _normalize_gallery_seo_title(req.form.get(key))
+        description = _normalize_gallery_seo_description(
+            req.form.get(f'gallery_description_{gid}', '')
+        )
+        if not title:
+            continue
+        cursor.execute(
+            "UPDATE gallery SET title = %s, description = %s WHERE id = %s",
+            (title, description or None, gid),
+        )
+
+    for gid_raw in req.form.getlist('gallery_delete'):
+        if not str(gid_raw).isdigit():
+            continue
+        gid = int(gid_raw)
+        cursor.execute("SELECT image_url FROM gallery WHERE id = %s", (gid,))
+        row = cursor.fetchone()
+        if row:
+            img = row.get('image_url') if isinstance(row, dict) else row[0]
+            _remove_gallery_image_file(img)
+        cursor.execute("DELETE FROM gallery WHERE id = %s", (gid,))
+
+    cursor.execute("SELECT COUNT(*) AS c FROM gallery")
+    count_row = cursor.fetchone() or {}
+    current_count = int(
+        (count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0
+    )
+
+    new_files = req.files.getlist('gallery_new_image')
+    new_titles = req.form.getlist('gallery_new_title')
+    new_descriptions = req.form.getlist('gallery_new_description')
+    for idx, file_storage in enumerate(new_files):
+        if current_count >= MAX_SCHOOL_GALLERY_ITEMS:
+            break
+        if not file_storage or not getattr(file_storage, 'filename', None):
+            continue
+        if not (file_storage.filename or '').strip():
+            continue
+        title = _normalize_gallery_seo_title(
+            new_titles[idx] if idx < len(new_titles) else ''
+        )
+        if not title:
+            continue
+        description = _normalize_gallery_seo_description(
+            new_descriptions[idx] if idx < len(new_descriptions) else ''
+        )
+        image_path = _save_school_gallery_image(file_storage, item_id=f'new{idx}')
+        if not image_path:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO gallery (title, description, image_url, sort_order)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (title, description or None, image_path, current_count),
+        )
+        current_count += 1
+
+
 def allowed_payment_file(filename):
     """Check if payment proof file extension is allowed"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_PAYMENT_EXTENSIONS
@@ -911,6 +1115,7 @@ def get_school_settings():
 
     school_data = _default_school_data()
     connection = None
+    result = None
     try:
         connection = get_db_connection()
         if connection:
@@ -954,6 +1159,7 @@ def get_school_settings():
                             'school_email': (result[2] if len(result) > 2 else None) or '',
                             'school_phone': (result[3] if len(result) > 3 else None) or '',
                             'school_logo': (result[4] if len(result) > 4 else None) or None,
+                            'school_hero_image': None,
                             'twitter_url': (result[5] if len(result) > 5 else None) or '',
                             'facebook_url': (result[6] if len(result) > 6 else None) or '',
                             'instagram_url': (result[7] if len(result) > 7 else None) or '',
@@ -2635,8 +2841,553 @@ def ensure_academic_calendar_activities_table(cursor):
                 """)
             except Exception:
                 pass
+        cursor.execute("SHOW COLUMNS FROM academic_calendar_activities LIKE 'activity_about'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE academic_calendar_activities
+                ADD COLUMN activity_about TEXT NULL AFTER category
+            """)
+            try:
+                cursor.execute("""
+                    UPDATE academic_calendar_activities
+                    SET activity_about = description
+                    WHERE activity_about IS NULL AND description IS NOT NULL AND TRIM(description) != ''
+                """)
+            except Exception:
+                pass
+        cursor.execute("SHOW COLUMNS FROM academic_calendar_activities LIKE 'notify_parents'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE academic_calendar_activities
+                ADD COLUMN notify_parents TINYINT(1) NOT NULL DEFAULT 1 AFTER activity_about
+            """)
     except Exception as e:
         print(f"ensure_academic_calendar_activities_table: {e}")
+
+
+def ensure_academic_calendar_activity_levels_table(cursor):
+    """Junction: calendar activities → academic levels (empty = all levels)."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS academic_calendar_activity_levels (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                activity_id INT NOT NULL,
+                academic_level_id INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_acal_activity_level (activity_id, academic_level_id),
+                INDEX idx_acal_level_activity (academic_level_id, activity_id),
+                FOREIGN KEY (activity_id) REFERENCES academic_calendar_activities(id) ON DELETE CASCADE,
+                FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+    except Exception as e:
+        print(f"ensure_academic_calendar_activity_levels_table: {e}")
+
+
+def _parse_calendar_activity_levels_form(form):
+    """Parse affects-all vs specific academic levels from POST."""
+    raw_all = (form.get('affects_all_levels') or '').strip().lower()
+    affects_all = raw_all in ('1', 'on', 'true', 'yes')
+    if affects_all:
+        return True, [], None
+    level_ids = _parse_finance_account_level_ids(form)
+    if not level_ids:
+        return False, [], 'Select at least one academic level, or leave “All levels” checked.'
+    return False, level_ids, None
+
+
+def _save_calendar_activity_levels(cursor, activity_id, affects_all, level_ids):
+    ensure_academic_calendar_activity_levels_table(cursor)
+    activity_id = int(activity_id)
+    cursor.execute(
+        "DELETE FROM academic_calendar_activity_levels WHERE activity_id = %s",
+        (activity_id,),
+    )
+    if affects_all:
+        return
+    valid_ids = _filter_valid_academic_level_ids(cursor, level_ids or [])
+    for lid in valid_ids:
+        cursor.execute(
+            """
+            INSERT IGNORE INTO academic_calendar_activity_levels
+                (activity_id, academic_level_id)
+            VALUES (%s, %s)
+            """,
+            (activity_id, int(lid)),
+        )
+
+
+def _fetch_calendar_activity_levels_map(cursor, activity_ids):
+    if not activity_ids:
+        return {}
+    ensure_academic_calendar_activity_levels_table(cursor)
+    ids = []
+    for raw in activity_ids:
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        return {}
+    placeholders = ','.join(['%s'] * len(ids))
+    out = {}
+    try:
+        cursor.execute(
+            f"""
+            SELECT cal.activity_id, al.id, al.level_name
+            FROM academic_calendar_activity_levels cal
+            INNER JOIN academic_levels al ON al.id = cal.academic_level_id
+            WHERE cal.activity_id IN ({placeholders})
+            ORDER BY al.level_name ASC
+            """,
+            tuple(ids),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                aid = row.get('activity_id')
+                lid = row.get('id')
+                lname = row.get('level_name') or ''
+            else:
+                aid = row[0] if len(row) > 0 else None
+                lid = row[1] if len(row) > 1 else None
+                lname = (row[2] if len(row) > 2 else '') or ''
+            if aid is None or lid is None:
+                continue
+            out.setdefault(int(aid), []).append({
+                'id': int(lid),
+                'level_name': (lname or '').strip(),
+            })
+    except Exception as e:
+        print(f"_fetch_calendar_activity_levels_map: {e}")
+    return out
+
+
+def _attach_calendar_activity_levels(cursor, activities):
+    if not activities:
+        return activities
+    level_map = _fetch_calendar_activity_levels_map(
+        cursor,
+        [a.get('id') for a in activities if a.get('id')],
+    )
+    for act in activities:
+        try:
+            aid = int(act.get('id') or 0)
+        except (TypeError, ValueError):
+            aid = 0
+        levels = level_map.get(aid, [])
+        act['academic_level_ids'] = [lv['id'] for lv in levels]
+        act['academic_levels'] = levels
+        act['affects_all_levels'] = not levels
+        act['levels_affected_label'] = (
+            'All levels'
+            if not levels
+            else _format_levels_affected_label([lv['level_name'] for lv in levels])
+        )
+    return activities
+
+
+def _filter_calendar_activities_for_level(activities, academic_level_id):
+    if not activities:
+        return activities
+    if not academic_level_id:
+        return activities
+    try:
+        lid = int(academic_level_id)
+    except (TypeError, ValueError):
+        return activities
+    filtered = []
+    for act in activities:
+        if act.get('affects_all_levels', True):
+            filtered.append(act)
+        elif lid in (act.get('academic_level_ids') or []):
+            filtered.append(act)
+    return filtered
+
+
+def _resolve_academic_level_id_from_grade(cursor, current_grade):
+    grade = (current_grade or '').strip()
+    if not grade:
+        return None
+    level_map = _level_name_to_id_map(cursor)
+    if grade in level_map:
+        return level_map[grade]
+    return level_map.get(grade.upper()) or level_map.get(grade.lower())
+
+
+def _student_academic_level_id(cursor, student_id):
+    """Resolve academic_level_id from a student_id without requiring parents table."""
+    sid = (student_id or '').strip()
+    if not sid:
+        return None
+    try:
+        cursor.execute(
+            """
+            SELECT s.current_grade
+            FROM students s
+            WHERE LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s))
+              AND LOWER(TRIM(COALESCE(s.status, 'in session'))) IN ('in session', 'active', '')
+            LIMIT 1
+            """,
+            (sid,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        grade = row.get('current_grade') if isinstance(row, dict) else (row[0] if row else None)
+        return _resolve_academic_level_id_from_grade(cursor, grade)
+    except Exception as e:
+        print(f"_student_academic_level_id: {e}")
+        return None
+
+
+def _parent_linked_children_level_ids(cursor, parent_email, student_id=None, user_id=None):
+    """Academic level ids for a parent's in-session child(ren)."""
+    level_ids = set()
+    if student_id:
+        lid = _student_academic_level_id(cursor, student_id)
+        if lid:
+            level_ids.add(lid)
+        if level_ids:
+            return level_ids
+    if parent_email:
+        level_map = _level_name_to_id_map(cursor)
+        cursor.execute(
+            """
+            SELECT DISTINCT s.current_grade
+            FROM students s
+            INNER JOIN parents p ON s.student_id = p.student_id
+            WHERE p.email = %s AND s.status = 'in session'
+            """,
+            (parent_email,),
+        )
+        for row in cursor.fetchall() or []:
+            grade = row.get('current_grade') if isinstance(row, dict) else (row[0] if row else None)
+            lid = _resolve_academic_level_id_from_grade(cursor, grade)
+            if lid:
+                level_ids.add(lid)
+    if not level_ids and user_id:
+        try:
+            cursor.execute(
+                "SELECT student_id FROM users WHERE id = %s AND role = 'parent' LIMIT 1",
+                (int(user_id),),
+            )
+            ur = cursor.fetchone()
+            usid = (ur.get('student_id') or '').strip() if ur else ''
+            if usid:
+                lid = _student_academic_level_id(cursor, usid)
+                if lid:
+                    level_ids.add(lid)
+        except Exception as e:
+            print(f"_parent_linked_children_level_ids users: {e}")
+    return level_ids
+
+
+def _fetch_parent_calendar_notifications(cursor, parent_email, student_id=None, user_id=None, limit=8):
+    """Upcoming academic calendar items relevant to a parent's child(ren)."""
+    limit = max(1, min(int(limit or 8), 30))
+    child_level_ids = _parent_linked_children_level_ids(
+        cursor, parent_email, student_id, user_id=user_id,
+    )
+    selected_year_id, _years = _resolve_calendar_year_id(cursor, None)
+    if not selected_year_id:
+        return []
+    activities = _fetch_academic_calendar_activities(cursor, selected_year_id)
+    activities = _attach_calendar_activity_levels(cursor, activities)
+    today = date_cls.today()
+    cutoff = today - timedelta(days=3)
+    relevant = []
+    for act in activities:
+        if not act.get('notify_parents', True):
+            continue
+        if not act.get('affects_all_levels'):
+            act_levels = set(act.get('academic_level_ids') or [])
+            if child_level_ids:
+                if not act_levels.intersection(child_level_ids):
+                    continue
+            elif student_id or parent_email or user_id:
+                continue
+        start = _coerce_to_date(act.get('activity_date'))
+        end = _coerce_to_date(act.get('end_date')) or start
+        if not start:
+            continue
+        if end and end < cutoff:
+            continue
+        if start < cutoff and (not end or end < today):
+            continue
+        relevant.append(act)
+    relevant.sort(
+        key=lambda x: (
+            _coerce_to_date(x.get('activity_date')) or date_cls.max,
+            x.get('id') or 0,
+        ),
+    )
+    return relevant[:limit]
+
+
+def _parent_notification_student_ids(cursor, parent_email=None, student_id=None, user_id=None):
+    """Student ids to include in parent hub notifications."""
+    sids = []
+    seen = set()
+
+    def _add(raw):
+        sid = (raw or '').strip()
+        key = sid.lower()
+        if sid and key not in seen:
+            seen.add(key)
+            sids.append(sid)
+
+    if student_id:
+        _add(student_id)
+        if sids:
+            return sids
+
+    pem = (parent_email or '').strip()
+    if pem:
+        try:
+            cursor.execute(
+                """
+                SELECT DISTINCT s.student_id
+                FROM students s
+                INNER JOIN parents p ON s.student_id = p.student_id
+                WHERE p.email = %s
+                  AND LOWER(TRIM(COALESCE(s.status, 'in session'))) IN ('in session', 'active', '')
+                """,
+                (pem,),
+            )
+            for row in cursor.fetchall() or []:
+                sid = row.get('student_id') if isinstance(row, dict) else (row[0] if row else None)
+                _add(sid)
+        except Exception as e:
+            print(f"_parent_notification_student_ids parents: {e}")
+
+    if user_id:
+        try:
+            cursor.execute(
+                "SELECT student_id FROM users WHERE id = %s AND role = 'parent' LIMIT 1",
+                (int(user_id),),
+            )
+            ur = cursor.fetchone()
+            if ur:
+                _add(ur.get('student_id') if isinstance(ur, dict) else ur[0])
+        except Exception as e:
+            print(f"_parent_notification_student_ids users: {e}")
+
+    return sids
+
+
+def _fetch_parent_fee_deadline_notification_for_student(cursor, student_id):
+    """Fee payment deadline alert for one student (parent hub)."""
+    detail = _fetch_parent_child_fee_details(cursor, student_id)
+    if not detail:
+        return None
+    fs = detail.get('fee_structure')
+    if not fs:
+        return None
+    deadline = _coerce_to_date(fs.get('payment_deadline'))
+    if not deadline:
+        return None
+    balance = float(detail.get('balance') or 0)
+    if balance <= 0:
+        return None
+
+    today = date_cls.today()
+    days_until = (deadline - today).days
+    payment_status = detail.get('payment_status') or 'pending'
+    fee_name = (fs.get('fee_name') or 'School fees').strip()
+    deadline_display = fs.get('payment_deadline_formatted') or _format_parent_portal_date(deadline)
+    student_name = (detail.get('full_name') or 'Your child').strip()
+    balance_display = f'KES {balance:,.2f}'
+
+    if payment_status == 'overdue' or days_until < 0:
+        urgency = 'overdue'
+        title = 'FEE PAYMENT OVERDUE'
+        subtitle = f'Deadline was {deadline_display} · {balance_display} outstanding'
+    elif days_until == 0:
+        urgency = 'due_soon'
+        title = 'FEE PAYMENT DUE TODAY'
+        subtitle = f'{fee_name} · {balance_display} outstanding'
+    elif days_until <= 7:
+        urgency = 'due_soon'
+        day_word = 'day' if days_until == 1 else 'days'
+        title = 'FEE PAYMENT DUE SOON'
+        subtitle = f'Due in {days_until} {day_word} ({deadline_display}) · {balance_display} outstanding'
+    else:
+        urgency = 'upcoming'
+        title = 'FEE PAYMENT DEADLINE'
+        subtitle = f'Due {deadline_display} · {balance_display} outstanding'
+
+    return {
+        'type': 'fee_deadline',
+        'urgency': urgency,
+        'title': title,
+        'subtitle': subtitle,
+        'student_id': detail.get('student_id'),
+        'student_name': student_name,
+        'fee_name': fee_name,
+        'payment_deadline': deadline,
+        'payment_deadline_display': deadline_display,
+        'balance': balance,
+        'balance_display': balance_display,
+        'payment_status': payment_status,
+        'payment_status_label': detail.get('payment_status_label') or '',
+        'days_until': days_until,
+    }
+
+
+def _fetch_parent_fee_deadline_notifications(
+    cursor, parent_email=None, student_id=None, user_id=None,
+):
+    """Fee deadline alerts for a parent's child(ren) with outstanding balances."""
+    notes = []
+    for sid in _parent_notification_student_ids(cursor, parent_email, student_id, user_id):
+        note = _fetch_parent_fee_deadline_notification_for_student(cursor, sid)
+        if note:
+            notes.append(note)
+    notes.sort(
+        key=lambda n: (
+            0 if n.get('urgency') == 'overdue' else 1 if n.get('urgency') == 'due_soon' else 2,
+            n.get('payment_deadline') or date_cls.max,
+        ),
+    )
+    return notes
+
+
+def _sql_exam_gazetted_only_clause(exam_alias='e'):
+    """SQL fragment: only exams whose results were officially gazetted."""
+    alias = (exam_alias or 'e').strip() or 'e'
+    return f" AND LOWER(TRIM(COALESCE({alias}.status, ''))) = 'gazetted' "
+
+
+def _fetch_parent_gazetted_exam_notifications(
+    cursor, parent_email=None, student_id=None, user_id=None, limit=8,
+):
+    """Notify parents when deputy head gazettes exam results for their child(ren)."""
+    ensure_exams_gazetted_status_enum(cursor)
+    ensure_exams_results_gazetted_columns(cursor)
+    sids = _parent_notification_student_ids(cursor, parent_email, student_id, user_id)
+    if not sids:
+        return []
+    limit = max(1, min(int(limit or 8), 20))
+    placeholders = ','.join(['%s'] * len(sids))
+    try:
+        cursor.execute(
+            f"""
+            SELECT
+                sm.student_id,
+                s.full_name AS student_name,
+                e.exam_name,
+                e.exam_type,
+                e.academic_year_id,
+                e.term_id,
+                ay.year_name,
+                t.term_name,
+                MAX(e.results_gazetted_at) AS gazetted_at
+            FROM student_marks sm
+            INNER JOIN exams e ON sm.exam_id = e.id
+            INNER JOIN students s ON sm.student_id = s.student_id
+            LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+            LEFT JOIN terms t ON e.term_id = t.id
+            WHERE TRIM(sm.student_id) IN ({placeholders})
+              AND LOWER(TRIM(COALESCE(e.status, ''))) = 'gazetted'
+            GROUP BY sm.student_id, s.full_name, e.exam_name, e.exam_type,
+                     e.academic_year_id, e.term_id, ay.year_name, t.term_name
+            ORDER BY gazetted_at DESC
+            LIMIT %s
+            """,
+            tuple(sids) + (limit,),
+        )
+        rows = cursor.fetchall() or []
+    except Exception as e:
+        print(f"_fetch_parent_gazetted_exam_notifications: {e}")
+        return []
+
+    notes = []
+    for row in rows:
+        if isinstance(row, dict):
+            sid = row.get('student_id')
+            student_name = (row.get('student_name') or 'Your child').strip()
+            exam_name = (row.get('exam_name') or 'Exam').strip()
+            exam_type = (row.get('exam_type') or '').strip()
+            year_name = (row.get('year_name') or '').strip()
+            term_name = (row.get('term_name') or '').strip()
+            gazetted_at = row.get('gazetted_at')
+        else:
+            sid = row[0] if row else None
+            student_name = (row[1] if len(row) > 1 else 'Your child') or 'Your child'
+            exam_name = (row[2] if len(row) > 2 else 'Exam') or 'Exam'
+            exam_type = (row[3] if len(row) > 3 else '') or ''
+            year_name = (row[6] if len(row) > 6 else '') or ''
+            term_name = (row[7] if len(row) > 7 else '') or ''
+            gazetted_at = row[8] if len(row) > 8 else None
+        if not sid:
+            continue
+        period_bits = [x for x in (year_name, term_name) if x]
+        period_label = ' · '.join(period_bits) if period_bits else ''
+        subtitle_parts = [x for x in (period_label, exam_type) if x]
+        if gazetted_at and hasattr(gazetted_at, 'strftime'):
+            released_display = gazetted_at.strftime('%d %b %Y')
+        elif gazetted_at:
+            released_display = str(gazetted_at)[:10]
+        else:
+            released_display = ''
+        notes.append({
+            'type': 'exam_results',
+            'title': 'EXAM RESULTS RELEASED',
+            'exam_name': exam_name,
+            'exam_type': exam_type,
+            'student_id': sid,
+            'student_name': student_name,
+            'year_name': year_name,
+            'term_name': term_name,
+            'period_label': period_label,
+            'subtitle': ' · '.join(subtitle_parts) if subtitle_parts else 'Official results are now available',
+            'gazetted_at': gazetted_at,
+            'gazetted_at_display': released_display,
+        })
+    return notes
+
+
+def _fetch_parent_hub_notifications(
+    cursor, parent_email=None, student_id=None, user_id=None, limit=12,
+):
+    """Merged parent hub feed: fee deadlines + gazetted exam results + academic calendar updates."""
+    limit = max(1, min(int(limit or 12), 30))
+    items = []
+
+    for note in _fetch_parent_fee_deadline_notifications(
+        cursor, parent_email, student_id, user_id,
+    ):
+        items.append(note)
+
+    for note in _fetch_parent_gazetted_exam_notifications(
+        cursor, parent_email, student_id, user_id, limit=limit,
+    ):
+        items.append(note)
+
+    for act in _fetch_parent_calendar_notifications(
+        cursor, parent_email, student_id, user_id=user_id, limit=limit,
+    ):
+        entry = dict(act)
+        entry['type'] = 'calendar'
+        items.append(entry)
+
+    def _hub_sort_key(item):
+        if item.get('type') == 'fee_deadline':
+            urgency = item.get('urgency') or 'upcoming'
+            prio = {'overdue': 0, 'due_soon': 1, 'upcoming': 2}.get(urgency, 2)
+            return (prio, item.get('payment_deadline') or date_cls.max)
+        if item.get('type') == 'exam_results':
+            ga = item.get('gazetted_at')
+            sort_dt = _coerce_to_date(ga) if not hasattr(ga, 'year') else ga.date() if hasattr(ga, 'date') else ga
+            return (2, sort_dt or date_cls.min, item.get('exam_name') or '')
+        return (
+            3,
+            _coerce_to_date(item.get('activity_date')) or date_cls.max,
+            item.get('id') or 0,
+        )
+
+    items.sort(key=_hub_sort_key)
+    return items[:limit]
 
 
 ACADEMIC_CALENDAR_CATEGORY_LABELS = {
@@ -2849,7 +3600,8 @@ def _calendar_activity_json_safe(act):
         'category': act.get('category') or 'event',
         'category_label': act.get('category_label') or '',
         'term_label': act.get('term_label') or '',
-        'description': act.get('description') or '',
+        'activity_about': act.get('activity_about') or '',
+        'notify_parents': bool(act.get('notify_parents', True)),
         'color_badge': act.get('color_badge') or '#64748b',
         'color_bg': act.get('color_bg') or '#f1f5f9',
         'color_text': act.get('color_text') or '#334155',
@@ -2857,11 +3609,16 @@ def _calendar_activity_json_safe(act):
 
 
 def _academic_calendar_can_manage():
-    user_role = session.get('role', '').lower()
-    viewing_as = session.get('viewing_as_employee_role', '').lower()
+    user_role = (session.get('role') or '').lower()
+    viewing_as = (session.get('viewing_as_employee_role') or '').lower()
     if user_role == 'technician':
         return True
-    allowed = ('head of institution', 'deputy head of institution', 'secretary')
+    allowed = (
+        'head of institution',
+        'deputy head of institution',
+        'secretary',
+        'curriculum coordinator',
+    )
     return user_role in allowed or viewing_as in allowed
 
 
@@ -2943,34 +3700,43 @@ def _calendar_activity_row_dict(row):
         end_date = row.get('end_date')
         category = (row.get('category') or 'event').strip().lower()
         term_name = (row.get('term_name') or '').strip()
+        about = (row.get('activity_about') or row.get('description') or '').strip()
+        notify_raw = row.get('notify_parents')
+        notify_parents = True if notify_raw is None else bool(int(notify_raw))
+        title = (row.get('activity_title') or '').strip().upper()
         return {
             'id': row.get('id'),
             'academic_year_id': row.get('academic_year_id'),
             'term_id': row.get('term_id'),
             'term_name': term_name,
             'term_label': term_name or 'Whole year',
-            'activity_title': row.get('activity_title') or '',
+            'activity_title': title,
             'activity_date': activity_date,
             'activity_date_display': _format_date_short(activity_date) or '',
             'end_date': end_date,
             'end_date_display': _format_date_short(end_date) or '',
             'category': category,
             'category_label': ACADEMIC_CALENDAR_CATEGORY_LABELS.get(category, category.title()),
-            'description': (row.get('description') or '').strip(),
+            'activity_about': about,
+            'notify_parents': notify_parents,
             'activity_date_input': _calendar_date_input_value(activity_date),
             'end_date_input': _calendar_date_input_value(end_date),
         }
-    term_name = (row[8] if len(row) > 8 else '') or ''
+    term_name = (row[9] if len(row) > 9 else '') or ''
     category = (row[6] if len(row) > 6 else 'event') or 'event'
     activity_date_val = row[4] if len(row) > 4 else None
     end_date_val = row[5] if len(row) > 5 else None
+    about = ((row[7] if len(row) > 7 else '') or '').strip()
+    notify_raw = row[8] if len(row) > 8 else 1
+    notify_parents = True if notify_raw is None else bool(int(notify_raw))
+    title = ((row[3] if len(row) > 3 else '') or '').strip().upper()
     return {
         'id': row[0] if len(row) > 0 else None,
         'academic_year_id': row[1] if len(row) > 1 else None,
         'term_id': row[2] if len(row) > 2 else None,
         'term_name': term_name,
         'term_label': term_name or 'Whole year',
-        'activity_title': row[3] if len(row) > 3 else '',
+        'activity_title': title,
         'activity_date': activity_date_val,
         'activity_date_display': _format_date_short(activity_date_val) or '',
         'activity_date_input': _calendar_date_input_value(activity_date_val),
@@ -2979,7 +3745,8 @@ def _calendar_activity_row_dict(row):
         'end_date_input': _calendar_date_input_value(end_date_val),
         'category': category,
         'category_label': ACADEMIC_CALENDAR_CATEGORY_LABELS.get(category, category.title()),
-        'description': (row[7] if len(row) > 7 else '') or '',
+        'activity_about': about,
+        'notify_parents': notify_parents,
     }
 
 
@@ -2990,11 +3757,13 @@ def _calendar_date_input_value(value):
 
 def _parse_calendar_activity_form(form):
     """Parse academic calendar activity fields from a request form."""
-    title = (form.get('activity_title') or '').strip()
+    title = (form.get('activity_title') or '').strip().upper()
     activity_date = (form.get('activity_date') or '').strip()
     end_date = (form.get('end_date') or '').strip() or None
     category = (form.get('category') or 'event').strip().lower()
-    description = (form.get('description') or '').strip()
+    activity_about = (form.get('activity_about') or '').strip()
+    notify_raw = (form.get('notify_parents') or '').strip().lower()
+    notify_parents = notify_raw in ('1', 'on', 'true', 'yes')
     term_id_raw = form.get('term_id', type=int)
     year_id = form.get('academic_year_id', type=int)
     if category not in ACADEMIC_CALENDAR_CATEGORY_LABELS:
@@ -3014,7 +3783,8 @@ def _parse_calendar_activity_form(form):
         'activity_date': activity_date,
         'end_date': end_date,
         'category': category,
-        'description': description or None,
+        'activity_about': activity_about or None,
+        'notify_parents': notify_parents,
     }, None
 
 
@@ -3041,7 +3811,7 @@ def _fetch_academic_calendar_activities(cursor, academic_year_id, term_id=None):
         return []
     query = """
         SELECT a.id, a.academic_year_id, a.term_id, a.activity_title, a.activity_date, a.end_date,
-               a.category, a.description, t.term_name
+               a.category, a.activity_about, a.notify_parents, t.term_name
         FROM academic_calendar_activities a
         LEFT JOIN terms t ON t.id = a.term_id
         WHERE a.academic_year_id = %s AND COALESCE(a.status, 'active') = 'active'
@@ -5941,6 +6711,319 @@ def ensure_exams_marks_lock_at_column(cursor):
         msg = str(e).lower()
         if 'duplicate column' not in msg and 'already exists' not in msg:
             print(f"Note: exams.marks_lock_at column: {e}")
+
+
+def ensure_exams_submitted_status_enum(cursor):
+    """Allow exams.status = 'submitted' when curriculum coordinator authorizes release."""
+    ensure_exams_gazetted_status_enum(cursor)
+
+
+def ensure_exams_gazetted_status_enum(cursor):
+    """Allow exams.status = 'submitted' and 'gazetted' (deputy gazettement)."""
+    try:
+        cursor.execute("""
+            ALTER TABLE exams
+            MODIFY COLUMN status ENUM(
+                'scheduled', 'ongoing', 'completed', 'cancelled', 'submitted', 'gazetted'
+            ) DEFAULT 'scheduled'
+        """)
+    except Exception as e:
+        print(f"Note: exams.status gazetted enum: {e}")
+
+
+def ensure_exams_results_gazetted_columns(cursor):
+    """Audit columns when deputy head gazettes (releases) exam results."""
+    try:
+        cursor.execute("ALTER TABLE exams ADD COLUMN results_gazetted_at DATETIME NULL")
+    except Exception as e:
+        msg = str(e).lower()
+        if 'duplicate column' not in msg and 'already exists' not in msg:
+            print(f"Note: exams.results_gazetted_at: {e}")
+    try:
+        cursor.execute("ALTER TABLE exams ADD COLUMN results_gazetted_by INT NULL")
+    except Exception as e:
+        msg = str(e).lower()
+        if 'duplicate column' not in msg and 'already exists' not in msg:
+            print(f"Note: exams.results_gazetted_by: {e}")
+
+
+def _exam_group_is_submitted(cursor, exam_name, academic_year_id, term_id):
+    """True when CC has authorized release (submitted or gazetted by deputy)."""
+    cursor.execute("""
+        SELECT 1 FROM exams
+        WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+          AND status IN ('submitted', 'gazetted')
+        LIMIT 1
+    """, (exam_name, academic_year_id, term_id))
+    return cursor.fetchone() is not None
+
+
+def _exam_group_is_gazetted(cursor, exam_name, academic_year_id, term_id):
+    cursor.execute("""
+        SELECT 1 FROM exams
+        WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+          AND status = 'gazetted'
+        LIMIT 1
+    """, (exam_name, academic_year_id, term_id))
+    return cursor.fetchone() is not None
+
+
+def _exam_group_ready_for_gazette(cursor, exam_name, academic_year_id, term_id):
+    """All allocation rows submitted and not yet gazetted."""
+    cursor.execute("""
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) AS submitted_cnt,
+            SUM(CASE WHEN status = 'gazetted' THEN 1 ELSE 0 END) AS gazetted_cnt
+        FROM exams
+        WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+    """, (exam_name, academic_year_id, term_id))
+    row = cursor.fetchone()
+    if not row:
+        return False
+    if isinstance(row, dict):
+        total = int(row.get('total') or 0)
+        submitted_cnt = int(row.get('submitted_cnt') or 0)
+        gazetted_cnt = int(row.get('gazetted_cnt') or 0)
+    else:
+        total = int(row[0] or 0)
+        submitted_cnt = int(row[1] or 0)
+        gazetted_cnt = int(row[2] or 0) if len(row) > 2 else 0
+    return total > 0 and gazetted_cnt == 0 and submitted_cnt == total
+
+
+def _exam_group_can_return(cursor, exam_name, academic_year_id, term_id):
+    """True when exam is submitted or gazetted and may be returned for CC editing."""
+    return _exam_group_is_submitted(cursor, exam_name, academic_year_id, term_id)
+
+
+def _aggregate_exam_group_status(statuses):
+    """Pick a single display status for a registered exam group."""
+    normalized = [str(s or 'scheduled').strip().lower() for s in (statuses or []) if s is not None]
+    if not normalized:
+        return 'scheduled'
+    if any(s == 'gazetted' for s in normalized):
+        return 'gazetted'
+    if any(s == 'submitted' for s in normalized):
+        return 'submitted'
+    if all(s == 'cancelled' for s in normalized):
+        return 'cancelled'
+    if all(s == 'completed' for s in normalized):
+        return 'completed'
+    if any(s == 'ongoing' for s in normalized):
+        return 'ongoing'
+    if any(s == 'completed' for s in normalized):
+        return 'completed'
+    return 'scheduled'
+
+
+def fetch_registered_exam_groups_overview(cursor):
+    """
+    Registered exams grouped by exam_name + exam_type + academic_year_id + term_id.
+    Returns list of dicts sorted by latest exam_date desc.
+    """
+    ensure_exams_marks_lock_at_column(cursor)
+    ensure_exams_gazetted_status_enum(cursor)
+    ensure_exams_results_gazetted_columns(cursor)
+    cursor.execute("""
+        SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.status,
+               e.academic_year_id, e.term_id,
+               COALESCE(e.is_locked, 0) AS is_locked, e.locked_at, e.marks_lock_at,
+               e.results_gazetted_at,
+               ay.year_name, t.term_name
+        FROM exams e
+        LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+        LEFT JOIN terms t ON e.term_id = t.id
+        ORDER BY e.exam_date DESC, e.exam_name ASC, e.id ASC
+    """)
+    rows = cursor.fetchall() or []
+    groups = {}
+    for row in rows:
+        if isinstance(row, dict):
+            exam_name = (row.get('exam_name') or '').strip()
+            exam_type = (row.get('exam_type') or '').strip().upper()
+            ay_id = row.get('academic_year_id')
+            term_id = row.get('term_id')
+            exam_date = row.get('exam_date')
+            status = row.get('status')
+            is_locked = bool(row.get('is_locked'))
+            locked_at = row.get('locked_at')
+            marks_lock_at = row.get('marks_lock_at')
+            results_gazetted_at = row.get('results_gazetted_at')
+            year_name = row.get('year_name') or ''
+            term_name = row.get('term_name') or ''
+            row_id = row.get('id')
+        else:
+            exam_name = (row[1] or '').strip()
+            exam_type = (row[2] or '').strip().upper()
+            ay_id = row[5] if len(row) > 5 else None
+            term_id = row[6] if len(row) > 6 else None
+            exam_date = row[3] if len(row) > 3 else None
+            status = row[4] if len(row) > 4 else 'scheduled'
+            is_locked = bool(row[7]) if len(row) > 7 else False
+            locked_at = row[8] if len(row) > 8 else None
+            marks_lock_at = row[9] if len(row) > 9 else None
+            results_gazetted_at = row[10] if len(row) > 10 else None
+            year_name = row[11] if len(row) > 11 else ''
+            term_name = row[12] if len(row) > 12 else ''
+            row_id = row[0]
+
+        if not exam_name or ay_id is None or term_id is None:
+            continue
+        key = f"{exam_name}|{exam_type}|{ay_id}|{term_id}"
+        if exam_date and hasattr(exam_date, 'strftime'):
+            exam_date_str = exam_date.strftime('%Y-%m-%d')
+        else:
+            exam_date_str = str(exam_date) if exam_date else ''
+
+        if key not in groups:
+            groups[key] = {
+                'id': row_id,
+                'exam_name': exam_name,
+                'exam_type': exam_type,
+                'academic_year_id': int(ay_id),
+                'term_id': int(term_id),
+                'year_name': year_name,
+                'term_name': term_name,
+                'allocation_count': 0,
+                'statuses': [],
+                'is_locked': False,
+                'locked_at': None,
+                'marks_lock_at': None,
+                'results_gazetted_at': None,
+                'earliest_date': exam_date_str,
+                'latest_date': exam_date_str,
+            }
+        g = groups[key]
+        g['allocation_count'] += 1
+        g['statuses'].append(status)
+        g['is_locked'] = g['is_locked'] or is_locked
+        if locked_at and (not g['locked_at'] or str(locked_at) > str(g['locked_at'])):
+            g['locked_at'] = locked_at
+        if marks_lock_at:
+            cur = g['marks_lock_at']
+            if not cur or str(marks_lock_at) > str(cur):
+                g['marks_lock_at'] = marks_lock_at
+        if results_gazetted_at:
+            cur_g = g['results_gazetted_at']
+            if not cur_g or str(results_gazetted_at) > str(cur_g):
+                g['results_gazetted_at'] = results_gazetted_at
+        if exam_date_str:
+            if not g['earliest_date'] or exam_date_str < g['earliest_date']:
+                g['earliest_date'] = exam_date_str
+            if not g['latest_date'] or exam_date_str > g['latest_date']:
+                g['latest_date'] = exam_date_str
+
+    out = []
+    for g in groups.values():
+        locked_at = g.pop('locked_at', None)
+        marks_lock_at = g.pop('marks_lock_at', None)
+        gazetted_at = g.pop('results_gazetted_at', None)
+        statuses = g.pop('statuses', [])
+        g['status'] = _aggregate_exam_group_status(statuses)
+        g['is_gazetted'] = g['status'] == 'gazetted'
+        g['is_submitted'] = g['status'] == 'submitted'
+        g['can_gazette'] = g['status'] == 'submitted'
+        g['can_return'] = g['status'] in ('submitted', 'gazetted')
+        if locked_at and hasattr(locked_at, 'strftime'):
+            g['locked_at'] = locked_at.strftime('%Y-%m-%d %H:%M')
+        elif locked_at:
+            g['locked_at'] = str(locked_at)
+        else:
+            g['locked_at'] = None
+        if marks_lock_at and hasattr(marks_lock_at, 'strftime'):
+            g['marks_lock_at'] = marks_lock_at.strftime('%Y-%m-%d %H:%M')
+        elif marks_lock_at:
+            g['marks_lock_at'] = str(marks_lock_at)
+        else:
+            g['marks_lock_at'] = None
+        if gazetted_at and hasattr(gazetted_at, 'strftime'):
+            g['results_gazetted_at'] = gazetted_at.strftime('%Y-%m-%d %H:%M')
+        elif gazetted_at:
+            g['results_gazetted_at'] = str(gazetted_at)
+        else:
+            g['results_gazetted_at'] = None
+        out.append(g)
+    out.sort(key=lambda x: (x.get('latest_date') or '', x.get('exam_name') or ''), reverse=True)
+    return out
+
+
+def fetch_exam_group_classes(cursor, exam_name, academic_year_id, term_id, exam_type=None):
+    """Academic levels (classes) that have allocations for a registered exam group."""
+    exam_name = (exam_name or '').strip().upper()
+    if not exam_name or not academic_year_id or not term_id:
+        return None, []
+    filter_type = exam_type is not None and str(exam_type).strip() != ''
+    exam_type_key = (exam_type or '').strip().upper() if filter_type else None
+    params = [exam_name, int(academic_year_id), int(term_id)]
+    type_clause = ''
+    if filter_type:
+        type_clause = " AND UPPER(TRIM(COALESCE(e.exam_type, ''))) = %s"
+        params.append(exam_type_key)
+    cursor.execute(f"""
+        SELECT e.academic_level_id,
+               MIN(e.id) AS exam_row_id,
+               COUNT(*) AS subject_slots,
+               al.level_name, al.level_category
+        FROM exams e
+        INNER JOIN academic_levels al ON al.id = e.academic_level_id
+        WHERE e.exam_name = %s
+          AND e.academic_year_id = %s
+          AND e.term_id = %s
+          {type_clause}
+        GROUP BY e.academic_level_id, al.level_name, al.level_category
+        ORDER BY al.level_name ASC, al.level_category ASC
+    """, tuple(params))
+    rows = cursor.fetchall() or []
+    classes = []
+    for row in rows:
+        if isinstance(row, dict):
+            level_id = row.get('academic_level_id')
+            level_name = row.get('level_name') or ''
+            level_category = row.get('level_category') or ''
+            exam_row_id = row.get('exam_row_id')
+            subject_slots = int(row.get('subject_slots') or 0)
+        else:
+            level_id = row[0]
+            exam_row_id = row[1]
+            subject_slots = int(row[2] or 0)
+            level_name = row[3] if len(row) > 3 else ''
+            level_category = row[4] if len(row) > 4 else ''
+        student_count = 0
+        if level_name:
+            cursor.execute(
+                "SELECT COUNT(*) AS cnt FROM students WHERE current_grade = %s",
+                (level_name,),
+            )
+            sr = cursor.fetchone()
+            student_count = int((sr.get('cnt') if isinstance(sr, dict) else sr[0]) or 0)
+        classes.append({
+            'academic_level_id': int(level_id),
+            'level_name': level_name,
+            'level_category': level_category,
+            'exam_row_id': int(exam_row_id) if exam_row_id else None,
+            'subject_slots': subject_slots,
+            'student_count': student_count,
+        })
+    meta = {
+        'exam_name': exam_name,
+        'exam_type': exam_type_key or '',
+        'academic_year_id': int(academic_year_id),
+        'term_id': int(term_id),
+    }
+    cursor.execute(
+        "SELECT year_name FROM academic_years WHERE id = %s LIMIT 1",
+        (int(academic_year_id),),
+    )
+    yr = cursor.fetchone()
+    meta['year_name'] = (yr.get('year_name') if isinstance(yr, dict) else (yr[0] if yr else '')) or ''
+    cursor.execute(
+        "SELECT term_name FROM terms WHERE id = %s LIMIT 1",
+        (int(term_id),),
+    )
+    tr = cursor.fetchone()
+    meta['term_name'] = (tr.get('term_name') if isinstance(tr, dict) else (tr[0] if tr else '')) or ''
+    return meta, classes
 
 
 def _exam_group_max_is_locked_and_marks_lock_at(cursor, exam_id):
@@ -11353,7 +12436,7 @@ def init_db():
                     supervisor_id INT,
                     venue VARCHAR(255),
                     instructions TEXT,
-                    status ENUM('scheduled', 'ongoing', 'completed', 'cancelled') DEFAULT 'scheduled',
+                    status ENUM('scheduled', 'ongoing', 'completed', 'cancelled', 'submitted', 'gazetted') DEFAULT 'scheduled',
                     created_by INT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -11404,6 +12487,7 @@ def init_db():
                 cursor.execute("ALTER TABLE exams ADD COLUMN marks_lock_at DATETIME NULL")
             except Exception as e:
                 print(f"Note: exams.marks_lock_at may already exist: {e}")
+            ensure_exams_gazetted_status_enum(cursor)
             
             # Create exam_supervisors table
             cursor.execute("""
@@ -11446,6 +12530,7 @@ def init_db():
 
             ensure_class_teacher_assignments_table(cursor)
             ensure_academic_calendar_activities_table(cursor)
+            ensure_academic_calendar_activity_levels_table(cursor)
 
             # Create subject_academic_levels junction table
             cursor.execute("""
@@ -13057,35 +14142,65 @@ def _student_display_initials(full_name):
     return name[:2].upper()
 
 
-def _parent_child_linked_to_email(cursor, student_id, parent_email):
-    """True if student_id is linked to this parent portal email."""
+def _parent_in_session_student_sql(student_alias='s'):
+    """SQL fragment: student considered active for parent portal lists."""
+    alias = (student_alias or 's').strip() or 's'
+    return (
+        f"LOWER(TRIM(COALESCE({alias}.status, 'in session'))) "
+        f"IN ('in session', 'active', '')"
+    )
+
+
+def _parent_child_linked_to_email(cursor, student_id, parent_email, user_id=None):
+    """True if student_id is linked to this parent portal account."""
     sid = (student_id or '').strip()
     pem = (parent_email or '').strip()
-    if not sid or not pem:
+    if not sid:
         return False
-    try:
-        cursor.execute(
-            "SELECT 1 FROM parents WHERE student_id = %s AND email = %s LIMIT 1",
-            (sid, pem),
-        )
-        return bool(cursor.fetchone())
-    except Exception:
-        return False
+    if pem:
+        try:
+            cursor.execute(
+                """
+                SELECT 1 FROM parents
+                WHERE student_id = %s AND LOWER(TRIM(email)) = LOWER(TRIM(%s))
+                LIMIT 1
+                """,
+                (sid, pem),
+            )
+            if cursor.fetchone():
+                return True
+        except Exception:
+            pass
+    if user_id:
+        try:
+            cursor.execute(
+                "SELECT student_id FROM users WHERE id = %s AND role = 'parent' LIMIT 1",
+                (int(user_id),),
+            )
+            ur = cursor.fetchone()
+            usid = (ur.get('student_id') if isinstance(ur, dict) else (ur[0] if ur else '')) or ''
+            if usid.strip().lower() == sid.lower():
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def _fetch_parent_linked_children(cursor, parent_email, user_id=None):
     """In-session children for parent dashboard switcher."""
     children = []
     pem = (parent_email or '').strip()
+    status_clause = _parent_in_session_student_sql('s')
     if pem:
         try:
             cursor.execute(
-                """
+                f"""
                 SELECT s.student_id, s.full_name, s.current_grade, s.gender, s.status,
                        p.full_name AS parent_name, p.phone AS parent_phone
                 FROM students s
                 INNER JOIN parents p ON s.student_id = p.student_id
-                WHERE p.email = %s AND s.status = 'in session'
+                WHERE LOWER(TRIM(p.email)) = LOWER(TRIM(%s))
+                  AND {status_clause}
                 ORDER BY s.full_name ASC
                 """,
                 (pem,),
@@ -13112,9 +14227,11 @@ def _fetch_parent_linked_children(cursor, parent_email, user_id=None):
             usid = (ur.get('student_id') or '').strip() if ur else ''
             if usid:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT student_id, full_name, current_grade, gender, status
-                    FROM students WHERE student_id = %s AND status = 'in session' LIMIT 1
+                    FROM students
+                    WHERE student_id = %s AND {_parent_in_session_student_sql()}
+                    LIMIT 1
                     """,
                     (usid,),
                 )
@@ -13407,7 +14524,7 @@ def _parent_dashboard_spotlight_student(
         target_sid = (selected_student_id or '').strip()
     else:
         sel = (selected_student_id or '').strip()
-        if sel and _parent_child_linked_to_email(cursor, sel, parent_email):
+        if sel and _parent_child_linked_to_email(cursor, sel, parent_email, user_id=user_id):
             target_sid = sel
         if user_id:
             cursor.execute(
@@ -13420,10 +14537,11 @@ def _parent_dashboard_spotlight_student(
         pem = (parent_email or '').strip()
         if not target_sid and pem:
             cursor.execute(
-                """
+                f"""
                 SELECT s.student_id FROM students s
                 INNER JOIN parents p ON s.student_id = p.student_id
-                WHERE p.email = %s AND s.status = 'in session'
+                WHERE LOWER(TRIM(p.email)) = LOWER(TRIM(%s))
+                  AND {_parent_in_session_student_sql('s')}
                 ORDER BY s.full_name ASC
                 LIMIT 1
                 """,
@@ -14607,7 +15725,21 @@ def pwa_service_worker():
 def home():
     # Staff who signed in via the employee portal have employees.employee_id in session (not parent/student users).
     employee_in_portal = bool(session.get('employee_id'))
-    return render_template('home.html', employee_in_portal=employee_in_portal)
+    gallery_items = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                gallery_items = load_school_gallery_items(cursor)
+        except Exception as e:
+            print(f"home gallery: {e}")
+        finally:
+            connection.close()
+    return render_template(
+        'home.html',
+        employee_in_portal=employee_in_portal,
+        gallery_items=gallery_items,
+    )
 
 
 @app.route('/search')
@@ -14689,7 +15821,26 @@ def news():
 
 @app.route('/gallery')
 def gallery():
-    return redirect(url_for('login'))
+    gallery_items = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                gallery_items = load_school_gallery_items(cursor)
+        except Exception as e:
+            print(f"gallery page: {e}")
+        finally:
+            connection.close()
+    school_name = (get_school_settings().get('school_name') or 'Our school').strip()
+    return render_template(
+        'gallery.html',
+        gallery_items=gallery_items,
+        gallery_page_title=f'Gallery — {school_name}',
+        gallery_meta_description=(
+            f'Photo gallery of {school_name}: campus life, classrooms, sports, arts, '
+            f'and community events. Explore our school online.'
+        ),
+    )
 
 @app.route('/team')
 def team():
@@ -16936,6 +18087,34 @@ def dashboard_parent():
     exam_progress_student_id = library_student_id
     class_exam_results_student_id = library_student_id
 
+    parent_calendar_notifications = []
+    parent_hub_notifications = []
+    notify_sid = library_student_id or None
+    if notify_sid or parent_email or session.get('user_id'):
+        notif_conn = get_db_connection()
+        if notif_conn:
+            try:
+                with notif_conn.cursor() as notif_cursor:
+                    ensure_academic_calendar_activities_table(notif_cursor)
+                    ensure_academic_calendar_activity_levels_table(notif_cursor)
+                    notif_conn.commit()
+                    parent_hub_notifications = _fetch_parent_hub_notifications(
+                        notif_cursor,
+                        parent_email,
+                        notify_sid,
+                        user_id=session.get('user_id'),
+                    )
+                    parent_calendar_notifications = [
+                        n for n in parent_hub_notifications if n.get('type') == 'calendar'
+                    ]
+            except Exception as nfe:
+                print(f"dashboard_parent calendar notifications: {nfe}")
+            finally:
+                try:
+                    notif_conn.close()
+                except Exception:
+                    pass
+
     return render_template('dashboards/dashboard_parent.html',
                          is_technician=is_technician,
                          current_view_role=current_view_role,
@@ -16957,6 +18136,8 @@ def dashboard_parent():
                          spotlight_subject_progress=spotlight_subject_progress,
                          parent_class_progress=parent_class_progress,
                          spotlight_attendance=spotlight_attendance,
+                         parent_calendar_notifications=parent_calendar_notifications,
+                         parent_hub_notifications=parent_hub_notifications,
                          mpesa_daraja_enabled=_get_daraja_settings_from_flag(),
                          mpesa_sandbox_confirm=_mpesa_sandbox_manual_confirm_enabled())
 
@@ -33408,76 +34589,29 @@ def _parent_dashboard_auth():
     }
 
 
-def _parent_list_linked_children(cursor, parent_email):
-    """Basic child rows for parent portal list pages."""
-    children = []
-    pem = (parent_email or '').strip()
-    if not pem:
-        return children
-    try:
-        cursor.execute(
-            """
-            SELECT DISTINCT s.student_id, s.full_name, s.current_grade
-            FROM students s
-            INNER JOIN parents p ON s.student_id = p.student_id
-            WHERE p.email = %s AND s.status = 'in session'
-            ORDER BY s.full_name ASC
-            """,
-            (pem,),
-        )
-        for row in cursor.fetchall() or []:
-            if isinstance(row, dict):
-                children.append({
-                    'student_id': (row.get('student_id') or '').strip(),
-                    'full_name': (row.get('full_name') or '').strip(),
-                    'current_grade': (row.get('current_grade') or '').strip(),
-                })
-            else:
-                children.append({
-                    'student_id': (row[0] or '').strip(),
-                    'full_name': (row[1] or '').strip(),
-                    'current_grade': (row[2] or '').strip(),
-                })
-    except Exception as e:
-        print(f"_parent_list_linked_children: {e}")
-    return children
+def _parent_list_linked_children(cursor, parent_email, user_id=None):
+    """Basic child rows for parent portal list pages (email link + users.student_id fallback)."""
+    linked = _fetch_parent_linked_children(cursor, parent_email, user_id=user_id)
+    return [
+        {
+            'student_id': (ch.get('student_id') or '').strip(),
+            'full_name': (ch.get('full_name') or '').strip(),
+            'current_grade': (ch.get('current_grade') or '').strip(),
+        }
+        for ch in linked
+        if (ch.get('student_id') or '').strip()
+    ]
 
 
-def _parent_may_view_student(cursor, parent_email, student_id):
+def _parent_may_view_student(cursor, parent_email, student_id, user_id=None):
     """Return (allowed, sibling_count) for a parent viewing one child."""
-    pem = (parent_email or '').strip()
-    sid = (student_id or '').strip()
-    if not pem or not sid:
-        return False, 0
-    sibling_count = 0
-    allowed = False
-    try:
-        cursor.execute(
-            """
-            SELECT COUNT(DISTINCT s.student_id) AS cnt
-            FROM students s
-            INNER JOIN parents p ON s.student_id = p.student_id
-            WHERE p.email = %s AND s.status = 'in session'
-            """,
-            (pem,),
-        )
-        r = cursor.fetchone()
-        sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
-
-        cursor.execute(
-            """
-            SELECT 1 FROM students s
-            INNER JOIN parents p ON s.student_id = p.student_id
-            WHERE p.email = %s
-              AND LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s))
-              AND s.status = 'in session'
-            LIMIT 1
-            """,
-            (pem, sid),
-        )
-        allowed = cursor.fetchone() is not None
-    except Exception as e:
-        print(f"_parent_may_view_student: {e}")
+    children = _fetch_parent_linked_children(cursor, parent_email, user_id=user_id)
+    sibling_count = len(children)
+    target = (student_id or '').strip().lower()
+    allowed = any(
+        (c.get('student_id') or '').strip().lower() == target
+        for c in children
+    )
     return allowed, sibling_count
 
 
@@ -33756,9 +34890,10 @@ def _parent_children_exam_summaries(student_ids):
                        COUNT(DISTINCT COALESCE(e.id, sm.exam_id)) AS exam_count,
                        COUNT(sm.id) AS mark_rows
                 FROM student_marks sm
-                LEFT JOIN exams e ON sm.exam_id = e.id
+                INNER JOIN exams e ON sm.exam_id = e.id
                 WHERE TRIM(sm.student_id) IN ({placeholders})
                   AND sm.exam_id IS NOT NULL
+                  AND LOWER(TRIM(COALESCE(e.status, ''))) = 'gazetted'
                 GROUP BY sm.student_id
                 """,
                 tuple(ids),
@@ -33775,9 +34910,11 @@ def _parent_children_exam_summaries(student_ids):
                 f"""
                 SELECT sm.student_id, sub.exam_total_marks, sm.marks
                 FROM student_marks sm
+                INNER JOIN exams e ON sm.exam_id = e.id
                 LEFT JOIN subjects sub ON sm.subject_id = sub.id
                 WHERE TRIM(sm.student_id) IN ({placeholders})
                   AND sm.marks IS NOT NULL
+                  AND LOWER(TRIM(COALESCE(e.status, ''))) = 'gazetted'
                 """,
                 tuple(ids),
             )
@@ -33937,7 +35074,9 @@ def _pick_default_exam_id_for_progress(exams_by_id, year_id, term_id, registered
     return _norm_db_int(scoped_sorted[0].get('id')) if scoped_sorted else None
 
 
-def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_school_defaults=False):
+def _fetch_student_progress_payload(
+    student_id, filter_args=None, use_implicit_school_defaults=False, gazetted_only=False,
+):
     """Load student marks and aggregates for progress / exam report (staff and parent views).
 
     When filter_args is set (e.g. request.args), optional GET filters narrow aggregates:
@@ -33946,6 +35085,8 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
     If use_implicit_school_defaults is True (parent exam progress), a visit with no filter query keys
     defaults to the school's current academic year, current term, and a sensible current exam for that scope.
     Use ?all=1 on the URL to show all marks without those defaults.
+
+    When gazetted_only is True (parent/student portals), only marks for exams with status gazetted are included.
     """
 
     def _row_dict_get(d, *names):
@@ -34006,6 +35147,10 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
                     }
 
                 if student:
+                    if gazetted_only:
+                        ensure_exams_gazetted_status_enum(cursor)
+                    exam_join = 'INNER JOIN' if gazetted_only else 'LEFT JOIN'
+                    gazette_sql = _sql_exam_gazetted_only_clause('e') if gazetted_only else ''
                     try:
                         cursor.execute(
                             """
@@ -34057,16 +35202,17 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
                     # Distinct exams for filter UI (reliable keys; separate from wide marks row shape).
                     try:
                         cursor.execute(
-                            """
+                            f"""
                             SELECT DISTINCT COALESCE(e.id, sm.exam_id) AS exam_id,
                                    e.exam_name, e.exam_type, e.exam_date,
                                    e.academic_year_id AS exam_academic_year_id, e.term_id AS exam_term_id,
                                    ay.year_name, t.term_name
                             FROM student_marks sm
-                            LEFT JOIN exams e ON sm.exam_id = e.id
+                            {exam_join} exams e ON sm.exam_id = e.id
                             LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
                             LEFT JOIN terms t ON e.term_id = t.id
                             WHERE TRIM(sm.student_id) = TRIM(%s) AND sm.exam_id IS NOT NULL
+                            {gazette_sql}
                             ORDER BY COALESCE(e.exam_date, sm.updated_at) DESC, COALESCE(e.id, sm.exam_id) DESC
                             """,
                             (student['student_id'],),
@@ -34076,8 +35222,11 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
                         print(f"_fetch_student_progress_payload exam_dropdown: {_exd}")
                         exam_dropdown_rows = []
 
+                    marks_where = "TRIM(sm.student_id) = TRIM(%s)"
+                    if gazetted_only:
+                        marks_where += " AND sm.exam_id IS NOT NULL"
                     cursor.execute(
-                        """
+                        f"""
                         SELECT ay.year_name, t.term_name, e.exam_name, e.exam_type, sub.subject_name, sub.subject_code,
                                sub.exam_total_marks, sm.marks,
                                COALESCE(e.id, sm.exam_id) AS exam_id,
@@ -34085,11 +35234,12 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
                                e.term_id AS exam_term_id, e.exam_date AS exam_date,
                                sm.subject_id AS subject_id
                         FROM student_marks sm
-                        LEFT JOIN exams e ON sm.exam_id = e.id
+                        {exam_join} exams e ON sm.exam_id = e.id
                         LEFT JOIN subjects sub ON sm.subject_id = sub.id
                         LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
                         LEFT JOIN terms t ON e.term_id = t.id
-                        WHERE TRIM(sm.student_id) = TRIM(%s)
+                        WHERE {marks_where}
+                        {gazette_sql}
                         ORDER BY COALESCE(e.exam_date, sm.updated_at) DESC, ay.year_name, t.term_name, e.exam_name, sub.subject_name
                         """,
                         (student['student_id'],),
@@ -34413,51 +35563,36 @@ def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_s
     }
 
 
-def _parent_exam_progress_access(parent_email, student_id):
+def _parent_exam_progress_access(parent_email, student_id, user_id=None):
     """Return (allowed, sibling_count) for parent exam progress views."""
-    allowed = False
-    sibling_count = 0
-    if not parent_email:
-        return allowed, sibling_count
     connection = get_db_connection()
     if not connection:
-        return allowed, sibling_count
+        return False, 0
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT COUNT(DISTINCT s.student_id) AS cnt
-                FROM students s
-                INNER JOIN parents p ON s.student_id = p.student_id
-                WHERE p.email = %s AND s.status = 'in session'
-                """,
-                (parent_email,),
+            children = _fetch_parent_linked_children(cursor, parent_email, user_id=user_id)
+            sibling_count = len(children)
+            target = (student_id or '').strip().lower()
+            allowed = any(
+                (c.get('student_id') or '').strip().lower() == target
+                for c in children
             )
-            r = cursor.fetchone()
-            sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
-            cursor.execute(
-                """
-                SELECT 1 FROM students s
-                INNER JOIN parents p ON s.student_id = p.student_id
-                WHERE p.email = %s AND LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s)) AND s.status = 'in session'
-                LIMIT 1
-                """,
-                (parent_email, student_id),
-            )
-            allowed = cursor.fetchone() is not None
+            return allowed, sibling_count
     except Exception as e:
         print(f"_parent_exam_progress_access: {e}")
+        return False, 0
     finally:
         try:
             connection.close()
         except Exception:
             pass
-    return allowed, sibling_count
 
 
 def _parent_exam_progress_json_response(student_id, filter_args):
-    """JSON payload for live parent exam progress filters."""
-    payload = _fetch_student_progress_payload(student_id, filter_args, use_implicit_school_defaults=False)
+    """JSON payload for live parent exam progress filters (gazetted results only)."""
+    payload = _fetch_student_progress_payload(
+        student_id, filter_args, use_implicit_school_defaults=False, gazetted_only=True,
+    )
     by_exam = []
     for i, ex in enumerate(payload.get('by_exam') or [], start=1):
         row = dict(ex) if isinstance(ex, dict) else {}
@@ -34499,23 +35634,17 @@ def parent_exam_progress():
         return redirect(url_for('home'))
 
     parent_email = ctx['parent_email']
+    user_id = session.get('user_id')
     children = []
     connection = get_db_connection()
-    if connection and parent_email:
+    if connection:
         try:
             with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT DISTINCT s.student_id, s.full_name, s.current_grade
-                    FROM students s
-                    INNER JOIN parents p ON s.student_id = p.student_id
-                    WHERE p.email = %s AND s.status = 'in session'
-                    ORDER BY s.full_name ASC
-                """, (parent_email,))
-                for row in cursor.fetchall() or []:
+                for ch in _fetch_parent_linked_children(cursor, parent_email, user_id=user_id):
                     children.append({
-                        'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
-                        'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
-                        'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+                        'student_id': ch.get('student_id'),
+                        'full_name': ch.get('full_name'),
+                        'current_grade': ch.get('current_grade'),
                     })
                 summaries = _parent_children_exam_summaries([c['student_id'] for c in children])
                 for c in children:
@@ -34555,19 +35684,22 @@ def parent_exam_progress_detail(student_id):
         return redirect(url_for('home'))
 
     parent_email = ctx['parent_email']
-    if not parent_email:
+    user_id = session.get('user_id')
+    if not parent_email and not user_id:
         flash('No linked parent account.', 'error')
         return redirect(parent_dashboard_path())
 
-    allowed, sibling_count = _parent_exam_progress_access(parent_email, student_id)
+    allowed, sibling_count = _parent_exam_progress_access(parent_email, student_id, user_id=user_id)
 
     if not allowed:
         flash('You cannot view exam progress for this student.', 'error')
         return redirect(parent_dashboard_path('exam-progress'))
 
     try:
-        # Parent view: all recorded exams by default (not only current term/exam).
-        payload = _fetch_student_progress_payload(student_id, request.args, use_implicit_school_defaults=False)
+        # Parent view: only officially gazetted exam results.
+        payload = _fetch_student_progress_payload(
+            student_id, request.args, use_implicit_school_defaults=False, gazetted_only=True,
+        )
     except Exception:
         flash('Error loading student progress.', 'error')
         return redirect(parent_dashboard_path('exam-progress'))
@@ -34654,15 +35786,221 @@ def parent_exam_progress_data(student_id):
     if ctx is None:
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
     parent_email = ctx.get('parent_email')
-    if not parent_email:
+    user_id = session.get('user_id')
+    if not parent_email and not user_id:
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
-    allowed, _sibling_count = _parent_exam_progress_access(parent_email, student_id)
+    allowed, _sibling_count = _parent_exam_progress_access(
+        parent_email, student_id, user_id=user_id,
+    )
     if not allowed:
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
     try:
         return jsonify(_parent_exam_progress_json_response(student_id, request.args))
     except Exception as e:
         print(f"parent_exam_progress_data: {e}")
+        return jsonify({'success': False, 'message': 'Error loading exam data'}), 500
+
+
+def _student_portal_auth():
+    """Shared auth for /dashboard/student/* academic views (student or technician-as-student)."""
+    user_role = session.get('role', '').lower()
+    viewing_as = session.get('viewing_as_role', '')
+    is_technician = user_role == 'technician'
+    if user_role != 'student' and not (is_technician and viewing_as == 'student'):
+        return None
+
+    all_students = []
+    selected_student_id = request.args.get('student_id', '') or session.get('student_view_student_id', '')
+    student_id = None
+
+    if is_technician and viewing_as == 'student':
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT DISTINCT s.id, s.student_id, s.full_name, s.current_grade, s.status
+                        FROM students s
+                        WHERE s.status = 'in session'
+                        ORDER BY s.full_name ASC
+                    """)
+                    all_students = cursor.fetchall()
+            except Exception as e:
+                print(f"_student_portal_auth students: {e}")
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+        if selected_student_id:
+            session['student_view_student_id'] = selected_student_id
+            student_id = selected_student_id.strip()
+    else:
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    user_id = session.get('user_id')
+                    if user_id:
+                        cursor.execute(
+                            "SELECT student_id FROM users WHERE id = %s LIMIT 1",
+                            (int(user_id),),
+                        )
+                        ur = cursor.fetchone()
+                        if ur:
+                            student_id = (ur.get('student_id') if isinstance(ur, dict) else ur[0]) or ''
+                            student_id = str(student_id).strip()
+            except Exception as e:
+                print(f"_student_portal_auth student_id: {e}")
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    current_view_role = viewing_as if is_technician and viewing_as else user_role
+    return {
+        'student_id': student_id,
+        'all_students': all_students,
+        'selected_student_id': selected_student_id,
+        'is_technician': is_technician,
+        'current_view_role': current_view_role,
+    }
+
+
+def _student_exam_progress_access(student_id):
+    """Return True when the logged-in student may view this student's gazetted results."""
+    sid = (student_id or '').strip()
+    if not sid:
+        return False
+    ctx = _student_portal_auth()
+    if not ctx:
+        return False
+    own = (ctx.get('student_id') or '').strip()
+    if own and own.lower() == sid.lower():
+        return True
+    if ctx.get('is_technician') and ctx.get('current_view_role') == 'student':
+        return True
+    return False
+
+
+def _render_student_exam_progress_detail(student_id, ctx):
+    """Student portal — personal exam results (gazetted only)."""
+    try:
+        payload = _fetch_student_progress_payload(
+            student_id, request.args, use_implicit_school_defaults=False, gazetted_only=True,
+        )
+    except Exception:
+        flash('Error loading your exam results.', 'error')
+        return redirect(student_dashboard_path())
+
+    if not payload['student']:
+        flash('Student not found.', 'error')
+        return redirect(student_dashboard_path())
+
+    summary = payload.get('summary') or {}
+    by_exam = payload.get('by_exam') or []
+    selected_exam_id = payload.get('selected_exam_id')
+    by_exam_json = []
+    for i, ex in enumerate(by_exam, start=1):
+        row = dict(ex) if isinstance(ex, dict) else {}
+        row['ref'] = f'E{i}'
+        by_exam_json.append(row)
+    pep_config = {
+        'dataUrl': student_dashboard_path('exam-progress/data'),
+        'filterPageUrl': student_dashboard_path('exam-progress'),
+        'studentId': student_id,
+        'studentName': payload['student'].get('full_name') or '',
+        'initial': {
+            'summary': summary,
+            'by_subject': payload.get('by_subject') or [],
+            'by_period': payload.get('by_period') or [],
+            'by_exam': by_exam_json,
+            'has_exam_marks': payload.get('has_exam_marks', False),
+            'filter_no_results': payload.get('filter_no_results', False),
+            'filters_active': payload.get('filters_active', False),
+            'exams_count': len(by_exam),
+            'subjects_count': len(payload.get('by_subject') or []),
+            'filters': {
+                'academic_years': payload.get('exam_filter_academic_years') or [],
+                'terms': payload.get('exam_filter_terms') or [],
+                'exams': payload.get('exam_filter_exams') or [],
+                'subjects': payload.get('exam_filter_subjects') or [],
+            },
+            'selected': {
+                'academic_year_id': payload.get('selected_academic_year_id'),
+                'term_id': payload.get('selected_term_id'),
+                'exam_id': selected_exam_id,
+                'subject_id': payload.get('selected_subject_id'),
+            },
+        },
+    }
+    return render_template(
+        'dashboards/parent_student_exam_progress.html',
+        student=payload['student'],
+        progress_data=payload['progress_data'],
+        by_subject=payload['by_subject'],
+        by_period=payload['by_period'],
+        by_exam=by_exam,
+        summary=summary,
+        has_exam_marks=payload.get('has_exam_marks', False),
+        filter_no_results=payload.get('filter_no_results', False),
+        filters_active=payload.get('filters_active', False),
+        exam_filter_academic_years=payload.get('exam_filter_academic_years', []),
+        exam_filter_terms=payload.get('exam_filter_terms', []),
+        exam_filter_exams=payload.get('exam_filter_exams', []),
+        exam_filter_subjects=payload.get('exam_filter_subjects', []),
+        selected_academic_year_id=payload.get('selected_academic_year_id'),
+        selected_term_id=payload.get('selected_term_id'),
+        selected_exam_id=selected_exam_id,
+        selected_subject_id=payload.get('selected_subject_id'),
+        implicit_exam_default_fallback=payload.get('implicit_exam_default_fallback', False),
+        exam_detail_picker_default=_progress_exam_detail_picker_default(by_exam, selected_exam_id),
+        pep_config=pep_config,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+        show_sibling_nav=False,
+        portal_mode='student',
+        portal_page_variant='student',
+    )
+
+
+@app.route('/dashboard/student/exam-progress')
+@app.route('/student/exam-progress')
+@login_required
+def student_exam_progress():
+    """Student portal — gazetted personal exam results."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_exam_progress_access(student_id):
+        flash('You cannot view exam results for this student.', 'error')
+        return redirect(student_dashboard_path())
+    return _render_student_exam_progress_detail(student_id, ctx)
+
+
+@app.route('/dashboard/student/exam-progress/data')
+@app.route('/student/exam-progress/data')
+@login_required
+def student_exam_progress_data():
+    """Live JSON for student exam progress filters (gazetted only)."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id or not _student_exam_progress_access(student_id):
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    try:
+        return jsonify(_parent_exam_progress_json_response(student_id, request.args))
+    except Exception as e:
+        print(f"student_exam_progress_data: {e}")
         return jsonify({'success': False, 'message': 'Error loading exam data'}), 500
 
 
@@ -34878,6 +36216,7 @@ def _parent_class_exam_results_page_data(cursor, stu, term_id=None, academic_yea
                 'academic_year_id': academic_year_id,
                 'level_id': level_id,
                 'level_view': level_view,
+                'gazetted_only': True,
             },
         )
         if not payload.get('error'):
@@ -34953,7 +36292,9 @@ def _parent_class_exam_results_bundle(cursor, stu, term_id=None, academic_year_i
 
     if not level_scope.get('is_combined_view') or len(level_ids) <= 1:
         lev = {'id': level_ids[0], 'level_name': level_name}
-        bundle = _build_class_exam_performance_bundle(cursor, lev, term_id, academic_year_id)
+        bundle = _build_class_exam_performance_bundle(
+            cursor, lev, term_id, academic_year_id, gazetted_only=True,
+        )
         bundle['enrolled_count'] = enrolled_count
         bundle['grade'] = level_name
         return bundle
@@ -34974,7 +36315,7 @@ def _parent_class_exam_results_bundle(cursor, stu, term_id=None, academic_year_i
             lr.get('level_name') if isinstance(lr, dict) else (lr[0] if lr else None)
         ) or level_name
         partial = _build_class_exam_performance_bundle(
-            cursor, {'id': lid, 'level_name': lname}, term_id, academic_year_id
+            cursor, {'id': lid, 'level_name': lname}, term_id, academic_year_id, gazetted_only=True,
         )
         student_count = max(student_count, int(partial.get('student_count') or 0))
         for subj in partial.get('subjects') or []:
@@ -36057,7 +37398,9 @@ def parent_library_detail(student_id):
                             }
                         books = _parent_student_library_books(cursor, student_id)
                 else:
-                    allowed, sibling_count = _parent_may_view_student(cursor, parent_email, student_id)
+                    allowed, sibling_count = _parent_may_view_student(
+                        cursor, parent_email, student_id, user_id=session.get('user_id'),
+                    )
                     if allowed:
                         cursor.execute(
                             """
@@ -36234,7 +37577,9 @@ def parent_pocket_money_detail(student_id):
                             }
                         pocket_data = _fetch_parent_student_pocket_money(cursor, student_id)
                 else:
-                    allowed, sibling_count = _parent_may_view_student(cursor, parent_email, student_id)
+                    allowed, sibling_count = _parent_may_view_student(
+                        cursor, parent_email, student_id, user_id=session.get('user_id'),
+                    )
                     if allowed:
                         cursor.execute(
                             """
@@ -38376,6 +39721,7 @@ def system_settings():
         'show_register_links': True
     }
     daraja_finance = None
+    gallery_items = []
     if connection:
         try:
             with connection.cursor() as cursor:
@@ -38420,6 +39766,12 @@ def system_settings():
                             'school_location': result[10] if len(result) > 10 else '',
                             'project_name': result[11] if len(result) > 11 else 'Elimu Centric'
                         }
+
+                try:
+                    gallery_items = load_school_gallery_items(cursor)
+                except Exception as _gal_load_err:
+                    print(f"load school gallery: {_gal_load_err}")
+                    gallery_items = []
                 
                 # Get academic levels
                 try:
@@ -38712,7 +40064,8 @@ def system_settings():
                          theme_settings=theme_settings,
                          login_settings=login_settings,
                          general_data=general_data,
-                         daraja_finance=daraja_finance)
+                         daraja_finance=daraja_finance,
+                         gallery_items=gallery_items)
 
 
 def _load_schedule_profiles_and_settings(cursor, selected_profile_id: str):
@@ -38864,6 +40217,7 @@ def academic_calendar():
         try:
             with connection.cursor() as cursor:
                 ensure_academic_calendar_activities_table(cursor)
+                ensure_academic_calendar_activity_levels_table(cursor)
                 connection.commit()
                 selected_year_id, academic_years = _resolve_calendar_year_id(cursor, requested_year_id)
                 if selected_year_id:
@@ -38877,6 +40231,42 @@ def academic_calendar():
                     activities = _fetch_academic_calendar_activities(
                         cursor, selected_year_id, selected_term_id,
                     )
+                    activities = _attach_calendar_activity_levels(cursor, activities)
+                    viewer_level_id = None
+                    if portal == 'parent':
+                        parent_email = session.get('email', '')
+                        student_id = (request.args.get('student_id') or session.get('parent_view_student_id') or '').strip()
+                        child_levels = _parent_linked_children_level_ids(
+                            cursor, parent_email, student_id or None, user_id=session.get('user_id'),
+                        )
+                        if len(child_levels) == 1:
+                            viewer_level_id = next(iter(child_levels))
+                        elif len(child_levels) > 1:
+                            viewer_level_id = None
+                            activities = [
+                                a for a in activities
+                                if a.get('affects_all_levels')
+                                or set(a.get('academic_level_ids') or []).intersection(child_levels)
+                            ]
+                        else:
+                            activities = _filter_calendar_activities_for_level(activities, None)
+                            activities = [a for a in activities if a.get('affects_all_levels')]
+                    elif portal == 'student':
+                        student_id = (session.get('student_id') or '').strip()
+                        if student_id:
+                            cursor.execute(
+                                "SELECT current_grade FROM students WHERE student_id = %s LIMIT 1",
+                                (student_id,),
+                            )
+                            srow = cursor.fetchone()
+                            grade = (
+                                srow.get('current_grade') if isinstance(srow, dict) else (srow[0] if srow else None)
+                            )
+                            viewer_level_id = _resolve_academic_level_id_from_grade(cursor, grade)
+                        if viewer_level_id:
+                            activities = _filter_calendar_activities_for_level(activities, viewer_level_id)
+                        else:
+                            activities = [a for a in activities if a.get('affects_all_levels')]
                     calendar_view = _prepare_academic_calendar_view(
                         activities, selected_year, selected_term,
                     )
@@ -38977,6 +40367,7 @@ def academic_calendar_manage():
     selected_term_id = None
     selected_term = None
     activities = []
+    levels_by_category = {}
     connection = get_db_connection()
     if not connection:
         flash('Database connection error.', 'error')
@@ -38985,13 +40376,17 @@ def academic_calendar_manage():
     try:
         with connection.cursor() as cursor:
             ensure_academic_calendar_activities_table(cursor)
+            ensure_academic_calendar_activity_levels_table(cursor)
             if request.method == 'POST':
                 action = (request.form.get('action') or '').strip().lower()
                 filter_term_id = request.form.get('filter_term_id', type=int)
                 if action in ('add', 'edit'):
                     parsed, err = _parse_calendar_activity_form(request.form)
+                    affects_all, level_ids, level_err = _parse_calendar_activity_levels_form(request.form)
                     if err:
                         flash(err, 'error')
+                    elif level_err:
+                        flash(level_err, 'error')
                     elif action == 'edit':
                         activity_id = request.form.get('activity_id', type=int)
                         if not activity_id:
@@ -39008,14 +40403,19 @@ def academic_calendar_manage():
                                     """
                                     UPDATE academic_calendar_activities
                                     SET academic_year_id = %s, term_id = %s, activity_title = %s,
-                                        activity_date = %s, end_date = %s, category = %s, description = %s
+                                        activity_date = %s, end_date = %s, category = %s,
+                                        activity_about = %s, notify_parents = %s
                                     WHERE id = %s AND COALESCE(status, 'active') = 'active'
                                     """,
                                     (
                                         year_id, term_id_raw, parsed['title'], parsed['activity_date'],
-                                        parsed['end_date'], parsed['category'], parsed['description'],
+                                        parsed['end_date'], parsed['category'], parsed['activity_about'],
+                                        1 if parsed['notify_parents'] else 0,
                                         int(activity_id),
                                     ),
+                                )
+                                _save_calendar_activity_levels(
+                                    cursor, activity_id, affects_all, level_ids,
                                 )
                                 connection.commit()
                                 flash('Activity updated.', 'success')
@@ -39036,14 +40436,20 @@ def academic_calendar_manage():
                                 """
                                 INSERT INTO academic_calendar_activities
                                     (academic_year_id, term_id, activity_title, activity_date, end_date,
-                                     category, description, created_by)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                     category, activity_about, notify_parents, created_by)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 """,
                                 (
                                     year_id, term_id_raw, parsed['title'], parsed['activity_date'],
-                                    parsed['end_date'], parsed['category'], parsed['description'], created_by,
+                                    parsed['end_date'], parsed['category'], parsed['activity_about'],
+                                    1 if parsed['notify_parents'] else 0, created_by,
                                 ),
                             )
+                            new_id = cursor.lastrowid
+                            if new_id:
+                                _save_calendar_activity_levels(
+                                    cursor, new_id, affects_all, level_ids,
+                                )
                             connection.commit()
                             flash('Activity added to the academic calendar.', 'success')
                             return redirect(
@@ -39085,6 +40491,9 @@ def academic_calendar_manage():
                 activities = _fetch_academic_calendar_activities(
                     cursor, selected_year_id, selected_term_id,
                 )
+                activities = _attach_calendar_activity_levels(cursor, activities)
+                academic_levels_picker = _fetch_active_academic_levels_for_accounts(cursor)
+                levels_by_category = _group_academic_levels_by_category(academic_levels_picker)
     except Exception as e:
         print(f"academic_calendar_manage: {e}")
         import traceback
@@ -39103,6 +40512,7 @@ def academic_calendar_manage():
         selected_term_id=selected_term_id,
         selected_term=selected_term,
         activities=activities,
+        levels_by_category=levels_by_category,
         category_labels=ACADEMIC_CALENDAR_CATEGORY_LABELS,
     )
 
@@ -40423,6 +41833,7 @@ def exam_evaluation():
                 # Get existing exams (each row represents a subject allocation + supervisor)
                 try:
                     ensure_exams_marks_lock_at_column(cursor)
+                    ensure_exams_submitted_status_enum(cursor)
                     apply_marks_lock_deadline_auto_lock(cursor)
                     connection.commit()
                     cursor.execute(f"""
@@ -40605,6 +42016,7 @@ def exam_evaluation():
 
     return render_template('dashboards/exam_evaluation.html', 
                          role=user_role,
+                         is_curriculum_coordinator=is_academic_coordinator,
                          academic_years=academic_years,
                          default_academic_year_id=default_academic_year_id,
                          default_term_id=default_term_id,
@@ -41815,9 +43227,10 @@ def exam_evaluation_registered_detail():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
     is_teacher_effective = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
 
-    if not (is_academic_coordinator or is_technician or is_principal or is_teacher_effective):
+    if not (is_academic_coordinator or is_technician or is_principal or is_deputy or is_teacher_effective):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -42120,12 +43533,15 @@ def exam_evaluation_registered_detail():
     from collections import defaultdict
 
     r0 = records[0]
+    group_submitted = any((str(r.get('status') or '').lower() == 'submitted') for r in records)
     exam_meta = {
         'exam_name': r0.get('exam_name') or exam_name_key,
         'exam_type': r0.get('exam_type') or '',
         'year_name': r0.get('year_name') or '',
         'term_name': r0.get('term_name') or '',
-        'is_locked': bool(r0.get('is_locked')),
+        'is_locked': any(r.get('is_locked') for r in records),
+        'is_submitted': group_submitted,
+        'status': 'submitted' if group_submitted else (r0.get('status') or 'scheduled'),
         'academic_year_id': academic_year_id,
         'term_id': term_id,
     }
@@ -44116,6 +45532,8 @@ def update_exam_registration():
                 return jsonify({'success': False, 'message': 'Registered exam not found'}), 404
             if any((r.get('il') if isinstance(r, dict) else r[1]) for r in rows):
                 return jsonify({'success': False, 'message': 'This exam is locked. Unlock it before editing registration details.'}), 400
+            if _exam_group_is_submitted(cursor, old_exam_name, old_academic_year_id, old_term_id):
+                return jsonify({'success': False, 'message': 'This exam has been submitted for release and cannot be edited.'}), 400
 
             cursor.execute("""
                 UPDATE exams
@@ -44187,6 +45605,8 @@ def delete_exam_registration():
                 return jsonify({'success': False, 'message': 'Registered exam not found'}), 404
             if any((r.get('il') if isinstance(r, dict) else r[1]) for r in rows):
                 return jsonify({'success': False, 'message': 'This exam is locked. Unlock it before deleting this registration.'}), 400
+            if _exam_group_is_submitted(cursor, exam_name, academic_year_id, term_id):
+                return jsonify({'success': False, 'message': 'This exam has been submitted for release and cannot be deleted.'}), 400
 
             cursor.execute("""
                 DELETE FROM exams
@@ -44359,6 +45779,12 @@ def set_exam_lock():
     try:
         with connection.cursor() as cursor:
             ensure_exams_marks_lock_at_column(cursor)
+            ensure_exams_submitted_status_enum(cursor)
+            if _exam_group_is_submitted(cursor, exam_name, academic_year_id, term_id):
+                return jsonify({
+                    'success': False,
+                    'message': 'This exam has been submitted for release. It is locked permanently and can only be viewed.',
+                }), 400
             apply_marks_lock_deadline_auto_lock(cursor)
             n = 0
             if has_locked:
@@ -44406,6 +45832,87 @@ def set_exam_lock():
         except Exception:
             pass
         return jsonify({'success': False, 'message': f'Error updating lock: {str(e)}'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/exam-evaluation/authorize-release', methods=['POST'])
+@login_required
+def authorize_exam_release():
+    """Curriculum coordinator authorizes exam release: permanent lock + status submitted."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    if not is_academic_coordinator:
+        return jsonify({'success': False, 'message': 'Only the curriculum coordinator can authorize release.'}), 403
+
+    data = request.get_json() or {}
+    exam_name = (data.get('exam_name') or '').strip().upper()
+    try:
+        academic_year_id = int(data.get('academic_year_id', 0))
+        term_id = int(data.get('term_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid year or term'}), 400
+
+    if not exam_name or academic_year_id <= 0 or term_id <= 0:
+        return jsonify({'success': False, 'message': 'Missing exam name, academic year, or term'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_exams_marks_lock_at_column(cursor)
+            ensure_exams_gazetted_status_enum(cursor)
+            if _exam_group_is_submitted(cursor, exam_name, academic_year_id, term_id):
+                if _exam_group_is_gazetted(cursor, exam_name, academic_year_id, term_id):
+                    msg = 'Results for this exam have already been gazetted.'
+                else:
+                    msg = 'This exam has already been submitted for release.'
+                return jsonify({'success': False, 'message': msg}), 400
+
+            cursor.execute("""
+                SELECT COUNT(*) AS cnt FROM exams
+                WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+            """, (exam_name, academic_year_id, term_id))
+            row = cursor.fetchone()
+            cnt = int((row.get('cnt') if isinstance(row, dict) else row[0]) or 0)
+            if cnt == 0:
+                return jsonify({'success': False, 'message': 'No allocations found for that exam'}), 404
+
+            cursor.execute("""
+                UPDATE exams SET
+                    is_locked = 1,
+                    locked_at = CURRENT_TIMESTAMP,
+                    status = 'submitted'
+                WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+            """, (exam_name, academic_year_id, term_id))
+            n = cursor.rowcount or 0
+
+            registered_current = load_registered_current_exam_dict(cursor)
+            exam_type_lock = (data.get('exam_type') or '').strip().upper() or None
+            freeze_exam_contexts_with_marks_for_group(
+                cursor, exam_name, academic_year_id, term_id, exam_type_lock, registered_current,
+            )
+            connection.commit()
+            return jsonify({
+                'success': True,
+                'message': 'Exam authorized for release. It is now locked with status Submitted and can only be viewed.',
+                'updated': n,
+                'status': 'submitted',
+                'locked': True,
+            })
+    except Exception as e:
+        print(f"Error authorizing exam release: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': f'Error authorizing release: {str(e)}'}), 500
     finally:
         connection.close()
 
@@ -55161,7 +56668,7 @@ def _record_supplier_pay_selected_invoices(
     payment_method=None, finance_account_id=None, payment_reference=None,
     expected_amount=None,
 ):
-    """Pay selected outstanding stock-in invoices in full (one payment line per invoice)."""
+    """Pay selected outstanding stock-in invoices — full or partial (FIFO across selection)."""
     from decimal import Decimal, InvalidOperation
 
     ids = []
@@ -55176,7 +56683,7 @@ def _record_supplier_pay_selected_invoices(
         return False, 'Select at least one invoice to pay.'
 
     movements = []
-    pay_total = Decimal('0')
+    total_balance = Decimal('0')
     for mid in ids:
         cursor.execute(
             """
@@ -55215,18 +56722,22 @@ def _record_supplier_pay_selected_invoices(
         if balance <= 0:
             return False, f'{ref_no or mid} has no balance due.'
         movements.append({'id': mid, 'ref_no': ref_no, 'balance': balance})
-        pay_total += balance
+        total_balance += balance
 
     if expected_amount is not None:
         try:
-            expected_dec = Decimal(str(expected_amount)).quantize(Decimal('0.01'))
+            pay_total = Decimal(str(expected_amount)).quantize(Decimal('0.01'))
         except (InvalidOperation, ValueError):
             return False, 'Invalid payment amount.'
-        if expected_dec != pay_total:
+        if pay_total <= 0:
+            return False, 'Enter a valid payment amount greater than zero.'
+        if pay_total > total_balance + Decimal('0.01'):
             return False, (
-                f'Payment amount must match the selected invoice total '
-                f'(KES {pay_total.quantize(Decimal("0.01")):,.2f}).'
+                f'Payment cannot exceed selected invoice total '
+                f'(KES {total_balance.quantize(Decimal("0.01")):,.2f}).'
             )
+    else:
+        pay_total = total_balance
 
     if finance_account_id and payment_method:
         ok_funds, _, fund_err = _validate_disbursement_finance_account(
@@ -55235,10 +56746,14 @@ def _record_supplier_pay_selected_invoices(
         if not ok_funds:
             return False, fund_err or 'Insufficient funds in the selected account.'
 
+    remaining = pay_total
     applied = 0
     for m in movements:
+        if remaining <= Decimal('0'):
+            break
+        chunk = min(remaining, m['balance'])
         ok, msg = _apply_stock_in_payment(
-            cursor, m['id'], m['balance'], company_name, company_phone, paid_by_name,
+            cursor, m['id'], chunk, company_name, company_phone, paid_by_name,
             payment_method=payment_method,
             finance_account_id=finance_account_id,
             payment_reference=payment_reference,
@@ -55247,11 +56762,17 @@ def _record_supplier_pay_selected_invoices(
         if not ok:
             return False, msg
         applied += 1
+        remaining -= chunk
 
-    return True, (
+    if applied == 0:
+        return False, 'No payment was applied.'
+    summary = (
         f'Payment of KES {pay_total:,.2f} recorded for {applied} selected invoice(s) '
         f'for {company_name}.'
     )
+    if remaining > Decimal('0.005'):
+        summary += f' Unallocated: KES {remaining.quantize(Decimal("0.01")):,.2f}.'
+    return True, summary
 
 
 def _fetch_store_stock_movement_detail(cursor, movement_id):
@@ -63065,6 +64586,266 @@ def attendance():
     return redirect(url_for('student_attendance'))
 
 # Exams & Assessments Route (for academic coordinators)
+@app.route('/dashboard/employee/exams-overview')
+@login_required
+def exams_overview():
+    """Leadership view: all registered exams with aggregated status."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_technician = user_role == 'technician'
+
+    if not (is_deputy or is_principal or is_technician):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    exam_groups = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                exam_groups = fetch_registered_exam_groups_overview(cursor)
+        except Exception as e:
+            print(f"Error fetching exams overview: {e}")
+        finally:
+            connection.close()
+
+    return render_template(
+        'dashboards/exams_overview.html',
+        role=user_role,
+        exam_groups=exam_groups,
+        is_deputy=is_deputy,
+    )
+
+
+@app.route('/dashboard/employee/exams-overview/gazette-results', methods=['POST'])
+@login_required
+def gazette_exam_results():
+    """Deputy head gazettes (officially releases) exam results after CC submission."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
+    if not is_deputy:
+        return jsonify({'success': False, 'message': 'Only the deputy head of institution can gazette results.'}), 403
+
+    data = request.get_json() or {}
+    exam_name = (data.get('exam_name') or '').strip().upper()
+    try:
+        academic_year_id = int(data.get('academic_year_id', 0))
+        term_id = int(data.get('term_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid year or term'}), 400
+
+    if not exam_name or academic_year_id <= 0 or term_id <= 0:
+        return jsonify({'success': False, 'message': 'Missing exam name, academic year, or term'}), 400
+
+    filter_type = 'exam_type' in data
+    exam_type_key = (data.get('exam_type') or '').strip().upper() if filter_type else None
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    gazetted_by = session.get('user_id') or session.get('viewing_as_employee_id')
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_exams_gazetted_status_enum(cursor)
+            ensure_exams_results_gazetted_columns(cursor)
+
+            if _exam_group_is_gazetted(cursor, exam_name, academic_year_id, term_id):
+                return jsonify({
+                    'success': False,
+                    'message': 'Results for this exam have already been gazetted.',
+                }), 400
+
+            if not _exam_group_ready_for_gazette(cursor, exam_name, academic_year_id, term_id):
+                return jsonify({
+                    'success': False,
+                    'message': 'This exam must be submitted by the curriculum coordinator before you can gazette results.',
+                }), 400
+
+            params = [exam_name, academic_year_id, term_id]
+            type_clause = ''
+            if filter_type:
+                type_clause = " AND UPPER(TRIM(COALESCE(exam_type, ''))) = %s"
+                params.append(exam_type_key or '')
+
+            cursor.execute(f"""
+                UPDATE exams SET
+                    status = 'gazetted',
+                    results_gazetted_at = CURRENT_TIMESTAMP,
+                    results_gazetted_by = %s
+                WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+                  AND status = 'submitted'
+                  {type_clause}
+            """, (gazetted_by, *params))
+            n = cursor.rowcount or 0
+            if n == 0:
+                return jsonify({'success': False, 'message': 'No submitted allocations found to gazette.'}), 404
+
+            connection.commit()
+            return jsonify({
+                'success': True,
+                'message': 'Results gazetted successfully. They are now officially released.',
+                'updated': n,
+                'status': 'gazetted',
+            })
+    except Exception as e:
+        print(f"Error gazetting exam results: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': f'Error gazetting results: {str(e)}'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/exams-overview/return-exam', methods=['POST'])
+@login_required
+def return_exam_for_editing():
+    """Deputy head returns a submitted/gazetted exam so the curriculum coordinator can lock/unlock again."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
+    if not is_deputy:
+        return jsonify({'success': False, 'message': 'Only the deputy head of institution can return an exam.'}), 403
+
+    data = request.get_json() or {}
+    exam_name = (data.get('exam_name') or '').strip().upper()
+    try:
+        academic_year_id = int(data.get('academic_year_id', 0))
+        term_id = int(data.get('term_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid year or term'}), 400
+
+    if not exam_name or academic_year_id <= 0 or term_id <= 0:
+        return jsonify({'success': False, 'message': 'Missing exam name, academic year, or term'}), 400
+
+    filter_type = 'exam_type' in data
+    exam_type_key = (data.get('exam_type') or '').strip().upper() if filter_type else None
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_exams_gazetted_status_enum(cursor)
+            ensure_exams_results_gazetted_columns(cursor)
+
+            if not _exam_group_can_return(cursor, exam_name, academic_year_id, term_id):
+                return jsonify({
+                    'success': False,
+                    'message': 'Only submitted or gazetted exams can be returned.',
+                }), 400
+
+            params = [exam_name, academic_year_id, term_id]
+            type_clause = ''
+            if filter_type:
+                type_clause = " AND UPPER(TRIM(COALESCE(exam_type, ''))) = %s"
+                params.append(exam_type_key or '')
+
+            cursor.execute(f"""
+                UPDATE exams SET
+                    status = 'completed',
+                    is_locked = 0,
+                    locked_at = NULL,
+                    results_gazetted_at = NULL,
+                    results_gazetted_by = NULL
+                WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+                  AND status IN ('submitted', 'gazetted')
+                  {type_clause}
+            """, tuple(params))
+            n = cursor.rowcount or 0
+            if n == 0:
+                return jsonify({'success': False, 'message': 'No submitted or gazetted allocations found.'}), 404
+
+            connection.commit()
+            return jsonify({
+                'success': True,
+                'message': 'Exam returned. The curriculum coordinator can lock, unlock, and manage marks entry again.',
+                'updated': n,
+                'status': 'completed',
+                'locked': False,
+            })
+    except Exception as e:
+        print(f"Error returning exam: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': f'Error returning exam: {str(e)}'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/exams-overview/classes')
+@login_required
+def exams_overview_classes():
+    """Pick a class for a registered exam, then view student results."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_technician = user_role == 'technician'
+
+    if not (is_deputy or is_principal or is_technician):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    exam_name = (request.args.get('exam_name') or '').strip()
+    try:
+        academic_year_id = int(request.args.get('academic_year_id', 0))
+        term_id = int(request.args.get('term_id', 0))
+    except (ValueError, TypeError):
+        flash('Invalid exam link.', 'error')
+        return redirect(employee_dashboard_path('exams-overview'))
+
+    if not exam_name or academic_year_id <= 0 or term_id <= 0:
+        flash('Missing exam details.', 'error')
+        return redirect(employee_dashboard_path('exams-overview'))
+
+    filter_exam_type = 'exam_type' in request.args
+    exam_type = (request.args.get('exam_type') or '').strip() if filter_exam_type else None
+
+    exam_meta = None
+    classes = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                exam_meta, classes = fetch_exam_group_classes(
+                    cursor, exam_name, academic_year_id, term_id,
+                    exam_type if filter_exam_type else None,
+                )
+        except Exception as e:
+            print(f"Error fetching exam classes: {e}")
+        finally:
+            connection.close()
+
+    if not exam_meta or not classes:
+        flash('No classes found for this exam.', 'error')
+        return redirect(employee_dashboard_path('exams-overview'))
+
+    return render_template(
+        'dashboards/exams_overview_classes.html',
+        role=user_role,
+        exam_meta=exam_meta,
+        classes=classes,
+    )
+
+
 @app.route('/dashboard/employee/exams-assessments')
 @login_required
 def exams_assessments():
@@ -65152,10 +66933,11 @@ def students_by_academic_level(level_id):
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
     is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
-    if not (is_academic_coordinator or is_technician or is_principal or is_teacher or is_secretary):
+    if not (is_academic_coordinator or is_technician or is_principal or is_deputy or is_teacher or is_secretary):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     
@@ -65208,6 +66990,8 @@ def students_by_academic_level(level_id):
                 
                 if not level_result:
                     flash('Academic level not found.', 'error')
+                    if is_deputy:
+                        return redirect(employee_dashboard_path('exams-overview'))
                     return redirect(url_for('exams_assessments'))
                 
                 level_name = level_result.get('level_name') if isinstance(level_result, dict) else level_result[2]
@@ -66087,9 +67871,10 @@ def exams_assessments_get_grade_remarks():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
     is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
-    if not (is_academic_coordinator or is_technician or is_principal or is_teacher or is_secretary):
+    if not (is_academic_coordinator or is_technician or is_principal or is_deputy or is_teacher or is_secretary):
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -66194,10 +67979,11 @@ def get_marks_by_exam():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
     is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
-    if not (is_academic_coordinator or is_technician or is_principal or is_teacher or is_secretary):
+    if not (is_academic_coordinator or is_technician or is_principal or is_deputy or is_teacher or is_secretary):
         return jsonify({'success': False, 'message': 'You do not have permission to access this.'}), 403
     
     # Get teacher ID for filtering marks (for teachers)
@@ -70651,16 +72437,19 @@ def _fetch_finance_overview_summary_payload(cursor):
     }
 
 
-def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_year_id=None):
+def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_year_id=None, gazetted_only=False):
     """Exam aggregates for one class (scaled marks /100 using exam subject settings)."""
     level_name = lev['level_name']
     subject_stats = {}
     all_marks_for_class = []
     students_in_class = set()
+    gazette_sql = _sql_exam_gazetted_only_clause('e') if gazetted_only else ''
     try:
         ensure_subject_exam_total_marks_column(cursor)
+        if gazetted_only:
+            ensure_exams_gazetted_status_enum(cursor)
         cursor.execute(
-            """
+            f"""
             SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
                    s.subject_name, s.subject_code, s.exam_total_marks, s.exam_display_order,
                    ay.year_name, t.term_name
@@ -70671,6 +72460,7 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
             WHERE e.academic_level_id = %s
             AND (%s IS NULL OR e.term_id = %s)
             AND (%s IS NULL OR e.academic_year_id = %s)
+            {gazette_sql}
             ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC,
                      s.subject_name ASC,
                      e.exam_name ASC
@@ -72632,6 +74422,10 @@ def _build_academic_report_payload(cursor, report_type, f):
         q += clause
         q_no_image += clause
         params.extend(ep)
+        if f.get('gazetted_only'):
+            gz = _sql_exam_gazetted_only_clause('e')
+            q += gz
+            q_no_image += gz
         if student_id:
             q += " AND st.student_id = %s"
             q_no_image += " AND st.student_id = %s"
@@ -78886,6 +80680,12 @@ def update_school_profile():
                 except Exception as _hero_err:
                     if 'Unknown column' not in str(_hero_err):
                         raise
+
+                try:
+                    _process_school_gallery_on_profile_save(cursor, request)
+                except Exception as _gallery_err:
+                    print(f"school gallery save: {_gallery_err}")
+                    raise
                 
                 connection.commit()
                 invalidate_school_settings_cache()
@@ -78902,7 +80702,7 @@ def update_school_profile():
     else:
         flash('Database connection error. Please try again later.', 'error')
     
-    return redirect(url_for('system_settings'))
+    return redirect(url_for('system_settings') + '#school-profile')
 
 
 @app.route('/system-settings/general', methods=['POST'])

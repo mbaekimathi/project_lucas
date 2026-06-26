@@ -3,8 +3,6 @@
 {% block title %}Personal exam results — choose a child - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 
-{% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
-
 {% block sidebar_content %}
 {% set parent_nav_scope = 'exams' %}
 {% include 'dashboards/includes/parent_page_sidebar.html' %}
@@ -44,7 +42,7 @@
     {% set role_theme = 'parent' %}
     {% set role_hero_eyebrow = 'Parent portal' %}
     {% set role_hero_title = 'Personal exam results' %}
-    {% set role_hero_subtitle = 'Choose a child to see their individual marks, analytics, and performance by exam.' %}
+    {% set role_hero_subtitle = 'Choose a child to see their officially released (gazetted) exam marks and performance.' %}
     {% set role_hero_icon_class = 'fa-user-graduate' %}
     {% include 'dashboards/includes/role_hero.html' %}
 
@@ -66,7 +64,7 @@
                         {% endif %}
                     </p>
                     {% elif child.exam_count is defined %}
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No exam marks recorded yet</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No gazetted results published yet</p>
                     {% endif %}
                 </div>
                 <i class="fas fa-chevron-right text-brand-primary mt-1"></i>
