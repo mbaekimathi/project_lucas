@@ -92,7 +92,10 @@
                 '<p class="ar-rc-school-contact">' + schoolContactLineHtml() + '</p>' +
               '</div>' +
             '</div>' +
-            renderParentPortalQrHtml() +
+            (function () {
+              var qr = renderParentPortalQrHtml();
+              return qr ? '<div class="ar-rc-header-aside">' + qr + '</div>' : '';
+            })() +
           '</div>' +
         '</div>' +
         '<div class="ar-rc-doc-title-row">' +

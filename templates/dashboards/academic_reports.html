@@ -1672,7 +1672,7 @@
         color-mix(in srgb, var(--ar-rc-green) 88%, var(--ar-rc-navy)) 100%
     );
     color: #fff;
-    overflow: hidden;
+    overflow: visible;
 }
 .ar-rc-header-band::before {
     content: '';
@@ -1688,9 +1688,16 @@
     position: relative;
     z-index: 1;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 0.75rem;
+}
+.ar-rc-header-aside {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    margin-left: auto;
 }
 .ar-rc-header-main {
     display: flex;
@@ -4429,6 +4436,10 @@
         '</div>';
     }
     var qrHtml = opts.showParentQr ? renderParentPortalQrHtml() : '';
+    var asideParts = (badgeHtml || '') + qrHtml;
+    var asideHtml = asideParts
+      ? '<div class="ar-rc-header-aside">' + asideParts + '</div>'
+      : '';
     return '' +
       '<header class="ar-rc-header">' +
         '<div class="ar-rc-header-band">' +
@@ -4442,8 +4453,7 @@
                 '<p class="ar-rc-school-contact">' + schoolContactLineHtml() + '</p>' +
               '</div>' +
             '</div>' +
-            badgeHtml +
-            qrHtml +
+            asideHtml +
           '</div>' +
         '</div>' +
         '<div class="ar-rc-doc-title-row">' +
