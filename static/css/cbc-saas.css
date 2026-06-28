@@ -686,10 +686,8 @@ body.public-site.cbc-saas--premium .public-site-nav-panel__link {
 /* Marketing header — layout + “Book demo” (all public top-nav pages)        */
 /* -------------------------------------------------------------------------- */
 #site-header .site-header__nav-shell {
-  max-width: min(100%, 52rem);
+  max-width: none;
   min-width: 0;
-  overflow-x: hidden;
-  overflow-y: visible;
 }
 
 #site-header .site-header__nav--marketing {
@@ -697,20 +695,19 @@ body.public-site.cbc-saas--premium .public-site-nav-panel__link {
 }
 
 body.public-site:not(.cbc-saas--premium) #site-header.site-header--marketing .site-header__nav-shell {
-  background: rgba(15, 23, 42, 0.04);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  /* Rounded container (not a strict pill) so wrapped nav rows do not clip awkwardly */
-  border-radius: 1.25rem;
-  padding: 0.2rem 0.3rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 body.public-site.cbc-saas--premium #site-header.site-header--marketing .site-header__nav-shell,
 body.public-site.cbc-saas--premium #site-header.site-header--marketing.site-header--glass .site-header__nav-shell {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 1.25rem;
-  padding: 0.2rem 0.35rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
 }
 
 #site-header .site-header__demo-cta {

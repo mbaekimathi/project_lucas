@@ -2535,4 +2535,81 @@
     color: #64748b;
 }
 .dark .ar-report-filter-foot { color: #94a3b8; }
+
+/* Parent portal QR — fee reports, calendar report, etc. */
+.ar-portal-qr-block,
+.ar-cal-qr-block {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 0.25rem;
+    border-radius: 0.5rem;
+    background: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.ar-rc-header-band .ar-portal-qr-block {
+    border-color: rgba(255, 255, 255, 0.45);
+}
+.ar-portal-qr-img,
+.ar-cal-qr-img {
+    display: block;
+    width: 4.5rem;
+    height: 4.5rem;
+    image-rendering: pixelated;
+}
+.ar-portal-qr-label,
+.ar-cal-qr-label {
+    margin: 0.2rem 0 0;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--brand-primary, #166534);
+    line-height: 1.2;
+}
+.ar-rc-header-band .ar-portal-qr-label {
+    color: #0f2744;
+}
+.ar-portal-qr-hint,
+.ar-cal-qr-hint {
+    margin: 0;
+    font-size: 0.5rem;
+    color: #64748b;
+    line-height: 1.2;
+}
+@media print {
+    #ar-preview-wrap .ar-portal-qr-block,
+    #ar-preview-wrap .ar-cal-qr-block {
+        border: 0.5pt solid #94a3b8 !important;
+        background: #fff !important;
+        padding: 1mm !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    #ar-preview-wrap .ar-portal-qr-img,
+    #ar-preview-wrap .ar-cal-qr-img {
+        width: 18mm !important;
+        height: 18mm !important;
+        max-width: none !important;
+        max-height: none !important;
+    }
+    #ar-preview-wrap .ar-portal-qr-label,
+    #ar-preview-wrap .ar-cal-qr-label {
+        font-size: 6pt !important;
+        font-weight: 700 !important;
+        color: #166534 !important;
+    }
+    #ar-preview-wrap .ar-portal-qr-hint,
+    #ar-preview-wrap .ar-cal-qr-hint {
+        font-size: 5.5pt !important;
+        color: #475569 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-portal-qr-block,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-portal-qr-block {
+        display: inline-flex !important;
+        flex-shrink: 0 !important;
+    }
+}
 </style>

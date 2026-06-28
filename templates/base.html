@@ -1,4 +1,11 @@
-{% set public_site_topnav = request.endpoint in ['home', 'login', 'login_select_role', 'register_employee', 'admission'] %}
+{% set public_site_topnav = request.endpoint in ['home', 'about', 'programs', 'features', 'gallery', 'news', 'team', 'contact', 'login', 'login_select_role', 'register_employee', 'admission'] %}
+{% set pub_nav = [
+    (url_for('about'), 'about', 'About', 'fa-info-circle'),
+    (url_for('gallery'), 'gallery', 'Gallery', 'fa-images'),
+    (url_for('news'), 'news', 'News', 'fa-newspaper'),
+    (url_for('team'), 'team', 'Team', 'fa-users'),
+    (url_for('contact'), 'contact', 'Contact', 'fa-envelope'),
+] %}
 {% set marketing_premium_shell = request.endpoint in ['home', 'login', 'login_select_role', 'admission'] %}
 <!DOCTYPE html>
 <html lang="en" class="{% if not public_site_topnav and session.get('user_id') %}role-portal-scroll{% endif %}" x-data="{ 
@@ -18,6 +25,7 @@
     teamMemberModalOpen: false,
     selectedMember: null,
     publicTopNav: {{ public_site_topnav|tojson }},
+    mobilePublicNavOpen: false,
     {# Solid header on home too — matches other marketing pages and keeps nav readable #}
     publicHeaderGlass: false,
     publicHeaderScrolled: false
@@ -241,6 +249,9 @@
     <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/pwa-register.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/pwa-install.js') }}"></script>
+    {% if session.get('user_id') and push_notifications_active|default(false) and not public_site_topnav %}
+    <script defer src="{{ url_for('static', filename='js/push-notifications.js') }}"></script>
+    {% endif %}
     
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -938,16 +949,47 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body class="text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300 {% if public_site_topnav %}public-site-topnav public-site public-site-body{% else %}app-shell{% endif %}{% if portal_layout_enabled|default(false) %} role-portal-layout {{ portal_theme_class|default('role-theme-default') }}{% endif %}{% if show_financial_year_session|default(false) and financial_year_session.read_only|default(false) %} acc-fy-readonly{% endif %} {% block body_class %}{% endblock %}"
+      data-push-enabled="{{ push_notifications_active|default(false)|tojson }}"
+      data-user-logged-in="{{ (session.get('user_id') is not none)|tojson }}"
       @scroll.window="publicHeaderScrolled = (window.pageYOffset || document.documentElement.scrollTop) > 56">
+
+    {% if session.get('user_id') and push_notifications_active|default(false) and not public_site_topnav %}
+    <div id="push-enable-banner" class="hidden fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-[60] rounded-xl border border-violet-200 dark:border-violet-800 bg-white dark:bg-gray-800 shadow-lg p-4">
+        <div class="flex items-start gap-3">
+            <span class="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 flex items-center justify-center shrink-0">
+                <i class="fas fa-bell" aria-hidden="true"></i>
+            </span>
+            <div class="min-w-0 flex-1">
+                <p class="font-semibold text-sm text-gray-900 dark:text-white m-0">Enable phone notifications</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-3">Get fee, exam, and school alerts on your lock screen even when the portal is closed.</p>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" id="push-enable-btn" class="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold">Allow notifications</button>
+                    <button type="button" id="push-dismiss-btn" class="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-semibold">Not now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     
     <!-- Header: app shell (portal) vs marketing site glass/solid -->
     <header id="site-header"
             class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 border-b{% if public_site_topnav %} site-header--marketing{% else %} app-chrome-header{% endif %}"
             :class="!publicTopNav ? '' : (publicHeaderGlass && !publicHeaderScrolled ? 'site-header--glass bg-transparent border-transparent shadow-none' : 'site-header--solid bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-gray-200 dark:border-gray-700 shadow-sm')">
-        <div class="{% if public_site_topnav %}container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8{% else %}w-full max-w-[100vw] px-2 sm:px-4 lg:px-5{% endif %}">
-            <div class="site-header__row {% if not public_site_topnav %}site-header__row--portal{% else %}flex items-center gap-2 sm:gap-3 md:gap-4 h-[4.5rem] md:h-[4.75rem]{% endif %}">
-                <!-- Left: nav + brand -->
-                <div class="{% if public_site_topnav %}flex items-center gap-2 shrink-0 min-w-0{% else %}site-header__start lg:min-w-[12rem] lg:max-w-[min(100%,20rem)]{% endif %}">
+        <div class="{% if public_site_topnav %}site-header__inner w-full max-w-none px-4 sm:px-6 lg:px-8 xl:px-10{% else %}w-full max-w-[100vw] px-2 sm:px-4 lg:px-5{% endif %}">
+            <div class="site-header__row {% if not public_site_topnav %}site-header__row--portal{% else %}site-header__row--marketing{% endif %}">
+                <!-- Left: mobile menu + brand -->
+                <div class="site-header__brand-col {% if public_site_topnav %}flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0 max-w-[min(100%,14rem)] sm:max-w-[min(100%,18rem)] lg:max-w-[min(100%,20rem)]{% else %}site-header__start lg:min-w-[12rem] lg:max-w-[min(100%,20rem)]{% endif %}">
+                    {% if public_site_topnav %}
+                    <button type="button"
+                            @click="mobilePublicNavOpen = !mobilePublicNavOpen"
+                            class="site-header__icon-btn site-header__menu-btn shrink-0 touch-manipulation"
+                            :aria-expanded="mobilePublicNavOpen"
+                            aria-controls="public-site-nav-panel"
+                            aria-label="Toggle menu">
+                        <i class="fas fa-bars text-lg" x-show="!mobilePublicNavOpen" aria-hidden="true"></i>
+                        <i class="fas fa-times text-lg" x-show="mobilePublicNavOpen" x-cloak aria-hidden="true"></i>
+                    </button>
+                    {% endif %}
                     {% if not public_site_topnav %}
                     <div class="site-header__nav-btns lg:hidden" role="group" aria-label="Navigation controls">
                     <button type="button"
@@ -978,22 +1020,37 @@
                             <i class="fas fa-graduation-cap text-white text-lg sm:text-xl"></i>
                             {% endif %}
                         </div>
-                        <div class="{% if public_site_topnav %}{% if school_settings.school_logo %}hidden md:flex{% else %}hidden sm:flex{% endif %}{% else %}site-header__titles{% endif %} flex flex-col min-w-0 justify-center">
-                            <div class="font-heading font-bold {% if public_site_topnav %}text-base sm:text-lg text-gray-900 dark:text-white{% endif %} truncate site-header__title leading-tight">
+                        <div class="{% if public_site_topnav %}flex site-header__titles site-header__titles--marketing{% else %}site-header__titles{% endif %} flex-col min-w-0 justify-center">
+                            <div class="font-heading font-bold {% if public_site_topnav %}text-gray-900 dark:text-white{% endif %} truncate site-header__title leading-tight">
                                 {{ school_settings.school_name or 'Modern School' }}
                             </div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400 site-header__subtitle leading-snug max-w-[14rem]{% if public_site_topnav %} hidden md:block{% endif %}">
-                                {% block header_subtitle %}{% if public_site_topnav or not session.get('user_id') %}{% if school_settings.school_location %}{{ school_settings.school_location }}{% else %}A caring learning community{% endif %}{% endif %}{% endblock %}
+                            {% if not public_site_topnav %}
+                            <div class="text-xs text-gray-500 dark:text-gray-400 site-header__subtitle leading-snug max-w-[14rem]">
+                                {% block header_subtitle %}{% if school_settings.school_location %}{{ school_settings.school_location }}{% else %}A caring learning community{% endif %}{% endblock %}
                             </div>
+                            {% endif %}
                         </div>
                     </a>
                     {% if public_site_topnav and marketing_premium_shell %}
-                    <span class="site-header__product-tag hidden xl:inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider" title="Curriculum">CBC · Kenya</span>
+                    <span class="site-header__product-tag hidden 2xl:inline-flex shrink-0 items-center rounded-full border border-brand-primary/20 bg-brand-primary/[0.06] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-primary dark:text-brand-secondary" title="Curriculum">CBC · Kenya</span>
                     {% endif %}
                 </div>
 
-                <!-- Right: User Menu / Login -->
-                <div class="site-header__actions{% if public_site_topnav %} flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 ml-auto{% endif %}">
+                {% if public_site_topnav %}
+                <nav class="site-header__nav site-header__nav--marketing"
+                     aria-label="Primary">
+                    {% for href, ep, label, icon in pub_nav %}
+                    {% set nav_active = request.endpoint == ep or (ep == 'programs' and request.endpoint == 'features') %}
+                    <a href="{{ href }}"
+                       class="public-nav-link{% if nav_active %} is-active{% endif %}">
+                        <span class="public-nav-link__label">{{ label }}</span>
+                    </a>
+                    {% endfor %}
+                </nav>
+                {% endif %}
+
+                <!-- Right: dark mode, login -->
+                <div class="site-header__actions{% if public_site_topnav %} site-header__actions--marketing{% endif %}">
                     {% if not public_site_topnav %}
                     <div class="site-header__datetime">
                         <i class="fas fa-calendar-alt text-[10px] opacity-80" aria-hidden="true"></i>
@@ -1110,12 +1167,12 @@
                         </div>
                         {% else %}
                     {% if request.endpoint in ['login', 'register_employee', 'admission'] %}
-                    <a href="{{ url_for('home') }}" class="site-header__login site-header__login--ghost px-4 py-2.5 rounded-xl transition-all text-sm font-semibold touch-manipulation border-2 border-brand-primary text-brand-primary hover:bg-brand-primary hover:text-white dark:border-brand-secondary dark:text-brand-secondary dark:hover:bg-brand-secondary dark:hover:text-white">
-                        <i class="fas fa-home mr-2"></i><span class="hidden sm:inline">Back to site</span>
+                    <a href="{{ url_for('home') }}" class="site-header__login site-header__login--ghost touch-manipulation border-2 border-brand-primary text-brand-primary hover:bg-brand-primary hover:text-white dark:border-brand-secondary dark:text-brand-secondary dark:hover:bg-brand-secondary dark:hover:text-white">
+                        <i class="fas fa-home" aria-hidden="true"></i><span class="site-header__login-label">Back</span>
                     </a>
                     {% else %}
-                    <a href="/login" class="site-header__login px-4 py-2.5 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl transition-all text-sm font-semibold touch-manipulation shadow-md hover:shadow-lg hover:-translate-y-px border border-transparent hover:border-white/10">
-                        <i class="fas fa-sign-in-alt mr-2"></i><span class="hidden sm:inline">Login</span>
+                    <a href="/login" class="site-header__login bg-brand-primary hover:bg-brand-maroon-dark text-white touch-manipulation shadow-md hover:shadow-lg border border-transparent hover:border-white/10">
+                        <i class="fas fa-sign-in-alt" aria-hidden="true"></i><span class="site-header__login-label">Login</span>
                     </a>
                     {% endif %}
                         {% endif %}
@@ -1123,6 +1180,36 @@
             </div>
         </div>
     </header>
+
+    {% if public_site_topnav %}
+    <div id="public-site-nav-panel"
+         x-show="mobilePublicNavOpen"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 -translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 -translate-y-1"
+         @click.away="mobilePublicNavOpen = false"
+         class="public-site-nav-panel lg:hidden fixed left-0 right-0 z-40 border-b shadow-2xl"
+         style="top: var(--app-header-offset, 4.5rem);"
+         x-cloak>
+        <nav class="public-site-nav-panel__nav flex flex-col gap-2 py-3 px-4 sm:px-6 max-h-[min(70vh,calc(100vh-5rem))] overflow-y-auto"
+             aria-label="Primary mobile">
+            {% for href, ep, label, icon in pub_nav %}
+            {% set nav_active = request.endpoint == ep or (ep == 'programs' and request.endpoint == 'features') %}
+            <a href="{{ href }}"
+               @click="mobilePublicNavOpen = false"
+               class="public-site-nav-panel__link flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-colors {% if nav_active %}border-brand-primary/50 text-brand-primary font-semibold bg-brand-primary/[0.08] dark:bg-brand-primary/15 shadow-sm{% else %}border-gray-200/80 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800/80{% endif %}">
+                <span class="public-site-nav-panel__icon-wrap flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700/80 text-brand-primary">
+                    <i class="fas {{ icon }}" aria-hidden="true"></i>
+                </span>
+                <span class="text-sm font-medium public-site-nav-panel__label">{{ label }}</span>
+            </a>
+            {% endfor %}
+        </nav>
+    </div>
+    {% endif %}
 
     {% if not public_site_topnav %}
     <!-- Sidebar Overlay (Mobile / tablet drawer) -->
@@ -1300,87 +1387,42 @@
         </main>
 
     {% if public_site_topnav %}
-    <!-- Footer (marketing site) -->
-    <footer class="public-site-footer public-site-footer--marketing">
-        {% set brand_title = (school_settings.project_name or school_settings.school_name or 'School')|trim %}
-        {% set brand_words = brand_title.split() %}
+    <!-- Footer (marketing site — compact) -->
+    <footer class="public-site-footer public-site-footer--marketing public-site-footer--compact">
+        {% set footer_school = school_settings.school_name or 'Our school' %}
         <div class="public-site-footer__bar">
-            <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 md:py-5">
-                <div class="public-site-footer__grid{% if marketing_premium_shell %} public-site-footer__grid--premium{% endif %}">
-                    <div class="public-site-footer__col public-site-footer__col--brand">
-                        <a href="{{ url_for('home') }}" class="public-site-footer__brand">
-                            {% if school_settings.school_logo %}
-                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}" class="public-site-footer__logo-img" width="120" height="36" loading="lazy" decoding="async">
-                            {% else %}
-                            <div class="public-site-footer__wordmark" aria-hidden="true">
-                                {% if brand_words|length > 1 %}
-                                <span class="public-site-footer__wordmark-line">{{ brand_words[0]|upper }}</span>
-                                <span class="public-site-footer__wordmark-rule"></span>
-                                <span class="public-site-footer__wordmark-line">{{ brand_words[1:]|join(' ')|upper }}</span>
-                                {% else %}
-                                <span class="public-site-footer__wordmark-line public-site-footer__wordmark-line--single">{{ brand_title|upper }}</span>
-                                {% endif %}
-                            </div>
-                            {% endif %}
-                        </a>
-                        <p class="public-site-footer__tagline">Welcome to {{ school_settings.school_name or 'our school' }} — nurturing confident learners through the Competency Based Curriculum and strong partnerships with families.</p>
-                        <div class="public-site-footer__social public-site-footer__social--inline" aria-label="Social links">
-                            <a href="{{ school_settings.facebook_url or '#' }}" class="public-site-footer__social-link{% if not school_settings.facebook_url %} public-site-footer__social-link--inactive{% endif %}" {% if school_settings.facebook_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="Facebook"><i class="fab fa-facebook-f" aria-hidden="true"></i></a>
-                            <a href="{{ school_settings.instagram_url or '#' }}" class="public-site-footer__social-link{% if not school_settings.instagram_url %} public-site-footer__social-link--inactive{% endif %}" {% if school_settings.instagram_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="Instagram"><i class="fab fa-instagram" aria-hidden="true"></i></a>
-                            {% if school_settings.school_email %}
-                            <a href="mailto:{{ school_settings.school_email }}" class="public-site-footer__social-link" aria-label="Email"><i class="fas fa-envelope" aria-hidden="true"></i></a>
-                            {% else %}
-                            <span class="public-site-footer__social-link public-site-footer__social-link--inactive" aria-disabled="true" title="No email on file"><i class="fas fa-envelope" aria-hidden="true"></i></span>
-                            {% endif %}
-                            <a href="{{ school_settings.twitter_url or '#' }}" class="public-site-footer__social-link{% if not school_settings.twitter_url %} public-site-footer__social-link--inactive{% endif %}" {% if school_settings.twitter_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="X"><i class="fab fa-x-twitter" aria-hidden="true"></i></a>
-                        </div>
+            <div class="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+                <div class="public-site-footer__compact">
+                    <div class="public-site-footer__compact-brand">
+                        <a href="{{ url_for('home') }}" class="public-site-footer__compact-name">{{ footer_school }}</a>
+                        <p class="public-site-footer__compact-tagline">Welcome to {{ footer_school }} — nurturing confident learners through the Competency Based Curriculum and strong partnerships with families.</p>
                     </div>
-                    <div class="public-site-footer__col public-site-footer__col--links">
-                        <p class="public-site-footer__heading">Portal</p>
-                        <ul class="public-site-footer__list">
-                            <li><a href="{{ url_for('home') }}">Home</a></li>
-                            <li><a href="{{ url_for('login') }}">Login</a></li>
-                            <li><a href="{{ url_for('register_employee') }}">Staff registration</a></li>
-                            <li><a href="{{ url_for('admission') }}">Admission</a></li>
-                        </ul>
-                    </div>
-                    <div class="public-site-footer__col public-site-footer__col--contact">
+                    <div class="public-site-footer__compact-contact">
                         <p class="public-site-footer__heading">Contact</p>
-                        <ul class="public-site-footer__contact-list">
+                        <ul class="public-site-footer__contact-list public-site-footer__contact-list--compact">
                             {% if school_settings.school_email %}
                             <li><a href="mailto:{{ school_settings.school_email }}"><i class="fas fa-envelope" aria-hidden="true"></i> {{ school_settings.school_email }}</a></li>
                             {% else %}
-                            <li><span class="public-site-footer__contact-static text-white/50"><i class="fas fa-envelope" aria-hidden="true"></i> See school office</span></li>
+                            <li><span class="public-site-footer__contact-static"><i class="fas fa-envelope" aria-hidden="true"></i> kanyakineschool@gmail.com</span></li>
                             {% endif %}
                             {% if school_settings.school_phone %}
                             <li><a href="tel:{{ school_settings.school_phone|replace(' ', '') }}"><i class="fas fa-phone" aria-hidden="true"></i> {{ school_settings.school_phone }}</a></li>
+                            {% else %}
+                            <li><span class="public-site-footer__contact-static"><i class="fas fa-phone" aria-hidden="true"></i> 0142570582</span></li>
                             {% endif %}
                             {% if school_settings.school_location %}
                             <li><span class="public-site-footer__contact-static"><i class="fas fa-location-dot" aria-hidden="true"></i> {{ school_settings.school_location|replace('\n', ' · ')|e }}</span></li>
+                            {% else %}
+                            <li><span class="public-site-footer__contact-static"><i class="fas fa-location-dot" aria-hidden="true"></i> KANYAKINE-EGOJI · SOUTH IMENTI · MERU</span></li>
                             {% endif %}
                         </ul>
-                        <a href="{{ url_for('login') }}" class="public-site-footer__portal-btn"><i class="fas fa-right-to-bracket" aria-hidden="true"></i> Staff / parent login</a>
-                    </div>
-                    <div class="public-site-footer__col public-site-footer__col--search">
-                        <p class="public-site-footer__heading">Quick links</p>
-                        <p class="public-site-footer__hint">This site only offers login, staff registration, and admission.</p>
-                        <a href="{{ url_for('login') }}" class="public-site-footer__portal-btn inline-flex w-full justify-center">Go to login</a>
                     </div>
                 </div>
             </div>
         </div>
         <div class="public-site-footer__sub">
-            <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2 sm:py-2 flex flex-col sm:flex-row flex-wrap items-center justify-between gap-1.5 text-[10px] sm:text-[11px] text-white/45">
-                <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:justify-start">
-                    <span class="inline-flex items-center gap-1.5"><i class="fas fa-shield-halved text-white/30 text-[10px]" aria-hidden="true"></i> Safe, welcoming campus</span>
-                    <span class="text-white/20 hidden sm:inline" aria-hidden="true">·</span>
-                    <span class="inline-flex items-center gap-1.5"><i class="fas fa-graduation-cap text-white/30 text-[10px]" aria-hidden="true"></i> CBC-aligned learning</span>
-                </div>
-                <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:justify-end">
-                    <span>&copy; 2026 {{ school_settings.school_name or 'School' }}</span>
-                    <span class="text-white/25 hidden sm:inline" aria-hidden="true">·</span>
-                    <span>Powered by educentric</span>
-                </div>
+            <div class="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-2 text-center text-[10px] sm:text-[11px] text-white/40">
+                <span>&copy; {{ current_year }} {{ footer_school }}</span>
             </div>
         </div>
     </footer>

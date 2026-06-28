@@ -1,8 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Our Team - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}{{ team_page_title or ('Our Team — ' ~ (school_settings.school_name or 'Our school')) }}{% endblock %}
 
-{% block body_class %}public-site school-public{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-team.css') }}">
+<meta name="description" content="Meet the team at {{ school_settings.school_name or 'our school' }} — leadership, teachers, and support staff.">
+{% endblock %}
+
+{% block body_class %}public-site school-public team-page{% endblock %}
 
 {% block content %}
 {% set hero_img = 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=1920&q=80&auto=format&fit=crop' %}
@@ -16,7 +21,13 @@
             <div class="max-w-3xl mx-auto text-center">
                 <p class="edu-eyebrow text-white/90 mb-3">{{ school_settings.project_name or 'Our people' }}</p>
                 <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-white mb-4">Our team</h1>
-                <p class="text-lg text-white/90 mb-8 max-w-xl mx-auto">Educators and leaders dedicated to {{ school_settings.school_name or 'student success' }}.</p>
+                <p class="text-lg text-white/90 mb-6 max-w-xl mx-auto">
+                    {% if team_total %}
+                    {{ team_total }} dedicated member{{ 's' if team_total != 1 else '' }} guiding learning and culture at {{ school_settings.school_name or 'our school' }}.
+                    {% else %}
+                    Educators and leaders dedicated to {{ school_settings.school_name or 'student success' }}.
+                    {% endif %}
+                </p>
                 <a href="/register-employee" class="edu-btn-primary inline-flex"><i class="fas fa-user-plus"></i> Join our team</a>
             </div>
         </div>
@@ -24,40 +35,96 @@
 </section>
 
 <section class="py-14 md:py-20 edu-section--tint edu-section--mesh">
-    <div class="container mx-auto px-4 lg:px-8">
-        <div class="text-center mb-12 fade-in-section max-w-2xl mx-auto">
-            <h2 class="edu-display text-2xl md:text-3xl text-gray-900 dark:text-white mb-3">Leadership &amp; faculty</h2>
-            <p class="text-gray-600 dark:text-gray-400">The people guiding learning and culture at {{ school_settings.school_name or 'our school' }}.</p>
-        </div>
+    <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
+        {% if team_groups %}
+        <div class="team-directory">
+            {% for group in team_groups %}
+            {% set group_idx = loop.index0 %}
+            <section class="team-role-section fade-in-section" aria-labelledby="team-role-{{ loop.index }}">
+                <header class="team-role-section__head">
+                    <div class="team-role-section__icon" aria-hidden="true">
+                        {% if group.role_key == 'head of institution' %}
+                        <i class="fas fa-crown"></i>
+                        {% elif group.role_key == 'deputy head of institution' %}
+                        <i class="fas fa-user-shield"></i>
+                        {% elif group.role_key == 'accountant' %}
+                        <i class="fas fa-calculator"></i>
+                        {% elif group.role_key == 'curriculum coordinator' %}
+                        <i class="fas fa-book-open"></i>
+                        {% elif group.role_key == 'teachers' %}
+                        <i class="fas fa-chalkboard-teacher"></i>
+                        {% elif group.role_key == 'librarian' %}
+                        <i class="fas fa-book-reader"></i>
+                        {% elif group.role_key == 'store manager' %}
+                        <i class="fas fa-warehouse"></i>
+                        {% else %}
+                        <i class="fas fa-users"></i>
+                        {% endif %}
+                    </div>
+                    <div class="team-role-section__meta">
+                        <h2 class="team-role-section__title" id="team-role-{{ loop.index }}">{{ group.label }}</h2>
+                        <p class="team-role-section__count">{{ group.members|length }} member{{ 's' if group.members|length != 1 else '' }}</p>
+                    </div>
+                    {% if group.members|length > 1 %}
+                    <div class="team-role-section__scroll-hint" aria-hidden="true">
+                        <span>Scroll</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    {% endif %}
+                </header>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 lg:gap-8 max-w-7xl mx-auto">
-            {% for member in team_members %}
-            <div class="team-card-modern group relative overflow-hidden rounded-xl shadow-md border border-gray-200 dark:border-slate-600 hover:shadow-lg transition-shadow duration-300 fade-in-section">
-                <div class="absolute inset-0 bg-cover bg-center bg-no-repeat transform group-hover:scale-110 transition-transform duration-700" style="background-image: url('{{ member.image }}');">
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-black/30"></div>
-                </div>
-                <div class="relative h-96 flex flex-col justify-end p-6">
-                    <button type="button" @click="selectedMember = {{ loop.index0 }}; teamMemberModalOpen = true"
-                            class="absolute top-4 right-4 w-12 h-12 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-brand-primary/90 transition-colors duration-200 shadow-sm border border-white/30"
-                            aria-label="View profile of {{ member.name }}">
-                        <i class="fas fa-eye text-lg"></i>
-                    </button>
-                    <div class="bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg p-4 border border-white/50 dark:border-slate-600 shadow-lg">
-                        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-1 group-hover:text-brand-primary transition-colors">{{ member.name }}</h3>
-                        <p class="text-brand-primary font-semibold text-sm mb-2">{{ member.position }}</p>
-                        <p class="text-gray-600 dark:text-gray-400 text-xs line-clamp-2">{{ member.bio }}</p>
+                <div class="team-scroll-wrap{% if group.members|length > 1 %} team-scroll-wrap--scroll{% else %} team-scroll-wrap--single{% endif %}">
+                    <div class="team-rail"
+                         role="list"
+                         aria-label="{{ group.label }} team members"
+                         tabindex="0">
+                        {% for member in group.members %}
+                        {% set bg_url = url_for('static', filename=member.profile_picture) if member.profile_picture else team_default_cover %}
+                        <article class="team-portrait-card group"
+                                 role="listitem"
+                                 style="--team-delay: {{ loop.index0 * 0.06 }}s; --team-hue: {{ (loop.index0 * 53 + group_idx * 17) % 360 }};">
+                            <div class="team-portrait-card__frame" aria-hidden="true"></div>
+                            <div class="team-portrait-card__photo"
+                                 style="background-image: url('{{ bg_url }}');"
+                                 role="img"
+                                 aria-label="{{ member.name }}"></div>
+                            <div class="team-portrait-card__scrim" aria-hidden="true"></div>
+                            <div class="team-portrait-card__shine" aria-hidden="true"></div>
+
+                            {% if not member.profile_picture %}
+                            <div class="team-portrait-card__initial" aria-hidden="true">{{ member.initial }}</div>
+                            {% endif %}
+
+                            <button type="button"
+                                    class="team-portrait-card__view"
+                                    @click="selectedMember = {{ member.modal_index }}; teamMemberModalOpen = true"
+                                    aria-label="View profile of {{ member.name }}">
+                                <i class="fas fa-plus" aria-hidden="true"></i>
+                            </button>
+
+                            <div class="team-portrait-card__float">
+                                <div class="team-portrait-card__float-inner">
+                                    <span class="team-portrait-card__dot" aria-hidden="true"></span>
+                                    <p class="team-portrait-card__name">{{ member.name }}</p>
+                                    <p class="team-portrait-card__role">{{ member.role_label }}</p>
+                                </div>
+                            </div>
+                        </article>
+                        {% endfor %}
                     </div>
                 </div>
-            </div>
+            </section>
             {% endfor %}
         </div>
-
-        <div class="mt-14 edu-card p-8 md:p-10 text-center max-w-3xl mx-auto">
-            <div class="edu-icon-tile w-16 h-16 text-2xl mx-auto mb-6"><i class="fas fa-user-tie"></i></div>
-            <h2 class="edu-display text-2xl text-gray-900 dark:text-white mb-3">Want to join us?</h2>
-            <p class="text-gray-600 dark:text-gray-400 mb-8">We welcome passionate educators and support staff who share our values.</p>
-            <a href="/register-employee" class="edu-btn-primary inline-flex"><i class="fas fa-user-plus"></i> Register as employee</a>
+        {% else %}
+        <div class="team-empty fade-in-section">
+            <div class="team-empty__icon" aria-hidden="true"><i class="fas fa-users"></i></div>
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Team profiles coming soon</h2>
+            <p class="text-gray-600 dark:text-gray-400 text-sm max-w-md mx-auto mb-0">
+                Active staff will appear here once their profiles are published in the system.
+            </p>
         </div>
+        {% endif %}
     </div>
 </section>
 
@@ -70,6 +137,7 @@
     </div>
 </div>
 
+{% if team_members %}
 <div x-show="teamMemberModalOpen"
      @click.away="teamMemberModalOpen = false"
      x-transition:enter="transition-opacity ease-out duration-300"
@@ -89,51 +157,44 @@
          x-transition:leave="transition-all ease-in duration-300"
          x-transition:leave-start="opacity-100 scale-100 translate-y-0"
          x-transition:leave-end="opacity-0 scale-90 translate-y-8"
-         class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col team-member-modal border border-gray-200 dark:border-slate-700">
+         class="team-modal bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-slate-700">
         {% for member in team_members %}
-        <div x-show="selectedMember === {{ loop.index0 }}" class="flex flex-col lg:flex-row h-full">
-            <div class="lg:w-2/5 h-64 lg:h-auto bg-cover bg-center bg-no-repeat relative min-h-[16rem]"
-                 style="background-image: url('{{ member.image }}')">
-                <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/25 to-brand-accent/30"></div>
-                <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
+        {% set bg_url = url_for('static', filename=member.profile_picture) if member.profile_picture else team_default_cover %}
+        <div x-show="selectedMember === {{ member.modal_index }}" class="flex flex-col">
+            <div class="team-modal__hero" style="background-image: url('{{ bg_url }}');">
+                <div class="team-modal__hero-scrim" aria-hidden="true"></div>
                 <button type="button" @click="teamMemberModalOpen = false"
-                        class="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all duration-300 transform hover:scale-110 shadow-lg"
+                        class="team-modal__close"
                         aria-label="Close">
                     <i class="fas fa-times"></i>
                 </button>
-            </div>
-            <div class="lg:w-3/5 p-6 lg:p-8 overflow-y-auto flex-1 bg-gradient-to-br from-white to-gray-50 dark:from-slate-900 dark:to-slate-950">
-                <div class="mb-4">
-                    <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold mb-3 bg-brand-primary/15 text-brand-primary dark:bg-brand-primary/25 dark:text-red-200">{{ member.position }}</span>
-                    <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{{ member.name }}</h2>
-                </div>
-                <div class="space-y-4 mb-6">
-                    <div>
-                        <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">About</h3>
-                        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">{{ member.details }}</p>
-                    </div>
-                    <div>
-                        <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Qualifications</h3>
-                        <p class="text-gray-700 dark:text-gray-300">{{ member.qualifications }}</p>
-                    </div>
-                </div>
-                <div class="border-t border-gray-200 dark:border-slate-700 pt-6 space-y-3">
-                    <div class="flex items-center text-gray-700 dark:text-gray-300 hover:text-brand-primary transition-colors">
-                        <div class="w-10 h-10 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-lg flex items-center justify-center mr-3">
-                            <i class="fas fa-envelope text-brand-primary"></i>
-                        </div>
-                        <a href="mailto:{{ member.email }}" class="font-medium break-all">{{ member.email }}</a>
-                    </div>
-                    <div class="flex items-center text-gray-700 dark:text-gray-300 hover:text-brand-primary transition-colors">
-                        <div class="w-10 h-10 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-lg flex items-center justify-center mr-3">
-                            <i class="fas fa-phone text-brand-primary"></i>
-                        </div>
-                        <a href="tel:{{ member.phone }}" class="font-medium">{{ member.phone }}</a>
-                    </div>
+                <div class="team-modal__hero-text">
+                    <span class="team-modal__role-badge">{{ member.role_label }}</span>
+                    <h2 class="team-modal__name">{{ member.name }}</h2>
+                    {% if member.roles_display and member.roles_display != member.role_label %}
+                    <p class="team-modal__roles">{{ member.roles_display }}</p>
+                    {% endif %}
                 </div>
             </div>
+            {% if member.email or member.phone %}
+            <div class="team-modal__body">
+                {% if member.email %}
+                <a href="mailto:{{ member.email }}" class="team-modal__link">
+                    <i class="fas fa-envelope" aria-hidden="true"></i>
+                    <span>{{ member.email }}</span>
+                </a>
+                {% endif %}
+                {% if member.phone %}
+                <a href="tel:{{ member.phone }}" class="team-modal__link">
+                    <i class="fas fa-phone" aria-hidden="true"></i>
+                    <span>{{ member.phone }}</span>
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
 </div>
+{% endif %}
 {% endblock %}

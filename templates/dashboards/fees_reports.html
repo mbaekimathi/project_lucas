@@ -24,6 +24,8 @@
 <script type="application/json" id="fr-page-config">{{ {
     'generateApi': employee_dash_url('api/employee/fees-reports/generate'),
     'rosterApi': employee_dash_url('api/employee/academic-reports/search-students'),
+    'parentLoginUrl': parent_login_url|default(''),
+    'parentLoginQrDataUrl': parent_login_qr_data_url|default(''),
     'school': {
         'name': school_settings.school_name or 'School',
         'location': school_settings.school_location or '',

@@ -15,214 +15,543 @@
 {% block content_full_bleed %}
 {% set campus_photo = school_settings.school_hero_image if school_settings.school_hero_image else none %}
 {% set campus_url = url_for('static', filename=campus_photo) if campus_photo else '' %}
-{% set _gallery = gallery_items|default([]) %}
-{% set _gallery_preview = _gallery[:6] %}
+{% set hero_fallback_img = 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=1200&q=80&auto=format&fit=crop' %}
+{% set hero_media_url = campus_url if campus_photo else hero_fallback_img %}
+{# Same stock imagery as the public Gallery, News, Team, and Contact pages #}
+{% set img_gallery = 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=900&q=80&auto=format&fit=crop' %}
+{% set img_news = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=900&q=80&auto=format&fit=crop' %}
+{% set img_team = 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=900&q=80&auto=format&fit=crop' %}
+{% set explore_cards = [
+    {
+        'href': url_for('gallery'),
+        'slug': 'gallery',
+        'label': 'Gallery',
+        'icon': 'fa-images',
+        'float_icons': ['fa-camera', 'fa-image', 'fa-film'],
+        'gradient': 'linear-gradient(135deg, #059669, #10b981)',
+        'image': img_gallery,
+        'desc': 'Step inside our classrooms, sports fields, and celebrations through photos curated from daily school life.',
+        'chips': [
+            ('Graduation & milestones', 'fa-graduation-cap'),
+            ('Sports & teamwork', 'fa-running'),
+            ('Arts & creativity', 'fa-palette'),
+        ],
+        'cta': 'View full gallery',
+    },
+    {
+        'href': url_for('news'),
+        'slug': 'news',
+        'label': 'News',
+        'icon': 'fa-newspaper',
+        'float_icons': ['fa-calendar-days', 'fa-bell', 'fa-bullhorn'],
+        'gradient': 'linear-gradient(135deg, #2563eb, #3b82f6)',
+        'image': img_news,
+        'desc': 'Stay up to date with term dates, exams, holidays, and everything happening on the academic calendar.',
+        'chips': [
+            ((news_upcoming_count|default(0)|string ~ ' upcoming') if news_upcoming_count|default(0) else 'Academic calendar', 'fa-calendar-check'),
+            ('Exams & terms', 'fa-clipboard-list'),
+            ('School events', 'fa-star'),
+        ],
+        'cta': 'Read news & calendar',
+    },
+    {
+        'href': url_for('team'),
+        'slug': 'team',
+        'label': 'Team',
+        'icon': 'fa-users',
+        'float_icons': ['fa-book-open', 'fa-lightbulb', 'fa-seedling'],
+        'gradient': 'linear-gradient(135deg, #7c3aed, #a78bfa)',
+        'image': img_team,
+        'media_badge': 'CBC · Kenya',
+        'desc': 'Meet CBC-aligned educators and leaders who nurture competencies, values, and confident learners.',
+        'chips': [
+            ('CBC-aligned teaching', 'fa-book-open'),
+            ((team_total|default(0)|string ~ ' team member' ~ ('s' if team_total|default(0) != 1 else '')) if team_total|default(0) else 'Leadership & staff', 'fa-user-group'),
+            ('Pastoral care', 'fa-heart'),
+        ],
+        'cta': 'Meet our team',
+    },
+    {
+        'href': url_for('contact'),
+        'slug': 'contact',
+        'label': 'Contact',
+        'icon': 'fa-envelope',
+        'float_icons': ['fa-phone', 'fa-location-dot', 'fa-comments'],
+        'gradient': 'linear-gradient(135deg, #d97706, #f59e0b)',
+        'social': true,
+        'desc': 'Reach the front office for admissions, fees, visits, and general enquiries — we are happy to help.',
+        'chips': [
+            (school_settings.school_phone or 'Call the office', 'fa-phone'),
+            (school_settings.school_email or 'Send a message', 'fa-envelope'),
+            ((school_settings.school_location|replace('\n', ' · ')|truncate(28, True, '…')) if school_settings.school_location else 'Visit our campus', 'fa-location-dot'),
+        ],
+        'cta': 'Get in touch',
+    },
+] %}
 
-<section class="home-landing{% if campus_photo %} home-landing--has-photo{% endif %}" aria-label="School portal welcome">
-    {% if campus_photo %}
-    <div class="home-landing__photo" aria-hidden="true">
-        <img src="{{ campus_url }}"
-             alt=""
-             class="home-landing__photo-img"
-             width="1600"
-             height="900"
-             loading="eager"
-             fetchpriority="high"
-             decoding="async">
-        <div class="home-landing__photo-scrim"></div>
-    </div>
-    {% else %}
-    <div class="home-landing__bg" aria-hidden="true"></div>
-    {% endif %}
-    <div class="home-landing__grid-pattern" aria-hidden="true"></div>
-
-    <div class="home-landing__inner">
-        {% if employee_in_portal %}
-        <div class="home-landing__signed-in home-landing__panel lg:col-span-2">
-            {% if school_settings.school_logo %}
-            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="home-landing__logo" width="200" height="80">
-            {% else %}
-            <div class="home-landing__logo-fallback" aria-hidden="true"><i class="fas fa-graduation-cap"></i></div>
-            {% endif %}
-            <h1 class="home-landing__title">{{ school_settings.school_name or 'Portal' }}</h1>
-            {% if session.get('full_name') %}
-            <p class="home-landing__tagline">Signed in as {{ session.get('full_name') }}</p>
-            {% endif %}
-            <div class="home-landing__cta-row" style="justify-content: center;">
-                <a href="{{ employee_dash_url() }}" class="home-landing__btn-primary">
-                    <i class="fas fa-gauge-high" aria-hidden="true"></i> Dashboard
-                </a>
-                <a href="{{ url_for('logout') }}" class="home-landing__btn-ghost">
-                    <i class="fas fa-right-from-bracket" aria-hidden="true"></i> Log out
-                </a>
-            </div>
-        </div>
-        {% else %}
-        <div class="home-landing__hero">
-            <p class="home-landing__badge">
-                <i class="fas fa-sparkles" aria-hidden="true"></i>
-                School management
-            </p>
-            {% if school_settings.school_logo %}
-            <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
-                 alt=""
-                 class="home-landing__logo"
-                 width="220"
-                 height="88"
-                 loading="eager"
-                 decoding="async">
-            {% else %}
-            <div class="home-landing__logo-fallback" aria-hidden="true">
-                <i class="fas fa-graduation-cap"></i>
-            </div>
-            {% endif %}
-            <h1 class="home-landing__title">{{ school_settings.school_name or 'Your school' }}</h1>
-            <p class="home-landing__tagline">One portal for learning, fees, and daily school life.</p>
-            <div class="home-landing__cta-row">
-                <a href="{{ url_for('login') }}" class="home-landing__btn-primary">
-                    <i class="fas fa-right-to-bracket" aria-hidden="true"></i>
-                    Sign in
-                </a>
-                <a href="{{ url_for('admission') }}" class="home-landing__btn-ghost">
-                    <i class="fas fa-user-graduate" aria-hidden="true"></i>
-                    Apply
-                </a>
-            </div>
-        </div>
-
-        {% if not campus_photo %}
-        {% if _gallery_preview %}
-        <aside class="home-landing__gallery-mosaic" aria-label="School photo highlights">
-            {% for item in _gallery_preview[:4] %}
-            <a href="{{ url_for('gallery') }}" class="home-landing__gallery-tile{% if loop.first %} home-landing__gallery-tile--lead{% endif %}" title="{{ item.title }}">
-                {% if item.image_src %}
-                <img src="{{ item.image_src }}" alt="{{ item.title }}" width="400" height="300" loading="lazy" decoding="async">
+<section class="home-landing home-landing--split{% if campus_photo %} home-landing--has-photo{% endif %}" aria-label="School website welcome">
+    <div class="home-landing__split">
+        <div class="home-landing__content">
+            {% if employee_in_portal %}
+            <div class="home-landing__signed-in">
+                {% if school_settings.school_logo %}
+                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="home-landing__logo" width="200" height="80">
+                {% else %}
+                <div class="home-landing__logo-fallback" aria-hidden="true"><i class="fas fa-graduation-cap"></i></div>
                 {% endif %}
-                <span class="home-landing__gallery-tile-caption">{{ item.title }}</span>
-            </a>
-            {% endfor %}
-        </aside>
-        {% else %}
-        <div class="home-landing__bento" aria-hidden="true">
-            <div class="home-landing__tile home-landing__tile--wide">
-                <div class="home-landing__tile-icon" style="background: linear-gradient(135deg, #059669, #10b981);">
-                    <i class="fas fa-wallet"></i>
+                <h1 class="home-landing__title">{{ school_settings.school_name or 'Portal' }}</h1>
+                {% if session.get('full_name') %}
+                <p class="home-landing__tagline">Signed in as {{ session.get('full_name') }}</p>
+                {% endif %}
+                <div class="home-landing__cta-row">
+                    <a href="{{ employee_dash_url() }}" class="home-landing__btn-primary">
+                        <i class="fas fa-gauge-high" aria-hidden="true"></i> Dashboard
+                    </a>
+                    <a href="{{ url_for('logout') }}" class="home-landing__btn-ghost">
+                        <i class="fas fa-right-from-bracket" aria-hidden="true"></i> Log out
+                    </a>
                 </div>
-                <span class="home-landing__tile-label">Fees</span>
             </div>
-            <div class="home-landing__tile">
-                <div class="home-landing__tile-icon" style="background: linear-gradient(135deg, #2563eb, #3b82f6);">
-                    <i class="fas fa-user-check"></i>
-                </div>
-                <span class="home-landing__tile-label">Attendance</span>
-            </div>
-            <div class="home-landing__tile">
-                <div class="home-landing__tile-icon" style="background: linear-gradient(135deg, #7c3aed, #a78bfa);">
+            {% else %}
+            <div class="home-landing__hero">
+                {% if school_settings.school_logo %}
+                <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
+                     alt=""
+                     class="home-landing__logo"
+                     width="220"
+                     height="88"
+                     loading="eager"
+                     decoding="async">
+                {% else %}
+                <div class="home-landing__logo-fallback" aria-hidden="true">
                     <i class="fas fa-graduation-cap"></i>
                 </div>
-                <span class="home-landing__tile-label">Exams</span>
-            </div>
-            <div class="home-landing__tile">
-                <div class="home-landing__tile-icon" style="background: linear-gradient(135deg, #d97706, #f59e0b);">
-                    <i class="fas fa-calendar-week"></i>
+                {% endif %}
+                <p class="home-landing__badge">
+                    <i class="fas fa-school" aria-hidden="true"></i>
+                    Welcome
+                </p>
+                <h1 class="home-landing__title">{{ school_settings.school_name or 'Your school' }}</h1>
+                <p class="home-landing__tagline">A welcoming place to learn, grow, and belong.</p>
+                {% if school_settings.school_location %}
+                <p class="home-landing__meta">
+                    <i class="fas fa-location-dot" aria-hidden="true"></i>
+                    {{ school_settings.school_location|replace('\n', ' · ')|e }}
+                </p>
+                {% endif %}
+                <div class="home-landing__cta-row">
+                    <a href="{{ url_for('login') }}" class="home-landing__btn-primary">
+                        <i class="fas fa-right-to-bracket" aria-hidden="true"></i>
+                        Sign in
+                    </a>
+                    <a href="{{ url_for('admission') }}" class="home-landing__btn-ghost">
+                        <i class="fas fa-user-graduate" aria-hidden="true"></i>
+                        Apply
+                    </a>
                 </div>
-                <span class="home-landing__tile-label">Timetable</span>
             </div>
-            <div class="home-landing__tile">
-                <div class="home-landing__tile-icon" style="background: linear-gradient(135deg, #0d9488, #14b8a6);">
-                    <i class="fas fa-chart-line"></i>
-                </div>
-                <span class="home-landing__tile-label">Reports</span>
-            </div>
-            <div class="home-landing__tile">
-                <div class="home-landing__tile-icon" style="background: linear-gradient(135deg, #4f46e5, #6366f1);">
-                    <i class="fas fa-users"></i>
-                </div>
-                <span class="home-landing__tile-label">Families</span>
+            {% endif %}
+        </div>
+
+        <div class="home-landing__media{% if not campus_photo %} home-landing__media--stock{% endif %}">
+            <img src="{{ hero_media_url }}"
+                 alt=""
+                 class="home-landing__media-img"
+                 width="1200"
+                 height="800"
+                 loading="eager"
+                 {% if campus_photo %}fetchpriority="high"{% endif %}
+                 decoding="async">
+            <div class="home-landing__media-scrim" aria-hidden="true"></div>
+            <div class="home-landing__media-badge">
+                <i class="fas fa-graduation-cap" aria-hidden="true"></i>
+                CBC · Kenya
             </div>
         </div>
-        {% endif %}
-        {% else %}
-        <aside class="home-landing__showcase" aria-label="Campus highlights">
-            <div class="home-landing__showcase-card home-landing__panel">
-                <p class="home-landing__showcase-eyebrow"><i class="fas fa-school" aria-hidden="true"></i> Our campus</p>
-                <p class="home-landing__showcase-text">A welcoming place to learn, grow, and belong.</p>
-                {% if school_settings.school_location %}
-                <p class="home-landing__showcase-location"><i class="fas fa-location-dot" aria-hidden="true"></i> {{ school_settings.school_location|replace('\n', ' · ')|e }}</p>
-                {% endif %}
-            </div>
-        </aside>
-        {% endif %}
-        {% endif %}
     </div>
 </section>
 
-{% if _gallery %}
-<section class="home-landing-gallery" aria-label="School photo gallery">
-    <div class="home-landing-gallery__inner">
-        <header class="home-landing-gallery__header">
-            <p class="home-landing-gallery__eyebrow"><i class="fas fa-images" aria-hidden="true"></i> Gallery</p>
-            <h2 class="home-landing-gallery__title">Life at {{ school_settings.school_name or 'our school' }}</h2>
-            <p class="home-landing-gallery__lead">Explore campus moments, classrooms, sports, and community events{% if school_settings.school_location %} in {{ school_settings.school_location|replace('\n', ' · ')|e }}{% endif %}.</p>
-        </header>
-        <div class="home-landing-gallery__grid">
-            {% for item in _gallery_preview %}
-            <article class="home-landing-gallery__card" itemscope itemtype="https://schema.org/ImageObject">
-                <a href="{{ url_for('gallery') }}" class="home-landing-gallery__media" title="{{ item.title }}">
-                    {% if item.image_src %}
-                    <img src="{{ item.image_src }}"
-                         alt="{{ item.title }}"
-                         width="480"
-                         height="360"
-                         loading="lazy"
-                         decoding="async"
-                         itemprop="contentUrl">
-                    {% else %}
-                    <div class="home-landing-gallery__placeholder"><i class="fas fa-image" aria-hidden="true"></i></div>
-                    {% endif %}
-                </a>
-                <div class="home-landing-gallery__body">
-                    <h3 class="home-landing-gallery__card-title" itemprop="name">{{ item.title }}</h3>
-                    {% if item.description %}
-                    <p class="home-landing-gallery__card-text" itemprop="description">{{ item.description|truncate(140, True, '…') }}</p>
-                    {% endif %}
+<section class="home-about" aria-label="About our school">
+    <div class="home-about__inner">
+        <div class="home-about__grid">
+            <div class="home-about__copy home-about__copy--animate">
+                <p class="home-about__eyebrow">
+                    <i class="fas fa-info-circle" aria-hidden="true"></i>
+                    About {{ school_settings.school_name or 'our school' }}
+                </p>
+                <h2 class="home-about__title">Excellence, character, and community — the heart of {{ school_settings.school_name or 'our school' }}.</h2>
+                <p class="home-about__lead">
+                    {{ school_settings.school_name or 'Our school' }} exists to develop capable, ethical young people. Through the Competency Based Curriculum and rich co-curricular offerings, we help students discover their strengths and serve others with purpose.
+                </p>
+                {% if school_settings.school_location %}
+                <p class="home-about__location">
+                    <i class="fas fa-location-dot" aria-hidden="true"></i>
+                    {{ school_settings.school_location|replace('\n', ' · ')|e }}
+                </p>
+                {% endif %}
+                <div class="home-about__actions">
+                    <a href="{{ url_for('about') }}" class="home-about__btn home-about__btn--primary">
+                        <i class="fas fa-book-open" aria-hidden="true"></i> Read our story
+                    </a>
+                    <a href="{{ url_for('admission') }}" class="home-about__btn home-about__btn--ghost">
+                        <i class="fas fa-file-signature" aria-hidden="true"></i> Apply now
+                    </a>
                 </div>
+            </div>
+            <div class="home-about__media home-about__media--animate">
+                <img src="https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=900&q=80&auto=format&fit=crop"
+                     alt="Students learning together at {{ school_settings.school_name or 'our school' }}"
+                     class="home-about__photo"
+                     width="900"
+                     height="675"
+                     loading="lazy"
+                     decoding="async">
+                <div class="home-about__photo-scrim" aria-hidden="true"></div>
+                <div class="home-about__photo-badge">
+                    <i class="fas fa-graduation-cap" aria-hidden="true"></i>
+                    CBC · Kenya
+                </div>
+            </div>
+        </div>
+
+        <div class="home-about__pillars">
+            {% for title, desc, icon, delay in [
+                ('Our mission', 'To provide an outstanding, inclusive education that prepares every learner for higher study, work, and citizenship.', 'fa-bullseye', 0),
+                ('Our values', 'Integrity, respect, perseverance, and joy in learning — modeled by staff and celebrated in students.', 'fa-heart', 1),
+                ('Our promise', 'Small enough to know each child; ambitious enough to open doors to top secondary pathways and beyond.', 'fa-hand-holding-heart', 2),
+            ] %}
+            <article class="home-about__pillar home-about__pillar--animate" style="--pillar-i: {{ delay }};">
+                <span class="home-about__pillar-icon" aria-hidden="true"><i class="fas {{ icon }}"></i></span>
+                <h3 class="home-about__pillar-title">{{ title }}</h3>
+                <p class="home-about__pillar-text">{{ desc }}</p>
             </article>
             {% endfor %}
         </div>
-        <div class="home-landing-gallery__footer">
-            <a href="{{ url_for('gallery') }}" class="home-landing-gallery__link">
-                View full gallery
-                {% if _gallery|length > _gallery_preview|length %}
-                <span class="home-landing-gallery__count">({{ _gallery|length }} photos)</span>
-                {% endif %}
-                <i class="fas fa-arrow-right" aria-hidden="true"></i>
-            </a>
-        </div>
-    </div>
-</section>
-{% endif %}
 
-{% if campus_photo and not employee_in_portal %}
-<section class="home-landing-cta" aria-label="Visit our school">
-    <div class="home-landing-cta__media" aria-hidden="true">
-        <img src="{{ campus_url }}" alt="" class="home-landing-cta__img" width="1600" height="600" loading="lazy" decoding="async">
-        <div class="home-landing-cta__scrim"></div>
-    </div>
-    <div class="home-landing-cta__glow" aria-hidden="true"></div>
-    <div class="home-landing-cta__inner">
-        <p class="home-landing-cta__eyebrow">Experience {{ school_settings.school_name or 'our school' }}</p>
-        <h2 class="home-landing-cta__title">Plan a campus visit</h2>
-        <p class="home-landing-cta__text">See our classrooms, meet our team, and discover how we support every learner.</p>
-        <div class="home-landing-cta__actions">
-            <a href="{{ url_for('demo') }}" class="home-landing-cta__btn home-landing-cta__btn--solid">
-                <i class="fas fa-calendar-check" aria-hidden="true"></i> Schedule a tour
-            </a>
-            <a href="{{ url_for('admission') }}" class="home-landing-cta__btn home-landing-cta__btn--outline">
-                <i class="fas fa-file-signature" aria-hidden="true"></i> Apply online
-            </a>
+        <div class="home-progress" aria-label="School journey timeline">
+            <div class="home-progress__backdrop" aria-hidden="true">
+                <span class="home-progress__leaf home-progress__leaf--1"><i class="fas fa-leaf"></i></span>
+                <span class="home-progress__leaf home-progress__leaf--2"><i class="fas fa-leaf"></i></span>
+                <span class="home-progress__leaf home-progress__leaf--3"><i class="fas fa-leaf"></i></span>
+            </div>
+
+            <header class="home-progress__header home-progress__header--animate">
+                <p class="home-progress__eyebrow"><i class="fas fa-tree" aria-hidden="true"></i> Our journey</p>
+                <h3 class="home-progress__title">Growing together</h3>
+                <p class="home-progress__lead">From a small founding cohort to a thriving CBC community — milestones that shaped {{ school_settings.school_name or 'our school' }}.</p>
+                <div class="home-progress__stats" aria-label="Journey highlights">
+                    <div class="home-progress__stat">
+                        <span class="home-progress__stat-value">10</span>
+                        <span class="home-progress__stat-label">Milestones</span>
+                    </div>
+                    <div class="home-progress__stat">
+                        <span class="home-progress__stat-value">500+</span>
+                        <span class="home-progress__stat-label">Learners today</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="home-progress__tree">
+                <svg class="home-progress__svg-defs" aria-hidden="true" focusable="false">
+                    <defs>
+                        <linearGradient id="home-tree-trunk" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#5c3d2e"/>
+                            <stop offset="45%" stop-color="#78350f"/>
+                            <stop offset="100%" stop-color="#5c3d2e"/>
+                        </linearGradient>
+                        <linearGradient id="home-tree-branch" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#78350f"/>
+                            <stop offset="100%" stop-color="#92400e"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+
+                <div class="home-progress__tree-scene">
+                    <div class="home-progress__canopy" aria-hidden="true">
+                        <span class="home-progress__canopy-blob home-progress__canopy-blob--1"></span>
+                        <span class="home-progress__canopy-blob home-progress__canopy-blob--2"></span>
+                        <span class="home-progress__canopy-blob home-progress__canopy-blob--3"></span>
+                        <span class="home-progress__canopy-badge">
+                            <i class="fas fa-leaf" aria-hidden="true"></i>
+                        </span>
+                    </div>
+
+                    <div class="home-progress__trunk-bark" aria-hidden="true">
+                        <span class="home-progress__trunk-texture"></span>
+                    </div>
+
+                    <div class="home-progress__roots" aria-hidden="true">
+                        <span class="home-progress__root-flare home-progress__root-flare--l"></span>
+                        <span class="home-progress__root-flare home-progress__root-flare--r"></span>
+                        <span class="home-progress__root-badge">
+                            <i class="fas fa-seedling" aria-hidden="true"></i>
+                        </span>
+                    </div>
+
+                    <ol class="home-progress__timeline">
+                    {% set school_label = school_settings.school_name or 'Our school' %}
+                    {% for title, desc, icon, theme in [
+                        ('School founded', school_label ~ ' opens its doors with two classrooms and a vision for inclusive, values-led education.', 'fa-flag', 'earth'),
+                        ('Official registration', 'Registered with the Ministry of Education and welcomed our first full primary cohort.', 'fa-certificate', 'bronze'),
+                        ('First national exams', 'Inaugural KCPE class achieves strong mean scores, establishing our academic reputation.', 'fa-award', 'gold'),
+                        ('Science laboratory', 'A dedicated science block opens, expanding hands-on learning for upper primary learners.', 'fa-flask', 'teal'),
+                        ('Library & ICT hub', 'New library and computer room launch, connecting learners to research and digital skills.', 'fa-book-reader', 'sky'),
+                        ('Sports & boarding wing', 'Sports complex and boarding facilities open, supporting co-curricular and regional competitions.', 'fa-futbol', 'green'),
+                        ('Digital learning', 'Parent portal and classroom technology rolled out across all grade levels.', 'fa-laptop', 'violet'),
+                        ('CBC transition', 'Full shift to Competency Based Curriculum with retrained staff and new assessment models.', 'fa-chalkboard-user', 'indigo'),
+                        ('STEM & arts centre', 'STEM lab and performing arts studio open, nurturing creativity and innovation.', 'fa-microscope', 'rose'),
+                        ('Today', '500+ learners, 40+ staff, and a growing alumni network — continuing to excel in CBC and co-curricular life.', 'fa-school', 'brand'),
+                    ] %}
+                    {% set is_featured = loop.last %}
+                    {% set side = 'left' if loop.index0 % 2 == 0 else 'right' %}
+                    {% set arch = -10 if loop.index0 % 4 == 0 else (8 if loop.index0 % 4 == 1 else (-6 if loop.index0 % 4 == 2 else 12)) %}
+                    <li class="home-progress__node home-progress__node--{{ side }} home-progress__node--{{ theme }} home-progress__node--animate{% if is_featured %} home-progress__node--featured{% endif %}"
+                        style="--node-i: {{ loop.index0 }}; --branch-arch: {{ arch }};">
+                        <div class="home-progress__limb">
+                            {% if side == 'left' %}
+                            <svg class="home-progress__branch-svg home-progress__branch-svg--left" viewBox="0 0 120 40" preserveAspectRatio="none" aria-hidden="true">
+                                {% if arch < 0 %}
+                                <path d="M120 20 C95 20, 72 8, 50 14 C32 20, 16 28, 2 20" fill="none" stroke="url(#home-tree-branch)" stroke-width="5" stroke-linecap="round"/>
+                                {% else %}
+                                <path d="M120 20 C95 20, 72 32, 50 26 C32 20, 16 12, 2 20" fill="none" stroke="url(#home-tree-branch)" stroke-width="5" stroke-linecap="round"/>
+                                {% endif %}
+                            </svg>
+                            {% else %}
+                            <svg class="home-progress__branch-svg home-progress__branch-svg--right" viewBox="0 0 120 40" preserveAspectRatio="none" aria-hidden="true">
+                                {% if arch < 0 %}
+                                <path d="M0 20 C25 20, 48 8, 70 14 C88 20, 104 28, 118 20" fill="none" stroke="url(#home-tree-branch)" stroke-width="5" stroke-linecap="round"/>
+                                {% else %}
+                                <path d="M0 20 C25 20, 48 32, 70 26 C88 20, 104 12, 118 20" fill="none" stroke="url(#home-tree-branch)" stroke-width="5" stroke-linecap="round"/>
+                                {% endif %}
+                            </svg>
+                            {% endif %}
+                            <span class="home-progress__ring">
+                                <span class="home-progress__ring-pulse"></span>
+                                <i class="fas {{ icon }}" aria-hidden="true"></i>
+                            </span>
+                        </div>
+                        <article class="home-progress__card home-progress__card--{{ theme }}{% if is_featured %} home-progress__card--featured{% endif %}">
+                            <h4 class="home-progress__card-title">
+                                <span class="home-progress__card-icon"><i class="fas {{ icon }}" aria-hidden="true"></i></span>
+                                {{ title }}
+                            </h4>
+                            <p class="home-progress__card-text">{{ desc }}</p>
+                        </article>
+                    </li>
+                    {% endfor %}
+                    </ol>
+                </div>
+            </div>
         </div>
     </div>
 </section>
-{% endif %}
+
+<section class="home-testimonials" aria-label="Testimonials from parents and alumni">
+    <div class="home-testimonials__inner">
+        <header class="home-testimonials__header home-testimonials__header--animate">
+            <p class="home-testimonials__eyebrow"><i class="fas fa-quote-left" aria-hidden="true"></i> Voices of our community</p>
+            <h2 class="home-testimonials__title">What parents and alumni say</h2>
+            <p class="home-testimonials__lead">Real stories from families and graduates who have walked the halls of {{ school_settings.school_name or 'our school' }}.</p>
+        </header>
+
+        <div class="home-testimonials__groups">
+            {% set school_label = school_settings.school_name or 'Our school' %}
+            <div class="home-testimonials__group home-testimonials__group--animate">
+                <h3 class="home-testimonials__group-title">
+                    <span class="home-testimonials__group-icon home-testimonials__group-icon--parents" aria-hidden="true">
+                        <i class="fas fa-heart"></i>
+                    </span>
+                    From parents
+                </h3>
+                <div class="home-testimonials__grid">
+                    {% for name, role, quote, initial, color in [
+                        ('Mary Wanjiku', 'Parent · Grade 4', 'The teachers know our children by name. We receive clear updates on CBC progress and feel genuinely partnered in their learning journey.', 'MW', 'emerald'),
+                        ('James Kamau', 'Parent · Grade 7', 'Pastoral care is exceptional. Our son gained confidence in public speaking and sports — not just exam scores.', 'JK', 'blue'),
+                        ('Grace Njeri', 'Parent · PP2', 'Admission was smooth and the front office is always helpful. It feels like a safe, joyful place every morning at drop-off.', 'GN', 'violet'),
+                    ] %}
+                    <figure class="home-testimonials__card home-testimonials__card--{{ color }}">
+                        <blockquote class="home-testimonials__quote">
+                            <i class="fas fa-quote-left home-testimonials__quote-mark" aria-hidden="true"></i>
+                            {{ quote }}
+                        </blockquote>
+                        <figcaption class="home-testimonials__author">
+                            <span class="home-testimonials__avatar home-testimonials__avatar--{{ color }}" aria-hidden="true">{{ initial }}</span>
+                            <span class="home-testimonials__meta">
+                                <span class="home-testimonials__name">{{ name }}</span>
+                                <span class="home-testimonials__role">{{ role }}</span>
+                            </span>
+                        </figcaption>
+                    </figure>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="home-testimonials__group home-testimonials__group--animate home-testimonials__group--alumni">
+                <h3 class="home-testimonials__group-title">
+                    <span class="home-testimonials__group-icon home-testimonials__group-icon--alumni" aria-hidden="true">
+                        <i class="fas fa-graduation-cap"></i>
+                    </span>
+                    From alumni
+                </h3>
+                <div class="home-testimonials__grid">
+                    {% for name, role, quote, initial, color in [
+                        ('David Ochieng', 'Class of 2014 · Medical student', 'The discipline and curiosity nurtured here prepared me for university. I still visit my former teachers for advice.', 'DO', 'amber'),
+                        ('Faith Akinyi', 'Class of 2018 · Entrepreneur', 'CBC projects taught me to solve real problems. That mindset helped me start my own business after high school.', 'FA', 'rose'),
+                        ('Brian Mutua', 'Class of 2016 · Engineer', 'Strong science foundation and supportive mentors. ' ~ school_label ~ ' gave me the confidence to pursue STEM.', 'BM', 'teal'),
+                    ] %}
+                    <figure class="home-testimonials__card home-testimonials__card--{{ color }}">
+                        <blockquote class="home-testimonials__quote">
+                            <i class="fas fa-quote-left home-testimonials__quote-mark" aria-hidden="true"></i>
+                            {{ quote }}
+                        </blockquote>
+                        <figcaption class="home-testimonials__author">
+                            <span class="home-testimonials__avatar home-testimonials__avatar--{{ color }}" aria-hidden="true">{{ initial }}</span>
+                            <span class="home-testimonials__meta">
+                                <span class="home-testimonials__name">{{ name }}</span>
+                                <span class="home-testimonials__role">{{ role }}</span>
+                            </span>
+                        </figcaption>
+                    </figure>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="home-site-links" aria-label="Explore our school">
+    <div class="home-site-links__inner">
+        <header class="home-site-links__header home-site-links__header--animate">
+            <p class="home-site-links__eyebrow"><i class="fas fa-compass" aria-hidden="true"></i> Explore</p>
+            <h2 class="home-site-links__title">Discover {{ school_settings.school_name or 'our school' }}</h2>
+            <p class="home-site-links__lead">Learn about us, browse photos, read the latest news, meet our team, or get in touch with the office.</p>
+        </header>
+        <nav class="home-site-links__grid" aria-label="School website pages">
+            {% for card in explore_cards %}
+            {% if card.social|default(false) %}
+            <article class="home-site-links__card home-site-links__card--{{ card.slug }} home-site-links__card--animate home-site-links__card--interactive"
+                     style="--card-i: {{ loop.index0 }};">
+                <div class="home-site-links__media home-site-links__media--social">
+                    <div class="home-site-links__social-bg" aria-hidden="true"></div>
+                    <div class="home-site-links__social-panel">
+                        <p class="home-site-links__social-heading">
+                            <i class="fas fa-share-nodes" aria-hidden="true"></i>
+                            Follow {{ school_settings.school_name or 'our school' }}
+                        </p>
+                        <div class="home-site-links__social-grid" aria-label="Social media links">
+                            <a href="{{ school_settings.facebook_url or '#' }}"
+                               class="home-site-links__social-btn home-site-links__social-btn--facebook{% if not school_settings.facebook_url %} is-inactive{% endif %}"
+                               {% if school_settings.facebook_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %}
+                               aria-label="Facebook">
+                                <i class="fab fa-facebook-f" aria-hidden="true"></i>
+                                <span>Facebook</span>
+                            </a>
+                            <a href="{{ school_settings.instagram_url or '#' }}"
+                               class="home-site-links__social-btn home-site-links__social-btn--instagram{% if not school_settings.instagram_url %} is-inactive{% endif %}"
+                               {% if school_settings.instagram_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %}
+                               aria-label="Instagram">
+                                <i class="fab fa-instagram" aria-hidden="true"></i>
+                                <span>Instagram</span>
+                            </a>
+                            {% if school_settings.school_email %}
+                            <a href="mailto:{{ school_settings.school_email }}"
+                               class="home-site-links__social-btn home-site-links__social-btn--email"
+                               aria-label="Email">
+                                <i class="fas fa-envelope" aria-hidden="true"></i>
+                                <span>Email</span>
+                            </a>
+                            {% else %}
+                            <span class="home-site-links__social-btn home-site-links__social-btn--email is-inactive" aria-disabled="true" title="No email on file">
+                                <i class="fas fa-envelope" aria-hidden="true"></i>
+                                <span>Email</span>
+                            </span>
+                            {% endif %}
+                            <a href="{{ school_settings.twitter_url or '#' }}"
+                               class="home-site-links__social-btn home-site-links__social-btn--x{% if not school_settings.twitter_url %} is-inactive{% endif %}"
+                               {% if school_settings.twitter_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %}
+                               aria-label="X">
+                                <i class="fab fa-x-twitter" aria-hidden="true"></i>
+                                <span>X</span>
+                            </a>
+                        </div>
+                    </div>
+                    <span class="home-site-links__media-badge" style="background: {{ card.gradient }};">
+                        <i class="fas {{ card.icon }}" aria-hidden="true"></i>
+                        {{ card.label }}
+                    </span>
+                </div>
+                <div class="home-site-links__content">
+                    <div class="home-site-links__head">
+                        <span class="home-site-links__icon" style="background: {{ card.gradient }};">
+                            <i class="fas {{ card.icon }}" aria-hidden="true"></i>
+                        </span>
+                        <h3 class="home-site-links__label">{{ card.label }}</h3>
+                    </div>
+                    <p class="home-site-links__desc">{{ card.desc }}</p>
+                    <ul class="home-site-links__chips">
+                        {% for text, chip_icon in card.chips %}
+                        <li><i class="fas {{ chip_icon }}" aria-hidden="true"></i> {{ text }}</li>
+                        {% endfor %}
+                    </ul>
+                    <a href="{{ card.href }}" class="home-site-links__cta">
+                        {{ card.cta }}
+                        <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                    </a>
+                </div>
+            </article>
+            {% else %}
+            <a href="{{ card.href }}"
+               class="home-site-links__card home-site-links__card--{{ card.slug }} home-site-links__card--animate"
+               style="--card-i: {{ loop.index0 }};">
+                <div class="home-site-links__media">
+                    <img src="{{ card.image }}"
+                         alt=""
+                         class="home-site-links__media-img"
+                         width="640"
+                         height="360"
+                         loading="lazy"
+                         decoding="async">
+                    <div class="home-site-links__media-scrim" aria-hidden="true"></div>
+                    <div class="home-site-links__float-icons" aria-hidden="true">
+                        {% for fi in card.float_icons %}
+                        <span class="home-site-links__float-icon home-site-links__float-icon--{{ loop.index }}">
+                            <i class="fas {{ fi }}"></i>
+                        </span>
+                        {% endfor %}
+                    </div>
+                    <span class="home-site-links__media-badge" style="background: {{ card.gradient }};">
+                        <i class="fas {{ card.icon }}" aria-hidden="true"></i>
+                        {{ card.media_badge|default(card.label) }}
+                    </span>
+                </div>
+                <div class="home-site-links__content">
+                    <div class="home-site-links__head">
+                        <span class="home-site-links__icon" style="background: {{ card.gradient }};">
+                            <i class="fas {{ card.icon }}" aria-hidden="true"></i>
+                        </span>
+                        <h3 class="home-site-links__label">{{ card.label }}</h3>
+                    </div>
+                    <p class="home-site-links__desc">{{ card.desc }}</p>
+                    {% if card.slug == 'news' and news_spotlight_title|default('') %}
+                    <p class="home-site-links__spotlight">
+                        <i class="fas fa-bolt" aria-hidden="true"></i>
+                        Next up: {{ news_spotlight_title|truncate(48, True, '…') }}
+                    </p>
+                    {% endif %}
+                    <ul class="home-site-links__chips">
+                        {% for text, chip_icon in card.chips %}
+                        <li><i class="fas {{ chip_icon }}" aria-hidden="true"></i> {{ text }}</li>
+                        {% endfor %}
+                    </ul>
+                    <span class="home-site-links__cta">
+                        {{ card.cta }}
+                        <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                    </span>
+                </div>
+            </a>
+            {% endif %}
+            {% endfor %}
+        </nav>
+    </div>
+</section>
 {% endblock %}

@@ -385,12 +385,7 @@
     <span>Reports</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
-<a href="{{ employee_dash_url('academic-reports') }}"
-   class="sidebar-item {% if request.endpoint in ('academic_reports', 'academic_report_preview') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-list w-5"></i>
-    <span>Academic Reports</span>
-    {% if request.endpoint in ('academic_reports', 'academic_report_preview') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
+{% include 'dashboards/includes/academic_reports_sidebar_links.html' %}
 {% if not sidebar_hide_accounts_fees|default(false) %}
 <a href="{{ employee_dash_url('student-fees') }}" class="sidebar-item">
     <i class="fas fa-file-invoice-dollar w-5"></i>

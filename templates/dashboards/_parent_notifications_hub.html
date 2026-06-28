@@ -42,6 +42,18 @@
     </div>
 
     <div class="p-4 sm:p-5">
+        {% if push_notifications_active|default(false) %}
+        <div class="mb-4 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/80 dark:bg-violet-950/20 px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
+            <p class="text-xs text-violet-900 dark:text-violet-200 m-0">
+                <i class="fas fa-mobile-alt mr-1" aria-hidden="true"></i>
+                Turn on <strong>lock-screen alerts</strong> so you see updates without opening the portal.
+            </p>
+            <button type="button" onclick="window.portalEnablePushNotifications && window.portalEnablePushNotifications()"
+                    class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shrink-0">
+                Enable push
+            </button>
+        </div>
+        {% endif %}
         {% if hub_notifications %}
         <div class="space-y-3">
             {% for note in hub_notifications %}

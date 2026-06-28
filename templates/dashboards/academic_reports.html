@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Academic reports - {{ school_settings.school_name or 'School' }}{% endblock %}
+{% block title %}{{ ar_page_title|default('Academic reports') }} - {{ school_settings.school_name or 'School' }}{% endblock %}
 
 {% block sidebar_content %}
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
@@ -883,6 +883,12 @@
         margin: 2mm 0 !important;
         line-height: 1.25 !important;
     }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-exam-reference,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-exam-reference {
+        font-size: 7.5pt !important;
+        margin: 2mm 0 !important;
+        line-height: 1.25 !important;
+    }
     #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback,
     #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback {
         flex: 1 1 auto !important;
@@ -1609,6 +1615,9 @@
 .dark .ar-rc-grade-scale {
     color: rgb(148 163 184);
 }
+.dark .ar-rc-exam-reference {
+    color: rgb(148 163 184);
+}
 .dark .ar-rc-sig-block {
     border-top-color: rgb(100 116 139);
 }
@@ -2043,6 +2052,15 @@
     color: #4b5563;
     margin-top: 0.5rem;
     line-height: 1.4;
+}
+.ar-rc-exam-reference {
+    font-size: 0.68rem;
+    color: #4b5563;
+    margin-top: 0.5rem;
+    line-height: 1.5;
+}
+.ar-rc-exam-ref-item {
+    margin: 0.1rem 0 0;
 }
 .ar-rc-signatures {
     display: grid;
@@ -2554,25 +2572,97 @@
     color: #64748b;
 }
 .dark .ar-report-filter-foot { color: #94a3b8; }
+
+/* Parent portal QR — individual student report cards */
+.ar-portal-qr-block {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 0.25rem;
+    border-radius: 0.5rem;
+    background: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.ar-rc-header-band .ar-portal-qr-block {
+    border-color: rgba(255, 255, 255, 0.45);
+}
+.ar-portal-qr-img {
+    display: block;
+    width: 4.5rem;
+    height: 4.5rem;
+    image-rendering: pixelated;
+}
+.ar-portal-qr-label {
+    margin: 0.2rem 0 0;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--brand-primary, #166534);
+    line-height: 1.2;
+}
+.ar-rc-header-band .ar-portal-qr-label {
+    color: #0f2744;
+}
+.ar-portal-qr-hint {
+    margin: 0;
+    font-size: 0.5rem;
+    color: #64748b;
+    line-height: 1.2;
+}
+@media print {
+    #ar-preview-wrap .ar-portal-qr-block {
+        border: 0.5pt solid #94a3b8 !important;
+        background: #fff !important;
+        padding: 1mm !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    #ar-preview-wrap .ar-portal-qr-img {
+        width: 18mm !important;
+        height: 18mm !important;
+        max-width: none !important;
+        max-height: none !important;
+    }
+    #ar-preview-wrap .ar-portal-qr-label {
+        font-size: 6pt !important;
+        font-weight: 700 !important;
+        color: #166534 !important;
+    }
+    #ar-preview-wrap .ar-portal-qr-hint {
+        font-size: 5.5pt !important;
+        color: #475569 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-portal-qr-block,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-portal-qr-block {
+        display: inline-flex !important;
+        flex-shrink: 0 !important;
+    }
+}
 </style>
 
 {% set role_theme = portal_page_variant|default('default') %}
-{% set role_hero_title = 'Academic reports' %}
-{% set role_hero_subtitle = '' %}
-{% set role_hero_icon_class = 'fa-chalkboard' %}
+{% set role_hero_title = ar_page_title|default('Academic reports') %}
+{% set role_hero_subtitle = ar_page_subtitle|default('') %}
+{% set role_hero_icon_class = ar_hero_icon|default('fa-chalkboard') %}
 {% include 'dashboards/includes/role_hero.html' %}
 
-<div class="ar-page ar-page--workspace portal-page-root role-page role-page--{{ portal_page_variant|default('secretary') }} print:p-2 mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4">
-    <!-- Workspace: categories, report tiles, filters -->
+<div class="ar-page ar-page--workspace portal-page-root role-page role-page--{{ portal_page_variant|default('secretary') }} print:p-2 mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4{% if ar_hub_section %} ar-hub-single-section{% endif %}">
+    <!-- Workspace: report tiles and filters -->
     <section class="no-print ar-workspace mb-3 sm:mb-4 rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-md shadow-slate-200/25 dark:shadow-none overflow-hidden">
         <header class="relative px-3 sm:px-5 py-2.5 sm:py-3 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-50 via-white to-brand-primary/[0.06] dark:from-slate-900 dark:via-slate-900 dark:to-brand-primary/10">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div class="flex items-start gap-3 min-w-0">
                     <div class="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md shadow-brand-primary/20">
-                        <i class="fas fa-chart-line text-base" aria-hidden="true"></i>
+                        <i class="fas {{ ar_hero_icon|default('fa-chalkboard') }} text-base" aria-hidden="true"></i>
                     </div>
                     <div>
-                        <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Academic reports</h1>
+                        <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{{ ar_page_title|default('Academic reports') }}</h1>
+                        {% if ar_page_subtitle %}
+                        <p class="text-sm text-slate-500 dark:text-slate-400 m-0 mt-0.5">{{ ar_page_subtitle }}</p>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -2580,12 +2670,14 @@
 
         <div class="p-3 sm:p-4 space-y-2.5">
             <div class="ar-chooser-zone">
+                {% if not ar_hub_section %}
                 <div id="ar-section-tabs" class="ar-section-tabs" role="tablist" aria-label="Report category"></div>
+                {% endif %}
                 <select id="ar-section" class="ar-sr-only" aria-hidden="true" tabindex="-1">
-                    <option value="class_list">Class lists</option>
-                    <option value="attendance">Attendance</option>
-                    <option value="exams">Exams</option>
-                    <option value="timetables">Timetables</option>
+                    <option value="class_list"{% if ar_hub_section == 'class_list' %} selected{% endif %}>Class lists</option>
+                    <option value="attendance"{% if ar_hub_section == 'attendance' %} selected{% endif %}>Attendance</option>
+                    <option value="exams"{% if ar_hub_section == 'exams' %} selected{% endif %}>Exams</option>
+                    <option value="timetables"{% if ar_hub_section == 'timetables' %} selected{% endif %}>Timetables</option>
                 </select>
 
                 <div class="ar-report-zone">
@@ -2795,6 +2887,8 @@
     email: {{ (school_settings.email or school_settings.school_email or '')|tojson }},
     logo: {% if school_settings.school_logo %}{{ url_for('static', filename=school_settings.school_logo)|tojson }}{% else %}''{% endif %}
   };
+  const PARENT_LOGIN_QR_DATA_URL = {{ parent_login_qr_data_url|default('')|tojson }};
+  const AR_HUB_SECTION = {{ ar_hub_section|default('')|tojson }};
 
   const CATALOG = {
     class_list: {
@@ -3168,7 +3262,7 @@
   }
 
   function renderSectionTabs() {
-    if (!sectionTabsEl || !sectionEl) return;
+    if (!sectionTabsEl || !sectionEl || AR_HUB_SECTION) return;
     sectionTabsEl.innerHTML = '';
     Object.keys(CATALOG).forEach(function(key) {
       const cat = CATALOG[key];
@@ -3565,6 +3659,7 @@
   }
 
   sectionEl.addEventListener('change', function() {
+    if (AR_HUB_SECTION) return;
     syncSectionTabsActive();
     if (sectionEl.value !== 'exams') {
       clearStudentSelection(true);
@@ -3590,6 +3685,9 @@
     scheduleLoadDetails(true);
   });
 
+  if (AR_HUB_SECTION && CATALOG[AR_HUB_SECTION]) {
+    sectionEl.value = AR_HUB_SECTION;
+  }
   renderSectionTabs();
   fillReportOptions(sectionEl.value);
 
@@ -4139,13 +4237,60 @@
     return mark;
   }
 
-  function buildReportCardMultiExamSubjectTable(row, subjectColumns, examCols, rowBands, levelId, gradeCodeRemarksMeta) {
+  function sortExamColsChronological(examCols) {
+    return (examCols || []).slice().sort(function(a, b) {
+      return String(a.date || a.exam_date || '').localeCompare(String(b.date || b.exam_date || ''))
+        || String(a.exam_name || a.label || '').localeCompare(String(b.exam_name || b.label || ''), undefined, { sensitivity: 'base' });
+    });
+  }
+
+  function enrichExamColsWithDates(examCols, detail) {
+    return (examCols || []).map(function(col) {
+      if (col.exam_date || col.date) return col;
+      var foundDate = '';
+      Object.keys(detail || {}).some(function(subj) {
+        return (detail[subj] || []).some(function(ex) {
+          if (examEntryMatchesExamCol(ex, col)) {
+            foundDate = String(ex.exam_date || '').trim();
+            return !!foundDate;
+          }
+          return false;
+        });
+      });
+      if (!foundDate) return col;
+      return Object.assign({}, col, { exam_date: foundDate, date: foundDate });
+    });
+  }
+
+  function prepareIndividualReportExamCols(examCols, detail) {
+    return sortExamColsChronological(enrichExamColsWithDates(examCols, detail));
+  }
+
+  function renderNumberedExamReferenceLegend(examCols) {
+    const sorted = sortExamColsChronological(examCols);
+    if (!sorted.length) return '';
+    const items = sorted.map(function(exCol, i) {
+      const num = i + 1;
+      const name = String(exCol.exam_name || exCol.label || 'Exam').trim() || 'Exam';
+      const date = String(exCol.exam_date || exCol.date || '').trim();
+      const detail = date ? (name + ' (' + date + ')') : name;
+      return '<p class="ar-rc-exam-ref-item"><strong>Exam ' + num + ':</strong> ' + escapeHtml(detail) + '</p>';
+    }).join('');
+    return '<div class="ar-rc-exam-reference"><p class="font-bold">Exam reference:</p>' + items + '</div>';
+  }
+
+  function buildReportCardMultiExamSubjectTable(row, subjectColumns, examCols, rowBands, levelId, gradeCodeRemarksMeta, opts) {
+    opts = opts || {};
+    const useNumbered = !!opts.numberedExamCols;
     const detail = (row && row.subject_marks_by_exam && typeof row.subject_marks_by_exam === 'object')
       ? row.subject_marks_by_exam
       : {};
-    const examHeaders = (examCols || []).map(function(exCol) {
-      const lbl = escapeHtml(exCol.label || 'Exam');
-      return '<th class="ar-rc-th-exam-col" title="' + lbl + '">' + lbl + '</th>';
+    const cols = useNumbered ? prepareIndividualReportExamCols(examCols, detail) : (examCols || []);
+    const examHeaders = cols.map(function(exCol, i) {
+      const displayLbl = useNumbered ? ('Exam ' + (i + 1)) : (exCol.label || 'Exam');
+      const fullName = String(exCol.exam_name || exCol.label || displayLbl).trim() || displayLbl;
+      const titleAttr = useNumbered ? escapeHtml(fullName) : escapeHtml(displayLbl);
+      return '<th class="ar-rc-th-exam-col" title="' + titleAttr + '">' + escapeHtml(displayLbl) + '</th>';
     }).join('');
     const head = '' +
       '<th class="ar-rc-th-subj">Subject</th>' +
@@ -4156,7 +4301,7 @@
       '<th class="ar-rc-th-feedback">Teacher\'s feedback</th>';
     const lines = (subjectColumns || []).map(function(subjectName) {
       const numeric = [];
-      const examCells = (examCols || []).map(function(exCol) {
+      const examCells = cols.map(function(exCol) {
         const mark = markForSubjectExam(detail, subjectName, exCol);
         if (mark != null && mark !== '') {
           const n = parseFloat(mark);
@@ -4259,7 +4404,18 @@
   }
 
   /** Report card header: logo, title, school name, contact, optional badge (e.g. rank). */
-  function renderReportCardHeader(reportTitle, badge) {
+  function renderParentPortalQrHtml() {
+    if (!PARENT_LOGIN_QR_DATA_URL) return '';
+    return '' +
+      '<div class="ar-portal-qr-block shrink-0">' +
+        '<img src="' + escapeHtml(PARENT_LOGIN_QR_DATA_URL) + '" alt="QR code — scan to open parent login" class="ar-portal-qr-img" width="72" height="72">' +
+        '<p class="ar-portal-qr-label">Parent portal</p>' +
+        '<p class="ar-portal-qr-hint">Scan to sign in</p>' +
+      '</div>';
+  }
+
+  function renderReportCardHeader(reportTitle, badge, opts) {
+    opts = opts || {};
     badge = badge || null;
     var logoInner = SCHOOL_INFO.logo
       ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="ar-rc-logo">'
@@ -4272,6 +4428,7 @@
           '<p class="ar-rc-badge-value">' + escapeHtml(badge.value != null ? badge.value : '—') + '</p>' +
         '</div>';
     }
+    var qrHtml = opts.showParentQr ? renderParentPortalQrHtml() : '';
     return '' +
       '<header class="ar-rc-header">' +
         '<div class="ar-rc-header-band">' +
@@ -4286,6 +4443,7 @@
               '</div>' +
             '</div>' +
             badgeHtml +
+            qrHtml +
           '</div>' +
         '</div>' +
         '<div class="ar-rc-doc-title-row">' +
@@ -6229,6 +6387,7 @@
       ? bundle.subjectMarksByExam
       : null;
     if (multiExamCols && subjectMarksByExam) {
+      const orderedExamCols = prepareIndividualReportExamCols(multiExamCols, subjectMarksByExam);
       const subjectOrderMap = {};
       rows.forEach(function(r) {
         const s = String(r.subject_code || r.subject_name || '').trim() || 'Subject';
@@ -6245,7 +6404,8 @@
       });
       const syntheticRow = { subject_marks_by_exam: subjectMarksByExam };
       const subjectTableInd = buildReportCardMultiExamSubjectTable(
-        syntheticRow, subjectOrder, multiExamCols, activeBands, studentLevelId, gradeCodeRemarksInd
+        syntheticRow, subjectOrder, orderedExamCols, activeBands, studentLevelId, gradeCodeRemarksInd,
+        { numberedExamCols: true }
       );
       const allMultiMarks = [];
       subjectOrder.forEach(function(subj) {
@@ -6272,12 +6432,13 @@
         ? '<img src="' + escapeHtml(photoUrlMulti) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
         : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
       const gradeLegendMulti = gradeLegendHtmlFromMeta(meta);
+      const examReferenceLegend = renderNumberedExamReferenceLegend(orderedExamCols);
       return '' +
         '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex == null ? 0 : sheetIndex) + '">' +
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
           '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
           '<div class="ar-rc-inner">' +
-            renderReportCardHeader('REPORT CARD', null) +
+            renderReportCardHeader('REPORT CARD', null, { showParentQr: true }) +
             renderReportCardMetaWithPhoto([
               { label: 'Student name', value: first.full_name || '-' },
               { label: 'Class / section', value: first.level_name || '-' },
@@ -6293,10 +6454,11 @@
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall average</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgTextMulti) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGradeMulti) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">' + escapeHtml(overallPointsMulti) + '</p></div>' +
-                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Exams shown</p><p class="ar-rc-stat-value">' + escapeHtml(String(multiExamCols.length)) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Exams shown</p><p class="ar-rc-stat-value">' + escapeHtml(String(orderedExamCols.length)) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects</p><p class="ar-rc-stat-value">' + escapeHtml(String(subjectOrder.length)) + '</p></div>' +
               '</div>' +
             '</div>' +
+            examReferenceLegend +
             '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegendMulti + '</p>' +
             renderReportCardFeedback('') +
             renderReportCardSignatures() +
@@ -6405,7 +6567,7 @@
         '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
         '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
         '<div class="ar-rc-inner">' +
-          renderReportCardHeader('REPORT CARD', null) +
+          renderReportCardHeader('REPORT CARD', null, { showParentQr: true }) +
           renderReportCardMetaWithPhoto([
             { label: 'Student name', value: first.full_name || '-' },
             { label: 'Class / section', value: first.level_name || '-' },

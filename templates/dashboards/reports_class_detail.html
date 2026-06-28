@@ -17,7 +17,7 @@
         <span class="font-semibold">Reports</span>
         <i class="fas fa-check-circle ml-auto text-green-500"></i>
     </a>
-    <a href="{{ employee_dash_url('academic-reports') }}" class="w-full sidebar-item">
+    <a href="{{ employee_dash_url('academic-reports/class-list') }}" class="w-full sidebar-item">
         <i class="fas fa-clipboard-list w-5"></i>
         <span>Academic Reports</span>
     </a>
@@ -108,7 +108,7 @@
             </div>
         </div>
         <p class="text-xs text-gray-500 dark:text-gray-500 mt-3">
-            For exports and date filters, use <a href="{{ employee_dash_url('academic-reports') }}" class="text-brand-primary font-medium hover:underline">Academic reports</a> (class list &amp; attendance).
+            For exports and date filters, use <a href="{{ employee_dash_url('academic-reports/class-list') }}" class="text-brand-primary font-medium hover:underline">Class list reports</a> or <a href="{{ employee_dash_url('academic-reports/attendance') }}" class="text-brand-primary font-medium hover:underline">Class attendance reports</a>.
         </p>
     </section>
 

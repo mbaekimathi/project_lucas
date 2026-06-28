@@ -122,6 +122,21 @@ def student_dash_url(subpath=''):
     return student_dashboard_path(subpath)
 
 
+@app.template_global()
+def school_whatsapp_chat_url(phone_raw):
+    """https://wa.me/… click-to-chat link from a school WhatsApp / phone number."""
+    if not phone_raw:
+        return ''
+    digits = re.sub(r'\D', '', str(phone_raw).strip())
+    if not digits:
+        return ''
+    if digits.startswith('0') and len(digits) >= 9:
+        digits = '254' + digits[1:]
+    elif len(digits) == 9 and not digits.startswith('254'):
+        digits = '254' + digits
+    return f'https://wa.me/{digits}'
+
+
 # Employee sub-roles stored in employees.role — must match MySQL ENUM, role switch, and UI
 EMPLOYEE_SUB_ROLES = (
     'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
@@ -1103,7 +1118,128 @@ def _default_school_data():
         'default_language': 'en',
         'timezone': 'Africa/Nairobi',
         'default_theme_mode': 'dark',
+        'school_domain': '',
+        'notification_settings': None,
     }
+
+
+NOTIFICATION_DELIVERY_MODES = ('app', 'push', 'email', 'sms', 'whatsapp', 'phone')
+
+
+def _default_notification_settings():
+    return {
+        'enabled': True,
+        'modes': {
+            'app': True,
+            'push': False,
+            'email': True,
+            'sms': True,
+            'whatsapp': False,
+            'phone': False,
+        },
+    }
+
+
+def parse_notification_settings(raw):
+    """Parse notification_settings JSON from school_settings row or dict."""
+    defaults = _default_notification_settings()
+    if not raw:
+        return copy.deepcopy(defaults)
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return copy.deepcopy(defaults)
+    if not isinstance(raw, dict):
+        return copy.deepcopy(defaults)
+    modes_in = raw.get('modes') if isinstance(raw.get('modes'), dict) else {}
+    modes = {}
+    for mode in NOTIFICATION_DELIVERY_MODES:
+        if mode in modes_in:
+            modes[mode] = bool(modes_in.get(mode))
+        else:
+            modes[mode] = bool(defaults['modes'].get(mode))
+    return {
+        'enabled': bool(raw.get('enabled', defaults['enabled'])),
+        'modes': modes,
+    }
+
+
+def school_notifications_enabled():
+    cfg = get_school_settings()
+    return bool(parse_notification_settings(cfg.get('notification_settings')).get('enabled'))
+
+
+def notification_mode_enabled(mode):
+    mode = (mode or '').strip().lower()
+    settings = parse_notification_settings(get_school_settings().get('notification_settings'))
+    if not settings.get('enabled'):
+        return False
+    return bool(settings.get('modes', {}).get(mode))
+
+
+def get_notification_channels_status():
+    """Per-channel configuration readiness for system settings UI and dispatch."""
+    integ = _load_integration_data_communication()
+    flags = _communication_channel_flags(integ)
+    school = get_school_settings() or {}
+    school_phone = (school.get('school_phone') or '').strip()
+    comm_path = 'integration-settings/communication'
+    return {
+        'app': {
+            'configured': True,
+            'label': 'In-portal only',
+            'hint': 'Shows inside the portal Notifications hub when the user visits the site.',
+            'config_path': None,
+            'config_anchor': None,
+        },
+        'push': {
+            'configured': web_push_configured(),
+            'label': 'Push (phone & browser)',
+            'hint': 'Native alerts on the lock screen when the portal is installed or open in the browser. Keys are created automatically when you save with Push enabled.',
+            'config_path': 'system-settings',
+            'config_anchor': 'general-settings',
+        },
+        'email': {
+            'configured': bool(flags.get('email')),
+            'label': 'Email',
+            'hint': 'SMTP credentials in Communication Integration or environment.',
+            'config_path': comm_path,
+            'config_anchor': 'email',
+        },
+        'sms': {
+            'configured': bool(flags.get('sms')),
+            'label': 'SMS',
+            'hint': "Africa's Talking (or supported SMS provider) in Communication Integration.",
+            'config_path': comm_path,
+            'config_anchor': 'sms',
+        },
+        'whatsapp': {
+            'configured': bool(flags.get('whatsapp')),
+            'label': 'WhatsApp',
+            'hint': 'WhatsApp Business API in Communication Integration.',
+            'config_path': comm_path,
+            'config_anchor': 'whatsapp',
+        },
+        'phone': {
+            'configured': bool(flags.get('sms') and school_phone),
+            'label': 'Phone (voice)',
+            'hint': 'School phone on file plus SMS/voice gateway (Africa\'s Talking).',
+            'config_path': 'system-settings' if not school_phone else comm_path,
+            'config_anchor': 'school-profile' if not school_phone else 'sms',
+        },
+    }
+
+
+def notification_mode_active(mode):
+    """Delivery mode is enabled in settings and its channel is configured."""
+    if not notification_mode_enabled(mode):
+        return False
+    if mode == 'app':
+        return True
+    if mode == 'push':
+        return web_push_configured()
+    return bool(get_notification_channels_status().get(mode, {}).get('configured'))
 
 
 def get_school_settings():
@@ -1152,6 +1288,8 @@ def get_school_settings():
                             'default_language': (result.get('default_language') or 'en').strip()[:10],
                             'timezone': (result.get('timezone') or 'Africa/Nairobi').strip()[:64],
                             'default_theme_mode': (result.get('default_theme_mode') or 'dark').strip().lower()[:10],
+                            'school_domain': (result.get('school_domain') or '').strip(),
+                            'notification_settings': result.get('notification_settings'),
                         }
                     else:
                         school_data = {
@@ -1336,6 +1474,8 @@ def inject_school_settings():
         'portal_tailwind_font_family': portal_tailwind_font_family(active_font),
         'portal_google_fonts_href': portal_google_fonts_stylesheet_href([active_font]),
         'portal_google_fonts_all_href': portal_google_fonts_stylesheet_href(),
+        'push_notifications_active': push_notifications_available(),
+        'current_year': date_cls.today().year,
     }
 
 
@@ -1657,6 +1797,8 @@ def ensure_school_general_settings_columns(cursor):
         ('default_language', "VARCHAR(10) NOT NULL DEFAULT 'en'", 'allow_registration'),
         ('timezone', "VARCHAR(64) NOT NULL DEFAULT 'Africa/Nairobi'", 'default_language'),
         ('default_theme_mode', "VARCHAR(10) NOT NULL DEFAULT 'dark'", 'timezone'),
+        ('school_domain', "VARCHAR(255) NULL DEFAULT NULL", 'default_theme_mode'),
+        ('notification_settings', "LONGTEXT NULL", 'school_domain'),
     ]
     for col_name, col_def, after_col in cols:
         try:
@@ -3351,8 +3493,15 @@ def _fetch_parent_hub_notifications(
     cursor, parent_email=None, student_id=None, user_id=None, limit=12,
 ):
     """Merged parent hub feed: fee deadlines + gazetted exam results + academic calendar updates."""
+    if not school_notifications_enabled() or not notification_mode_enabled('app'):
+        return []
     limit = max(1, min(int(limit or 12), 30))
     items = []
+
+    for note in _fetch_portal_notifications_for_recipient(
+        cursor, parent_email=parent_email, user_id=user_id, recipient_type='parent', limit=limit,
+    ):
+        items.append(note)
 
     for note in _fetch_parent_fee_deadline_notifications(
         cursor, parent_email, student_id, user_id,
@@ -3380,6 +3529,8 @@ def _fetch_parent_hub_notifications(
             ga = item.get('gazetted_at')
             sort_dt = _coerce_to_date(ga) if not hasattr(ga, 'year') else ga.date() if hasattr(ga, 'date') else ga
             return (2, sort_dt or date_cls.min, item.get('exam_name') or '')
+        if item.get('type') == 'portal':
+            return (1, item.get('gazetted_at_display') or '', item.get('id') or 0)
         return (
             3,
             _coerce_to_date(item.get('activity_date')) or date_cls.max,
@@ -3576,6 +3727,143 @@ def _shift_calendar_month(year, month, delta):
         month -= 12
         year += 1
     return year, month
+
+
+def _calendar_months_in_range(range_start, range_end):
+    """Inclusive (year, month) pairs from range_start through range_end."""
+    rs = _coerce_to_date(range_start)
+    re = _coerce_to_date(range_end)
+    if not rs:
+        return []
+    if not re:
+        re = rs
+    if re < rs:
+        rs, re = re, rs
+    months = []
+    y, m = rs.year, rs.month
+    end_y, end_m = re.year, re.month
+    while (y, m) <= (end_y, end_m):
+        months.append((y, m))
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+    return months
+
+
+def _build_academic_calendar_report_months(calendar_view):
+    """One mini calendar grid per month in the academic year range."""
+    date_map = calendar_view.get('date_map') or {}
+    range_start = calendar_view.get('range_start')
+    range_end = calendar_view.get('range_end')
+    out = []
+    for y, m in _calendar_months_in_range(range_start, range_end):
+        grid = _build_calendar_month_grid(y, m, date_map, range_start, range_end)
+        out.append({
+            'year': y,
+            'month': m,
+            'key': f'{y}-{m:02d}',
+            'label': date_cls(y, m, 1).strftime('%B %Y'),
+            'grid': grid,
+        })
+    return out
+
+
+def _enrich_calendar_report_term_rows(terms):
+    out = []
+    for t in terms or []:
+        row = dict(t)
+        row['start_date_display'] = _format_date_short(t.get('start_date')) or '—'
+        row['end_date_display'] = _format_date_short(t.get('end_date')) or '—'
+        out.append(row)
+    return out
+
+
+def _fetch_academic_calendar_report_fee_sections(cursor, academic_year_id, term_id=None):
+    """School-fee payment methods and deadlines for the printable calendar report."""
+    ensure_fee_structures_finance_account_column(cursor)
+    try:
+        academic_year_id = int(academic_year_id)
+    except (TypeError, ValueError):
+        return {'payment_methods': [], 'fee_deadlines': []}
+
+    where = ["fs.status = 'active'", 'fs.academic_year_id = %s']
+    params = [academic_year_id]
+    if term_id:
+        try:
+            where.append('fs.term_id = %s')
+            params.append(int(term_id))
+        except (TypeError, ValueError):
+            pass
+
+    cursor.execute(
+        f"""
+        SELECT fs.fee_name, fs.category, fs.payment_deadline, fs.total_amount,
+               fs.finance_account_id, t.term_name, al.level_name
+        FROM fee_structures fs
+        LEFT JOIN terms t ON t.id = fs.term_id
+        LEFT JOIN academic_levels al ON al.id = fs.academic_level_id
+        WHERE {' AND '.join(where)}
+        ORDER BY COALESCE(t.start_date, '1900-01-01'), COALESCE(fs.payment_deadline, '9999-12-31'),
+                 fs.fee_name, al.level_name
+        """,
+        tuple(params),
+    )
+    rows = cursor.fetchall() or []
+    account_ids = []
+    deadlines = []
+    seen_deadline_keys = set()
+    for r in rows:
+        if isinstance(r, dict):
+            fid = r.get('finance_account_id')
+            fee_name = r.get('fee_name') or 'Fees'
+            term_name = r.get('term_name') or '—'
+            level_name = r.get('level_name') or '—'
+            deadline = r.get('payment_deadline')
+            total = r.get('total_amount')
+            category = r.get('category') or ''
+        else:
+            fid = r[4] if len(r) > 4 else None
+            fee_name = r[0] if len(r) > 0 else 'Fees'
+            term_name = r[5] if len(r) > 5 else '—'
+            level_name = r[6] if len(r) > 6 else '—'
+            deadline = r[2] if len(r) > 2 else None
+            total = r[3] if len(r) > 3 else None
+            category = r[1] if len(r) > 1 else ''
+        if fid:
+            try:
+                account_ids.append(int(fid))
+            except (TypeError, ValueError):
+                pass
+        dk = (term_name, fee_name, level_name, str(deadline))
+        if dk in seen_deadline_keys:
+            continue
+        seen_deadline_keys.add(dk)
+        deadlines.append({
+            'term_name': term_name,
+            'fee_name': fee_name,
+            'level_name': level_name,
+            'category': category,
+            'payment_deadline_display': _format_date_short(deadline) or '—',
+            'total_amount_display': _format_kes_amount(float(total or 0)) if total is not None else '—',
+        })
+
+    payment_methods = []
+    seen_pm = set()
+    if account_ids:
+        pmap = _fetch_finance_account_payment_methods_map(cursor, list(set(account_ids)))
+        for aid in sorted(set(account_ids)):
+            for line in _format_finance_payment_methods_detail(pmap.get(aid) or []):
+                key = (line.get('mode_label'), line.get('detail'))
+                if key in seen_pm:
+                    continue
+                seen_pm.add(key)
+                payment_methods.append(line)
+
+    return {
+        'payment_methods': payment_methods,
+        'fee_deadlines': deadlines,
+    }
 
 
 def _calendar_view_query(academic_year_id, term_id=None, month=None):
@@ -3844,6 +4132,215 @@ def _group_calendar_activities_by_month(activities):
             groups[key] = {'label': label, 'items': []}
         groups[key]['items'].append(item)
     return list(groups.values())
+
+
+def _build_calendar_branch_tree(activities, selected_year=None):
+    """Build opening → events → closing branch layout for the public News page."""
+    today = date_cls.today()
+    year_start = year_end = None
+    year_name = ''
+    if selected_year:
+        year_start = _coerce_to_date(selected_year.get('start_date'))
+        year_end = _coerce_to_date(selected_year.get('end_date'))
+        year_name = (selected_year.get('year_name') or '').strip()
+
+    event_starts = []
+    event_ends = []
+    for act in activities or []:
+        s = _coerce_to_date(act.get('sort_date') or act.get('activity_date'))
+        e = _coerce_to_date(act.get('end_date') or act.get('iso_end_date')) or s
+        if s:
+            event_starts.append(s)
+        if e:
+            event_ends.append(e)
+
+    if not year_start and event_starts:
+        year_start = min(event_starts)
+    if not year_end and event_ends:
+        year_end = max(event_ends)
+    if not year_start or not year_end:
+        return None
+    if year_end < year_start:
+        year_start, year_end = year_end, year_start
+
+    total_days = max((year_end - year_start).days, 1)
+
+    def _position_pct(d):
+        if not d:
+            return 50.0
+        offset = (d - year_start).days
+        return round(max(0.0, min(100.0, (offset / total_days) * 100)), 2)
+
+    def _anchor_node(label, d, position_pct):
+        return {
+            'label': label,
+            'date_label': _format_date_short(d),
+            'iso_date': d.strftime('%Y-%m-%d'),
+            'position_pct': position_pct,
+            'is_past': d < today,
+            'is_today': d == today,
+        }
+
+    trunk = {
+        'opening': _anchor_node('Opening day', year_start, 0),
+        'closing': _anchor_node('Closing day', year_end, 100),
+        'year_name': year_name,
+        'total_days': total_days + 1,
+        'span_label': f"{_format_date_short(year_start)} – {_format_date_short(year_end)}",
+    }
+
+    branches = []
+    for idx, act in enumerate(activities or []):
+        start = _coerce_to_date(act.get('sort_date') or act.get('activity_date'))
+        end = _coerce_to_date(act.get('end_date') or act.get('iso_end_date')) or start
+        if start and end and end < start:
+            start, end = end, start
+        if not start:
+            continue
+        start_pct = _position_pct(start)
+        end_pct = _position_pct(end or start)
+        span_pct = max(end_pct - start_pct, 1.5)
+        branches.append({
+            'item': act,
+            'side': 'left' if idx % 2 == 0 else 'right',
+            'start_pct': start_pct,
+            'end_pct': end_pct,
+            'span_pct': span_pct,
+            'mid_pct': round((start_pct + end_pct) / 2, 2),
+            'opening_label': act.get('opening_date_label') or _format_date_short(start),
+            'closing_label': act.get('closing_date_label') or _format_date_short(end or start),
+            'is_spanning': bool(end and start and end > start),
+        })
+
+    return {'trunk': trunk, 'branches': branches}
+
+
+ACADEMIC_CALENDAR_CATEGORY_ICONS = {
+    'term': 'fa-calendar-week',
+    'holiday': 'fa-umbrella-beach',
+    'exam': 'fa-file-alt',
+    'event': 'fa-star',
+    'meeting': 'fa-users',
+    'other': 'fa-bell',
+}
+
+ACADEMIC_CALENDAR_CATEGORY_COVERS = {
+    'term': 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&q=80&auto=format&fit=crop',
+    'holiday': 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200&q=80&auto=format&fit=crop',
+    'exam': 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=1200&q=80&auto=format&fit=crop',
+    'event': 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1200&q=80&auto=format&fit=crop',
+    'meeting': 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=1200&q=80&auto=format&fit=crop',
+    'other': 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1200&q=80&auto=format&fit=crop',
+}
+
+
+def _prepare_public_calendar_news(activities, selected_year=None):
+    """Enrich academic calendar rows for the public News page."""
+    today = date_cls.today()
+    sorted_acts = sorted(
+        activities or [],
+        key=lambda x: (
+            _coerce_to_date(x.get('activity_date')) or date_cls.min,
+            x.get('id') or 0,
+        ),
+    )
+    enriched = []
+    category_counts = {}
+    for act in sorted_acts:
+        category = (act.get('category') or 'event').strip().lower()
+        colors = _calendar_category_colors(category)
+        start = _coerce_to_date(act.get('activity_date'))
+        end = _coerce_to_date(act.get('end_date')) or start
+        if end and start and end < start:
+            start, end = end, start
+        entry = dict(act)
+        entry['category'] = category
+        entry['color_badge'] = colors['badge']
+        entry['color_bg'] = colors['bg']
+        entry['color_text'] = colors['text']
+        entry['category_icon'] = ACADEMIC_CALENDAR_CATEGORY_ICONS.get(category, 'fa-bell')
+        entry['cover_image'] = ACADEMIC_CALENDAR_CATEGORY_COVERS.get(
+            category, ACADEMIC_CALENDAR_CATEGORY_COVERS['other'],
+        )
+        if start:
+            entry['date_day'] = start.day
+            entry['date_month'] = start.strftime('%b').upper()
+            entry['date_year'] = start.year
+            entry['sort_date'] = start
+            entry['iso_date'] = start.strftime('%Y-%m-%d')
+        else:
+            entry['date_day'] = None
+            entry['date_month'] = ''
+            entry['date_year'] = ''
+            entry['sort_date'] = None
+            entry['iso_date'] = ''
+        if start and end and end > start:
+            entry['date_range_label'] = f"{_format_date_short(start)} – {_format_date_short(end)}"
+            entry['duration_days'] = (end - start).days + 1
+        elif start:
+            entry['date_range_label'] = _format_date_short(start)
+            entry['duration_days'] = 1
+        else:
+            entry['date_range_label'] = 'Date to be confirmed'
+            entry['duration_days'] = 0
+        entry['opening_date_label'] = _format_date_short(start) if start else ''
+        entry['closing_date_label'] = (
+            _format_date_short(end) if end else (entry['opening_date_label'] or '')
+        )
+        if end:
+            entry['iso_end_date'] = end.strftime('%Y-%m-%d')
+        else:
+            entry['iso_end_date'] = entry.get('iso_date') or ''
+        end_cmp = end or start
+        entry['is_upcoming'] = bool(end_cmp and end_cmp >= today)
+        entry['is_today'] = bool(
+            start and end_cmp and start <= today <= end_cmp
+        )
+        if start and start > today:
+            entry['days_until'] = (start - today).days
+        elif entry['is_today']:
+            entry['days_until'] = 0
+        else:
+            entry['days_until'] = None
+        enriched.append(entry)
+        category_counts[category] = category_counts.get(category, 0) + 1
+
+    upcoming = [a for a in enriched if a.get('is_upcoming')]
+    past = [a for a in enriched if not a.get('is_upcoming')]
+    past.reverse()
+
+    spotlight = None
+    for candidate in upcoming:
+        if candidate.get('is_today'):
+            spotlight = candidate
+            break
+    if not spotlight and upcoming:
+        spotlight = upcoming[0]
+
+    year_label = ''
+    if selected_year and selected_year.get('year_name'):
+        year_label = selected_year['year_name']
+
+    this_month_key = today.strftime('%Y-%m')
+    this_month_count = sum(
+        1 for a in enriched
+        if a.get('iso_date', '').startswith(this_month_key)
+    )
+
+    return {
+        'activities': enriched,
+        'upcoming_activities': upcoming,
+        'past_activities': past,
+        'month_groups': _group_calendar_activities_by_month(enriched),
+        'branch_tree': _build_calendar_branch_tree(enriched, selected_year),
+        'year_label': year_label,
+        'upcoming_count': len(upcoming),
+        'past_count': len(past),
+        'total_count': len(enriched),
+        'spotlight': spotlight,
+        'category_counts': category_counts,
+        'this_month_count': this_month_count,
+    }
 
 
 def _resolve_calendar_term_id(cursor, academic_year_id, requested_term_id=None, default_to_current=False):
@@ -9141,6 +9638,14 @@ def _teacher_portal_is_teacher_session():
     return is_teacher or is_technician
 
 
+def _employee_portal_session_active():
+    """True when a signed-in school employee (staff portal), not parent/student."""
+    if not session.get('user_id'):
+        return False
+    role = (session.get('role') or '').lower().strip()
+    return role in EMPLOYEE_SUB_ROLES_SET
+
+
 def _teacher_portal_employee_pk():
     """employees.id for teacher flows (matches teacher_my_classes)."""
     user_role = session.get('role', '').lower()
@@ -13573,17 +14078,25 @@ Admissions Office
 This is an automated message. Please do not reply to this email.
 © {datetime.now().year} {school_name}. All rights reserved.
         """
-        
-        msg = Message(
+
+        dispatched = dispatch_school_notification(
             subject=subject,
-            recipients=[parent_email],
-            html=html_body,
-            body=text_body
+            message=text_body,
+            html_body=html_body,
+            recipient_email=parent_email,
+            recipient_type='parent',
+            app_link=public_portal_url('login'),
         )
-        
-        mail.send(msg)
-        print(f"Admission confirmation email sent to {parent_email}")
-        return True
+        if dispatched.get('skipped'):
+            print('Admission confirmation skipped: school notifications are disabled.')
+            return False
+        if dispatched['email']['sent']:
+            print(f"Admission confirmation email sent to {parent_email}")
+            return True
+        if not (parent_email or '').strip():
+            return False
+        print(f"Admission confirmation email failed: {dispatched['email'].get('error')}")
+        return False
     except Exception as e:
         print(f"Error sending admission confirmation email: {e}")
         return False
@@ -15035,16 +15548,43 @@ def apply_mail_config_from_env_and_integration():
     return bool((app.config.get('MAIL_USERNAME') or '').strip())
 
 
+def normalize_school_domain(raw):
+    """Normalize portal base URL / domain (https://host, no trailing slash or path)."""
+    val = (raw or '').strip()
+    if not val:
+        return ''
+    val = val.rstrip('/')
+    if not re.match(r'^https?://', val, re.I):
+        val = 'https://' + val.lstrip('/')
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(val)
+        if not parsed.netloc:
+            return ''
+        scheme = (parsed.scheme or 'https').lower()
+        if scheme not in ('http', 'https'):
+            scheme = 'https'
+        return f'{scheme}://{parsed.netloc}'
+    except Exception:
+        return ''
+
+
 def get_public_app_base_url():
     """
-    Public portal base URL for links in emails/SMS.
-    Prefer APP_DOMAIN or PORTAL_BASE_URL in .env (production domain); else current request host.
+    Public portal base URL for links in emails/SMS and QR codes.
+    Priority: APP_DOMAIN / PORTAL_BASE_URL (.env) → school_domain (system settings) → current request host.
     """
     raw = (os.environ.get('APP_DOMAIN') or os.environ.get('PORTAL_BASE_URL') or '').strip().rstrip('/')
     if raw:
-        if not re.match(r'^https?://', raw, re.I):
-            raw = 'https://' + raw.lstrip('/')
-        return raw
+        normalized = normalize_school_domain(raw)
+        if normalized:
+            return normalized
+    try:
+        db_domain = normalize_school_domain((get_school_settings() or {}).get('school_domain') or '')
+        if db_domain:
+            return db_domain
+    except Exception:
+        pass
     if has_request_context():
         try:
             return request.url_root.rstrip('/')
@@ -15064,6 +15604,34 @@ def public_portal_url(endpoint, **values):
     if has_request_context():
         return url_for(endpoint, _external=True, **values)
     return path
+
+
+def _portal_qr_data_url(url, box_size=6, border=2):
+    """PNG data URL for a scannable QR code (parent portal links on printed reports)."""
+    target = (url or '').strip()
+    if not target:
+        return ''
+    try:
+        import base64
+        import io
+
+        import qrcode
+
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=box_size,
+            border=border,
+        )
+        qr.add_data(target)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color='black', back_color='white')
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        return 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+    except Exception as ex:
+        print(f'_portal_qr_data_url: {ex}')
+        return ''
 
 
 def _parent_portal_setup_urls(student_id):
@@ -15130,6 +15698,630 @@ def _send_integration_sms(phone, message):
         return False, str(ex)
 
 
+def _send_integration_whatsapp(phone, subject, message):
+    """Send one WhatsApp text via Cloud API when Integration Settings → WhatsApp is configured."""
+    phone = re.sub(r'\D', '', (phone or '').strip())
+    if not phone:
+        return False, 'no phone'
+    txt = f"*{subject}*\n{message}"[:1000] if subject else (message or '')[:1000]
+    if not txt.strip():
+        return False, 'empty message'
+    integ = _load_integration_data_communication()
+    flags = _communication_channel_flags(integ)
+    if not flags.get('whatsapp'):
+        return False, 'WhatsApp not configured'
+    wa = integ.get('whatsapp') or {}
+    token = (wa.get('api_key') or wa.get('access_token') or '').strip()
+    phone_id = (wa.get('phone_number_id') or wa.get('phone_number') or '').strip()
+    if not token or not phone_id or len(phone) < 7:
+        return False, 'WhatsApp access token or phone number id missing'
+    try:
+        import urllib.request
+
+        graph_url = f'https://graph.facebook.com/v18.0/{phone_id}/messages'
+        payload = json.dumps(
+            {
+                'messaging_product': 'whatsapp',
+                'to': phone,
+                'type': 'text',
+                'text': {'body': txt},
+            }
+        ).encode('utf-8')
+        req = urllib.request.Request(
+            graph_url,
+            data=payload,
+            headers={
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'application/json',
+            },
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            _ = resp.read()
+        return True, ''
+    except Exception as ex:
+        print(f"_send_integration_whatsapp: {ex}")
+        return False, str(ex)
+
+
+def _send_integration_voice_call(phone, message):
+    """Place an outbound voice call via Africa's Talking when SMS/voice gateway is configured."""
+    phone = (phone or '').strip()
+    if not phone:
+        return False, 'no phone'
+    txt = (message or '').strip()[:300]
+    if not txt:
+        return False, 'empty message'
+    integ = _load_integration_data_communication()
+    flags = _communication_channel_flags(integ)
+    if not flags.get('sms'):
+        return False, 'Voice gateway not configured (use SMS integration)'
+    sm = integ.get('sms') or {}
+    prov = (sm.get('provider') or '').lower()
+    if not ('africa' in prov or prov == 'africastalking'):
+        return False, 'Voice calls require Africa\'s Talking SMS integration'
+    username = (sm.get('username') or sm.get('account_username') or '').strip()
+    api_key = (sm.get('api_key') or '').strip()
+    school = get_school_settings() or {}
+    caller_id = (school.get('school_phone') or sm.get('sender_id') or '').strip()
+    if not username or not api_key or not caller_id:
+        return False, 'Voice: missing username, API key, or school phone caller ID'
+    try:
+        import urllib.parse
+        import urllib.request
+
+        data = urllib.parse.urlencode(
+            {
+                'username': username,
+                'to': phone,
+                'from': caller_id,
+                'clientRequestId': secrets.token_hex(8),
+            }
+        ).encode()
+        req = urllib.request.Request(
+            'https://voice.africastalking.com/call',
+            data=data,
+            headers={
+                'apiKey': api_key,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+            },
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            _ = resp.read()
+        return True, ''
+    except Exception as ex:
+        print(f"_send_integration_voice_call: {ex}")
+        return False, str(ex)
+
+
+def ensure_portal_notifications_table(cursor):
+    """In-app notifications shown in portal hubs."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS portal_notifications (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            recipient_type VARCHAR(20) NOT NULL DEFAULT 'parent',
+            recipient_email VARCHAR(255) NULL,
+            recipient_user_id INT NULL,
+            title VARCHAR(255) NOT NULL,
+            body TEXT NULL,
+            link_url VARCHAR(512) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            read_at TIMESTAMP NULL DEFAULT NULL,
+            INDEX idx_portal_notif_email (recipient_email),
+            INDEX idx_portal_notif_user (recipient_user_id),
+            INDEX idx_portal_notif_created (created_at)
+        )
+        """
+    )
+
+
+def _insert_portal_notification(
+    cursor,
+    *,
+    recipient_type='parent',
+    recipient_email=None,
+    recipient_user_id=None,
+    title='',
+    body='',
+    link_url=None,
+):
+    ensure_portal_notifications_table(cursor)
+    cursor.execute(
+        """
+        INSERT INTO portal_notifications
+            (recipient_type, recipient_email, recipient_user_id, title, body, link_url)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+        (
+            (recipient_type or 'parent').strip()[:20],
+            (recipient_email or '').strip()[:255] or None,
+            int(recipient_user_id) if recipient_user_id else None,
+            (title or 'Notification').strip()[:255],
+            (body or '').strip() or None,
+            (link_url or '').strip()[:512] or None,
+        ),
+    )
+
+
+def _fetch_portal_notifications_for_recipient(
+    cursor, *, parent_email=None, user_id=None, recipient_type='parent', limit=8,
+):
+    ensure_portal_notifications_table(cursor)
+    limit = max(1, min(int(limit or 8), 20))
+    clauses = ["recipient_type = %s", "read_at IS NULL"]
+    params = [(recipient_type or 'parent').strip()[:20]]
+    if parent_email:
+        clauses.append('(recipient_email = %s OR recipient_email IS NULL)')
+        params.append((parent_email or '').strip())
+    elif user_id:
+        clauses.append('(recipient_user_id = %s OR recipient_user_id IS NULL)')
+        params.append(int(user_id))
+    else:
+        return []
+    params.append(limit)
+    try:
+        cursor.execute(
+            f"""
+            SELECT id, title, body, link_url, created_at
+            FROM portal_notifications
+            WHERE {' AND '.join(clauses)}
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            tuple(params),
+        )
+        rows = cursor.fetchall() or []
+    except Exception as ex:
+        print(f"_fetch_portal_notifications_for_recipient: {ex}")
+        return []
+    notes = []
+    for row in rows:
+        if isinstance(row, dict):
+            nid = row.get('id')
+            title = (row.get('title') or 'Notification').strip()
+            body = (row.get('body') or '').strip()
+            link_url = (row.get('link_url') or '').strip()
+            created_at = row.get('created_at')
+        else:
+            nid = row[0] if row else None
+            title = (row[1] if len(row) > 1 else 'Notification') or 'Notification'
+            body = (row[2] if len(row) > 2 else '') or ''
+            link_url = (row[3] if len(row) > 3 else '') or ''
+            created_at = row[4] if len(row) > 4 else None
+        if created_at and hasattr(created_at, 'strftime'):
+            when_display = created_at.strftime('%d %b %Y')
+        elif created_at:
+            when_display = str(created_at)[:10]
+        else:
+            when_display = ''
+        notes.append({
+            'type': 'portal',
+            'id': nid,
+            'title': title.upper() if title else 'NOTIFICATION',
+            'subtitle': body[:120] if body else '',
+            'body': body,
+            'link_url': link_url,
+            'gazetted_at_display': when_display,
+        })
+    return notes
+
+
+def _generate_web_push_vapid_key_pair():
+    """Return (public_key_b64url, private_key_pem) for Web Push VAPID."""
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    import base64
+
+    private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+    public_key = private_key.public_key()
+    public_numbers = public_key.public_numbers()
+    x = public_numbers.x.to_bytes(32, 'big')
+    y = public_numbers.y.to_bytes(32, 'big')
+    raw_pub = b'\x04' + x + y
+    public_b64 = base64.urlsafe_b64encode(raw_pub).decode('ascii').rstrip('=')
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode('ascii')
+    return public_b64, private_pem
+
+
+def ensure_web_push_integration(cursor, generate_if_missing=False):
+    """Ensure integration_settings row exists for Web Push VAPID keys."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS integration_settings (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            integration_type VARCHAR(50) NOT NULL,
+            settings_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_integration_type (integration_type)
+        )
+        """
+    )
+    cursor.execute(
+        "SELECT settings_json FROM integration_settings WHERE integration_type = %s LIMIT 1",
+        ('web_push',),
+    )
+    row = cursor.fetchone()
+    settings = {}
+    if row:
+        raw = row.get('settings_json') if isinstance(row, dict) else (row[0] if row else '{}')
+        try:
+            settings = json.loads(raw or '{}')
+        except Exception:
+            settings = {}
+    pub = (settings.get('public_key') or os.environ.get('VAPID_PUBLIC_KEY') or '').strip()
+    priv = (settings.get('private_key') or os.environ.get('VAPID_PRIVATE_KEY') or '').strip()
+    if pub and priv:
+        return {'public_key': pub, 'private_key': priv, 'enabled': True}
+    if not generate_if_missing:
+        return settings
+    gen_pub, gen_priv = _generate_web_push_vapid_key_pair()
+    settings = {'public_key': gen_pub, 'private_key': gen_priv, 'enabled': True}
+    cursor.execute(
+        """
+        INSERT INTO integration_settings (integration_type, settings_json)
+        VALUES (%s, %s)
+        ON DUPLICATE KEY UPDATE settings_json = VALUES(settings_json)
+        """,
+        ('web_push', json.dumps(settings)),
+    )
+    return settings
+
+
+def get_web_push_vapid_keys():
+    """Load VAPID public (browser) and private (server) keys."""
+    pub = (os.environ.get('VAPID_PUBLIC_KEY') or '').strip()
+    priv = (os.environ.get('VAPID_PRIVATE_KEY') or '').strip()
+    if pub and priv:
+        return pub, priv
+    connection = get_db_connection()
+    if not connection:
+        return '', ''
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT settings_json FROM integration_settings WHERE integration_type = %s LIMIT 1",
+                ('web_push',),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return '', ''
+            raw = row.get('settings_json') if isinstance(row, dict) else (row[0] if row else '{}')
+            settings = json.loads(raw or '{}')
+            return (
+                (settings.get('public_key') or '').strip(),
+                (settings.get('private_key') or '').strip(),
+            )
+    except Exception as ex:
+        print(f"get_web_push_vapid_keys: {ex}")
+        return '', ''
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+def web_push_configured():
+    pub, priv = get_web_push_vapid_keys()
+    return bool(pub and priv)
+
+
+def _web_push_vapid_claims_email():
+    settings = get_school_settings() or {}
+    for key in ('school_email',):
+        em = (settings.get(key) or '').strip()
+        if em and '@' in em:
+            return em
+    for key in ('SUPPORT_EMAIL', 'MAIL_DEFAULT_SENDER'):
+        em = (os.environ.get(key) or '').strip()
+        if em and '@' in em:
+            return em
+    return 'admin@localhost'
+
+
+def ensure_push_subscriptions_table(cursor):
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            user_role VARCHAR(32) NULL,
+            user_email VARCHAR(255) NULL,
+            endpoint TEXT NOT NULL,
+            p256dh VARCHAR(255) NOT NULL,
+            auth VARCHAR(128) NOT NULL,
+            user_agent VARCHAR(512) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_push_endpoint (endpoint(255)),
+            INDEX idx_push_user_id (user_id),
+            INDEX idx_push_user_email (user_email)
+        )
+        """
+    )
+
+
+def _resolve_notification_user_id(cursor, recipient_email=None, recipient_user_id=None):
+    if recipient_user_id:
+        try:
+            return int(recipient_user_id)
+        except (TypeError, ValueError):
+            pass
+    email = (recipient_email or '').strip()
+    if not email:
+        return None
+    cursor.execute(
+        "SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM(%s)) LIMIT 1",
+        (email,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return row.get('id') if isinstance(row, dict) else row[0]
+
+
+def _fetch_push_subscriptions_for_user(cursor, user_id):
+    ensure_push_subscriptions_table(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT id, endpoint, p256dh, auth
+            FROM push_subscriptions
+            WHERE user_id = %s
+            """,
+            (int(user_id),),
+        )
+        return cursor.fetchall() or []
+    except Exception as ex:
+        print(f"_fetch_push_subscriptions_for_user: {ex}")
+        return []
+
+
+def _delete_push_subscription(cursor, subscription_id=None, endpoint=None):
+    ensure_push_subscriptions_table(cursor)
+    if subscription_id:
+        cursor.execute("DELETE FROM push_subscriptions WHERE id = %s", (int(subscription_id),))
+    elif endpoint:
+        cursor.execute("DELETE FROM push_subscriptions WHERE endpoint = %s", ((endpoint or '').strip(),))
+
+
+def _send_one_web_push(subscription_row, title, body, url='/'):
+    """Send a single Web Push message. Returns (ok, should_delete_subscription)."""
+    pub, priv = get_web_push_vapid_keys()
+    if not pub or not priv:
+        return False, False
+    if isinstance(subscription_row, dict):
+        endpoint = subscription_row.get('endpoint')
+        p256dh = subscription_row.get('p256dh')
+        auth = subscription_row.get('auth')
+        sub_id = subscription_row.get('id')
+    else:
+        sub_id = subscription_row[0] if subscription_row else None
+        endpoint = subscription_row[1] if len(subscription_row) > 1 else None
+        p256dh = subscription_row[2] if len(subscription_row) > 2 else None
+        auth = subscription_row[3] if len(subscription_row) > 3 else None
+    if not endpoint or not p256dh or not auth:
+        return False, False
+    payload = json.dumps({
+        'title': (title or 'School notification')[:120],
+        'body': (body or '')[:500],
+        'url': (url or '/')[:512],
+    })
+    try:
+        from pywebpush import WebPushException, webpush
+
+        webpush(
+            subscription_info={
+                'endpoint': endpoint,
+                'keys': {'p256dh': p256dh, 'auth': auth},
+            },
+            data=payload,
+            vapid_private_key=priv,
+            vapid_claims={'sub': f'mailto:{_web_push_vapid_claims_email()}'},
+        )
+        return True, False
+    except Exception as ex:
+        status = getattr(ex, 'response', None)
+        code = getattr(status, 'status_code', None) if status is not None else None
+        if code in (404, 410):
+            return False, True
+        try:
+            from pywebpush import WebPushException
+            if isinstance(ex, WebPushException) and ex.response is not None:
+                if ex.response.status_code in (404, 410):
+                    return False, True
+        except Exception:
+            pass
+        print(f"_send_one_web_push ({sub_id}): {ex}")
+        return False, False
+
+
+def _send_web_push_to_user(cursor, user_id, title, body, url='/'):
+    """Send push to all browser subscriptions for a user. Returns (sent_count, error_note)."""
+    rows = _fetch_push_subscriptions_for_user(cursor, user_id)
+    if not rows:
+        return 0, 'no push subscription'
+    sent = 0
+    last_err = ''
+    for row in rows:
+        ok, delete_sub = _send_one_web_push(row, title, body, url)
+        if ok:
+            sent += 1
+        elif delete_sub:
+            if isinstance(row, dict):
+                _delete_push_subscription(cursor, subscription_id=row.get('id'))
+            else:
+                _delete_push_subscription(cursor, subscription_id=row[0] if row else None)
+        else:
+            last_err = 'push delivery failed'
+    return sent, last_err
+
+
+def push_notifications_available():
+    """School-wide push is enabled and VAPID keys exist."""
+    return bool(
+        school_notifications_enabled()
+        and notification_mode_enabled('push')
+        and web_push_configured()
+    )
+
+
+def dispatch_school_notification(
+    *,
+    subject='',
+    message='',
+    html_body=None,
+    sms_message=None,
+    recipient_email=None,
+    recipient_phone=None,
+    recipient_user_id=None,
+    recipient_type='parent',
+    app_link=None,
+    bypass_settings=False,
+    cursor=None,
+):
+    """
+    Send a school notification via every enabled and configured delivery mode.
+    Security-sensitive flows (password reset codes) should pass bypass_settings=True.
+    """
+    result = {
+        'skipped': False,
+        'app': {'sent': False, 'error': ''},
+        'push': {'sent': False, 'error': '', 'count': 0},
+        'email': {'sent': False, 'error': ''},
+        'sms': {'sent': False, 'error': ''},
+        'whatsapp': {'sent': False, 'error': ''},
+        'phone': {'sent': False, 'error': ''},
+    }
+    if not bypass_settings and not school_notifications_enabled():
+        result['skipped'] = True
+        return result
+
+    subj = (subject or '').strip()
+    text = (message or '').strip()
+    sms_text = (sms_message or text).strip()[:480]
+    html = html_body if html_body is not None else None
+
+    if notification_mode_active('app') or (bypass_settings and notification_mode_enabled('app')):
+        own_conn = None
+        try:
+            cur = cursor
+            if cur is None:
+                own_conn = get_db_connection()
+                cur = own_conn.cursor() if own_conn else None
+            if cur is not None:
+                _insert_portal_notification(
+                    cur,
+                    recipient_type=recipient_type,
+                    recipient_email=recipient_email,
+                    recipient_user_id=recipient_user_id,
+                    title=subj or 'Notification',
+                    body=text,
+                    link_url=app_link,
+                )
+                if own_conn:
+                    own_conn.commit()
+                result['app']['sent'] = True
+        except Exception as ex:
+            result['app']['error'] = str(ex)
+            if own_conn:
+                try:
+                    own_conn.rollback()
+                except Exception:
+                    pass
+        finally:
+            if own_conn:
+                try:
+                    own_conn.close()
+                except Exception:
+                    pass
+
+    if (notification_mode_active('email') or bypass_settings) and (recipient_email or '').strip():
+        if not apply_mail_config_from_env_and_integration():
+            result['email']['error'] = 'Email not configured (SMTP / Integration Settings).'
+        else:
+            try:
+                msg = Message(
+                    subject=subj or 'Notification',
+                    recipients=[recipient_email.strip()],
+                    body=text,
+                    html=html or f'<p>{text.replace(chr(10), "<br>")}</p>' if text else None,
+                )
+                mail.send(msg)
+                result['email']['sent'] = True
+            except Exception as ex:
+                result['email']['error'] = str(ex)
+
+    if notification_mode_active('sms') and (recipient_phone or '').strip():
+        ok, note = _send_integration_sms(recipient_phone, sms_text or subj)
+        result['sms']['sent'] = ok
+        if not ok:
+            result['sms']['error'] = note or 'SMS failed'
+
+    if notification_mode_active('whatsapp') and (recipient_phone or '').strip():
+        ok, note = _send_integration_whatsapp(recipient_phone, subj, sms_text or text)
+        result['whatsapp']['sent'] = ok
+        if not ok:
+            result['whatsapp']['error'] = note or 'WhatsApp failed'
+
+    if notification_mode_active('phone') and (recipient_phone or '').strip():
+        ok, note = _send_integration_voice_call(recipient_phone, sms_text or subj)
+        result['phone']['sent'] = ok
+        if not ok:
+            result['phone']['error'] = note or 'Phone call failed'
+
+    if notification_mode_active('push'):
+        own_conn = None
+        try:
+            cur = cursor
+            if cur is None:
+                own_conn = get_db_connection()
+                cur = own_conn.cursor() if own_conn else None
+            if cur is not None:
+                uid = _resolve_notification_user_id(
+                    cur,
+                    recipient_email=recipient_email,
+                    recipient_user_id=recipient_user_id,
+                )
+                if uid:
+                    push_url = app_link or '/'
+                    sent_count, push_err = _send_web_push_to_user(
+                        cur, uid, subj or 'Notification', sms_text or text, push_url,
+                    )
+                    result['push']['count'] = sent_count
+                    result['push']['sent'] = sent_count > 0
+                    if push_err and not sent_count:
+                        result['push']['error'] = push_err
+                    if own_conn:
+                        own_conn.commit()
+                else:
+                    result['push']['error'] = 'no user account for push'
+        except Exception as ex:
+            result['push']['error'] = str(ex)
+            if own_conn:
+                try:
+                    own_conn.rollback()
+                except Exception:
+                    pass
+        finally:
+            if own_conn:
+                try:
+                    own_conn.close()
+                except Exception:
+                    pass
+
+    return result
+
+
 def send_password_reset_email(to_email, recipient_name, verification_code):
     """Send verification code for password reset."""
     try:
@@ -15164,25 +16356,19 @@ def send_password_reset_email(to_email, recipient_name, verification_code):
         return False
 
 
-def send_student_approval_email(parent_email, parent_name, student_name, student_id):
-    """Approval email with parent portal setup guidance and school portal links."""
-    try:
-        if not apply_mail_config_from_env_and_integration():
-            print("Student approval: no SMTP credentials in .env or Integration Settings → Email.")
-            return False
-        settings = get_school_settings()
-        school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'Modern School').strip()
-        support_email = (settings.get('school_email') or os.environ.get('SUPPORT_EMAIL') or 'support@modernschool.com').strip()
-        support_phone = (settings.get('school_phone') or os.environ.get('SUPPORT_PHONE') or '+254 700 000 000').strip()
-        salutation = (parent_name or '').strip() or 'Parent/Guardian'
-        urls = _parent_portal_setup_urls(student_id)
-        portal_home = urls['portal_home']
-        login_url = urls['login_url']
-        setup_url = urls['setup_url']
-
-        subject = f"Congratulations! {student_name} approved — set up your parent portal | {school_name}"
-
-        html_body = f"""
+def _build_student_approval_notification_content(parent_name, student_name, student_id):
+    """Subject and bodies for parent student-approval notification."""
+    settings = get_school_settings()
+    school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'Modern School').strip()
+    support_email = (settings.get('school_email') or os.environ.get('SUPPORT_EMAIL') or 'support@modernschool.com').strip()
+    support_phone = (settings.get('school_phone') or os.environ.get('SUPPORT_PHONE') or '+254 700 000 000').strip()
+    salutation = (parent_name or '').strip() or 'Parent/Guardian'
+    urls = _parent_portal_setup_urls(student_id)
+    portal_home = urls['portal_home']
+    login_url = urls['login_url']
+    setup_url = urls['setup_url']
+    subject = f"Congratulations! {student_name} approved — set up your parent portal | {school_name}"
+    html_body = f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -15244,8 +16430,7 @@ def send_student_approval_email(parent_email, parent_name, student_name, student
         </body>
         </html>
         """
-
-        text_body = f"""Dear {salutation},
+    text_body = f"""Dear {salutation},
 
 Congratulations! {student_name} has been approved and is now enrolled at {school_name}.
 
@@ -15274,16 +16459,48 @@ Best regards,
 Admissions Office
 {school_name}
 """
+    sms_text = (
+        f"{school_name}: {student_name} ({student_id}) is approved. "
+        f"Set up your parent portal: {login_url} — choose Parent, enter admission ID & child DOB, then create your password."
+    )[:480]
+    return {
+        'subject': subject,
+        'text_body': text_body,
+        'html_body': html_body,
+        'sms_text': sms_text,
+        'login_url': login_url,
+        'school_name': school_name,
+    }
 
-        msg = Message(
-            subject=subject,
-            recipients=[parent_email],
-            html=html_body,
-            body=text_body,
+
+def send_student_approval_email(parent_email, parent_name, student_name, student_id, parent_phone=None):
+    """Approval notification via enabled delivery modes."""
+    try:
+        content = _build_student_approval_notification_content(parent_name, student_name, student_id)
+        dispatched = dispatch_school_notification(
+            subject=content['subject'],
+            message=content['sms_text'] if parent_phone and not parent_email else content['text_body'],
+            html_body=content['html_body'],
+            recipient_email=parent_email,
+            recipient_phone=parent_phone,
+            recipient_type='parent',
+            app_link=content['login_url'],
         )
-        mail.send(msg)
-        print(f"Student approval email sent to {parent_email}")
-        return True
+        if dispatched.get('skipped'):
+            print('Student approval notification skipped: school notifications are disabled.')
+            return False
+        if dispatched['email']['sent']:
+            print(f"Student approval email sent to {parent_email}")
+            return True
+        if not notification_mode_active('email'):
+            return bool(
+                dispatched['sms']['sent']
+                or dispatched['whatsapp']['sent']
+                or dispatched['phone']['sent']
+                or dispatched['app']['sent']
+            )
+        print(f"Student approval email failed: {dispatched['email'].get('error')}")
+        return False
     except Exception as e:
         print(f"Error sending student approval email: {e}")
         return False
@@ -15291,36 +16508,52 @@ Admissions Office
 
 def notify_parent_student_approved(parent_email, parent_phone, parent_name, student_name, student_id):
     """
-    Notify parent/guardian after approval: email (required path) + optional SMS.
+    Notify parent/guardian after approval via enabled delivery modes.
     Returns dict: email_sent, sms_sent, sms_note, errors[].
     """
     result = {'email_sent': False, 'sms_sent': False, 'sms_note': '', 'errors': []}
-    urls = _parent_portal_setup_urls(student_id)
-    settings = get_school_settings()
-    school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'School').strip()
+    if not school_notifications_enabled():
+        result['errors'].append('School notifications are turned off in System Settings.')
+        return result
+    if not (parent_email or '').strip() and not (parent_phone or '').strip():
+        result['errors'].append('No parent email or phone on file.')
+        return result
 
-    if (parent_email or '').strip():
-        try:
-            if send_student_approval_email(parent_email, parent_name, student_name, student_id):
-                result['email_sent'] = True
-            else:
-                result['errors'].append('Email could not be sent (check SMTP / Integration Settings).')
-        except Exception as ex:
-            result['errors'].append(f'Email error: {ex}')
-    else:
-        result['errors'].append('No parent email on file.')
-
-    if (parent_phone or '').strip():
-        sms_text = (
-            f"{school_name}: {student_name} ({student_id}) is approved. "
-            f"Set up your parent portal: {urls['login_url']} — choose Parent, enter admission ID & child DOB, then create your password."
-        )[:480]
-        ok, note = _send_integration_sms(parent_phone, sms_text)
-        result['sms_sent'] = ok
-        result['sms_note'] = note or ''
-        if not ok and note and note != 'no phone':
-            result['errors'].append(f'SMS: {note}')
-
+    try:
+        content = _build_student_approval_notification_content(parent_name, student_name, student_id)
+        dispatched = dispatch_school_notification(
+            subject=content['subject'],
+            message=content['text_body'],
+            sms_message=content['sms_text'],
+            html_body=content['html_body'],
+            recipient_email=parent_email,
+            recipient_phone=parent_phone,
+            recipient_type='parent',
+            app_link=content['login_url'],
+        )
+        if dispatched.get('skipped'):
+            result['errors'].append('School notifications are turned off in System Settings.')
+            return result
+        result['email_sent'] = bool(dispatched['email']['sent'])
+        result['sms_sent'] = bool(
+            dispatched['sms']['sent'] or dispatched['whatsapp']['sent'] or dispatched['push']['sent']
+        )
+        if dispatched['sms']['error']:
+            result['sms_note'] = dispatched['sms']['error']
+        if not result['email_sent'] and (parent_email or '').strip() and notification_mode_active('email'):
+            err = dispatched['email'].get('error') or 'Email could not be sent.'
+            result['errors'].append(err)
+        elif not (parent_email or '').strip() and notification_mode_active('email'):
+            result['errors'].append('No parent email on file.')
+        for ch, label in (
+            ('sms', 'SMS'), ('whatsapp', 'WhatsApp'), ('phone', 'Phone'),
+            ('app', 'In-portal'), ('push', 'Push'),
+        ):
+            err = (dispatched.get(ch) or {}).get('error')
+            if err and notification_mode_enabled(ch):
+                result['errors'].append(f'{label}: {err}')
+    except Exception as ex:
+        result['errors'].append(str(ex))
     return result
 
 def send_employee_welcome_email(employee_email, employee_name, employee_id):
@@ -15472,17 +16705,22 @@ Human Resources Department
 This is an automated message. Please do not reply to this email.
 © {datetime.now().year} {school_name}. All rights reserved.
         """
-        
-        msg = Message(
+
+        dispatched = dispatch_school_notification(
             subject=subject,
-            recipients=[employee_email],
-            html=html_body,
-            body=text_body
+            message=text_body,
+            html_body=html_body,
+            recipient_email=employee_email,
+            recipient_type='employee',
         )
-        
-        mail.send(msg)
-        print(f"Employee welcome email sent to {employee_email}")
-        return True
+        if dispatched.get('skipped'):
+            print('Employee welcome notification skipped: school notifications are disabled.')
+            return False
+        if dispatched['email']['sent']:
+            print(f"Employee welcome email sent to {employee_email}")
+            return True
+        print(f"Employee welcome email failed: {dispatched['email'].get('error')}")
+        return False
     except Exception as e:
         print(f"Error sending employee welcome email: {e}")
         return False
@@ -15647,17 +16885,22 @@ Human Resources Department
 This is an automated message. Please do not reply to this email.
 © {datetime.now().year} {school_name}. All rights reserved.
         """
-        
-        msg = Message(
+
+        dispatched = dispatch_school_notification(
             subject=subject,
-            recipients=[employee_email],
-            html=html_body,
-            body=text_body
+            message=text_body,
+            html_body=html_body,
+            recipient_email=employee_email,
+            recipient_type='employee',
         )
-        
-        mail.send(msg)
-        print(f"Employee approval email sent to {employee_email}")
-        return True
+        if dispatched.get('skipped'):
+            print('Employee approval notification skipped: school notifications are disabled.')
+            return False
+        if dispatched['email']['sent']:
+            print(f"Employee approval email sent to {employee_email}")
+            return True
+        print(f"Employee approval email failed: {dispatched['email'].get('error')}")
+        return False
     except Exception as e:
         print(f"Error sending employee approval email: {e}")
         return False
@@ -15721,24 +16964,212 @@ def pwa_service_worker():
     return resp
 
 
+@app.route('/api/push/vapid-public-key')
+def api_push_vapid_public_key():
+    """Public VAPID key for browser PushManager.subscribe."""
+    pub, _priv = get_web_push_vapid_keys()
+    return jsonify({
+        'publicKey': pub or '',
+        'configured': bool(pub),
+        'pushEnabled': push_notifications_available(),
+    })
+
+
+@app.route('/api/push/status')
+@login_required
+def api_push_status():
+    """Whether push is active and if the current user is subscribed."""
+    user_id = session.get('user_id')
+    subscribed = False
+    connection = get_db_connection()
+    if connection and user_id:
+        try:
+            with connection.cursor() as cursor:
+                ensure_push_subscriptions_table(cursor)
+                cursor.execute(
+                    "SELECT 1 FROM push_subscriptions WHERE user_id = %s LIMIT 1",
+                    (int(user_id),),
+                )
+                subscribed = bool(cursor.fetchone())
+        except Exception as ex:
+            print(f"api_push_status: {ex}")
+        finally:
+            connection.close()
+    return jsonify({
+        'available': push_notifications_available(),
+        'subscribed': subscribed,
+    })
+
+
+@app.route('/api/push/subscribe', methods=['POST'])
+@login_required
+def api_push_subscribe():
+    """Save a Web Push subscription for the signed-in user."""
+    if not push_notifications_available():
+        return jsonify({
+            'success': False,
+            'message': 'Push notifications are not enabled for this school.',
+        }), 400
+    payload = request.get_json(silent=True) or {}
+    endpoint = (payload.get('endpoint') or '').strip()
+    keys = payload.get('keys') if isinstance(payload.get('keys'), dict) else {}
+    p256dh = (keys.get('p256dh') or '').strip()
+    auth = (keys.get('auth') or '').strip()
+    if not endpoint or not p256dh or not auth:
+        return jsonify({'success': False, 'message': 'Invalid push subscription payload.'}), 400
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'success': False, 'message': 'Not signed in.'}), 401
+    user_email = (session.get('email') or '').strip()
+    user_role = (session.get('role') or '').strip()[:32]
+    ua = (request.headers.get('User-Agent') or '')[:512]
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_push_subscriptions_table(cursor)
+            cursor.execute(
+                """
+                INSERT INTO push_subscriptions
+                    (user_id, user_role, user_email, endpoint, p256dh, auth, user_agent)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    user_id = VALUES(user_id),
+                    user_role = VALUES(user_role),
+                    user_email = VALUES(user_email),
+                    p256dh = VALUES(p256dh),
+                    auth = VALUES(auth),
+                    user_agent = VALUES(user_agent),
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (int(user_id), user_role or None, user_email or None, endpoint, p256dh, auth, ua or None),
+            )
+            connection.commit()
+        return jsonify({'success': True})
+    except Exception as ex:
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        print(f"api_push_subscribe: {ex}")
+        return jsonify({'success': False, 'message': 'Could not save push subscription.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/api/push/unsubscribe', methods=['POST'])
+@login_required
+def api_push_unsubscribe():
+    """Remove Web Push subscription(s) for the signed-in user."""
+    payload = request.get_json(silent=True) or {}
+    endpoint = (payload.get('endpoint') or '').strip()
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'success': False, 'message': 'Not signed in.'}), 401
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_push_subscriptions_table(cursor)
+            if endpoint:
+                cursor.execute(
+                    "DELETE FROM push_subscriptions WHERE user_id = %s AND endpoint = %s",
+                    (int(user_id), endpoint),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM push_subscriptions WHERE user_id = %s",
+                    (int(user_id),),
+                )
+            connection.commit()
+        return jsonify({'success': True})
+    except Exception as ex:
+        print(f"api_push_unsubscribe: {ex}")
+        return jsonify({'success': False, 'message': 'Could not unsubscribe.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/system-settings/push/generate-vapid', methods=['POST'])
+@login_required
+def generate_web_push_vapid_keys():
+    """Technician: create or refresh Web Push VAPID keys."""
+    if session.get('role', '').lower() != 'technician':
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(url_for('system_settings') + '#general-settings')
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(url_for('system_settings') + '#general-settings')
+    try:
+        with connection.cursor() as cursor:
+            pub, priv = _generate_web_push_vapid_key_pair()
+            settings = {'public_key': pub, 'private_key': priv, 'enabled': True}
+            cursor.execute(
+                """
+                INSERT INTO integration_settings (integration_type, settings_json)
+                VALUES (%s, %s)
+                ON DUPLICATE KEY UPDATE settings_json = VALUES(settings_json)
+                """,
+                ('web_push', json.dumps(settings)),
+            )
+            connection.commit()
+        flash('Push notification keys generated successfully.', 'success')
+    except Exception as ex:
+        print(f"generate_web_push_vapid_keys: {ex}")
+        flash('Could not generate push keys.', 'error')
+    finally:
+        connection.close()
+    return redirect(url_for('system_settings') + '#general-settings')
+
+
 @app.route('/')
 def home():
     # Staff who signed in via the employee portal have employees.employee_id in session (not parent/student users).
     employee_in_portal = bool(session.get('employee_id'))
-    gallery_items = []
+    team_total = 0
+    news_upcoming_count = 0
+    news_spotlight_title = ''
     connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
-                gallery_items = load_school_gallery_items(cursor)
+                try:
+                    _, team_members = _fetch_public_team_groups(cursor)
+                    team_total = len(team_members)
+                except Exception as e:
+                    print(f"home team preview: {e}")
+                try:
+                    ensure_academic_calendar_activities_table(cursor)
+                    ensure_academic_calendar_activity_levels_table(cursor)
+                    selected_year_id, academic_years = _resolve_calendar_year_id(cursor, None)
+                    selected_year = None
+                    if selected_year_id:
+                        for y in academic_years:
+                            if int(y.get('id')) == int(selected_year_id):
+                                selected_year = y
+                                break
+                        raw = _fetch_academic_calendar_activities(cursor, selected_year_id, term_id=None)
+                        raw = _attach_calendar_activity_levels(cursor, raw)
+                        news_payload = _prepare_public_calendar_news(raw, selected_year)
+                        news_upcoming_count = news_payload.get('upcoming_count') or 0
+                        spotlight = news_payload.get('spotlight') or {}
+                        news_spotlight_title = (spotlight.get('activity_title') or '').strip()
+                except Exception as e:
+                    print(f"home news preview: {e}")
         except Exception as e:
-            print(f"home gallery: {e}")
+            print(f"home preview: {e}")
         finally:
             connection.close()
     return render_template(
         'home.html',
         employee_in_portal=employee_in_portal,
-        gallery_items=gallery_items,
+        team_total=team_total,
+        news_upcoming_count=news_upcoming_count,
+        news_spotlight_title=news_spotlight_title,
+        progress_current_year=date_cls.today().year,
     )
 
 
@@ -15817,7 +17248,75 @@ def faq():
 
 @app.route('/news')
 def news():
-    return redirect(url_for('login'))
+    requested_year_id = request.args.get('academic_year_id')
+    calendar_activities = []
+    upcoming_activities = []
+    past_activities = []
+    month_groups = []
+    selected_year = None
+    academic_years = []
+    selected_year_id = None
+    year_label = ''
+    upcoming_count = 0
+    past_count = 0
+    total_count = 0
+    spotlight = None
+    category_counts = {}
+    this_month_count = 0
+    branch_tree = None
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_academic_calendar_activities_table(cursor)
+                ensure_academic_calendar_activity_levels_table(cursor)
+                selected_year_id, academic_years = _resolve_calendar_year_id(cursor, requested_year_id)
+                if selected_year_id:
+                    for y in academic_years:
+                        if int(y.get('id')) == int(selected_year_id):
+                            selected_year = y
+                            break
+                    raw = _fetch_academic_calendar_activities(cursor, selected_year_id, term_id=None)
+                    raw = _attach_calendar_activity_levels(cursor, raw)
+                    news_payload = _prepare_public_calendar_news(raw, selected_year)
+                    calendar_activities = news_payload['activities']
+                    upcoming_activities = news_payload['upcoming_activities']
+                    past_activities = news_payload['past_activities']
+                    month_groups = news_payload['month_groups']
+                    year_label = news_payload['year_label']
+                    upcoming_count = news_payload['upcoming_count']
+                    past_count = news_payload['past_count']
+                    total_count = news_payload['total_count']
+                    spotlight = news_payload['spotlight']
+                    category_counts = news_payload['category_counts']
+                    this_month_count = news_payload['this_month_count']
+                    branch_tree = news_payload.get('branch_tree')
+        except Exception as e:
+            print(f"news calendar: {e}")
+        finally:
+            connection.close()
+
+    school_name = (get_school_settings().get('school_name') or 'Our school').strip()
+    return render_template(
+        'news.html',
+        calendar_activities=calendar_activities,
+        upcoming_activities=upcoming_activities,
+        past_activities=past_activities,
+        month_groups=month_groups,
+        selected_year=selected_year,
+        selected_year_id=selected_year_id,
+        academic_years=academic_years,
+        year_label=year_label,
+        upcoming_count=upcoming_count,
+        past_count=past_count,
+        total_count=total_count,
+        spotlight=spotlight,
+        category_counts=category_counts,
+        this_month_count=this_month_count,
+        branch_tree=branch_tree,
+        category_labels=ACADEMIC_CALENDAR_CATEGORY_LABELS,
+    )
 
 @app.route('/gallery')
 def gallery():
@@ -15842,9 +17341,187 @@ def gallery():
         ),
     )
 
+
+PUBLIC_TEAM_ROLE_ORDER = (
+    'head of institution',
+    'deputy head of institution',
+    'accountant',
+    'curriculum coordinator',
+    'teachers',
+    'librarian',
+    'store manager',
+)
+
+PUBLIC_TEAM_ROLE_LABELS = {
+    'head of institution': 'Head of institution',
+    'deputy head of institution': 'Deputy head',
+    'accountant': 'Accounts',
+    'curriculum coordinator': 'Curriculum coordinator',
+    'teachers': 'Teachers',
+    'librarian': 'Librarian',
+    'store manager': 'Store manager',
+    'secretary': 'Secretary',
+    'warden': 'Warden',
+    'transport manager': 'Transport',
+    'technician': 'Technician',
+    'employee': 'Staff',
+    'super admin': 'Administration',
+}
+
+PUBLIC_TEAM_DEFAULT_COVER = (
+    'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=900&q=80&auto=format&fit=crop'
+)
+
+
+def _public_team_role_label(role):
+    canon = normalize_allocated_role(role) or str(role or '').strip().lower()
+    if not canon:
+        return 'Staff'
+    return PUBLIC_TEAM_ROLE_LABELS.get(canon, canon.replace('_', ' ').title())
+
+
+def _public_team_primary_role(allocated_roles, fallback_role):
+    roles = []
+    for r in allocated_roles or []:
+        nr = normalize_allocated_role(r)
+        if nr and nr not in roles:
+            roles.append(nr)
+    if not roles:
+        nr = normalize_allocated_role(fallback_role)
+        if nr:
+            roles = [nr]
+    if not roles:
+        return 'employee'
+    order_index = {r: i for i, r in enumerate(PUBLIC_TEAM_ROLE_ORDER)}
+
+    def _sort_key(r):
+        if r in order_index:
+            return (0, order_index[r])
+        return (1, r)
+
+    return sorted(roles, key=_sort_key)[0]
+
+
+def _prepare_public_team_member(emp, modal_index):
+    allocated = emp.get('allocated_roles') or []
+    primary = _public_team_primary_role(allocated, emp.get('role'))
+    role_labels = []
+    for r in allocated or [emp.get('role')]:
+        lbl = _public_team_role_label(r)
+        if lbl and lbl not in role_labels:
+            role_labels.append(lbl)
+    name = (emp.get('full_name') or '').strip()
+    initial = name[:1].upper() if name else '?'
+    return {
+        'id': emp.get('id'),
+        'name': name,
+        'initial': initial,
+        'primary_role': primary,
+        'role_label': _public_team_role_label(primary),
+        'role_labels': role_labels,
+        'roles_display': ', '.join(role_labels) if role_labels else _public_team_role_label(primary),
+        'profile_picture': (emp.get('profile_picture') or '').strip() or None,
+        'email': (emp.get('email') or '').strip(),
+        'phone': (emp.get('phone') or '').strip(),
+        'modal_index': modal_index,
+    }
+
+
+def _fetch_public_team_groups(cursor):
+    """Active employees grouped by role for the public team page."""
+    cursor.execute(f"""
+        SELECT e.id, e.full_name, e.role, e.profile_picture, e.email, e.phone
+        FROM employees e
+        WHERE {_sql_employee_is_active_staff('e')}
+        ORDER BY e.full_name ASC
+    """)
+    raw = cursor.fetchall() or []
+    employees = []
+    for row in raw:
+        if isinstance(row, dict):
+            employees.append({
+                'id': row.get('id'),
+                'full_name': row.get('full_name'),
+                'role': row.get('role'),
+                'profile_picture': row.get('profile_picture'),
+                'email': row.get('email'),
+                'phone': row.get('phone'),
+            })
+        else:
+            employees.append({
+                'id': row[0],
+                'full_name': row[1],
+                'role': row[2],
+                'profile_picture': row[3],
+                'email': row[4],
+                'phone': row[5],
+            })
+    attach_allocated_roles_to_employees(cursor, employees)
+
+    grouped = {rk: [] for rk in PUBLIC_TEAM_ROLE_ORDER}
+    other_grouped = {}
+    modal_index = 0
+    flat_members = []
+
+    for emp in employees:
+        if not (emp.get('full_name') or '').strip():
+            continue
+        member = _prepare_public_team_member(emp, modal_index)
+        modal_index += 1
+        flat_members.append(member)
+        primary = member['primary_role']
+        if primary in grouped:
+            grouped[primary].append(member)
+        else:
+            other_grouped.setdefault(primary, []).append(member)
+
+    team_groups = []
+    for role_key in PUBLIC_TEAM_ROLE_ORDER:
+        members = grouped.get(role_key) or []
+        if not members:
+            continue
+        team_groups.append({
+            'role_key': role_key,
+            'label': PUBLIC_TEAM_ROLE_LABELS.get(role_key, _public_team_role_label(role_key)),
+            'members': members,
+        })
+
+    for role_key in sorted(other_grouped.keys(), key=lambda r: _public_team_role_label(r)):
+        members = other_grouped[role_key]
+        if not members:
+            continue
+        team_groups.append({
+            'role_key': role_key,
+            'label': _public_team_role_label(role_key),
+            'members': members,
+        })
+
+    return team_groups, flat_members
+
+
 @app.route('/team')
 def team():
-    return redirect(url_for('login'))
+    team_groups = []
+    team_members = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                team_groups, team_members = _fetch_public_team_groups(cursor)
+        except Exception as e:
+            print(f"team page: {e}")
+        finally:
+            connection.close()
+
+    school_name = (get_school_settings().get('school_name') or 'Our school').strip()
+    return render_template(
+        'team.html',
+        team_groups=team_groups,
+        team_members=team_members,
+        team_default_cover=PUBLIC_TEAM_DEFAULT_COVER,
+        team_total=len(team_members),
+        team_page_title=f'Our Team — {school_name}',
+    )
 
 @app.route('/contact', methods=['GET', 'POST'])
 def contact():
@@ -16029,11 +17706,13 @@ def _fetch_active_academic_levels_for_forms(cursor):
 @app.route('/admission', methods=['GET', 'POST'])
 def admission():
     _portal = get_school_settings()
-    admission_open = bool(_portal.get('allow_registration', True))
+    employee_in_session = _employee_portal_session_active()
+    public_registration_enabled = bool(_portal.get('allow_registration', True))
+    admission_open = public_registration_enabled or employee_in_session
 
     if request.method == 'POST':
         if not admission_open:
-            flash('Online admission is temporarily closed. Please contact the school office.', 'error')
+            flash('Online admission is temporarily closed. Please contact the school office for assistance.', 'error')
             return redirect(url_for('admission'))
 
         allowed, retry_after = check_rate_limit('admission_post', limit=8, window_sec=300)
@@ -16197,7 +17876,7 @@ def admission():
         else:
             flash('Database connection error. Please try again later.', 'error')
 
-        return redirect(url_for('home'))
+        return redirect(url_for('admission'))
     
     # GET request - render admission form
     academic_levels = []
@@ -16215,6 +17894,8 @@ def admission():
         'admission_form.html',
         academic_levels=academic_levels,
         admission_open=admission_open,
+        public_registration_enabled=public_registration_enabled,
+        employee_in_session=employee_in_session,
     )
 
 @app.route('/register-employee', methods=['GET', 'POST'])
@@ -23239,11 +24920,16 @@ def fees_reports():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
 
+    parent_login_url = public_portal_url('login', role='parent')
+    parent_login_qr_data_url = _portal_qr_data_url(parent_login_url)
+
     return render_template(
         'dashboards/fees_reports.html',
         academic_levels=academic_levels,
         role=user_role,
         is_secretary_finance=is_secretary,
+        parent_login_url=parent_login_url,
+        parent_login_qr_data_url=parent_login_qr_data_url,
     )
 
 
@@ -40044,13 +41730,21 @@ def system_settings():
     _theme = (_cfg.get('default_theme_mode') or 'dark').strip().lower()
     if _theme not in ('light', 'dark'):
         _theme = 'dark'
+    _notif = parse_notification_settings(_cfg.get('notification_settings'))
     general_data = {
         'maintenance_mode': bool(_cfg.get('maintenance_mode')),
         'allow_registration': bool(_cfg.get('allow_registration', True)),
         'default_language': _cfg.get('default_language') or 'en',
         'timezone': _cfg.get('timezone') or 'Africa/Nairobi',
         'default_theme_mode': _theme,
+        'school_domain': normalize_school_domain(_cfg.get('school_domain') or ''),
+        'notifications_enabled': bool(_notif.get('enabled')),
+        'notification_modes': _notif.get('modes') or {},
     }
+    notification_channels_status = get_notification_channels_status()
+    env_portal_domain = normalize_school_domain(
+        os.environ.get('APP_DOMAIN') or os.environ.get('PORTAL_BASE_URL') or ''
+    )
 
     return render_template('dashboards/system_settings.html', 
                          school_data=school_data, 
@@ -40064,6 +41758,9 @@ def system_settings():
                          theme_settings=theme_settings,
                          login_settings=login_settings,
                          general_data=general_data,
+                         notification_channels_status=notification_channels_status,
+                         effective_portal_base_url=get_public_app_base_url(),
+                         env_portal_domain=env_portal_domain,
                          daraja_finance=daraja_finance,
                          gallery_items=gallery_items)
 
@@ -50334,8 +52031,8 @@ def _mpesa_fetch_notification_emails(cursor, txn_row):
 
 
 def _send_mpesa_payment_notifications(cursor, txn_row, *, success, message, receipt=None):
-    """Email parent and school when an M-Pesa payment finishes (best effort)."""
-    if not apply_mail_config_from_env_and_integration():
+    """Notify parent and school when an M-Pesa payment finishes (best effort)."""
+    if not school_notifications_enabled():
         return
     parent_emails, school_emails = _mpesa_fetch_notification_emails(cursor, txn_row)
     if not parent_emails and not school_emails:
@@ -50365,23 +52062,37 @@ def _send_mpesa_payment_notifications(cursor, txn_row, *, success, message, rece
         body_lines.append(f'M-Pesa receipt: {ref}')
     text_body = '\n'.join(body_lines)
     html_body = '<br>'.join(body_lines)
+    parent_phone = (txn_row.get('phone') or '').strip()
+    sms_summary = (
+        f'{school_name}: M-Pesa {purpose_label} KES {amt} {status_word}'
+        + (f' Ref {ref}' if ref else '')
+    )[:480]
 
-    def _send_bulk(recipients, subject):
-        for em in recipients:
+    for em in parent_emails:
+        dispatched = dispatch_school_notification(
+            subject=subject_parent,
+            message=text_body,
+            sms_message=sms_summary,
+            html_body=f'<p>{html_body}</p>',
+            recipient_email=em,
+            recipient_phone=parent_phone,
+            recipient_type='parent',
+        )
+        if dispatched['email'].get('error'):
+            print(f"M-Pesa notify to {em}: {dispatched['email']['error']}")
+
+    if notification_mode_active('email'):
+        for em in school_emails:
             try:
-                mail.send(Message(
-                    subject=subject,
-                    recipients=[em],
-                    body=text_body,
-                    html=f'<p>{html_body}</p>',
-                ))
+                if apply_mail_config_from_env_and_integration():
+                    mail.send(Message(
+                        subject=subject_school,
+                        recipients=[em],
+                        body=text_body,
+                        html=f'<p>{html_body}</p>',
+                    ))
             except Exception as ex:
-                print(f"M-Pesa notify email to {em}: {ex}")
-
-    if parent_emails:
-        _send_bulk(parent_emails, subject_parent)
-    if school_emails:
-        _send_bulk(school_emails, subject_school)
+                print(f"M-Pesa notify email to school {em}: {ex}")
 
 
 def _mpesa_stk_is_sync_relay_only(txn_row):
@@ -63960,9 +65671,16 @@ def send_timetable_reset_success_email(to_email, recipient_name, class_name, yea
             f"When: {reset_at}\n\n"
             f"{school_name}\n"
         )
-        msg = Message(subject=subject, recipients=[to_email], html=html_body, body=text_body)
-        mail.send(msg)
-        return True
+        dispatched = dispatch_school_notification(
+            subject=subject,
+            message=text_body,
+            html_body=html_body,
+            recipient_email=to_email,
+            recipient_type='employee',
+        )
+        if dispatched.get('skipped'):
+            return False
+        return bool(dispatched['email']['sent'] or dispatched['app']['sent'])
     except Exception as e:
         print(f"Error sending timetable reset success email to {to_email}: {e}")
         return False
@@ -75527,14 +77245,47 @@ def _build_academic_report_payload(cursor, report_type, f):
     return {'error': 'Unknown report type.'}
 
 
-@app.route('/dashboard/employee/academic-reports')
-@login_required
-def academic_reports():
-    """Academic report hub — filter shell only; data loads on demand via API."""
-    if not _reports_access_roles_ok():
-        flash('You do not have permission to access this page.', 'error')
-        return redirect(employee_dashboard_path())
+ACADEMIC_REPORT_HUBS = {
+    'class-list': {
+        'section': 'class_list',
+        'title': 'Class list reports',
+        'subtitle': 'Attendance registers and exam entry lists.',
+        'hero_icon': 'fa-list',
+    },
+    'attendance': {
+        'section': 'attendance',
+        'title': 'Class attendance reports',
+        'subtitle': 'Summaries by class or daily attendance for one student.',
+        'hero_icon': 'fa-user-check',
+    },
+    'exams': {
+        'section': 'exams',
+        'title': 'Exam reports',
+        'subtitle': 'Class-wide and individual student performance report cards.',
+        'hero_icon': 'fa-graduation-cap',
+    },
+    'timetables': {
+        'section': 'timetables',
+        'title': 'Timetable reports',
+        'subtitle': 'Class teaching schedules, exam timetables, and teacher timetables.',
+        'hero_icon': 'fa-calendar-week',
+    },
+}
 
+
+def _academic_report_hub_endpoints():
+    return (
+        'academic_reports',
+        'academic_reports_class_list',
+        'academic_reports_attendance',
+        'academic_reports_exams',
+        'academic_reports_timetables',
+        'academic_report_preview',
+    )
+
+
+def _fetch_academic_reports_shell_context():
+    """Shared filter data for academic report hub pages."""
     academic_levels = []
     terms = []
     academic_years = []
@@ -75629,19 +77380,178 @@ def academic_reports():
         or ar_user_role == 'head of institution'
         or ar_viewing_as == 'head of institution'
     )
+    parent_login_url = public_portal_url('login', role='parent')
 
+    return {
+        'academic_levels': academic_levels,
+        'terms': terms,
+        'academic_years': academic_years,
+        'teachers': teachers,
+        'exam_names': exam_names,
+        'registered_current_exam': registered_current_exam,
+        'level_combinations': level_combinations,
+        'can_manage_level_combinations': can_manage_level_combinations,
+        'sidebar_hide_accounts_fees': ar_is_curriculum_coordinator,
+        'parent_login_url': parent_login_url,
+        'parent_login_qr_data_url': _portal_qr_data_url(parent_login_url),
+    }
+
+
+def _render_academic_reports_hub(hub_slug):
+    if not _reports_access_roles_ok():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    hub = ACADEMIC_REPORT_HUBS.get(hub_slug)
+    if not hub:
+        flash('Report page not found.', 'error')
+        return redirect(employee_dashboard_path('academic-reports/class-list'))
+    ctx = _fetch_academic_reports_shell_context()
+    ctx.update({
+        'ar_hub_slug': hub_slug,
+        'ar_hub_section': hub['section'],
+        'ar_page_title': hub['title'],
+        'ar_page_subtitle': hub.get('subtitle', ''),
+        'ar_hero_icon': hub.get('hero_icon', 'fa-chalkboard'),
+    })
     return render_template(
         'dashboards/academic_reports.html',
         role=session.get('role', '').lower(),
-        academic_levels=academic_levels,
-        terms=terms,
+        **ctx,
+    )
+
+
+@app.route('/dashboard/employee/academic-reports')
+@login_required
+def academic_reports():
+    """Redirect legacy academic reports URL to the class list hub."""
+    return redirect(employee_dashboard_path('academic-reports/class-list'))
+
+
+@app.route('/dashboard/employee/academic-reports/class-list')
+@login_required
+def academic_reports_class_list():
+    return _render_academic_reports_hub('class-list')
+
+
+@app.route('/dashboard/employee/academic-reports/attendance')
+@login_required
+def academic_reports_attendance():
+    return _render_academic_reports_hub('attendance')
+
+
+@app.route('/dashboard/employee/academic-reports/exams')
+@login_required
+def academic_reports_exams():
+    return _render_academic_reports_hub('exams')
+
+
+@app.route('/dashboard/employee/academic-reports/timetables')
+@login_required
+def academic_reports_timetables():
+    return _render_academic_reports_hub('timetables')
+
+
+@app.route('/dashboard/employee/academic-reports/calendar')
+@login_required
+def academic_calendar_report():
+    """Printable academic calendar report for the selected year/term."""
+    if not _reports_access_roles_ok():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    requested_year_id = request.args.get('academic_year_id', type=int)
+    if 'term_id' in request.args:
+        raw_term_id = request.args.get('term_id', type=int)
+        requested_term_id = 0 if raw_term_id in (None, 0) else raw_term_id
+    else:
+        requested_term_id = None
+
+    academic_years = []
+    calendar_terms = []
+    selected_year_id = None
+    selected_year = None
+    selected_term_id = None
+    selected_term = None
+    calendar_activities = []
+    calendar_year_label = ''
+    report_terms = []
+    fee_payment_methods = []
+    fee_deadlines = []
+    year_start_display = ''
+    year_end_display = ''
+    generated_at = datetime.now().strftime('%d %b %Y, %H:%M')
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_academic_calendar_activities_table(cursor)
+                ensure_academic_calendar_activity_levels_table(cursor)
+                connection.commit()
+                selected_year_id, academic_years = _resolve_calendar_year_id(cursor, requested_year_id)
+                if selected_year_id:
+                    for y in academic_years:
+                        if int(y.get('id')) == int(selected_year_id):
+                            selected_year = y
+                            break
+                    selected_term_id, calendar_terms, selected_term = _resolve_calendar_term_id(
+                        cursor, selected_year_id, requested_term_id, default_to_current=True,
+                    )
+                    report_terms = _enrich_calendar_report_term_rows(calendar_terms)
+                    if selected_year:
+                        year_start_display = _format_date_short(selected_year.get('start_date')) or '—'
+                        year_end_display = _format_date_short(selected_year.get('end_date')) or '—'
+                    fee_sections = _fetch_academic_calendar_report_fee_sections(
+                        cursor, selected_year_id, selected_term_id,
+                    )
+                    fee_payment_methods = fee_sections.get('payment_methods') or []
+                    fee_deadlines = fee_sections.get('fee_deadlines') or []
+                    activities = _fetch_academic_calendar_activities(
+                        cursor, selected_year_id, selected_term_id,
+                    )
+                    activities = _attach_calendar_activity_levels(cursor, activities)
+                    calendar_view = _prepare_academic_calendar_view(
+                        activities, selected_year, selected_term,
+                    )
+                    calendar_activities = calendar_view['activities']
+                    calendar_year_label = calendar_view.get('year_label') or ''
+        except Exception as e:
+            print(f"academic_calendar_report: {e}")
+            flash('Could not load academic calendar report.', 'error')
+        finally:
+            connection.close()
+
+    term_label = 'All terms'
+    if selected_term and selected_term.get('term_name'):
+        term_label = selected_term['term_name']
+    elif selected_term_id:
+        term_label = 'Selected term'
+
+    parent_login_url = public_portal_url('login', role='parent')
+    parent_login_qr_data_url = _portal_qr_data_url(parent_login_url)
+
+    return render_template(
+        'dashboards/academic_calendar_report.html',
+        role=session.get('role', '').lower(),
         academic_years=academic_years,
-        teachers=teachers,
-        exam_names=exam_names,
-        registered_current_exam=registered_current_exam,
-        level_combinations=level_combinations,
-        can_manage_level_combinations=can_manage_level_combinations,
-        sidebar_hide_accounts_fees=ar_is_curriculum_coordinator,
+        calendar_terms=calendar_terms,
+        selected_year_id=selected_year_id,
+        selected_year=selected_year,
+        selected_term_id=selected_term_id,
+        selected_term=selected_term,
+        calendar_activities=calendar_activities,
+        calendar_year_label=calendar_year_label,
+        report_terms=report_terms,
+        year_start_display=year_start_display,
+        year_end_display=year_end_display,
+        fee_payment_methods=fee_payment_methods,
+        fee_deadlines=fee_deadlines,
+        term_label=term_label,
+        generated_at=generated_at,
+        parent_login_url=parent_login_url,
+        parent_login_qr_data_url=parent_login_qr_data_url,
+        category_labels=ACADEMIC_CALENDAR_CATEGORY_LABELS,
+        category_colors=ACADEMIC_CALENDAR_CATEGORY_COLORS,
     )
 
 
@@ -76327,8 +78237,19 @@ def api_communication_send():
         return jsonify({'success': False, 'message': 'Subject and message are required.'}), 400
     if not send_to_all and (not isinstance(recipient_ids, list) or len(recipient_ids) == 0):
         return jsonify({'success': False, 'message': 'Select at least one recipient, or choose send to all.'}), 400
+    if not school_notifications_enabled():
+        return jsonify({
+            'success': False,
+            'message': 'School notifications are turned off in System Settings → General.',
+        }), 400
+    for ch in ('email', 'sms', 'whatsapp'):
+        if channels.get(ch) and not notification_mode_active(ch):
+            channels[ch] = False
     if not any(channels.get(k) for k in ('email', 'sms', 'whatsapp')):
-        return jsonify({'success': False, 'message': 'Select at least one channel (email, SMS, or WhatsApp).'}), 400
+        return jsonify({
+            'success': False,
+            'message': 'No enabled notification channels are configured. Check System Settings → General and Communication Integration.',
+        }), 400
 
     attach_path, attach_name, attach_mime_or_err = _save_communication_attachment(attachment_file)
     if attach_mime_or_err and not attach_path:
@@ -80719,6 +82640,12 @@ def update_general_settings():
     default_language = (request.form.get('default_language') or 'en').strip().lower()[:10]
     timezone_val = (request.form.get('timezone') or 'Africa/Nairobi').strip()[:64]
     default_theme_mode = (request.form.get('default_theme_mode') or 'dark').strip().lower()
+    school_domain_raw = (request.form.get('school_domain') or '').strip()
+    school_domain = normalize_school_domain(school_domain_raw) if school_domain_raw else ''
+
+    if school_domain_raw and not school_domain:
+        flash('Enter a valid school domain, e.g. https://portal.yourschool.ac.ke', 'error')
+        return redirect(url_for('system_settings') + '#general-settings')
 
     if default_language not in ('en', 'es', 'fr', 'sw'):
         default_language = 'en'
@@ -80729,6 +82656,15 @@ def update_general_settings():
         timezone_val = 'Africa/Nairobi'
     if default_theme_mode not in ('light', 'dark'):
         default_theme_mode = 'dark'
+
+    notifications_enabled = 1 if '1' in request.form.getlist('notifications_enabled') else 0
+    notification_modes = {}
+    for mode in NOTIFICATION_DELIVERY_MODES:
+        notification_modes[mode] = '1' in request.form.getlist(f'notification_mode_{mode}')
+    notification_settings_json = json.dumps({
+        'enabled': bool(notifications_enabled),
+        'modes': notification_modes,
+    })
 
     connection = get_db_connection()
     if connection:
@@ -80741,14 +82677,17 @@ def update_general_settings():
                     flash('School settings row is missing. Save school profile first.', 'error')
                     return redirect(url_for('system_settings') + '#general-settings')
                 school_id = row['id'] if isinstance(row, dict) else row[0]
+                if notification_modes.get('push'):
+                    ensure_web_push_integration(cursor, generate_if_missing=True)
                 cursor.execute(
                     """
                     UPDATE school_settings
                     SET maintenance_mode = %s, allow_registration = %s,
-                        default_language = %s, timezone = %s, default_theme_mode = %s
+                        default_language = %s, timezone = %s, default_theme_mode = %s,
+                        school_domain = %s, notification_settings = %s
                     WHERE id = %s
                     """,
-                    (maintenance_mode, allow_registration, default_language, timezone_val, default_theme_mode, school_id),
+                    (maintenance_mode, allow_registration, default_language, timezone_val, default_theme_mode, school_domain or None, notification_settings_json, school_id),
                 )
                 connection.commit()
                 invalidate_school_settings_cache()

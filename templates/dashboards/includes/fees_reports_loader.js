@@ -64,6 +64,17 @@
     return 'ar-print-page-sheet' + (i > 0 ? ' ar-print-page-follow' : '');
   }
 
+  function renderParentPortalQrHtml() {
+    var qrUrl = cfg.parentLoginQrDataUrl || '';
+    if (!qrUrl) return '';
+    return '' +
+      '<div class="ar-portal-qr-block shrink-0">' +
+        '<img src="' + escapeHtml(qrUrl) + '" alt="QR code — scan to open parent login" class="ar-portal-qr-img" width="72" height="72">' +
+        '<p class="ar-portal-qr-label">Parent portal</p>' +
+        '<p class="ar-portal-qr-hint">Scan to sign in</p>' +
+      '</div>';
+  }
+
   function renderReportCardHeader(reportTitle, kicker) {
     var logoInner = SCHOOL_INFO.logo
       ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="ar-rc-logo">'
@@ -81,6 +92,7 @@
                 '<p class="ar-rc-school-contact">' + schoolContactLineHtml() + '</p>' +
               '</div>' +
             '</div>' +
+            renderParentPortalQrHtml() +
           '</div>' +
         '</div>' +
         '<div class="ar-rc-doc-title-row">' +
@@ -502,15 +514,51 @@
     else if (cards.length > 1) wrap.classList.add('ar-print-individual-batch');
   }
 
-  function detachPreviewForBatchPrint() {
+  var printPreviewRestore = null;
+
+  function normalizeIndividualReportPrintPages() {
     var wrap = document.getElementById('ar-preview-wrap');
     if (!wrap || !wrap.classList.contains('ar-print-individual-batch')) return;
+    var cards = wrap.querySelectorAll('#ar-details-list article.ar-rc-individual');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      card.classList.add('ar-print-page-sheet');
+      if (i > 0) card.classList.add('ar-print-page-follow');
+      else card.classList.remove('ar-print-page-follow');
+    }
+  }
+
+  function detachPreviewForPrint() {
+    var wrap = document.getElementById('ar-preview-wrap');
+    if (!wrap) return;
+    if (printPreviewRestore && wrap.parentNode === document.body) return;
+    printPreviewRestore = {
+      parent: wrap.parentNode,
+      next: wrap.nextSibling,
+    };
+    document.body.appendChild(wrap);
     document.documentElement.classList.add('ar-print-individual-batch-doc');
+  }
+
+  function restorePreviewAfterPrint() {
+    document.documentElement.classList.remove('ar-print-individual-batch-doc');
+    var wrap = document.getElementById('ar-preview-wrap');
+    if (!printPreviewRestore || !wrap || !printPreviewRestore.parent) {
+      printPreviewRestore = null;
+      return;
+    }
+    if (printPreviewRestore.next && printPreviewRestore.next.parentNode === printPreviewRestore.parent) {
+      printPreviewRestore.parent.insertBefore(wrap, printPreviewRestore.next);
+    } else {
+      printPreviewRestore.parent.appendChild(wrap);
+    }
+    printPreviewRestore = null;
   }
 
   function prepareFeeReportPrint() {
     syncPrintPageMode();
-    detachPreviewForBatchPrint();
+    normalizeIndividualReportPrintPages();
+    detachPreviewForPrint();
     var inner = document.querySelector('main.overflow-hidden > div.overflow-y-auto');
     if (inner) inner.scrollTop = 0;
     window.scrollTo(0, 0);
@@ -562,7 +610,7 @@
   });
   window.addEventListener('afterprint', function () {
     document.documentElement.classList.remove('ar-print-academic-report');
-    document.documentElement.classList.remove('ar-print-individual-batch-doc');
+    restorePreviewAfterPrint();
     var wrap = document.getElementById('ar-preview-wrap');
     if (wrap) wrap.classList.remove('ar-print-single-sheet', 'ar-print-individual-batch');
   });

@@ -1,189 +1,362 @@
 {% extends "base.html" %}
 
-{% block title %}News & Events - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}News &amp; Calendar — {{ school_settings.school_name or 'Our school' }}{% endblock %}
 
-{% block body_class %}public-site school-public{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-news.css') }}">
+<meta name="description" content="Academic calendar, term dates, exams, and school events at {{ school_settings.school_name or 'our school' }}.">
+{% endblock %}
+
+{% block body_class %}public-site cbc-saas school-public news-calendar-page{% endblock %}
 
 {% block content %}
 {% set hero_img = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=1920&q=80&auto=format&fit=crop' %}
-<section class="edu-hero edu-hero--page edu-hero--cinematic">
-    <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="News and events"></div>
-    <div class="edu-hero__mesh" aria-hidden="true"></div>
-    <div class="edu-hero__pattern" aria-hidden="true"></div>
-    <div class="edu-hero__content">
-        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
-            <div class="max-w-4xl mx-auto text-center">
-                <p class="edu-eyebrow text-white/90 mb-3">Stay informed</p>
-                <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-white mb-4">
-                    News &amp; <span class="text-white/95">Events</span>
-                </h1>
-                <p class="text-lg md:text-xl text-white/90">The latest from {{ school_settings.school_name or 'our school' }}</p>
+{% set bento_items = upcoming_activities[:6] if upcoming_activities else [] %}
+{% if spotlight and bento_items and bento_items[0].id == spotlight.id %}
+    {% set bento_items = upcoming_activities[1:7] %}
+{% endif %}
+
+<section class="news-hub py-6 md:py-10 edu-section--tint" aria-label="School news and academic calendar">
+    <div class="news-hub__mesh" aria-hidden="true"></div>
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl news-hub__inner">
+
+        <header class="news-hero">
+            <div class="news-hero__bg" style="background-image: url('{{ hero_img }}');" role="img" aria-label="Campus"></div>
+            <div class="news-hero__scrim" aria-hidden="true"></div>
+            <div class="news-hero__content">
+                <p class="news-hero__eyebrow"><i class="fas fa-rss" aria-hidden="true"></i> Live school feed</p>
+                <h1 class="news-hero__title">News &amp; Academic Calendar</h1>
+                <p class="news-hero__lead">
+                    Term dates, exams, holidays, and campus events from {{ school_settings.school_name or 'our school' }}{% if year_label %} — <strong>{{ year_label }}</strong>{% endif %}.
+                </p>
+                {% if upcoming_activities %}
+                <div class="news-ticker" aria-label="Upcoming highlights">
+                    {% for item in upcoming_activities[:8] %}
+                    <span class="news-ticker__pill">
+                        <i class="fas {{ item.category_icon }}" aria-hidden="true"></i>
+                        {% if item.date_day %}{{ item.date_day }} {{ item.date_month }} · {% endif %}{{ item.activity_title|truncate(28, True, '…') }}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </header>
+
+        {% if calendar_activities %}
+        <div class="news-stats" aria-label="Calendar statistics">
+            <div class="news-stat">
+                <span class="news-stat__value">{{ upcoming_count }}</span>
+                <span class="news-stat__label">Upcoming</span>
+            </div>
+            <div class="news-stat">
+                <span class="news-stat__value">{{ this_month_count }}</span>
+                <span class="news-stat__label">This month</span>
+            </div>
+            <div class="news-stat">
+                <span class="news-stat__value">{{ category_counts.get('exam', 0) }}</span>
+                <span class="news-stat__label">Exams</span>
+            </div>
+            <div class="news-stat">
+                <span class="news-stat__value">{{ total_count }}</span>
+                <span class="news-stat__label">Total items</span>
             </div>
         </div>
-    </div>
-</section>
+        {% endif %}
 
-<!-- News Section -->
-<section class="py-16 bg-white section-padding">
-    <div class="container mx-auto px-4 lg:px-8">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {% if news_items %}
-                {% for item in news_items %}
-                <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-2xl hover:-translate-y-2 transition-all border border-gray-200 fade-in-section group relative">
-                    {% if item.image_url %}
-                    <div class="w-full h-48 overflow-hidden">
-                        <img src="{{ item.image_url }}" alt="{{ item.title }}" class="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-500">
+        <div x-data="{ filter: 'all', showPast: {{ 'true' if not upcoming_activities else 'false' }} }">
+
+            <div class="news-controls">
+                <div>
+                    <p class="news-controls__label">Academic year</p>
+                    {% if academic_years|length > 1 %}
+                    <nav class="news-year-tabs" aria-label="Academic year">
+                        {% for y in academic_years %}
+                        <a href="{{ url_for('news', academic_year_id=y.id) }}"
+                           class="news-chip{% if selected_year_id and y.id|string == selected_year_id|string %} is-active{% elif not selected_year_id and y.is_current %} is-active{% endif %}">
+                            {{ y.year_name or 'Year' }}
+                        </a>
+                        {% endfor %}
+                    </nav>
+                    {% elif year_label %}
+                    <span class="news-chip is-active">{{ year_label }}</span>
+                    {% endif %}
+                </div>
+                {% if category_counts %}
+                <div>
+                    <p class="news-controls__label">Filter by type</p>
+                    <div class="news-filter-tabs" role="group" aria-label="Filter events">
+                        <button type="button" class="news-chip" :class="{ 'is-active': filter === 'all' }" @click="filter = 'all'">
+                            All <span class="news-chip__count">{{ total_count }}</span>
+                        </button>
+                        {% for cat_key, cat_label in category_labels.items() %}
+                        {% if category_counts.get(cat_key, 0) > 0 %}
+                        <button type="button" class="news-chip" :class="{ 'is-active': filter === '{{ cat_key }}' }" @click="filter = '{{ cat_key }}'">
+                            {{ cat_label }} <span class="news-chip__count">{{ category_counts[cat_key] }}</span>
+                        </button>
+                        {% endif %}
+                        {% endfor %}
                     </div>
-                    {% else %}
-                    <div class="w-full h-48 bg-gray-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                        <i class="fas fa-newspaper text-brand-primary text-6xl group-hover:rotate-12 transition-transform duration-300"></i>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if calendar_activities %}
+
+            {% if spotlight %}
+            <article class="news-spotlight fade-in-section"
+                     x-show="filter === 'all' || filter === '{{ spotlight.category }}'"
+                     x-transition>
+                <div class="news-spotlight__visual">
+                    <img src="{{ spotlight.cover_image }}" alt="" class="news-spotlight__img" loading="eager" decoding="async" width="800" height="500">
+                    <div class="news-spotlight__visual-scrim" aria-hidden="true"></div>
+                    {% if spotlight.is_today %}
+                    <span class="news-spotlight__badge-live">Happening today</span>
+                    {% elif spotlight.days_until is not none and spotlight.days_until <= 7 %}
+                    <span class="news-spotlight__badge-live" style="background: color-mix(in srgb, {{ spotlight.color_badge }} 85%, #000); box-shadow: 0 8px 24px color-mix(in srgb, {{ spotlight.color_badge }} 45%, transparent);">Next up</span>
+                    {% endif %}
+                    {% if spotlight.date_day %}
+                    <div class="news-spotlight__date-float">
+                        <span class="news-spotlight__date-day">{{ spotlight.date_day }}</span>
+                        <span class="news-spotlight__date-mon">{{ spotlight.date_month }}</span>
                     </div>
                     {% endif %}
-                    <div class="p-6 relative z-10">
-                        <div class="flex items-center text-sm text-gray-500 mb-2">
-                            <i class="fas fa-calendar mr-2 text-brand-primary"></i>
-                            <span>{{ item.date.strftime('%B %d, %Y') if item.date else 'Recent' }}</span>
-                        </div>
-                        <h3 class="text-xl font-bold mb-3 text-gray-900 group-hover:text-brand-primary transition-colors">{{ item.title }}</h3>
-                        <p class="text-gray-600 mb-4">{{ item.summary[:150] }}...</p>
-                        <a href="#" class="text-brand-primary font-semibold hover:underline inline-flex items-center group-hover:translate-x-2 transition-transform">
-                            Read More <i class="fas fa-arrow-right ml-1"></i>
-                        </a>
-                    </div>
                 </div>
+                <div class="news-spotlight__body">
+                    <p class="news-spotlight__kicker">
+                        <i class="fas {{ spotlight.category_icon }}" aria-hidden="true"></i>
+                        {{ spotlight.category_label }} · Spotlight
+                    </p>
+                    <h2 class="news-spotlight__title">{{ spotlight.activity_title }}</h2>
+                    <div class="news-spotlight__meta">
+                        <span><i class="fas fa-calendar-alt" aria-hidden="true"></i> {{ spotlight.date_range_label }}</span>
+                        {% if spotlight.term_label %}<span><i class="fas fa-bookmark" aria-hidden="true"></i> {{ spotlight.term_label }}</span>{% endif %}
+                        {% if spotlight.levels_affected_label %}<span><i class="fas fa-layer-group" aria-hidden="true"></i> {{ spotlight.levels_affected_label }}</span>{% endif %}
+                    </div>
+                    {% if spotlight.activity_about %}
+                    <p class="news-spotlight__text">{{ spotlight.activity_about }}</p>
+                    {% else %}
+                    <p class="news-spotlight__text">Mark your calendar — this item is published on the official school academic schedule.</p>
+                    {% endif %}
+                    {% if spotlight.days_until is not none and not spotlight.is_today %}
+                    <span class="news-spotlight__countdown">
+                        <i class="fas fa-hourglass-half" aria-hidden="true"></i>
+                        {% if spotlight.days_until == 1 %}Tomorrow{% elif spotlight.days_until == 0 %}Today{% else %}In {{ spotlight.days_until }} days{% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+            </article>
+            {% endif %}
+
+            {% if bento_items %}
+            <div class="news-section-head">
+                <div>
+                    <p class="edu-eyebrow mb-1">Editor's picks</p>
+                    <h2>Coming up next</h2>
+                </div>
+            </div>
+            <div class="news-bento">
+                {% for item in bento_items %}
+                <article class="news-bento__item news-bento-card fade-in-section"
+                         x-show="filter === 'all' || filter === '{{ item.category }}'"
+                         x-transition>
+                    <div class="news-bento-card__bg" style="background-image: url('{{ item.cover_image }}');" role="img" aria-label=""></div>
+                    <div class="news-bento-card__overlay" aria-hidden="true"></div>
+                    <div class="news-bento-card__content">
+                        <span class="news-bento-card__tag" style="color: {{ item.color_text }}; background: {{ item.color_bg }};">
+                            <i class="fas {{ item.category_icon }}" aria-hidden="true"></i> {{ item.category_label }}
+                        </span>
+                        <h3 class="news-bento-card__title">{{ item.activity_title }}</h3>
+                        <div class="news-bento-card__meta">
+                            <span><i class="fas fa-calendar-day" aria-hidden="true"></i> {{ item.date_range_label }}</span>
+                            {% if item.days_until is not none and item.days_until <= 14 %}
+                            <span>· {% if item.days_until == 0 %}Today{% elif item.days_until == 1 %}Tomorrow{% else %}{{ item.days_until }}d away{% endif %}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
                 {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="news-tree-section">
+                <div class="news-section-head">
+                    <div>
+                        <p class="edu-eyebrow mb-1">Branch calendar</p>
+                        <h2>{% if year_label %}{{ year_label }}{% else %}Academic{% endif %} year tree</h2>
+                        {% if branch_tree and branch_tree.trunk %}
+                        <p class="news-tree-section__span">{{ branch_tree.trunk.span_label }}</p>
+                        {% endif %}
+                    </div>
+                    {% if past_count %}
+                    <button type="button"
+                            class="news-chip"
+                            @click="showPast = !showPast"
+                            :class="{ 'is-active': showPast }">
+                        <i class="fas" :class="showPast ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
+                        <span x-text="showPast ? 'Hide past' : 'Show past ({{ past_count }})'"></span>
+                    </button>
+                    {% endif %}
+                </div>
+
+                {% if branch_tree and branch_tree.trunk %}
+                <div class="news-tree" aria-label="Academic year branch calendar">
+                    <div class="news-tree__trunk" aria-hidden="true">
+                        <div class="news-tree__trunk-bark"></div>
+                        <div class="news-tree__trunk-glow"></div>
+                    </div>
+
+                    <header class="news-tree__anchor news-tree__anchor--opening fade-in-section">
+                        <div class="news-tree__anchor-node">
+                            <span class="news-tree__anchor-ring"></span>
+                            <i class="fas fa-seedling" aria-hidden="true"></i>
+                        </div>
+                        <div class="news-tree__anchor-card">
+                            <p class="news-tree__anchor-kicker">Opening day</p>
+                            <h3 class="news-tree__anchor-title">
+                                {% if branch_tree.trunk.year_name %}{{ branch_tree.trunk.year_name }} begins{% else %}Academic year opens{% endif %}
+                            </h3>
+                            <time class="news-tree__anchor-date" datetime="{{ branch_tree.trunk.opening.iso_date }}">
+                                {{ branch_tree.trunk.opening.date_label }}
+                            </time>
+                            {% if branch_tree.trunk.opening.is_today %}
+                            <span class="news-tree__anchor-badge">Today</span>
+                            {% elif branch_tree.trunk.opening.is_past %}
+                            <span class="news-tree__anchor-badge news-tree__anchor-badge--muted">Started</span>
+                            {% else %}
+                            <span class="news-tree__anchor-badge news-tree__anchor-badge--soon">Upcoming</span>
+                            {% endif %}
+                        </div>
+                    </header>
+
+                    <div class="news-tree__branches">
+                        {% for branch in branch_tree.branches %}
+                        {% set item = branch.item %}
+                        <article class="news-tree__branch news-tree__branch--{{ branch.side }} fade-in-section{% if not item.is_upcoming %} is-past{% endif %}"
+                                 data-category="{{ item.category }}"
+                                 style="--branch-mid: {{ branch.mid_pct }}%; --branch-span: {{ branch.span_pct }}%; --branch-color: {{ item.color_badge }};"
+                                 x-show="(filter === 'all' || filter === '{{ item.category }}') && ({{ 'true' if item.is_upcoming else 'false' }} || showPast)"
+                                 x-transition>
+                            <div class="news-tree__branch-rail" aria-hidden="true">
+                                <span class="news-tree__branch-node" style="background: {{ item.color_badge }};"></span>
+                                <span class="news-tree__branch-curve"></span>
+                            </div>
+
+                            <div class="news-tree__date-branch" aria-label="Event dates">
+                                <div class="news-tree__date-node news-tree__date-node--open">
+                                    <span class="news-tree__date-node-label">Opens</span>
+                                    <time datetime="{{ item.iso_date }}">{{ branch.opening_label }}</time>
+                                </div>
+                                <div class="news-tree__date-arc{% if branch.is_spanning %} is-spanning{% endif %}" aria-hidden="true">
+                                    <span class="news-tree__date-arc-line"></span>
+                                    {% if branch.is_spanning %}
+                                    <span class="news-tree__date-arc-leaf"><i class="fas fa-leaf" aria-hidden="true"></i></span>
+                                    {% endif %}
+                                </div>
+                                <div class="news-tree__date-node news-tree__date-node--close{% if not branch.is_spanning %} is-same-day{% endif %}">
+                                    <span class="news-tree__date-node-label">{% if branch.is_spanning %}Closes{% else %}Same day{% endif %}</span>
+                                    <time datetime="{{ item.iso_end_date or item.iso_date }}">{{ branch.closing_label }}</time>
+                                </div>
+                            </div>
+
+                            <div class="news-tree__leaf-card">
+                                <div class="news-tree__leaf-card-head">
+                                    <span class="news-tag" style="color: {{ item.color_text }}; background: {{ item.color_bg }}; border: 1px solid color-mix(in srgb, {{ item.color_badge }} 30%, transparent);">
+                                        <i class="fas {{ item.category_icon }}" aria-hidden="true"></i> {{ item.category_label }}
+                                    </span>
+                                    {% if item.is_today %}
+                                    <span class="news-tag news-tag--live"><i class="fas fa-circle text-[5px]" aria-hidden="true"></i> Live today</span>
+                                    {% elif item.is_upcoming and item.days_until is not none and item.days_until <= 3 %}
+                                    <span class="news-tag news-tag--soon">Soon</span>
+                                    {% elif not item.is_upcoming %}
+                                    <span class="news-tag" style="opacity: 0.7;">Archive</span>
+                                    {% endif %}
+                                </div>
+                                <h4 class="news-tree__leaf-title">{{ item.activity_title }}</h4>
+                                <div class="news-tree__leaf-meta">
+                                    {% if item.duration_days and item.duration_days > 1 %}
+                                    <span><i class="fas fa-clock" aria-hidden="true"></i> {{ item.duration_days }} days</span>
+                                    {% endif %}
+                                    {% if item.term_label %}<span><i class="fas fa-bookmark" aria-hidden="true"></i> {{ item.term_label }}</span>{% endif %}
+                                    {% if item.levels_affected_label %}<span><i class="fas fa-layer-group" aria-hidden="true"></i> {{ item.levels_affected_label }}</span>{% endif %}
+                                </div>
+                                {% if item.activity_about %}
+                                <p class="news-tree__leaf-text">{{ item.activity_about }}</p>
+                                {% endif %}
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </div>
+
+                    <footer class="news-tree__anchor news-tree__anchor--closing fade-in-section">
+                        <div class="news-tree__anchor-node news-tree__anchor-node--closing">
+                            <span class="news-tree__anchor-ring"></span>
+                            <i class="fas fa-flag-checkered" aria-hidden="true"></i>
+                        </div>
+                        <div class="news-tree__anchor-card news-tree__anchor-card--closing">
+                            <p class="news-tree__anchor-kicker">Closing day</p>
+                            <h3 class="news-tree__anchor-title">
+                                {% if branch_tree.trunk.year_name %}{{ branch_tree.trunk.year_name }} ends{% else %}Academic year closes{% endif %}
+                            </h3>
+                            <time class="news-tree__anchor-date" datetime="{{ branch_tree.trunk.closing.iso_date }}">
+                                {{ branch_tree.trunk.closing.date_label }}
+                            </time>
+                            {% if branch_tree.trunk.closing.is_today %}
+                            <span class="news-tree__anchor-badge">Today</span>
+                            {% elif branch_tree.trunk.closing.is_past %}
+                            <span class="news-tree__anchor-badge news-tree__anchor-badge--muted">Completed</span>
+                            {% else %}
+                            <span class="news-tree__anchor-badge news-tree__anchor-badge--soon">Ahead</span>
+                            {% endif %}
+                        </div>
+                    </footer>
+                </div>
+                {% else %}
+                <div class="news-timeline">
+                    {% for group in month_groups %}
+                    <section class="news-month-block" aria-labelledby="news-month-{{ loop.index }}">
+                        <div class="news-month-block__head">
+                            <div class="news-month-block__marker" aria-hidden="true">{{ group.label.split()[0][:3] }}</div>
+                            <h3 class="news-month-block__title" id="news-month-{{ loop.index }}">{{ group.label }}</h3>
+                            <span class="news-month-block__count">{{ group['items']|length }} events</span>
+                        </div>
+                        {% for item in group['items'] %}
+                        <article class="news-timeline-card fade-in-section{% if not item.is_upcoming %} is-past{% endif %}"
+                                 data-category="{{ item.category }}"
+                                 x-show="(filter === 'all' || filter === '{{ item.category }}') && ({{ 'true' if item.is_upcoming else 'false' }} || showPast)"
+                                 x-transition>
+                            <div class="news-timeline-card__body">
+                                <h4 class="news-timeline-card__title">{{ item.activity_title }}</h4>
+                                <div class="news-timeline-card__meta">
+                                    <span><i class="fas fa-calendar-alt text-brand-primary" aria-hidden="true"></i> {{ item.date_range_label }}</span>
+                                </div>
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </section>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
             {% else %}
-                <!-- Default News Items -->
-                <div class="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-all border border-gray-100 fade-in-section">
-                    <div class="w-full h-48 bg-gray-100 flex items-center justify-center">
-                        <i class="fas fa-graduation-cap text-brand-primary text-6xl"></i>
-                    </div>
-                    <div class="p-6">
-                        <div class="flex items-center text-sm text-gray-500 mb-2">
-                            <i class="fas fa-calendar mr-2"></i>
-                            <span>January 15, 2025</span>
-                        </div>
-                        <h3 class="text-xl font-bold mb-3 text-gray-900">New Semester Begins</h3>
-                        <p class="text-gray-600 mb-4">We're excited to welcome students back for the spring semester with new programs and opportunities.</p>
-                        <a href="#" class="text-brand-primary font-semibold hover:underline">
-                            Read More <i class="fas fa-arrow-right ml-1"></i>
-                        </a>
-                    </div>
-                </div>
-
-                <div class="bg-white rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition-all transform hover:-translate-y-2 fade-in-section border border-gray-100">
-                    <div class="w-full h-48 bg-gray-100 flex items-center justify-center">
-                        <i class="fas fa-trophy text-brand-primary text-6xl"></i>
-                    </div>
-                    <div class="p-6">
-                        <div class="flex items-center text-sm text-gray-500 mb-2">
-                            <i class="fas fa-calendar mr-2"></i>
-                            <span>January 10, 2025</span>
-                        </div>
-                        <h3 class="text-xl font-bold mb-3 text-gray-900">Science Fair Winners</h3>
-                        <p class="text-gray-600 mb-4">Congratulations to our students who excelled at the regional science fair competition.</p>
-                        <a href="#" class="text-brand-primary font-semibold hover:underline">
-                            Read More <i class="fas fa-arrow-right ml-1"></i>
-                        </a>
-                    </div>
-                </div>
-
-                <div class="bg-white rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition-all transform hover:-translate-y-2 fade-in-section border border-gray-100">
-                    <div class="w-full h-48 bg-gray-100 flex items-center justify-center">
-                        <i class="fas fa-users text-brand-primary text-6xl"></i>
-                    </div>
-                    <div class="p-6">
-                        <div class="flex items-center text-sm text-gray-500 mb-2">
-                            <i class="fas fa-calendar mr-2"></i>
-                            <span>January 5, 2025</span>
-                        </div>
-                        <h3 class="text-xl font-bold mb-3 text-gray-900">Parent-Teacher Conference</h3>
-                        <p class="text-gray-600 mb-4">Join us for the upcoming parent-teacher conference to discuss your child's progress.</p>
-                        <a href="#" class="text-brand-primary font-semibold hover:underline">
-                            Read More <i class="fas fa-arrow-right ml-1"></i>
-                        </a>
-                    </div>
-                </div>
+            <div class="news-empty">
+                <div class="news-empty__icon" aria-hidden="true"><i class="fas fa-calendar-plus"></i></div>
+                <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-2">Your calendar feed is ready</h2>
+                <p class="text-slate-600 dark:text-slate-400 text-sm max-w-md mx-auto mb-0">
+                    Term dates, exams, and events will appear here as soon as they are published in the academic calendar.
+                </p>
+            </div>
             {% endif %}
         </div>
+
+        <footer class="news-cta-bar">
+            <p class="text-sm m-0">Questions about dates? <a href="{{ url_for('contact') }}" class="news-cta-bar__text-link">Contact the school office</a>.</p>
+            <a href="{{ url_for('contact') }}" class="news-cta-bar__btn">
+                <i class="fas fa-envelope" aria-hidden="true"></i>
+                Contact us
+                <i class="fas fa-arrow-right" aria-hidden="true"></i>
+            </a>
+        </footer>
     </div>
 </section>
-
-<!-- Events Section -->
-<section class="py-16 bg-gray-50 section-padding">
-    <div class="container mx-auto px-4 lg:px-8">
-        <h2 class="text-3xl font-bold text-center mb-12 text-gray-900">Upcoming Events</h2>
-        <div class="max-w-3xl mx-auto space-y-6">
-            <div class="bg-white rounded-lg p-6 shadow-md hover:shadow-lg transition-all fade-in-section border border-gray-200">
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between">
-                    <div class="flex items-start space-x-4 mb-4 md:mb-0">
-                        <div class="flex-shrink-0 w-20 h-20 bg-brand-primary rounded-xl flex flex-col items-center justify-center text-white">
-                            <span class="text-2xl font-bold">15</span>
-                            <span class="text-xs">FEB</span>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-bold mb-2 text-gray-900">Open House Day</h3>
-                            <p class="text-gray-600">Join us for a tour of our facilities and meet our faculty.</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-2 text-gray-600">
-                        <i class="fas fa-clock"></i>
-                        <span>10:00 AM - 2:00 PM</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-white rounded-lg p-6 shadow-md hover:shadow-lg transition-all fade-in-section border border-gray-200">
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between">
-                    <div class="flex items-start space-x-4 mb-4 md:mb-0">
-                        <div class="flex-shrink-0 w-20 h-20 bg-brand-primary rounded-xl flex flex-col items-center justify-center text-white">
-                            <span class="text-2xl font-bold">22</span>
-                            <span class="text-xs">FEB</span>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-bold mb-2 text-gray-900">Sports Day</h3>
-                            <p class="text-gray-600">Annual inter-school sports competition and celebration.</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-2 text-gray-600">
-                        <i class="fas fa-clock"></i>
-                        <span>9:00 AM - 4:00 PM</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-white rounded-lg p-6 shadow-md hover:shadow-lg transition-all fade-in-section border border-gray-200">
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between">
-                    <div class="flex items-start space-x-4 mb-4 md:mb-0">
-                        <div class="flex-shrink-0 w-20 h-20 bg-brand-primary rounded-xl flex flex-col items-center justify-center text-white">
-                            <span class="text-2xl font-bold">28</span>
-                            <span class="text-xs">FEB</span>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-bold mb-2 text-gray-900">Science Exhibition</h3>
-                            <p class="text-gray-600">Student projects showcase and interactive demonstrations.</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-2 text-gray-600">
-                        <i class="fas fa-clock"></i>
-                        <span>1:00 PM - 5:00 PM</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Next Button -->
-<div class="bg-white border-t border-gray-200">
-    <div class="container mx-auto px-4 lg:px-8 py-8">
-    <div class="flex justify-end">
-            <a href="/gallery" class="inline-flex items-center space-x-2 px-8 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold transition-colors">
-            <span>Next</span>
-            <i class="fas fa-arrow-right"></i>
-        </a>
-        </div>
-    </div>
-</div>
 {% endblock %}
-

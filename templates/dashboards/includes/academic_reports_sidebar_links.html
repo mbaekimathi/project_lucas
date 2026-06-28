@@ -1,0 +1,39 @@
+{% set _ar_ep = request.endpoint %}
+{% set _ar_active = _ar_ep in (
+    'academic_reports',
+    'academic_reports_class_list',
+    'academic_reports_attendance',
+    'academic_reports_exams',
+    'academic_reports_timetables',
+    'academic_report_preview'
+) %}
+<a href="{{ employee_dash_url('academic-reports/class-list') }}"
+   class="sidebar-item {% if _ar_ep == 'academic_reports_class_list' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-list w-5"></i>
+    <span>Class list reports</span>
+    {% if _ar_ep == 'academic_reports_class_list' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('academic-reports/attendance') }}"
+   class="sidebar-item {% if _ar_ep == 'academic_reports_attendance' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-check w-5"></i>
+    <span>Class attendance reports</span>
+    {% if _ar_ep == 'academic_reports_attendance' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('academic-reports/exams') }}"
+   class="sidebar-item {% if _ar_ep == 'academic_reports_exams' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-graduation-cap w-5"></i>
+    <span>Exam reports</span>
+    {% if _ar_ep == 'academic_reports_exams' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('academic-reports/timetables') }}"
+   class="sidebar-item {% if _ar_ep == 'academic_reports_timetables' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-week w-5"></i>
+    <span>Timetable reports</span>
+    {% if _ar_ep == 'academic_reports_timetables' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('academic-reports/calendar') }}"
+   class="sidebar-item {% if _ar_ep == 'academic_calendar_report' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Academic calendar report</span>
+    {% if _ar_ep == 'academic_calendar_report' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

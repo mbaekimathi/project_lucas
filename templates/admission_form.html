@@ -24,13 +24,17 @@
                     <span>Student admission</span>
                 </div>
                 <h1 class="text-2xl sm:text-3xl md:text-4xl font-heading font-bold mb-3 sm:mb-4 leading-tight tracking-tight">
-                    {% if admission_open %}Join our community{% else %}Admission is closed{% endif %}
+                    {% if admission_open %}{% if employee_in_session and not public_registration_enabled %}Staff admission{% else %}Join our community{% endif %}{% else %}Admission is closed{% endif %}
                 </h1>
                 <p class="text-sm sm:text-base md:text-lg text-white/90 max-w-2xl mx-auto leading-relaxed">
                     {% if admission_open %}
-                    Start your journey with <strong class="text-white font-semibold">{{ school_settings.school_name or 'our school' }}</strong> — complete the form below to begin.
+                    {% if employee_in_session and not public_registration_enabled %}
+                    Public online applications are closed. You are signed in as staff and may submit an application on behalf of a student.
                     {% else %}
-                    Online applications are not being accepted right now. Please contact the school office for next steps.
+                    Start your journey with <strong class="text-white font-semibold">{{ school_settings.school_name or 'our school' }}</strong> — complete the form below to begin.
+                    {% endif %}
+                    {% else %}
+                    Online applications are not being accepted right now. Please contact the school for assistance using the details below.
                     {% endif %}
                 </p>
             </div>
@@ -38,6 +42,17 @@
 
         <div class="pb-4 md:pb-8">
             {% if admission_open %}
+            {% if employee_in_session and not public_registration_enabled %}
+            <div class="mb-6 sm:mb-8 modern-card p-4 sm:p-5 border-l-4 border-amber-500 bg-amber-50/80 dark:bg-amber-950/20">
+                <div class="flex items-start gap-3">
+                    <i class="fas fa-user-shield text-amber-600 text-lg sm:text-xl mt-0.5" aria-hidden="true"></i>
+                    <p class="text-xs sm:text-sm text-gray-700 dark:text-gray-200 leading-relaxed m-0">
+                        <strong class="font-semibold text-gray-900 dark:text-white">Staff access:</strong>
+                        Public admission is turned off in system settings. Only signed-in employees can submit applications through this page.
+                    </p>
+                </div>
+            </div>
+            {% endif %}
             <!-- Info Notice -->
             <div class="mb-6 sm:mb-8 modern-card p-4 sm:p-5 border-l-4 border-blue-500">
                 <div class="flex items-start">
@@ -89,6 +104,7 @@
                 </form>
             </div>
             {% else %}
+            {% set wa_chat = school_whatsapp_chat_url(school_settings.whatsapp_number or school_settings.school_phone) %}
             <!-- Registration closed: animated padlock (no form) -->
             <div class="admission-closed-card modern-card rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-700/80 shadow-xl">
                 <div class="admission-closed-card__glow" aria-hidden="true"></div>
@@ -111,13 +127,44 @@
                     <h2 class="text-xl sm:text-2xl font-heading font-bold text-slate-900 dark:text-white mb-3">
                         Online admission is closed
                     </h2>
-                    <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-md mx-auto leading-relaxed mb-8">
-                        <strong class="font-semibold text-slate-800 dark:text-slate-100">{{ school_settings.school_name or 'Our school' }}</strong> is not accepting new applications through this portal at the moment.
+                    <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed mb-6">
+                        <strong class="font-semibold text-slate-800 dark:text-slate-100">{{ school_settings.school_name or 'Our school' }}</strong>
+                        is not accepting new applications through this portal at the moment.
+                        Please contact the school for assistance.
                     </p>
+
+                    {% if school_settings.school_phone or wa_chat or school_settings.school_email %}
+                    <div class="max-w-md mx-auto mb-8 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-800/50 p-5 text-left space-y-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 m-0">Contact the school</p>
+                        {% if school_settings.school_phone %}
+                        <a href="tel:{{ school_settings.school_phone|replace(' ', '') }}" class="flex items-center gap-3 text-sm font-medium text-slate-800 dark:text-slate-100 hover:text-brand-primary transition-colors">
+                            <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-brand-primary"><i class="fas fa-phone" aria-hidden="true"></i></span>
+                            <span>{{ school_settings.school_phone }}</span>
+                        </a>
+                        {% endif %}
+                        {% if wa_chat %}
+                        <a href="{{ wa_chat }}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 text-sm font-medium text-slate-800 dark:text-slate-100 hover:text-green-600 transition-colors">
+                            <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-green-600"><i class="fab fa-whatsapp" aria-hidden="true"></i></span>
+                            <span>Chat on WhatsApp{% if school_settings.whatsapp_number %} ({{ school_settings.whatsapp_number }}){% endif %}</span>
+                        </a>
+                        {% endif %}
+                        {% if school_settings.school_email %}
+                        <a href="mailto:{{ school_settings.school_email }}" class="flex items-center gap-3 text-sm font-medium text-slate-800 dark:text-slate-100 hover:text-brand-primary transition-colors">
+                            <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-brand-primary"><i class="fas fa-envelope" aria-hidden="true"></i></span>
+                            <span>{{ school_settings.school_email }}</span>
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-8">
+                        School contact details have not been configured yet. Please visit the school office in person.
+                    </p>
+                    {% endif %}
+
                     <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
-                        <a href="{% if school_settings.school_email %}mailto:{{ school_settings.school_email }}{% else %}{{ url_for('home') }}{% endif %}" class="touch-btn inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-95 transition-all">
-                            <i class="fas fa-envelope" aria-hidden="true"></i>
-                            Contact the school
+                        <a href="{{ url_for('contact') }}" class="touch-btn inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all">
+                            <i class="fas fa-comments" aria-hidden="true"></i>
+                            Contact page
                         </a>
                         <a href="{{ url_for('home') }}" class="touch-btn inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all">
                             <i class="fas fa-home" aria-hidden="true"></i>
@@ -130,6 +177,83 @@
         </div>
     </div>
 </section>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+{% set flash_category, flash_message = messages[-1] %}
+<div id="admission-result-modal"
+     class="admission-result-modal"
+     data-flash-category="{{ flash_category }}"
+     role="presentation"
+     aria-hidden="true">
+    <div class="admission-result-modal__backdrop" data-admission-modal-close tabindex="-1" aria-hidden="true"></div>
+    <div class="admission-result-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="admission-result-title" aria-describedby="admission-result-message">
+        <div class="admission-result-modal__icon admission-result-modal__icon--{% if flash_category == 'success' %}success{% elif flash_category == 'error' %}error{% else %}info{% endif %}" aria-hidden="true">
+            <i class="fas {% if flash_category == 'success' %}fa-circle-check{% elif flash_category == 'error' %}fa-circle-exclamation{% else %}fa-circle-info{% endif %}"></i>
+        </div>
+        <h2 id="admission-result-title" class="admission-result-modal__title">
+            {% if flash_category == 'success' %}Application submitted{% elif flash_category == 'error' %}Could not submit application{% else %}Notice{% endif %}
+        </h2>
+        <p id="admission-result-message" class="admission-result-modal__message">{{ flash_message }}</p>
+        <div class="admission-result-modal__actions">
+            <button type="button" class="admission-result-modal__btn admission-result-modal__btn--primary" data-admission-modal-close>
+                {% if flash_category == 'success' %}Done{% else %}OK, got it{% endif %}
+            </button>
+            {% if flash_category == 'success' %}
+            <a href="{{ url_for('home') }}" class="admission-result-modal__btn admission-result-modal__btn--ghost">Back to home</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modal = document.getElementById('admission-result-modal');
+    if (!modal) return;
+    var category = modal.getAttribute('data-flash-category') || '';
+    var form = document.querySelector('form[action="/admission"]');
+    var lastFocus = null;
+
+    function openModal() {
+        lastFocus = document.activeElement;
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+        var btn = modal.querySelector('[data-admission-modal-close].admission-result-modal__btn');
+        if (btn) btn.focus();
+    }
+
+    function closeModal() {
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        if (category === 'success' && form) {
+            form.reset();
+            var sponsorFields = document.getElementById('sponsor_fields');
+            if (sponsorFields) sponsorFields.style.display = 'none';
+        }
+        if (lastFocus && typeof lastFocus.focus === 'function') {
+            try { lastFocus.focus(); } catch (e) {}
+        }
+    }
+
+    modal.querySelectorAll('[data-admission-modal-close]').forEach(function (el) {
+        el.addEventListener('click', closeModal);
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && modal.classList.contains('is-open')) {
+            e.preventDefault();
+            closeModal();
+        }
+    });
+
+    requestAnimationFrame(function () {
+        requestAnimationFrame(openModal);
+    });
+})();
+</script>
+{% endif %}
+{% endwith %}
 
 {% if admission_open %}
 <script>
