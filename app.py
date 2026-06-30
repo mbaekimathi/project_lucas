@@ -10663,6 +10663,148 @@ def _teacher_library_return_copy(cursor, teacher_id, issue_id):
     return True, f'Copy {code} marked as returned.'
 
 
+def _teacher_library_search_issued_copies(cursor, teacher_id, level_id, q, limit=25):
+    """Live search copies issued by this teacher at this class."""
+    ensure_library_book_student_issues_table(cursor)
+    q = (q or '').strip().upper()
+    if not q:
+        return []
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+        limit = max(1, min(int(limit or 25), 50))
+    except (TypeError, ValueError):
+        return []
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT
+                si.id AS issue_id,
+                UPPER(TRIM(si.copy_code)) AS copy_code,
+                si.student_id,
+                si.academic_level_id,
+                si.library_book_id,
+                si.issued_at,
+                UPPER(TRIM(COALESCE(st.full_name, ''))) AS student_name,
+                UPPER(TRIM(COALESCE(lb.book_name, ''))) AS book_name,
+                UPPER(TRIM(COALESCE(al.level_name, ''))) AS level_name,
+                UPPER(TRIM(COALESCE(al.level_category, ''))) AS level_category
+            FROM library_book_student_issues si
+            LEFT JOIN students st ON st.student_id = si.student_id
+            LEFT JOIN library_books lb ON lb.id = si.library_book_id
+            LEFT JOIN academic_levels al ON al.id = si.academic_level_id
+            WHERE si.status = 'issued'
+              AND si.teacher_id = %s
+              AND si.academic_level_id = %s
+              AND UPPER(TRIM(si.copy_code)) LIKE %s
+            ORDER BY si.copy_code ASC, si.issued_at DESC
+            LIMIT %s
+            """,
+            (teacher_id, level_id, q + '%', limit),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'issue_id': int(row.get('issue_id') or 0),
+                    'copy_code': (row.get('copy_code') or '').strip(),
+                    'student_id': (row.get('student_id') or '').strip(),
+                    'student_name': (row.get('student_name') or '').strip(),
+                    'academic_level_id': int(row.get('academic_level_id') or 0),
+                    'book_id': int(row.get('library_book_id') or 0),
+                    'book_name': (row.get('book_name') or '').strip(),
+                    'level_name': (row.get('level_name') or '').strip(),
+                    'level_category': (row.get('level_category') or '').strip(),
+                    'issued_at': row.get('issued_at'),
+                })
+            else:
+                rows.append({
+                    'issue_id': int(row[0] or 0),
+                    'copy_code': (row[1] or '').strip(),
+                    'student_id': (row[2] or '').strip(),
+                    'academic_level_id': int(row[3] or 0),
+                    'book_id': int(row[4] or 0),
+                    'issued_at': row[5] if len(row) > 5 else None,
+                    'student_name': (row[6] or '').strip() if len(row) > 6 else '',
+                    'book_name': (row[7] or '').strip() if len(row) > 7 else '',
+                    'level_name': (row[8] or '').strip() if len(row) > 8 else '',
+                    'level_category': (row[9] or '').strip() if len(row) > 9 else '',
+                })
+    except Exception as e:
+        print(f'_teacher_library_search_issued_copies: {e}')
+    return rows
+
+
+def _teacher_library_student_active_issues(cursor, teacher_id, level_id, student_id):
+    """Books currently issued to one student by this teacher at this class."""
+    ensure_library_book_student_issues_table(cursor)
+    sid = (student_id or '').strip()
+    if not sid:
+        return []
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return []
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT
+                si.id AS issue_id,
+                UPPER(TRIM(si.copy_code)) AS copy_code,
+                si.student_id,
+                si.academic_level_id,
+                si.library_book_id,
+                si.issued_at,
+                UPPER(TRIM(COALESCE(st.full_name, ''))) AS student_name,
+                UPPER(TRIM(COALESCE(lb.book_name, ''))) AS book_name,
+                UPPER(TRIM(COALESCE(al.level_name, ''))) AS level_name,
+                UPPER(TRIM(COALESCE(al.level_category, ''))) AS level_category
+            FROM library_book_student_issues si
+            LEFT JOIN students st ON st.student_id = si.student_id
+            LEFT JOIN library_books lb ON lb.id = si.library_book_id
+            LEFT JOIN academic_levels al ON al.id = si.academic_level_id
+            WHERE si.status = 'issued'
+              AND si.teacher_id = %s
+              AND si.academic_level_id = %s
+              AND si.student_id = %s
+            ORDER BY lb.book_name ASC, si.copy_code ASC
+            """,
+            (teacher_id, level_id, sid),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'issue_id': int(row.get('issue_id') or 0),
+                    'copy_code': (row.get('copy_code') or '').strip(),
+                    'student_id': (row.get('student_id') or '').strip(),
+                    'student_name': (row.get('student_name') or '').strip(),
+                    'academic_level_id': int(row.get('academic_level_id') or 0),
+                    'book_id': int(row.get('library_book_id') or 0),
+                    'book_name': (row.get('book_name') or '').strip(),
+                    'level_name': (row.get('level_name') or '').strip(),
+                    'level_category': (row.get('level_category') or '').strip(),
+                    'issued_at': row.get('issued_at'),
+                })
+            else:
+                rows.append({
+                    'issue_id': int(row[0] or 0),
+                    'copy_code': (row[1] or '').strip(),
+                    'student_id': (row[2] or '').strip(),
+                    'academic_level_id': int(row[3] or 0),
+                    'book_id': int(row[4] or 0),
+                    'issued_at': row[5] if len(row) > 5 else None,
+                    'student_name': (row[6] or '').strip() if len(row) > 6 else '',
+                    'book_name': (row[7] or '').strip() if len(row) > 7 else '',
+                    'level_name': (row[8] or '').strip() if len(row) > 8 else '',
+                    'level_category': (row[9] or '').strip() if len(row) > 9 else '',
+                })
+    except Exception as e:
+        print(f'_teacher_library_student_active_issues: {e}')
+    return rows
+
+
 def _teacher_library_active_issue_for_copy(cursor, level_id, copy_code):
     """Active issue row for a copy at this class, with holder name. Returns dict or None."""
     ensure_library_book_student_issues_table(cursor)
@@ -24281,7 +24423,48 @@ def teacher_class_books_level(level_id):
         students=students,
         level_id=level_id,
         teacher_name=teacher_name,
+        return_lookup_url=employee_dash_url('class-books/lookup') + '?level_id=' + str(level_id),
+        return_submit_url=employee_dash_url('class-books/return'),
     )
+
+
+@app.route('/dashboard/employee/class-books/lookup', methods=['GET'])
+@app.route('/teachers/class-books/lookup', methods=['GET'])
+@login_required
+def teacher_class_books_lookup():
+    """Live search issued copies by reference for teacher at one class."""
+    redir = _teacher_library_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    teacher_id = _teacher_library_resolve_employee_id()
+    level_id = request.args.get('level_id', type=int) or request.args.get('academic_level_id', type=int)
+    q = (request.args.get('q') or '').strip()
+    student_id = (request.args.get('student_id') or '').strip()
+    if not level_id:
+        return jsonify({'ok': False, 'message': 'Class is required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            if not teacher_id:
+                return jsonify({'ok': False, 'message': 'Could not identify your teacher account.'}), 403
+            if not _teacher_library_teacher_can_access_level(cursor, teacher_id, level_id):
+                return jsonify({'ok': False, 'message': 'You are not assigned to this class.'}), 403
+            if student_id:
+                issues = _teacher_library_student_active_issues(
+                    cursor, teacher_id, level_id, student_id,
+                )
+            else:
+                issues = _teacher_library_search_issued_copies(
+                    cursor, teacher_id, level_id, q,
+                )
+    except Exception as e:
+        print(f'teacher_class_books_lookup: {e}')
+        return jsonify({'ok': False, 'message': 'Could not search.'}), 500
+    finally:
+        connection.close()
+    return jsonify({'ok': True, 'issues': issues, 'count': len(issues)})
 
 
 @app.route('/dashboard/employee/class-books/lookup-student', methods=['GET'])
@@ -24520,10 +24703,11 @@ def teacher_class_books_return():
         return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
     teacher_id = _teacher_library_resolve_employee_id()
     data = request.get_json(silent=True) or {}
+    level_id = data.get('academic_level_id') or request.form.get('academic_level_id')
     try:
-        level_id = int(data.get('academic_level_id') or request.form.get('academic_level_id'))
+        level_id = int(level_id) if level_id is not None and str(level_id).strip() != '' else None
     except (TypeError, ValueError):
-        return jsonify({'ok': False, 'message': 'Class is required.'}), 400
+        level_id = None
     book_id = data.get('book_id') or request.form.get('book_id')
     try:
         book_id = int(book_id) if book_id is not None and str(book_id).strip() != '' else None
@@ -24540,6 +24724,12 @@ def teacher_class_books_return():
             returns_in = [{'copy_code': copy_code, 'student_id': student_id}]
     if not returns_in:
         return jsonify({'ok': False, 'message': 'No returns to record.'}), 400
+    needs_level = any(
+        isinstance(item, dict) and not item.get('issue_id') and (item.get('copy_code') or '').strip()
+        for item in returns_in
+    )
+    if needs_level and level_id is None:
+        return jsonify({'ok': False, 'message': 'Class is required.'}), 400
     connection = get_db_connection()
     if not connection:
         return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
@@ -24561,7 +24751,7 @@ def teacher_class_books_return():
             ensure_library_books_table(cursor)
             if not teacher_id:
                 return jsonify({'ok': False, 'message': 'Could not identify your teacher account.'}), 403
-            if not _teacher_library_teacher_can_access_level(cursor, teacher_id, level_id):
+            if level_id is not None and not _teacher_library_teacher_can_access_level(cursor, teacher_id, level_id):
                 return jsonify({'ok': False, 'message': 'You are not assigned to this class.'}), 403
             for item in returns_in:
                 if not isinstance(item, dict):
@@ -60881,6 +61071,76 @@ def _librarian_issue_return_classes_summary(cursor):
     return rows
 
 
+def _librarian_books_stock_classes_summary(cursor):
+    """Active classes with student, allocation, and issue counts for the stock page."""
+    ensure_library_book_student_issues_table(cursor)
+    ensure_library_book_allocations_table(cursor)
+    rows = []
+    try:
+        cursor.execute("""
+            SELECT
+                al.id AS level_id,
+                UPPER(TRIM(al.level_category)) AS level_category,
+                UPPER(TRIM(al.level_name)) AS level_name,
+                UPPER(TRIM(COALESCE(al.level_code, ''))) AS level_code,
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM students s
+                    WHERE TRIM(s.current_grade) = TRIM(al.level_name)
+                      AND COALESCE(LOWER(TRIM(s.status)), 'active') NOT IN
+                          ('expelled', 'alumni', 'transferred', 'suspended')
+                ), 0) AS student_count,
+                COALESCE((
+                    SELECT SUM(lba.quantity)
+                    FROM library_book_allocations lba
+                    INNER JOIN library_books lb ON lb.id = lba.library_book_id
+                    WHERE lba.academic_level_id = al.id
+                      AND lba.quantity > 0
+                      AND COALESCE(lb.library_status, 'active') = 'active'
+                ), 0) AS allocated_copies,
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM library_book_student_issues si
+                    WHERE si.academic_level_id = al.id AND si.status = 'issued'
+                ), 0) AS active_issues,
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM library_book_student_issues si
+                    WHERE si.academic_level_id = al.id AND si.status = 'returned'
+                ), 0) AS returned_issues
+            FROM academic_levels al
+            WHERE COALESCE(al.level_status, 'active') = 'active'
+              AND TRIM(COALESCE(al.level_category, '')) <> ''
+            ORDER BY al.level_category, al.level_name
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'level_id': int(row.get('level_id') or 0),
+                    'level_category': (row.get('level_category') or '').strip(),
+                    'level_name': (row.get('level_name') or '').strip(),
+                    'level_code': (row.get('level_code') or '').strip(),
+                    'student_count': int(row.get('student_count') or 0),
+                    'allocated_copies': int(row.get('allocated_copies') or 0),
+                    'active_issues': int(row.get('active_issues') or 0),
+                    'returned_issues': int(row.get('returned_issues') or 0),
+                })
+            else:
+                rows.append({
+                    'level_id': int(row[0] or 0),
+                    'level_category': (row[1] or '').strip(),
+                    'level_name': (row[2] or '').strip(),
+                    'level_code': (row[3] or '').strip(),
+                    'student_count': int(row[4] or 0),
+                    'allocated_copies': int(row[5] or 0),
+                    'active_issues': int(row[6] or 0),
+                    'returned_issues': int(row[7] or 0),
+                })
+    except Exception as e:
+        print(f"_librarian_books_stock_classes_summary: {e}")
+    return rows
+
+
 def _librarian_fetch_level_allocated_books(cursor, level_id):
     """Books allocated to one class level (for issue/return class detail page)."""
     ensure_library_book_allocations_table(cursor)
@@ -61165,6 +61425,93 @@ def _librarian_list_level_students(cursor, level_id):
     return out
 
 
+def _librarian_class_students_with_books(cursor, level_id):
+    """Students in a class with their currently issued library books (tabular rows)."""
+    ensure_library_book_student_issues_table(cursor)
+    students = _librarian_list_level_students(cursor, level_id)
+    issues_by_student = {}
+    try:
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return []
+    try:
+        cursor.execute(
+            """
+            SELECT
+                si.student_id,
+                UPPER(TRIM(si.copy_code)) AS copy_code,
+                si.status,
+                si.issued_at,
+                UPPER(TRIM(lb.book_name)) AS book_name,
+                UPPER(TRIM(COALESCE(s.subject_name, ''))) AS subject_name,
+                UPPER(TRIM(COALESCE(s.subject_code, ''))) AS subject_code
+            FROM library_book_student_issues si
+            INNER JOIN library_books lb ON lb.id = si.library_book_id
+            LEFT JOIN subjects s ON s.id = si.subject_id
+            WHERE si.academic_level_id = %s AND si.status = 'issued'
+            ORDER BY lb.book_name ASC, si.copy_code ASC
+            """,
+            (level_id,),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                sid = (row.get('student_id') or '').strip()
+                book_entry = {
+                    'book_name': (row.get('book_name') or '').strip(),
+                    'copy_code': (row.get('copy_code') or '').strip(),
+                    'subject_name': (row.get('subject_name') or '').strip(),
+                    'subject_code': (row.get('subject_code') or '').strip(),
+                    'status': (row.get('status') or 'issued').strip(),
+                    'issued_at_display': _library_format_stock_datetime(row.get('issued_at')),
+                }
+            else:
+                sid = (row[0] or '').strip()
+                book_entry = {
+                    'book_name': (row[4] or '').strip() if len(row) > 4 else '',
+                    'copy_code': (row[1] or '').strip(),
+                    'subject_name': (row[5] or '').strip() if len(row) > 5 else '',
+                    'subject_code': (row[6] or '').strip() if len(row) > 6 else '',
+                    'status': (row[2] or 'issued').strip(),
+                    'issued_at_display': _library_format_stock_datetime(row[3] if len(row) > 3 else None),
+                }
+            if not sid:
+                continue
+            issues_by_student.setdefault(sid.upper(), []).append(book_entry)
+    except Exception as e:
+        print(f"_librarian_class_students_with_books issues: {e}")
+    rows = []
+    for stu in students:
+        sid = (stu.get('student_id') or '').strip()
+        sid_key = sid.upper()
+        books = issues_by_student.get(sid_key) or []
+        if books:
+            for book in books:
+                rows.append({
+                    'student_id': sid,
+                    'student_name': stu.get('full_name') or '',
+                    'current_grade': stu.get('current_grade') or '',
+                    'book_name': book.get('book_name') or '',
+                    'copy_code': book.get('copy_code') or '',
+                    'subject_name': book.get('subject_name') or '',
+                    'subject_code': book.get('subject_code') or '',
+                    'status': book.get('status') or 'issued',
+                    'issued_at_display': book.get('issued_at_display') or '—',
+                })
+        else:
+            rows.append({
+                'student_id': sid,
+                'student_name': stu.get('full_name') or '',
+                'current_grade': stu.get('current_grade') or '',
+                'book_name': '',
+                'copy_code': '',
+                'subject_name': '',
+                'subject_code': '',
+                'status': '',
+                'issued_at_display': '—',
+            })
+    return rows
+
+
 def _librarian_books_with_copies_for_level(cursor, level_id):
     """Allocated books at a class with in-stock copy refs and active student issues."""
     ensure_library_book_copy_units_table(cursor)
@@ -61390,6 +61737,160 @@ def _librarian_issue_copy_to_student(cursor, issued_by_id, level_id, book_id, co
         'student_name': student['full_name'],
         'book_id': book_id,
     }
+
+
+def _librarian_search_issued_copies(cursor, q, level_id=None, limit=25):
+    """Live search active issues by copy reference prefix (optional class scope)."""
+    ensure_library_book_student_issues_table(cursor)
+    q = (q or '').strip().upper()
+    if not q:
+        return []
+    try:
+        limit = max(1, min(int(limit or 25), 50))
+    except (TypeError, ValueError):
+        limit = 25
+    params = [q + '%']
+    level_clause = ''
+    if level_id is not None:
+        try:
+            level_id = int(level_id)
+            level_clause = ' AND si.academic_level_id = %s'
+            params.append(level_id)
+        except (TypeError, ValueError):
+            pass
+    params.append(limit)
+    rows = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT
+                si.id AS issue_id,
+                UPPER(TRIM(si.copy_code)) AS copy_code,
+                si.student_id,
+                si.academic_level_id,
+                si.library_book_id,
+                si.status,
+                si.issued_at,
+                UPPER(TRIM(COALESCE(st.full_name, ''))) AS student_name,
+                UPPER(TRIM(COALESCE(lb.book_name, ''))) AS book_name,
+                UPPER(TRIM(COALESCE(al.level_name, ''))) AS level_name,
+                UPPER(TRIM(COALESCE(al.level_category, ''))) AS level_category
+            FROM library_book_student_issues si
+            LEFT JOIN students st ON st.student_id = si.student_id
+            LEFT JOIN library_books lb ON lb.id = si.library_book_id
+            LEFT JOIN academic_levels al ON al.id = si.academic_level_id
+            WHERE si.status = 'issued'
+              AND UPPER(TRIM(si.copy_code)) LIKE %s
+              {level_clause}
+            ORDER BY si.copy_code ASC, si.issued_at DESC
+            LIMIT %s
+            """,
+            tuple(params),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'issue_id': int(row.get('issue_id') or 0),
+                    'copy_code': (row.get('copy_code') or '').strip(),
+                    'student_id': (row.get('student_id') or '').strip(),
+                    'student_name': (row.get('student_name') or '').strip(),
+                    'academic_level_id': int(row.get('academic_level_id') or 0),
+                    'book_id': int(row.get('library_book_id') or 0),
+                    'book_name': (row.get('book_name') or '').strip(),
+                    'level_name': (row.get('level_name') or '').strip(),
+                    'level_category': (row.get('level_category') or '').strip(),
+                    'status': (row.get('status') or 'issued').strip(),
+                    'issued_at': row.get('issued_at'),
+                })
+            else:
+                rows.append({
+                    'issue_id': int(row[0] or 0),
+                    'copy_code': (row[1] or '').strip(),
+                    'student_id': (row[2] or '').strip(),
+                    'academic_level_id': int(row[3] or 0),
+                    'book_id': int(row[4] or 0),
+                    'status': (row[5] or 'issued').strip(),
+                    'issued_at': row[6] if len(row) > 6 else None,
+                    'student_name': (row[7] or '').strip() if len(row) > 7 else '',
+                    'book_name': (row[8] or '').strip() if len(row) > 8 else '',
+                    'level_name': (row[9] or '').strip() if len(row) > 9 else '',
+                    'level_category': (row[10] or '').strip() if len(row) > 10 else '',
+                })
+    except Exception as e:
+        print(f'_librarian_search_issued_copies: {e}')
+    return rows
+
+
+def _librarian_student_active_issues(cursor, student_id, level_id=None):
+    """All books currently issued to one student (optional class scope)."""
+    ensure_library_book_student_issues_table(cursor)
+    sid = (student_id or '').strip()
+    if not sid:
+        return []
+    params = [sid]
+    level_clause = ''
+    if level_id is not None:
+        try:
+            level_id = int(level_id)
+            level_clause = ' AND si.academic_level_id = %s'
+            params.append(level_id)
+        except (TypeError, ValueError):
+            pass
+    rows = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT
+                si.id AS issue_id,
+                UPPER(TRIM(si.copy_code)) AS copy_code,
+                si.student_id,
+                si.academic_level_id,
+                si.library_book_id,
+                si.issued_at,
+                UPPER(TRIM(COALESCE(st.full_name, ''))) AS student_name,
+                UPPER(TRIM(COALESCE(lb.book_name, ''))) AS book_name,
+                UPPER(TRIM(COALESCE(al.level_name, ''))) AS level_name,
+                UPPER(TRIM(COALESCE(al.level_category, ''))) AS level_category
+            FROM library_book_student_issues si
+            LEFT JOIN students st ON st.student_id = si.student_id
+            LEFT JOIN library_books lb ON lb.id = si.library_book_id
+            LEFT JOIN academic_levels al ON al.id = si.academic_level_id
+            WHERE si.status = 'issued' AND si.student_id = %s
+              {level_clause}
+            ORDER BY lb.book_name ASC, si.copy_code ASC
+            """,
+            tuple(params),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'issue_id': int(row.get('issue_id') or 0),
+                    'copy_code': (row.get('copy_code') or '').strip(),
+                    'student_id': (row.get('student_id') or '').strip(),
+                    'student_name': (row.get('student_name') or '').strip(),
+                    'academic_level_id': int(row.get('academic_level_id') or 0),
+                    'book_id': int(row.get('library_book_id') or 0),
+                    'book_name': (row.get('book_name') or '').strip(),
+                    'level_name': (row.get('level_name') or '').strip(),
+                    'level_category': (row.get('level_category') or '').strip(),
+                    'issued_at': row.get('issued_at'),
+                })
+            else:
+                rows.append({
+                    'issue_id': int(row[0] or 0),
+                    'copy_code': (row[1] or '').strip(),
+                    'student_id': (row[2] or '').strip(),
+                    'academic_level_id': int(row[3] or 0),
+                    'book_id': int(row[4] or 0),
+                    'issued_at': row[5] if len(row) > 5 else None,
+                    'student_name': (row[6] or '').strip() if len(row) > 6 else '',
+                    'book_name': (row[7] or '').strip() if len(row) > 7 else '',
+                    'level_name': (row[8] or '').strip() if len(row) > 8 else '',
+                    'level_category': (row[9] or '').strip() if len(row) > 9 else '',
+                })
+    except Exception as e:
+        print(f'_librarian_student_active_issues: {e}')
+    return rows
 
 
 def _librarian_return_copy(cursor, issue_id):
@@ -62126,7 +62627,37 @@ def librarian_issue_return_records():
         allocations=allocations,
         total_allocated=total_allocated,
         total_issued=total_issued,
+        return_lookup_url=employee_dash_url('issue-return-records/lookup'),
+        return_submit_url=employee_dash_url('issue-return-records/return'),
     )
+
+
+@app.route('/dashboard/employee/issue-return-records/lookup', methods=['GET'])
+@app.route('/librarian/issue-return-records/lookup', methods=['GET'])
+@login_required
+def librarian_issue_return_records_lookup():
+    """Live search issued copies by reference code; optional student_id loads all their books."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    q = (request.args.get('q') or '').strip()
+    student_id = (request.args.get('student_id') or '').strip()
+    level_id = request.args.get('level_id', type=int)
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            if student_id:
+                issues = _librarian_student_active_issues(cursor, student_id, level_id=level_id)
+            else:
+                issues = _librarian_search_issued_copies(cursor, q, level_id=level_id)
+    except Exception as e:
+        print(f'librarian_issue_return_records_lookup: {e}')
+        return jsonify({'ok': False, 'message': 'Could not search.'}), 500
+    finally:
+        connection.close()
+    return jsonify({'ok': True, 'issues': issues, 'count': len(issues)})
 
 
 @app.route('/dashboard/employee/issue-return-records/<int:level_id>')
@@ -62206,6 +62737,8 @@ def librarian_issue_return_records_level(level_id):
         class_allocated=class_allocated,
         active_count=active_count,
         returned_count=returned_count,
+        return_lookup_url=employee_dash_url('issue-return-records/lookup') + '?level_id=' + str(level_id),
+        return_submit_url=employee_dash_url('issue-return-records/return'),
     )
 
 
@@ -62295,10 +62828,11 @@ def librarian_issue_return_records_return():
     if redir:
         return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
     data = request.get_json(silent=True) or {}
+    level_id = data.get('academic_level_id') or request.form.get('academic_level_id')
     try:
-        level_id = int(data.get('academic_level_id') or request.form.get('academic_level_id'))
+        level_id = int(level_id) if level_id is not None and str(level_id).strip() != '' else None
     except (TypeError, ValueError):
-        return jsonify({'ok': False, 'message': 'Class is required.'}), 400
+        level_id = None
     book_id = data.get('book_id') or request.form.get('book_id')
     try:
         book_id = int(book_id) if book_id is not None and str(book_id).strip() != '' else None
@@ -62315,6 +62849,12 @@ def librarian_issue_return_records_return():
             returns_in = [{'copy_code': copy_code, 'student_id': student_id}]
     if not returns_in:
         return jsonify({'ok': False, 'message': 'No returns to record.'}), 400
+    needs_level = any(
+        isinstance(item, dict) and not item.get('issue_id') and (item.get('copy_code') or '').strip()
+        for item in returns_in
+    )
+    if needs_level and level_id is None:
+        return jsonify({'ok': False, 'message': 'Class is required.'}), 400
     connection = get_db_connection()
     if not connection:
         return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
@@ -62685,6 +63225,67 @@ def books_inventory_level_teachers():
     except Exception as e:
         print(f"books_inventory_level_teachers: {e}")
         return jsonify({'ok': False, 'message': 'Could not load teachers for this class.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/books-inventory/class-student-books/<int:level_id>', methods=['GET'])
+@app.route('/librarian/books-inventory/class-student-books/<int:level_id>', methods=['GET'])
+@login_required
+def books_inventory_class_student_books(level_id):
+    """Students in a class and the library books currently issued to each."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            cursor.execute(
+                """
+                SELECT id AS level_id, UPPER(TRIM(level_category)) AS level_category,
+                       UPPER(TRIM(level_name)) AS level_name,
+                       UPPER(TRIM(COALESCE(level_code, ''))) AS level_code
+                FROM academic_levels
+                WHERE id = %s
+                  AND COALESCE(level_status, 'active') = 'active'
+                """,
+                (level_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return jsonify({'ok': False, 'message': 'Class not found.'}), 404
+            if isinstance(row, dict):
+                level = {
+                    'level_id': int(row.get('level_id') or row.get('id') or 0),
+                    'level_category': (row.get('level_category') or '').strip(),
+                    'level_name': (row.get('level_name') or '').strip(),
+                    'level_code': (row.get('level_code') or '').strip(),
+                }
+            else:
+                level = {
+                    'level_id': int(row[0] or 0),
+                    'level_category': (row[1] or '').strip(),
+                    'level_name': (row[2] or '').strip(),
+                    'level_code': (row[3] or '').strip(),
+                }
+            rows = _librarian_class_students_with_books(cursor, level_id)
+            student_ids = {r.get('student_id') for r in rows if r.get('student_id')}
+            books_issued_count = sum(
+                1 for r in rows if (r.get('copy_code') or '').strip()
+            )
+            return jsonify({
+                'ok': True,
+                'level': level,
+                'rows': rows,
+                'student_count': len(student_ids),
+                'books_issued_count': books_issued_count,
+            })
+    except Exception as e:
+        print(f"books_inventory_class_student_books: {e}")
+        return jsonify({'ok': False, 'message': 'Could not load students for this class.'}), 500
     finally:
         connection.close()
 
@@ -63281,6 +63882,7 @@ def books_inventory():
     library_stock_movements_recent = []
     library_stock_in_records = []
     library_level_subjects = {}
+    library_stock_classes_summary = []
     open_stock_panel = None
     last_stock_in_labels = None
     last_stock_out_labels = None
@@ -63401,6 +64003,8 @@ def books_inventory():
                 library_stock_in_records = _library_stock_in_records(cursor, limit=40)
             library_stock_movements_recent = _library_recent_stock_movements(cursor, limit=20)
             library_level_subjects = _library_subjects_by_level_map(cursor)
+            if inventory_view == 'stock':
+                library_stock_classes_summary = _librarian_books_stock_classes_summary(cursor)
             catalog_filter = (request.args.get('filter') or 'all').strip().lower()
             if catalog_filter not in ('all', 'setup'):
                 catalog_filter = 'all'
@@ -63614,6 +64218,7 @@ def books_inventory():
         library_stock_movements_recent=library_stock_movements_recent,
         library_stock_in_records=library_stock_in_records,
         library_level_subjects=library_level_subjects,
+        library_stock_classes_summary=library_stock_classes_summary,
         open_stock_panel=open_stock_panel,
         inventory_view=inventory_view,
         last_stock_in_labels=last_stock_in_labels,
@@ -75161,7 +75766,7 @@ def _finance_report_expenditure_rows(cursor, filters):
     if src in ('all', 'salary'):
         where, params = _finance_report_date_clause('esp.payment_date', filters)
         sql = """
-            SELECT esp.payment_date, esp.amount_paid, esp.payment_method, esp.payment_reference,
+            SELECT esp.payment_date, esp.amount_paid, esp.payment_method, esp.reference_number,
                    e.full_name
             FROM employee_salary_payments esp
             INNER JOIN employee_salaries es ON es.id = esp.salary_id
@@ -75176,7 +75781,7 @@ def _finance_report_expenditure_rows(cursor, filters):
                 if isinstance(row, dict):
                     pd = row.get('payment_date')
                     amt = float(row.get('amount_paid') or 0)
-                    ref = (row.get('payment_reference') or '').strip()
+                    ref = (row.get('reference_number') or '').strip()
                     payee = row.get('full_name') or '—'
                     method = row.get('payment_method') or ''
                 else:

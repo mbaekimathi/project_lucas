@@ -7,7 +7,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-teal-950/20 py-6 sm:py-8 page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+<script type="application/json" id="librarian-return-books-data">{{ {
+    'lookup_url': return_lookup_url|default(''),
+    'return_url': return_submit_url|default(''),
+    'level_id': none
+}|tojson }}</script>
+
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-teal-950/20 py-6 sm:py-8 page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+     x-data="{ activeTab: (new URLSearchParams(window.location.search).get('tab') === 'return' ? 'return' : 'issue') }">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -38,15 +45,30 @@
             </div>
         </header>
 
-        <div class="mb-6 flex flex-wrap gap-3">
+        <div class="mb-6 flex flex-wrap items-center gap-3">
             <span class="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                 <i class="fas fa-boxes-stacked text-teal-600"></i> {{ total_allocated|default(0) }} allocated
             </span>
             <span class="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-emerald-200">
                 <i class="fas fa-book-reader text-emerald-600"></i> {{ total_issued|default(0) }} issued
             </span>
+            <div class="ml-auto inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-900" role="tablist">
+                <button type="button" role="tab" :aria-selected="activeTab === 'issue'"
+                        @click="activeTab = 'issue'"
+                        class="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                        :class="activeTab === 'issue' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'">
+                    <i class="fas fa-arrow-right mr-1.5" aria-hidden="true"></i>Issue
+                </button>
+                <button type="button" role="tab" :aria-selected="activeTab === 'return'"
+                        @click="activeTab = 'return'"
+                        class="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                        :class="activeTab === 'return' ? 'bg-slate-700 text-white shadow-sm dark:bg-slate-500' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'">
+                    <i class="fas fa-undo mr-1.5" aria-hidden="true"></i>Return
+                </button>
+            </div>
         </div>
 
+        <div x-show="activeTab === 'issue'" id="issue-tab-panel">
         <div class="rounded-2xl border border-gray-200/90 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/90 mb-8">
             <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                 <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">Class allocations</h2>
@@ -159,6 +181,21 @@
             {% endfor %}
         </div>
         {% endif %}
+        </div>
+
+        <div x-show="activeTab === 'return'" id="return-tab-panel" x-cloak
+             x-data="librarianReturnBooks()">
+            <div class="rounded-2xl border border-gray-200/90 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/90 mb-8">
+                <div class="border-b border-gray-100 px-4 py-4 dark:border-gray-800 sm:px-6">
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">Return books</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Search by book reference to see who has it, then mark books as returned.</p>
+                </div>
+                <div class="px-4 py-5 sm:px-6">
+                    {% include 'dashboards/includes/librarian_return_books_panel.html' %}
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+{% include 'dashboards/includes/librarian_return_books_script.html' %}
 {% endblock %}

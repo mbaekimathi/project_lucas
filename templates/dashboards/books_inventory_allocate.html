@@ -112,11 +112,13 @@
 <script type="application/json" id="stock-allocate-page-data">{{ {
     'books': books_stock|default([]),
     'levels': inventory_academic_levels|default([]),
+    'classes': library_stock_classes_summary|default([]),
     'teachersUrl': employee_dash_url('books-inventory/level-teachers'),
     'postUrl': url_for('books_inventory_allocate_stock'),
     'stockUrl': employee_dash_url('books-inventory/stock'),
     'allocationApiPrefix': employee_dash_url('books-inventory/allocations'),
     'stockInRecordsApi': employee_dash_url('books-inventory/stock-in-records'),
+    'classStudentBooksApiZero': employee_dash_url('books-inventory/class-student-books/0'),
 }|tojson }}</script>
 
 <section class="normal-case space-y-5" x-data="stockAllocatePage()" x-cloak>
@@ -134,6 +136,67 @@
             <i class="fas fa-chalkboard-teacher text-violet-600 dark:text-violet-400" aria-hidden="true"></i>
             <span x-text="stockSummaryAllocated()"></span> allocated
         </span>
+    </div>
+
+    <div class="lib-stock-panel overflow-hidden" x-show="classes.length">
+        <div class="lib-stock-panel-head flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
+            <div class="min-w-0">
+                <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">Classes</h2>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Browse students and the books issued to each class.
+                </p>
+            </div>
+            <div class="w-full sm:max-w-xs">
+                <label for="stock_class_search" class="sr-only">Search classes</label>
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400" aria-hidden="true"></i>
+                    <input type="search" id="stock_class_search" x-model="classSearch"
+                           placeholder="Search class, category, code…"
+                           class="w-full rounded-xl border border-gray-200/90 bg-white py-2.5 pl-10 pr-4 text-sm normal-case text-gray-900 shadow-sm transition focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                </div>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-[760px] w-full border-collapse text-left text-sm">
+                <thead>
+                    <tr class="border-b border-gray-100 bg-gray-50/80 dark:border-gray-800 dark:bg-gray-950/60">
+                        <th class="px-4 py-3.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Category</th>
+                        <th class="px-4 py-3.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Class</th>
+                        <th class="px-4 py-3.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Code</th>
+                        <th class="px-4 py-3.5 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Students</th>
+                        <th class="px-4 py-3.5 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Books issued</th>
+                        <th class="px-4 py-3.5 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 sm:px-6">Allocated</th>
+                        <th class="sticky right-0 z-[2] w-24 border-l border-gray-100 bg-gray-50/95 px-2 py-3.5 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 dark:border-gray-800 dark:bg-gray-950/95 sm:px-3">View</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    <template x-for="cls in filteredStockClasses()" :key="cls.level_id">
+                        <tr class="transition-colors hover:bg-teal-50/40 dark:hover:bg-teal-950/15">
+                            <td class="px-4 py-3.5 text-xs font-semibold uppercase text-teal-700 dark:text-teal-300 sm:px-6" x-text="cls.level_category"></td>
+                            <td class="px-4 py-3.5 font-semibold text-gray-900 dark:text-white sm:px-6" x-text="cls.level_name"></td>
+                            <td class="px-4 py-3.5 font-mono text-xs text-gray-500 dark:text-gray-400 sm:px-6">
+                                <span x-text="cls.level_code || '—'"></span>
+                            </td>
+                            <td class="px-4 py-3.5 text-right tabular-nums font-medium text-gray-800 dark:text-gray-200 sm:px-6" x-text="cls.student_count || 0"></td>
+                            <td class="px-4 py-3.5 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-300 sm:px-6" x-text="cls.active_issues || 0"></td>
+                            <td class="px-4 py-3.5 text-right tabular-nums font-medium text-sky-700 dark:text-sky-300 sm:px-6" x-text="cls.allocated_copies || 0"></td>
+                            <td class="sticky right-0 z-[1] border-l border-gray-100 bg-white px-2 py-2.5 text-center dark:border-gray-800 dark:bg-gray-900 sm:px-3">
+                                <button type="button" @click="openClassBooksModal(cls)"
+                                        class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-teal-200/90 bg-teal-50 text-teal-700 shadow-sm transition hover:border-teal-400 hover:bg-teal-100 dark:border-teal-800/60 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-900/50"
+                                        title="View students and books for this class"
+                                        aria-label="View students and books for this class">
+                                    <i class="fas fa-eye text-sm"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <p class="border-t border-gray-100 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400 sm:px-6"
+           x-show="classes.length && !filteredStockClasses().length" x-cloak>
+            No classes match your search.
+        </p>
     </div>
 
     <div class="lib-stock-panel overflow-hidden">
@@ -441,6 +504,103 @@
         </div>
     </div>
 
+    <div x-show="classBooksOpen" x-cloak
+         class="lib-stock-modal-overlay fixed inset-0 z-[55] flex items-end justify-center sm:items-center p-4"
+         @keydown.escape.window="closeClassBooksModal()">
+        <div class="lib-stock-panel flex w-full max-w-5xl max-h-[90vh] flex-col overflow-hidden shadow-2xl"
+             @click.outside="closeClassBooksModal()" role="dialog" aria-labelledby="class-books-modal-title">
+            <div class="lib-stock-modal-head shrink-0 px-5 py-4 sm:px-6 sm:py-5">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-100/90" x-text="classBooksLevel ? classBooksLevel.level_category : ''"></p>
+                        <h3 id="class-books-modal-title" class="mt-0.5 text-base font-semibold text-white sm:text-lg"
+                            x-text="classBooksLevel ? classBooksLevel.level_name : 'Class'"></h3>
+                        <p class="mt-1 text-sm text-teal-50/90" x-show="classBooksLevel && classBooksLevel.level_code">
+                            <span class="font-mono text-xs" x-text="classBooksLevel.level_code"></span>
+                        </p>
+                    </div>
+                    <button type="button" @click="closeClassBooksModal()"
+                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                            aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-y-auto px-5 py-4 flex-1 min-h-0 bg-white dark:bg-gray-900">
+                <div class="mb-4 flex flex-wrap gap-2 text-xs" x-show="!classBooksLoading && classBooksLevel">
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200">
+                        <i class="fas fa-user-graduate text-teal-600"></i>
+                        <span x-text="classBooksStudentCount"></span> student<span x-show="classBooksStudentCount !== 1">s</span>
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+                        <i class="fas fa-book-reader text-emerald-600"></i>
+                        <span x-text="classBooksIssuedCount"></span> book<span x-show="classBooksIssuedCount !== 1">s</span> issued
+                    </span>
+                </div>
+                <p class="flex items-center justify-center gap-2 py-12 text-sm text-gray-500" x-show="classBooksLoading">
+                    <i class="fas fa-spinner fa-spin"></i> Loading students and books…
+                </p>
+                <p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
+                   x-show="classBooksError && !classBooksLoading" x-text="classBooksError"></p>
+                <p class="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-10 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400"
+                   x-show="!classBooksLoading && !classBooksError && !classBooksRows.length">
+                    No students enrolled in this class yet.
+                </p>
+                <div class="overflow-x-auto rounded-xl border border-gray-200/90 dark:border-gray-700"
+                     x-show="!classBooksLoading && classBooksRows.length">
+                    <table class="min-w-[720px] w-full border-collapse text-left text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-100 bg-gray-50/95 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 dark:border-gray-800 dark:bg-gray-950/80">
+                                <th class="w-10 px-3 py-3.5 sm:px-4">#</th>
+                                <th class="px-3 py-3.5 sm:px-4">Student ID</th>
+                                <th class="px-3 py-3.5 sm:px-4">Student name</th>
+                                <th class="px-3 py-3.5 sm:px-4">Book</th>
+                                <th class="px-3 py-3.5 sm:px-4">Copy ref</th>
+                                <th class="px-3 py-3.5 sm:px-4">Subject</th>
+                                <th class="px-3 py-3.5 sm:px-4">Status</th>
+                                <th class="px-3 py-3.5 sm:px-4">Issued</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                            <template x-for="(row, idx) in classBooksRows" :key="row.student_id + '-' + (row.copy_code || 'none') + '-' + idx">
+                                <tr class="text-gray-800 transition hover:bg-gray-50/80 dark:text-gray-200 dark:hover:bg-gray-800/40">
+                                    <td class="px-3 py-3.5 tabular-nums text-gray-400 sm:px-4" x-text="idx + 1"></td>
+                                    <td class="px-3 py-3.5 font-mono text-xs font-semibold text-gray-800 dark:text-gray-200 sm:px-4" x-text="row.student_id"></td>
+                                    <td class="px-3 py-3.5 font-medium text-gray-900 dark:text-white sm:px-4" x-text="row.student_name"></td>
+                                    <td class="px-3 py-3.5 font-medium text-gray-900 dark:text-white sm:px-4">
+                                        <span x-text="row.book_name || '—'" :class="!row.book_name && 'text-gray-400 font-normal'"></span>
+                                    </td>
+                                    <td class="px-3 py-3.5 sm:px-4">
+                                        <span x-show="row.copy_code"
+                                              class="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 font-mono text-xs font-bold uppercase text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+                                              x-text="row.copy_code"></span>
+                                        <span x-show="!row.copy_code" class="text-gray-400">—</span>
+                                    </td>
+                                    <td class="px-3 py-3.5 text-gray-600 dark:text-gray-300 sm:px-4">
+                                        <span x-text="row.subject_name || '—'" :class="!row.subject_name && 'text-gray-400'"></span>
+                                        <span class="block text-xs text-gray-400" x-show="row.subject_code" x-text="row.subject_code"></span>
+                                    </td>
+                                    <td class="px-3 py-3.5 sm:px-4">
+                                        <span x-show="row.status === 'issued'"
+                                              class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">Issued</span>
+                                        <span x-show="!row.status" class="text-xs text-gray-400">No book</span>
+                                    </td>
+                                    <td class="px-3 py-3.5 whitespace-nowrap text-xs tabular-nums text-gray-500 sm:px-4" x-text="row.issued_at_display || '—'"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="border-t border-gray-100 bg-gray-50/80 px-5 py-3 dark:border-gray-800 dark:bg-gray-950/50 shrink-0">
+                <p class="text-xs text-gray-500 dark:text-gray-400" x-show="!classBooksLoading && classBooksRows.length">
+                    Showing <span class="font-semibold text-gray-700 dark:text-gray-300" x-text="classBooksRows.length"></span> row<span x-show="classBooksRows.length !== 1">s</span>
+                    · students without a book appear once with “No book”
+                </p>
+            </div>
+        </div>
+    </div>
+
     <div x-show="editAllocation" x-cloak
          class="lib-stock-modal-overlay fixed inset-0 z-[60] flex items-end justify-center sm:items-center p-4"
          @keydown.escape.window="closeEditAllocation()">
@@ -502,11 +662,21 @@
       return {
         books: payload.books || [],
         levels: payload.levels || [],
+        classes: payload.classes || [],
         teachersUrl: payload.teachersUrl || '',
         postUrl: payload.postUrl || '',
         stockUrl: payload.stockUrl || '',
         allocationApiPrefix: payload.allocationApiPrefix || '',
         stockInRecordsApi: payload.stockInRecordsApi || '',
+        classStudentBooksApiZero: payload.classStudentBooksApiZero || '',
+        classSearch: '',
+        classBooksOpen: false,
+        classBooksLoading: false,
+        classBooksLevel: null,
+        classBooksRows: [],
+        classBooksStudentCount: 0,
+        classBooksIssuedCount: 0,
+        classBooksError: '',
         viewAllocationsOpen: false,
         viewAllocationsBook: null,
         viewAllocationsRows: [],
@@ -553,6 +723,57 @@
             total += parseInt(row.quantity, 10) || 0;
           });
           return total;
+        },
+        filteredStockClasses: function () {
+          var q = (this.classSearch || '').trim().toLowerCase();
+          var list = this.classes || [];
+          if (!q) return list;
+          return list.filter(function (cls) {
+            var hay = [
+              cls.level_category,
+              cls.level_name,
+              cls.level_code,
+            ].join(' ').toLowerCase();
+            return hay.indexOf(q) !== -1;
+          });
+        },
+        openClassBooksModal: function (cls) {
+          if (!cls || !cls.level_id) return;
+          var self = this;
+          this.classBooksOpen = true;
+          this.classBooksLoading = true;
+          this.classBooksLevel = cls;
+          this.classBooksRows = [];
+          this.classBooksStudentCount = 0;
+          this.classBooksIssuedCount = 0;
+          this.classBooksError = '';
+          var url = (this.classStudentBooksApiZero || '').replace(/\/0\/?$/, '/' + cls.level_id);
+          fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+              self.classBooksLoading = false;
+              if (!res.ok || !res.data || !res.data.ok) {
+                self.classBooksError = (res.data && res.data.message) || 'Could not load class records.';
+                return;
+              }
+              self.classBooksLevel = res.data.level || cls;
+              self.classBooksRows = res.data.rows || [];
+              self.classBooksStudentCount = parseInt(res.data.student_count, 10) || 0;
+              self.classBooksIssuedCount = parseInt(res.data.books_issued_count, 10) || 0;
+            })
+            .catch(function () {
+              self.classBooksLoading = false;
+              self.classBooksError = 'Could not load class records.';
+            });
+        },
+        closeClassBooksModal: function () {
+          this.classBooksOpen = false;
+          this.classBooksLoading = false;
+          this.classBooksLevel = null;
+          this.classBooksRows = [];
+          this.classBooksStudentCount = 0;
+          this.classBooksIssuedCount = 0;
+          this.classBooksError = '';
         },
         openViewAllocations: function (book) {
           if (!book || !book.id) return;

@@ -1,0 +1,204 @@
+<script>
+document.addEventListener('alpine:init', function () {
+  function libraryReturnBooksFactory() {
+    var payload = {};
+    try {
+      var el = document.getElementById('librarian-return-books-data');
+      payload = el && el.textContent ? JSON.parse(el.textContent) : {};
+    } catch (e) {
+      payload = {};
+    }
+    return {
+      lookupUrl: payload.lookup_url || '',
+      returnUrl: payload.return_url || '',
+      levelId: payload.level_id || null,
+      theme: payload.theme || 'librarian',
+      bookSearch: '',
+      searchResults: [],
+      searching: false,
+      showDropdown: false,
+      selectedStudent: null,
+      studentBooks: [],
+      returnItems: [],
+      returnSubmitting: false,
+      returnSaveMessage: '',
+      returnSaveOk: false,
+      _searchTimer: null,
+      init: function () {},
+      onBookSearchInput: function () {
+        this.bookSearch = (this.bookSearch || '').toUpperCase();
+        this.returnSaveMessage = '';
+        clearTimeout(this._searchTimer);
+        var q = (this.bookSearch || '').trim();
+        if (q.length < 1) {
+          this.searchResults = [];
+          this.showDropdown = false;
+          return;
+        }
+        var self = this;
+        this._searchTimer = setTimeout(function () { self.runBookSearch(); }, 280);
+      },
+      lookupQueryUrl: function (params) {
+        var base = this.lookupUrl || '';
+        var sep = base.indexOf('?') >= 0 ? '&' : '?';
+        var parts = [];
+        Object.keys(params || {}).forEach(function (k) {
+          if (params[k] != null && String(params[k]).trim() !== '') {
+            parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(params[k]));
+          }
+        });
+        return base + (parts.length ? sep + parts.join('&') : '');
+      },
+      runBookSearch: function () {
+        var q = (this.bookSearch || '').trim();
+        if (!q || !this.lookupUrl) return;
+        var self = this;
+        self.searching = true;
+        fetch(self.lookupQueryUrl({ q: q }), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            self.searching = false;
+            self.searchResults = (data && data.ok && data.issues) ? data.issues : [];
+            self.showDropdown = self.searchResults.length > 0;
+            if (self.searchResults.length === 1 && self.searchResults[0].copy_code === q) {
+              self.selectSearchResult(self.searchResults[0]);
+            }
+          })
+          .catch(function () {
+            self.searching = false;
+            self.searchResults = [];
+            self.showDropdown = false;
+          });
+      },
+      selectSearchResult: function (item) {
+        if (!item) return;
+        this.selectedStudent = {
+          student_id: item.student_id,
+          student_name: item.student_name,
+          level_name: item.level_name,
+          level_category: item.level_category,
+        };
+        this.bookSearch = item.copy_code || '';
+        this.showDropdown = false;
+        this.searchResults = [];
+        this.loadStudentBooks(item.student_id);
+      },
+      loadStudentBooks: function (studentId) {
+        if (!studentId || !this.lookupUrl) return;
+        var self = this;
+        self.searching = true;
+        fetch(self.lookupQueryUrl({ student_id: studentId }), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            self.searching = false;
+            var issues = (data && data.ok && data.issues) ? data.issues : [];
+            self.studentBooks = issues;
+            self.mergeReturnItems(issues);
+          })
+          .catch(function () {
+            self.searching = false;
+            self.studentBooks = [];
+          });
+      },
+      mergeReturnItems: function (issues) {
+        var self = this;
+        (issues || []).forEach(function (item) {
+          var id = item.issue_id;
+          if (!id) return;
+          var exists = (self.returnItems || []).some(function (r) { return r.issue_id === id; });
+          if (!exists) {
+            self.returnItems.push({
+              issue_id: id,
+              copy_code: item.copy_code || '',
+              student_id: item.student_id || '',
+              student_name: item.student_name || '',
+              book_name: item.book_name || '',
+              level_name: item.level_name || '',
+              level_category: item.level_category || '',
+              checked: true,
+            });
+          }
+        });
+      },
+      removeFromQueue: function (issueId) {
+        this.returnItems = (this.returnItems || []).filter(function (r) { return r.issue_id !== issueId; });
+        if (this.studentBooks.length && !this.returnItems.length) {
+          this.selectedStudent = null;
+          this.studentBooks = [];
+        }
+      },
+      toggleAllChecked: function (checked) {
+        (this.returnItems || []).forEach(function (r) { r.checked = !!checked; });
+      },
+      isAllChecked: function () {
+        var items = this.returnItems || [];
+        return items.length > 0 && items.every(function (r) { return r.checked; });
+      },
+      hasCheckedReturns: function () {
+        return (this.returnItems || []).some(function (r) { return r.checked; });
+      },
+      checkedCount: function () {
+        return (this.returnItems || []).filter(function (r) { return r.checked; }).length;
+      },
+      saveReturns: function () {
+        var self = this;
+        var selected = (this.returnItems || []).filter(function (r) { return r.checked; });
+        if (!selected.length) {
+          window.alert('Select at least one book to return.');
+          return;
+        }
+        var returns = selected.map(function (r) {
+          return {
+            issue_id: r.issue_id,
+            copy_code: r.copy_code,
+            student_id: r.student_id,
+          };
+        });
+        this.returnSubmitting = true;
+        this.returnSaveMessage = '';
+        var body = { returns: returns };
+        if (self.levelId) body.academic_level_id = self.levelId;
+        fetch(this.returnUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(body),
+        })
+          .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+          .then(function (res) {
+            self.returnSubmitting = false;
+            var data = res.data || {};
+            if (res.ok && data.ok) {
+              self.returnSaveOk = true;
+              self.returnSaveMessage = data.message || 'Returns saved.';
+              window.setTimeout(function () { window.location.reload(); }, 800);
+            } else {
+              self.returnSaveOk = false;
+              self.returnSaveMessage = data.message || 'Could not save returns.';
+            }
+          })
+          .catch(function () {
+            self.returnSubmitting = false;
+            self.returnSaveOk = false;
+            self.returnSaveMessage = 'Could not reach the server.';
+          });
+      },
+      clearReturnSession: function () {
+        this.bookSearch = '';
+        this.searchResults = [];
+        this.showDropdown = false;
+        this.selectedStudent = null;
+        this.studentBooks = [];
+      },
+    };
+  }
+  Alpine.data('libraryReturnBooks', libraryReturnBooksFactory);
+  Alpine.data('librarianReturnBooks', libraryReturnBooksFactory);
+});
+</script>

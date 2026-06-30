@@ -1630,6 +1630,7 @@ def _financial_books_can_be_kept(cursor, filters, helpers):
 
 def _books_section_row(title, **fields):
     """Section heading row in a book of accounts."""
+    fields.pop('particulars', None)
     row = _ledger_struct_row('section', particulars=title, **fields)
     return row
 

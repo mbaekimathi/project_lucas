@@ -1,0 +1,124 @@
+<div class="space-y-5">
+    <div class="max-w-md">
+        <label for="lib_return_book_search" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Book reference number</label>
+        <div class="relative">
+            <i class="fas fa-barcode absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400" aria-hidden="true"></i>
+            <input type="text" id="lib_return_book_search" maxlength="4" autocomplete="off"
+                   x-model="bookSearch"
+                   @input="onBookSearchInput()"
+                   @focus="showDropdown = searchResults.length > 0"
+                   @keydown.escape="showDropdown = false"
+                   placeholder="e.g. A001"
+                   class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-10 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+            <i class="fas fa-spinner fa-spin absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400" x-show="searching" x-cloak></i>
+            <div x-show="showDropdown && searchResults.length"
+                 @click.outside="showDropdown = false"
+                 class="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900"
+                 x-cloak>
+                <template x-for="item in searchResults" :key="item.issue_id">
+                    <button type="button"
+                            @click="selectSearchResult(item)"
+                            class="flex w-full items-start gap-3 border-b border-gray-100 px-4 py-3 text-left text-sm hover:bg-slate-50 last:border-0 dark:border-gray-800 dark:hover:bg-slate-950/50">
+                        <span class="shrink-0 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 font-mono text-xs font-bold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+                              x-text="item.copy_code"></span>
+                        <span class="min-w-0">
+                            <span class="block font-semibold text-gray-900 dark:text-white" x-text="item.book_name"></span>
+                            <span class="block text-xs text-gray-500 dark:text-gray-400">
+                                <span x-text="item.student_name"></span>
+                                <span class="font-mono" x-text="' · ' + item.student_id"></span>
+                            </span>
+                            <span class="block text-[10px] uppercase tracking-wide text-teal-600 dark:text-teal-400"
+                                  x-show="item.level_name"
+                                  x-text="(item.level_category ? item.level_category + ' · ' : '') + item.level_name"></span>
+                        </span>
+                    </button>
+                </template>
+            </div>
+        </div>
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Type or scan a book reference — matching issued copies appear as you type.</p>
+    </div>
+
+    <div x-show="selectedStudent" x-cloak
+         class="rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3 dark:border-teal-800 dark:bg-teal-950/30">
+        <p class="text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-300">Issued to</p>
+        <p class="mt-1 text-sm font-bold text-gray-900 dark:text-white">
+            <span x-text="selectedStudent ? selectedStudent.student_name : ''"></span>
+            <span class="ml-2 font-mono text-xs font-semibold text-gray-600 dark:text-gray-300"
+                  x-text="selectedStudent ? '(' + selectedStudent.student_id + ')' : ''"></span>
+        </p>
+        <p class="mt-0.5 text-xs text-gray-600 dark:text-gray-400" x-show="selectedStudent && selectedStudent.level_name"
+           x-text="selectedStudent ? ((selectedStudent.level_category || '') + ' ' + (selectedStudent.level_name || '')).trim() : ''"></p>
+        <p class="mt-2 text-xs text-teal-800 dark:text-teal-200" x-show="studentBooks.length">
+            <span x-text="studentBooks.length"></span> book<span x-show="studentBooks.length !== 1">s</span> currently issued — check those being returned below.
+        </p>
+    </div>
+
+    <div x-show="returnItems.length" x-cloak>
+        <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input type="checkbox" :checked="isAllChecked()" @change="toggleAllChecked($event.target.checked)"
+                       class="h-4 w-4 rounded border-gray-300 text-slate-700 focus:ring-slate-500 dark:border-gray-600" />
+                <span>Select all (<span x-text="checkedCount()"></span> selected)</span>
+            </label>
+            <button type="button" @click="saveReturns()" :disabled="returnSubmitting || !hasCheckedReturns()"
+                    class="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    :class="theme === 'teacher'
+                        ? 'bg-gradient-to-r from-brand-primary to-brand-secondary hover:opacity-95'
+                        : 'bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500'">
+                <i class="fas fa-undo" x-show="!returnSubmitting"></i>
+                <i class="fas fa-spinner fa-spin" x-show="returnSubmitting"></i>
+                <span x-text="returnSubmitting ? 'Saving…' : 'Return selected books'"></span>
+            </button>
+        </div>
+
+        <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+            <table class="min-w-[640px] w-full border-collapse text-left text-sm">
+                <thead>
+                    <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
+                        <th class="w-10 px-3 py-3 text-center sm:px-4"></th>
+                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Ref</th>
+                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Book</th>
+                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Student</th>
+                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4" x-show="!levelId">Class</th>
+                        <th class="w-12 px-2 py-3 text-center text-[10px] font-semibold uppercase text-gray-500"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    <template x-for="row in returnItems" :key="row.issue_id">
+                        <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-950/30">
+                            <td class="px-3 py-3 text-center sm:px-4">
+                                <input type="checkbox" x-model="row.checked"
+                                       class="h-4 w-4 rounded border-gray-300 text-slate-700 focus:ring-slate-500 dark:border-gray-600" />
+                            </td>
+                            <td class="px-3 py-3 sm:px-4">
+                                <span class="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 font-mono text-sm font-bold uppercase text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+                                      x-text="row.copy_code"></span>
+                            </td>
+                            <td class="px-3 py-3 font-medium text-gray-900 dark:text-white sm:px-4" x-text="row.book_name"></td>
+                            <td class="px-3 py-3 sm:px-4">
+                                <span class="block font-medium text-gray-900 dark:text-white" x-text="row.student_name"></span>
+                                <span class="font-mono text-xs text-gray-500 dark:text-gray-400" x-text="row.student_id"></span>
+                            </td>
+                            <td class="px-3 py-3 text-xs text-gray-600 dark:text-gray-300 sm:px-4" x-show="!levelId"
+                                x-text="((row.level_category || '') + ' ' + (row.level_name || '')).trim()"></td>
+                            <td class="px-2 py-3 text-center">
+                                <button type="button" @click="removeFromQueue(row.issue_id)"
+                                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+                                        title="Remove from list">
+                                    <i class="fas fa-times text-xs"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <p class="mt-3 text-xs" x-show="returnSaveMessage" x-text="returnSaveMessage"
+           :class="returnSaveOk ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'"></p>
+    </div>
+
+    <div x-show="!returnItems.length && !selectedStudent" class="rounded-xl border border-dashed border-gray-200 px-6 py-10 text-center dark:border-gray-700">
+        <i class="fas fa-barcode text-3xl text-gray-300 dark:text-gray-600 mb-3"></i>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Enter a book reference number to find who it was issued to and mark returns.</p>
+    </div>
+</div>
