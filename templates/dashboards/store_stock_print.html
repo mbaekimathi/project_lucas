@@ -1,403 +1,178 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% if movement.movement_type == 'in' %}Goods received{% else %}Stock issue{% endif %} — {{ movement.reference_number }}</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    {% set brand = school_settings.primary_color or '#047857' %}
+    {% from 'dashboards/includes/store_document_print_macros.html' import sd_page_head, sd_actions, sd_header, sd_footer, sd_sig_field with context %}
     {% set is_in = movement.movement_type == 'in' %}
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 24px 16px 48px;
-            background: #f1f5f9;
-            color: #0f172a;
-        }
-        .wrap { max-width: 520px; margin: 0 auto; }
-        .doc {
-            background: #fff;
-            border-radius: 4px;
-            overflow: hidden;
-            box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
-            border: 1px solid #e2e8f0;
-        }
-        .doc__head {
-            padding: 24px 28px 20px;
-            text-align: center;
-            border-bottom: 3px double {{ brand }};
-        }
-        .doc__logo {
-            width: 72px;
-            height: 72px;
-            margin: 0 auto 12px;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            background: #fff;
-        }
-        .doc__logo img { width: 100%; height: 100%; object-fit: contain; }
-        .doc__logo span { font-size: 10px; font-weight: 700; color: #94a3b8; }
-        .doc__school {
-            font-size: 1.2rem;
-            font-weight: 800;
-            color: {{ brand }};
-            letter-spacing: -0.02em;
-            text-transform: uppercase;
-        }
-        .doc__meta {
-            margin-top: 6px;
-            font-size: 0.72rem;
-            color: #64748b;
-            line-height: 1.5;
-        }
-        .doc__title {
-            margin-top: 16px;
-            padding: 10px 16px;
-            display: inline-block;
-            font-size: 0.75rem;
-            font-weight: 800;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            border-radius: 4px;
-            {% if is_in %}
-            background: #ecfdf5;
-            color: #047857;
-            border: 2px solid #6ee7b7;
-            {% else %}
-            background: #fff7ed;
-            color: #c2410c;
-            border: 2px solid #fdba74;
-            {% endif %}
-        }
-        .doc__ref {
-            margin-top: 10px;
-            font-family: ui-monospace, monospace;
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #334155;
-        }
-        .doc__statement {
-            margin: 0;
-            padding: 16px 28px;
-            font-size: 0.8125rem;
-            line-height: 1.55;
-            color: #334155;
-            background: {% if is_in %}#f0fdf4{% else %}#fffbeb{% endif %};
-            border-bottom: 1px solid #e2e8f0;
-        }
-        .doc__body { padding: 20px 28px 8px; }
-        .doc__grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px 20px;
-            margin-bottom: 16px;
-            font-size: 0.8125rem;
-        }
-        .doc__field label {
-            display: block;
-            font-size: 0.625rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #94a3b8;
-            margin-bottom: 2px;
-        }
-        .doc__field span { font-weight: 600; color: #0f172a; word-break: break-word; }
-        .doc__field--full { grid-column: 1 / -1; }
-        .items-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.8125rem;
-            margin: 8px 0 16px;
-        }
-        .items-table th {
-            text-align: left;
-            padding: 8px 6px;
-            font-size: 0.625rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #64748b;
-            border-bottom: 2px solid #e2e8f0;
-        }
-        .items-table td {
-            padding: 10px 6px;
-            border-bottom: 1px solid #f1f5f9;
-            vertical-align: top;
-        }
-        .items-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .items-table .item-name { font-weight: 700; }
-        .items-table .item-sub { font-size: 0.7rem; color: #64748b; margin-top: 2px; }
-        .total-box {
-            text-align: right;
-            padding: 12px 14px;
-            margin-bottom: 16px;
-            border-radius: 6px;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-        }
-        .total-box__label {
-            font-size: 0.625rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #64748b;
-        }
-        .total-box__value {
-            font-size: 1.35rem;
-            font-weight: 800;
-            color: {{ brand }};
-            margin-top: 2px;
-        }
-        .pay-status {
-            display: inline-block;
-            font-size: 0.65rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            padding: 3px 8px;
-            border-radius: 999px;
-            margin-top: 6px;
-        }
-        .pay-status--pending { background: #fef3c7; color: #b45309; }
-        .pay-status--partial { background: #eff6ff; color: #1d4ed8; }
-        .pay-status--paid { background: #ecfdf5; color: #047857; }
-        .pay-status--na { background: #f1f5f9; color: #64748b; }
-        .signatures {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            margin: 24px 0 8px;
-            padding-top: 16px;
-            border-top: 1px dashed #cbd5e1;
-        }
-        .sig label {
-            display: block;
-            font-size: 0.625rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #64748b;
-            margin-bottom: 28px;
-        }
-        .sig .line {
-            border-bottom: 1px solid #334155;
-            margin-bottom: 6px;
-        }
-        .sig .hint { font-size: 0.65rem; color: #94a3b8; }
-        .doc__footer {
-            padding: 14px 28px 20px;
-            text-align: center;
-            font-size: 0.65rem;
-            color: #94a3b8;
-            border-top: 1px dashed #e2e8f0;
-            background: #fafafa;
-        }
-        .actions {
-            margin-bottom: 20px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            justify-content: center;
-        }
-        .actions button, .actions a {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 0.875rem;
-            font-weight: 600;
-            text-decoration: none;
-            border: none;
-            cursor: pointer;
-        }
-        .btn-print { background: {{ brand }}; color: #fff; }
-        .btn-back { background: #fff; color: #475569; border: 1px solid #e2e8f0; }
-        @media print {
-            body { background: #fff; padding: 0; }
-            .actions { display: none !important; }
-            .doc { box-shadow: none; border: none; max-width: 100%; border-radius: 0; }
-        }
-    </style>
+    {{ sd_page_head(('Goods received' if is_in else 'Stock issue') ~ ' — ' ~ movement.reference_number) }}
 </head>
-<body>
-    <div class="wrap">
-        <div class="actions no-print">
-            <button type="button" class="btn-print" onclick="window.print()">
-                <i class="fas fa-print"></i>
-                {% if is_in %}Print goods received note{% else %}Print stock issue note{% endif %}
-            </button>
-            <a href="{{ employee_dash_url('store-stock/audits') }}" class="btn-back">
-                <i class="fas fa-arrow-left"></i> Back to audits
-            </a>
-        </div>
+<body class="sd-doc-page" style="--brand-primary: {{ school_settings.primary_color or '#166534' }}; --brand-secondary: {{ school_settings.secondary_color or '#22c55e' }};">
+    <div class="sd-doc-wrap">
+        {{ sd_actions(
+            'Print goods received note' if is_in else 'Print stock issue note',
+            employee_dash_url('store-stock/audits'),
+            'Back to audits'
+        ) }}
 
-        <div class="doc">
-            <div class="doc__head">
-                <div class="doc__logo">
-                    {% if school_settings.school_logo %}
-                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="">
-                    {% else %}
-                    <span>LOGO</span>
-                    {% endif %}
+        {{ sd_header(
+            'Official store document',
+            'Goods Received Note' if is_in else 'Stock Issue Note',
+            '',
+            'Reference',
+            movement.reference_number
+        ) }}
+
+        {% if is_in %}
+        <p class="sd-doc-lead">
+            This document certifies that the goods described below have been <strong>received into the school store</strong>
+            on behalf of <strong>{{ school_settings.school_name or 'the school' }}</strong> and entered into inventory records.
+        </p>
+        {% else %}
+        <p class="sd-doc-lead sd-doc-lead--warn">
+            This document certifies that the goods described below have been <strong>issued from the school store</strong>
+            from the inventory of <strong>{{ school_settings.school_name or 'the school' }}</strong>.
+        </p>
+        {% endif %}
+
+        <div class="ar-rc-meta-panel">
+            <div class="ar-rc-meta-grid">
+                <div class="ar-rc-meta-item">
+                    <span class="ar-rc-meta-label">Date &amp; time</span>
+                    <span class="ar-rc-meta-value">{% if not is_in and movement.stock_out_date_display %}{{ movement.stock_out_date_display }}{% elif movement.created_at and movement.created_at.strftime %}{{ movement.created_at.strftime('%d %b %Y, %H:%M') }}{% elif movement.created_at %}{{ movement.created_at }}{% else %}—{% endif %}</span>
                 </div>
-                <div class="doc__school">{{ school_settings.school_name or 'School' }}</div>
-                <div class="doc__meta">
-                    {% if school_settings.school_location %}{{ school_settings.school_location }}{% endif %}
-                    {% if school_settings.school_phone %}<br>Tel: {{ school_settings.school_phone }}{% endif %}
-                    {% if school_settings.school_email %}<br>{{ school_settings.school_email }}{% endif %}
+                <div class="ar-rc-meta-item">
+                    <span class="ar-rc-meta-label">Recorded by</span>
+                    <span class="ar-rc-meta-value">{{ movement.performed_by_name or '—' }}</span>
                 </div>
-                <div class="doc__title">
-                    {% if is_in %}Goods received note{% else %}Stock issue note{% endif %}
-                </div>
-                <div class="doc__ref">{{ movement.reference_number }}</div>
-            </div>
-
-            {% if is_in %}
-            <p class="doc__statement">
-                This document certifies that the goods described below have been <strong>received into the school store</strong>
-                on behalf of <strong>{{ school_settings.school_name or 'the school' }}</strong> and entered into inventory records.
-            </p>
-            {% else %}
-            <p class="doc__statement">
-                This document certifies that the goods described below have been <strong>issued from the school store</strong>
-                from the inventory of <strong>{{ school_settings.school_name or 'the school' }}</strong>.
-            </p>
-            {% endif %}
-
-            <div class="doc__body">
-                <div class="doc__grid">
-                    <div class="doc__field">
-                        <label>Date &amp; time</label>
-                        <span>{% if movement.created_at and movement.created_at.strftime %}{{ movement.created_at.strftime('%d %b %Y, %H:%M') }}{% elif movement.created_at %}{{ movement.created_at }}{% else %}—{% endif %}</span>
-                    </div>
-                    <div class="doc__field">
-                        <label>Recorded by</label>
-                        <span>{{ movement.performed_by_name or '—' }}</span>
-                    </div>
-                    {% if is_in and movement.supplier_name %}
-                    <div class="doc__field doc__field--full">
-                        <label>Supplier</label>
-                        <span>{{ movement.supplier_name }}{% if movement.supplier_phone %} · {{ movement.supplier_phone }}{% endif %}</span>
-                    </div>
-                    {% endif %}
-                    {% if not is_in and movement.stock_out_purpose %}
-                    <div class="doc__field doc__field--full">
-                        <label>Purpose of issue</label>
-                        <span>{{ movement.stock_out_purpose }}</span>
-                    </div>
-                    {% endif %}
-                </div>
-
-                <table class="items-table">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th class="num">Qty</th>
-                            <th>Unit</th>
-                            {% if is_in %}<th class="num">Unit price</th>{% endif %}
-                            {% if is_in %}<th class="num">Line total</th>{% endif %}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>
-                                <div class="item-name">{{ movement.item_name }}</div>
-                                <div class="item-sub">Ref: {{ movement.item_ref }} · {{ movement.item_category }}</div>
-                            </td>
-                            <td class="num">{{ movement.quantity }}</td>
-                            <td>{{ movement.measure }}</td>
-                            {% if is_in %}
-                            <td class="num">{% if movement.buying_price is not none %}KES {{ '%.2f'|format(movement.buying_price) }}{% else %}—{% endif %}</td>
-                            <td class="num">{% if movement.total_amount is not none %}KES {{ '%.2f'|format(movement.total_amount) }}{% else %}—{% endif %}</td>
-                            {% endif %}
-                        </tr>
-                    </tbody>
-                </table>
-
-                <div class="doc__grid">
-                    <div class="doc__field">
-                        <label>Stock before</label>
-                        <span>{{ movement.quantity_before }} {{ movement.measure }}</span>
-                    </div>
-                    <div class="doc__field">
-                        <label>Stock after</label>
-                        <span>{{ movement.quantity_after }} {{ movement.measure }}</span>
-                    </div>
-                    {% if movement.delivery_note %}
-                    <div class="doc__field doc__field--full">
-                        <label>Delivery note</label>
-                        <span>{{ movement.delivery_note }}</span>
-                    </div>
-                    {% endif %}
-                    {% if movement.notes %}
-                    <div class="doc__field doc__field--full">
-                        <label>Notes</label>
-                        <span>{{ movement.notes }}</span>
-                    </div>
-                    {% endif %}
-                </div>
-
-                {% if is_in and movement.total_amount is not none %}
-                <div class="total-box">
-                    <div class="total-box__label">Invoice total</div>
-                    <div class="total-box__value">KES {{ '%.2f'|format(movement.total_amount) }}</div>
-                    {% set ps = (movement.payment_status or '')|lower %}
-                    <span class="pay-status pay-status--{{ ps if ps in ('pending','partial','paid','na') else 'pending' }}">
-                        Payment: {{ movement.payment_status or 'pending' }}
-                    </span>
-                    {% if movement.amount_paid is not none and movement.amount_paid|float > 0 %}
-                    <div style="font-size:0.75rem;color:#64748b;margin-top:6px;">
-                        Amount paid: KES {{ '%.2f'|format(movement.amount_paid) }}
-                    </div>
-                    {% endif %}
+                {% if is_in and movement.supplier_name %}
+                <div class="ar-rc-meta-item ar-rc-meta-item--full">
+                    <span class="ar-rc-meta-label">Supplier</span>
+                    <span class="ar-rc-meta-value">{{ movement.supplier_name }}{% if movement.supplier_phone %} · {{ movement.supplier_phone }}{% endif %}</span>
                 </div>
                 {% endif %}
-
-                <div class="signatures">
-                    {% if is_in %}
-                    <div class="sig">
-                        <label>Received by (school store)</label>
-                        <div class="line"></div>
-                        <div class="hint">Name &amp; signature · Date</div>
-                        {% if movement.performed_by_name %}
-                        <div class="hint" style="margin-top:8px;font-weight:600;color:#475569;">Recorded: {{ movement.performed_by_name }}</div>
-                        {% endif %}
-                    </div>
-                    <div class="sig">
-                        <label>Delivered by (supplier)</label>
-                        <div class="line"></div>
-                        <div class="hint">Name &amp; signature · Date</div>
-                    </div>
-                    {% else %}
-                    <div class="sig">
-                        <label>Issued by (store)</label>
-                        <div class="line"></div>
-                        <div class="hint">Name &amp; signature · Date</div>
-                        {% if movement.performed_by_name %}
-                        <div class="hint" style="margin-top:8px;font-weight:600;color:#475569;">Recorded: {{ movement.performed_by_name }}</div>
-                        {% endif %}
-                    </div>
-                    <div class="sig">
-                        <label>Received by</label>
-                        <div class="line"></div>
-                        <div class="hint">Name &amp; signature · Date</div>
-                    </div>
-                    {% endif %}
+                {% if not is_in and movement.stock_out_purpose %}
+                <div class="ar-rc-meta-item ar-rc-meta-item--full">
+                    <span class="ar-rc-meta-label">Purpose of issue</span>
+                    <span class="ar-rc-meta-value">{{ movement.stock_out_purpose }}</span>
                 </div>
-            </div>
-
-            <div class="doc__footer">
-                Official store document · {{ movement.reference_number }}
+                {% endif %}
+                {% if not is_in and movement.stock_out_department %}
+                <div class="ar-rc-meta-item">
+                    <span class="ar-rc-meta-label">Department</span>
+                    <span class="ar-rc-meta-value">{{ movement.stock_out_department }}</span>
+                </div>
+                {% endif %}
+                {% if not is_in and movement.stock_out_receiver_name %}
+                <div class="ar-rc-meta-item">
+                    <span class="ar-rc-meta-label">Receiver</span>
+                    <span class="ar-rc-meta-value">{{ movement.stock_out_receiver_name }}</span>
+                </div>
+                {% endif %}
+                <div class="ar-rc-meta-item">
+                    <span class="ar-rc-meta-label">Stock before</span>
+                    <span class="ar-rc-meta-value">{{ movement.quantity_before }} {{ movement.measure }}</span>
+                </div>
+                <div class="ar-rc-meta-item">
+                    <span class="ar-rc-meta-label">Stock after</span>
+                    <span class="ar-rc-meta-value">{{ movement.quantity_after }} {{ movement.measure }}</span>
+                </div>
+                {% if movement.delivery_note %}
+                <div class="ar-rc-meta-item ar-rc-meta-item--full">
+                    <span class="ar-rc-meta-label">Delivery note</span>
+                    <span class="ar-rc-meta-value">{{ movement.delivery_note }}</span>
+                </div>
+                {% endif %}
+                {% if movement.notes %}
+                <div class="ar-rc-meta-item ar-rc-meta-item--full">
+                    <span class="ar-rc-meta-label">Notes</span>
+                    <span class="ar-rc-meta-value">{{ movement.notes }}</span>
+                </div>
+                {% endif %}
             </div>
         </div>
+
+        <div class="ar-rc-table-scroll">
+            <table class="ar-rc-table">
+                <thead>
+                    <tr>
+                        <th class="ar-rc-th-left">Item</th>
+                        <th>Qty</th>
+                        <th>Unit</th>
+                        {% if is_in %}<th>Unit price</th>{% endif %}
+                        {% if is_in %}<th>Line total</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="ar-rc-td-subj">
+                            {{ movement.item_name }}
+                            <span class="ar-rc-td-sub">Ref: {{ movement.item_ref }} · {{ movement.item_category }}</span>
+                        </td>
+                        <td class="ar-rc-td-num">{{ movement.quantity }}</td>
+                        <td class="ar-rc-td-center">{{ movement.measure }}</td>
+                        {% if is_in %}
+                        <td class="ar-rc-td-num">{% if movement.buying_price is not none %}KES {{ '%.2f'|format(movement.buying_price) }}{% else %}—{% endif %}</td>
+                        <td class="ar-rc-td-num">{% if movement.total_amount is not none %}KES {{ '%.2f'|format(movement.total_amount) }}{% else %}—{% endif %}</td>
+                        {% endif %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        {% if is_in and movement.total_amount is not none %}
+        <div class="sd-total-panel">
+            <div class="sd-total-box">
+                <div class="sd-total-label">Invoice total</div>
+                <div class="sd-total-value">KES {{ '%.2f'|format(movement.total_amount) }}</div>
+                {% set ps = (movement.payment_status or '')|lower %}
+                <span class="sd-pay-badge sd-pay-badge--{{ ps if ps in ('pending','partial','paid','na') else 'pending' }}">
+                    Payment: {{ movement.payment_status or 'pending' }}
+                </span>
+                {% if movement.amount_paid is not none and movement.amount_paid|float > 0 %}
+                <p style="margin:0.35rem 0 0;font-size:0.75rem;color:#64748b;">
+                    Amount paid: KES {{ '%.2f'|format(movement.amount_paid) }}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="ar-rc-signatures">
+            {% if is_in %}
+            <div class="ar-rc-sig-block">
+                <p class="ar-rc-sig-title">Received by (school store)</p>
+                <div class="sd-sig-line"></div>
+                {{ sd_sig_field('Full name') }}
+                {{ sd_sig_field('Date', true) }}
+                {% if movement.performed_by_name %}
+                <p style="margin:0.35rem 0 0;font-size:0.68rem;color:#64748b;">Recorded: {{ movement.performed_by_name }}</p>
+                {% endif %}
+            </div>
+            <div class="ar-rc-sig-block">
+                <p class="ar-rc-sig-title">Delivered by (supplier)</p>
+                <div class="sd-sig-line"></div>
+                {{ sd_sig_field('Full name') }}
+                {{ sd_sig_field('Date', true) }}
+            </div>
+            {% else %}
+            <div class="ar-rc-sig-block">
+                <p class="ar-rc-sig-title">Issued by (store)</p>
+                <div class="sd-sig-line"></div>
+                {{ sd_sig_field('Full name') }}
+                {{ sd_sig_field('Date', true) }}
+                {% if movement.performed_by_name %}
+                <p style="margin:0.35rem 0 0;font-size:0.68rem;color:#64748b;">Recorded: {{ movement.performed_by_name }}</p>
+                {% endif %}
+            </div>
+            <div class="ar-rc-sig-block">
+                <p class="ar-rc-sig-title">Received by</p>
+                <div class="sd-sig-line"></div>
+                {{ sd_sig_field('Full name', false, movement.stock_out_receiver_name if not is_in else '') }}
+                {{ sd_sig_field('Date', true) }}
+            </div>
+            {% endif %}
+        </div>
+
+        {{ sd_footer('Official store document · ' ~ movement.reference_number) }}
     </div>
     <script>
         if (window.location.search.indexOf('auto=1') !== -1) {

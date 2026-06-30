@@ -13,20 +13,17 @@
 {% endblock %}
 
 {% block content %}
+{% include 'dashboards/includes/store_analytics_period_filter_script.html' %}
 <script>
 document.addEventListener('alpine:init', function () {
   Alpine.data('storeStockAnalyticsPage', function () {
-    return {
+    return Object.assign({}, storeAnalyticsPeriodFilterMixin(), {
       analyticsApiUrl: {{ employee_dash_url('store-stock/analytics/data')|tojson }},
       itemAnalyticsBase: {{ employee_dash_url('store-inventory')|tojson }},
       printUrlBase: {{ employee_dash_url('store-stock/print')|tojson }},
+      grnPrintUrlBase: {{ employee_dash_url('store-stock/grn-print')|tojson }},
       loading: true,
-      viewTab: 'visual',
-      period: 'all',
-      filterDate: '',
-      rangeFrom: '',
-      rangeTo: '',
-      periodLabel: 'All time',
+      viewTab: 'raw',
       summary: {},
       purposes: [],
       items: [],
@@ -36,17 +33,7 @@ document.addEventListener('alpine:init', function () {
       charts: {},
       _chartTimer: null,
       init: function () {
-        var today = new Date();
-        var y = today.getFullYear();
-        var m = String(today.getMonth() + 1).padStart(2, '0');
-        var d = String(today.getDate()).padStart(2, '0');
-        this.filterDate = y + '-' + m + '-' + d;
-        this.rangeFrom = y + '-' + m + '-01';
-        this.rangeTo = y + '-' + m + '-' + d;
-        this.fetchAnalytics();
-      },
-      setPeriod: function (mode) {
-        this.period = mode;
+        this.initPeriodFilters();
         this.fetchAnalytics();
       },
       setViewTab: function (tab) {
@@ -59,16 +46,7 @@ document.addEventListener('alpine:init', function () {
       },
       buildQuery: function () {
         var p = new URLSearchParams();
-        p.set('period', this.period || 'all');
-        if (this.period === 'day' || this.period === 'month') {
-          if (this.filterDate) p.set('date', this.filterDate);
-        } else if (this.period === 'year') {
-          var y = (this.filterDate || '').slice(0, 4);
-          if (y) p.set('date', y);
-        } else if (this.period === 'range') {
-          if (this.rangeFrom) p.set('from', this.rangeFrom);
-          if (this.rangeTo) p.set('to', this.rangeTo);
-        }
+        this.appendPeriodQuery(p);
         return p.toString();
       },
       fetchAnalytics: function () {
@@ -340,20 +318,19 @@ document.addEventListener('alpine:init', function () {
         var n = parseFloat(v);
         return Number.isFinite(n) ? ('KES ' + n.toFixed(2)) : '—';
       },
-      paymentBadgeClass: function (status) {
-        var s = (status || '').toLowerCase();
-        if (s === 'paid') return 'ss-pay-badge--paid';
-        if (s === 'partial') return 'ss-pay-badge--partial';
-        if (s === 'pending') return 'ss-pay-badge--pending';
-        return '';
-      },
       printUrl: function (id) {
         return this.printUrlBase + '/' + id;
+      },
+      grnPrintUrl: function (id) {
+        return this.grnPrintUrlBase + '/' + id;
+      },
+      isStockIn: function (m) {
+        return String((m && m.movement_type) || '').toLowerCase() === 'in';
       },
       itemAnalyticsUrl: function (id) {
         return this.itemAnalyticsBase + '/' + id + '/analytics';
       },
-    };
+    });
   });
 });
 </script>
@@ -389,7 +366,7 @@ document.addEventListener('alpine:init', function () {
             <div class="si-panel-head">
                 <div class="min-w-0">
                     <h2 class="si-title">Usage period</h2>
-                    <p class="si-subtitle si-normal">Filter analytics by day, month, year, or custom range — updates live.</p>
+                    <p class="si-subtitle si-normal">Choose a period type, then pick the date from the calendar.</p>
                     <span class="sinv-results-badge mt-2">
                         <i class="fas fa-calendar-days"></i>
                         <span x-text="periodLabel"></span>
@@ -397,49 +374,9 @@ document.addEventListener('alpine:init', function () {
                 </div>
             </div>
             <div class="si-panel-body sinv-analytics-filters si-normal">
-                <div class="sinv-period-tabs">
-                    <button type="button" @click="setPeriod('all')" class="sinv-period-tab" :class="period === 'all' ? 'is-active' : ''">All time</button>
-                    <button type="button" @click="setPeriod('day')" class="sinv-period-tab" :class="period === 'day' ? 'is-active' : ''">Day</button>
-                    <button type="button" @click="setPeriod('month')" class="sinv-period-tab" :class="period === 'month' ? 'is-active' : ''">Month</button>
-                    <button type="button" @click="setPeriod('year')" class="sinv-period-tab" :class="period === 'year' ? 'is-active' : ''">Year</button>
-                    <button type="button" @click="setPeriod('range')" class="sinv-period-tab" :class="period === 'range' ? 'is-active' : ''">Period</button>
-                </div>
-                <div class="sinv-period-inputs mt-3">
-                    <template x-if="period === 'day'">
-                        <div>
-                            <label class="si-label">Select day</label>
-                            <input type="date" x-model="filterDate" @change="onFilterChange()" class="si-input sinv-date-input" />
-                        </div>
-                    </template>
-                    <template x-if="period === 'month'">
-                        <div>
-                            <label class="si-label">Select month</label>
-                            <input type="month" x-model="filterDate" @change="onFilterChange()" class="si-input sinv-date-input" />
-                        </div>
-                    </template>
-                    <template x-if="period === 'year'">
-                        <div>
-                            <label class="si-label">Select year</label>
-                            <input type="number" min="2000" max="2100" step="1"
-                                   :value="(filterDate || '').slice(0, 4)"
-                                   @input="filterDate = ($event.target.value || '') + '-01-01'; onFilterChange()"
-                                   class="si-input sinv-date-input" />
-                        </div>
-                    </template>
-                    <template x-if="period === 'range'">
-                        <div class="sinv-range-grid">
-                            <div>
-                                <label class="si-label">From</label>
-                                <input type="date" x-model="rangeFrom" @change="onFilterChange()" class="si-input sinv-date-input" />
-                            </div>
-                            <div>
-                                <label class="si-label">To</label>
-                                <input type="date" x-model="rangeTo" @change="onFilterChange()" class="si-input sinv-date-input" />
-                            </div>
-                        </div>
-                    </template>
-                </div>
-                <p x-show="loading" class="mt-2 text-xs text-[var(--si-muted)]"><i class="fas fa-circle-notch fa-spin mr-1"></i> Updating…</p>
+                {% include 'dashboards/includes/store_analytics_period_filters.html' %}
+
+                <p x-show="loading" class="mt-3 text-xs text-[var(--si-muted)]"><i class="fas fa-circle-notch fa-spin mr-1"></i> Updating…</p>
             </div>
         </section>
 
@@ -460,7 +397,7 @@ document.addEventListener('alpine:init', function () {
                     <button type="button" role="tab" @click="setViewTab('raw')"
                             class="sinv-view-tab" :class="viewTab === 'raw' ? 'is-active' : ''"
                             :aria-selected="viewTab === 'raw'">
-                        <i class="fas fa-table"></i> Raw data
+                        <i class="fas fa-table"></i> Transactions
                     </button>
                 </div>
 
@@ -589,100 +526,129 @@ document.addEventListener('alpine:init', function () {
                     </div>
                 </div>
 
-                <div x-show="viewTab === 'raw'" x-cloak>
-                    <div x-show="!loading && movements.length === 0" class="si-empty py-8">
-                        <p class="si-normal text-sm">No movements in this period.</p>
+                <div x-show="viewTab === 'raw'" x-cloak class="si-normal">
+                    {% include 'dashboards/includes/store_analytics_visual_cta.html' %}
+                    <div class="sinv-transactions-scroll">
+                        <p class="sinv-transactions-scroll__text">Full transaction records with print actions are in the section below.</p>
+                        <button type="button" class="sinv-transactions-scroll__btn"
+                                @click="document.getElementById('ssa-movement-records').scrollIntoView({ behavior: 'smooth' })">
+                            <i class="fas fa-arrow-down" aria-hidden="true"></i>
+                            Go to transaction records
+                        </button>
                     </div>
-                    <div x-show="movements.length > 0" class="sinv-list-table">
-                        <div class="si-table-wrap ss-audit-table-wrap">
-                            <table class="si-table ss-table--audit sinv-analytics-table">
-                                <thead>
-                                    <tr>
-                                        <th>Date &amp; time</th>
-                                        <th>Reference</th>
-                                        <th>Item</th>
-                                        <th>Expense category</th>
-                                        <th class="text-right">Qty</th>
-                                        <th>Measure</th>
-                                        <th class="text-right">Before</th>
-                                        <th class="text-right">After</th>
-                                        <th class="text-right">Unit price</th>
-                                        <th class="text-right">Total</th>
-                                        <th>Payment</th>
-                                        <th>Supplier / purpose</th>
-                                        <th>Recorded by</th>
-                                        <th>Delivery note</th>
-                                        <th>Notes</th>
-                                        <th class="text-center">Print</th>
+                </div>
+            </div>
+        </section>
+
+        <section id="ssa-movement-records" class="si-panel mt-5">
+            <div class="si-panel-head">
+                <div class="min-w-0">
+                    <h2 class="si-title">Transaction records</h2>
+                    <p class="si-subtitle si-normal">All stock movements for <span x-text="periodLabel"></span>. Print a goods received note (GRN) for each stock-in.</p>
+                </div>
+            </div>
+            <div class="si-panel-body">
+                <div x-show="loading" class="si-empty py-8 si-normal text-sm text-[var(--si-muted)]">
+                    <i class="fas fa-circle-notch fa-spin mr-1"></i> Loading movements…
+                </div>
+                <div x-show="!loading && movements.length === 0" class="si-empty py-8">
+                    <p class="si-normal text-sm">No movements in this period.</p>
+                </div>
+                <div x-show="!loading && movements.length > 0" class="sinv-list-table">
+                    <div class="si-table-wrap ss-audit-table-wrap">
+                        <table class="si-table ss-table--audit sinv-analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Date &amp; reference</th>
+                                    <th>Item</th>
+                                    <th>Expense category</th>
+                                    <th class="text-right">Qty</th>
+                                    <th>Measure</th>
+                                    <th class="text-right">Before</th>
+                                    <th class="text-right">After</th>
+                                    <th class="text-right">Unit price</th>
+                                    <th>Supplier / purpose</th>
+                                    <th>Recorded by</th>
+                                    <th>Delivery note</th>
+                                    <th>Notes</th>
+                                    <th class="text-center ss-actions-col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="m in movements" :key="m.id">
+                                    <tr :class="isStockIn(m) ? 'ss-row--in' : 'ss-row--out'">
+                                        <td class="whitespace-nowrap">
+                                            <span class="text-[0.6875rem] si-normal block" x-text="m.created_at_display"></span>
+                                            <span class="ss-type-badge mt-1" :class="isStockIn(m) ? 'ss-type-badge--in' : 'ss-type-badge--out'">
+                                                <i class="fas" :class="isStockIn(m) ? 'fa-arrow-down' : 'fa-arrow-up'"></i>
+                                                <span x-text="isStockIn(m) ? 'In' : 'Out'"></span>
+                                            </span>
+                                            <span class="si-ref block mt-1" x-text="m.reference_number"></span>
+                                        </td>
+                                        <td>
+                                            <a :href="itemAnalyticsUrl(m.store_item_id)" class="font-semibold block hover:text-[var(--sinv-accent)]" x-text="m.item_name"></a>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)]" x-text="m.item_ref"></span>
+                                        </td>
+                                        <td class="max-w-[9rem] truncate" x-text="m.item_category || '—'"></td>
+                                        <td class="text-right tabular-nums font-semibold" x-text="m.quantity"></td>
+                                        <td x-text="m.measure"></td>
+                                        <td class="text-right tabular-nums text-[var(--si-muted)]" x-text="m.quantity_before"></td>
+                                        <td class="text-right tabular-nums font-medium" x-text="m.quantity_after"></td>
+                                        <td class="text-right tabular-nums whitespace-nowrap">
+                                            <span x-show="isStockIn(m)" x-text="formatKes(m.buying_price_display)"></span>
+                                            <span x-show="!isStockIn(m)" class="text-[var(--si-muted)]">—</span>
+                                        </td>
+                                        <td class="max-w-[10rem]">
+                                            <template x-if="isStockIn(m)">
+                                                <div class="truncate" :title="m.supplier_name || ''">
+                                                    <span class="block truncate" x-text="m.supplier_name || '—'"></span>
+                                                </div>
+                                            </template>
+                                            <template x-if="!isStockIn(m)">
+                                                <span class="block truncate" :title="m.stock_out_purpose || ''" x-text="m.stock_out_purpose || '—'"></span>
+                                            </template>
+                                        </td>
+                                        <td class="max-w-[8rem] truncate si-normal" x-text="m.performed_by_name || '—'"></td>
+                                        <td class="max-w-[10rem] truncate si-normal">
+                                            <span x-show="isStockIn(m)" :title="m.delivery_note || ''" x-text="m.delivery_note || '—'"></span>
+                                            <span x-show="!isStockIn(m)" class="text-[var(--si-muted)]">—</span>
+                                        </td>
+                                        <td class="max-w-[10rem] truncate si-normal" x-text="m.notes || '—'"></td>
+                                        <td class="text-center whitespace-nowrap ss-actions-col">
+                                            <div class="ss-audit-print-actions">
+                                                <template x-if="isStockIn(m)">
+                                                    <span class="inline-flex items-center gap-1">
+                                                        <a :href="grnPrintUrl(m.id)" target="_blank" rel="noopener"
+                                                           class="ss-audit-print-btn ss-audit-print-btn--grn"
+                                                           title="Print goods received note">
+                                                            <i class="fas fa-file-signature" aria-hidden="true"></i>
+                                                            <span>GRN</span>
+                                                        </a>
+                                                        <a :href="printUrl(m.id)" target="_blank" rel="noopener"
+                                                           class="ss-audit-print-btn"
+                                                           title="Print stock-in receipt">
+                                                            <i class="fas fa-print" aria-hidden="true"></i>
+                                                        </a>
+                                                    </span>
+                                                </template>
+                                                <template x-if="!isStockIn(m)">
+                                                    <a :href="printUrl(m.id)" target="_blank" rel="noopener"
+                                                       class="ss-audit-print-btn ss-audit-print-btn--grn"
+                                                       title="Print stock-out receipt">
+                                                        <i class="fas fa-print" aria-hidden="true"></i>
+                                                        <span>Print</span>
+                                                    </a>
+                                                </template>
+                                            </div>
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    <template x-for="m in movements" :key="m.id">
-                                        <tr :class="m.movement_type === 'in' ? 'ss-row--in' : 'ss-row--out'">
-                                            <td class="whitespace-nowrap text-[0.6875rem] si-normal" x-text="m.created_at_display"></td>
-                                            <td class="whitespace-nowrap">
-                                                <span class="ss-type-badge" :class="m.movement_type === 'in' ? 'ss-type-badge--in' : 'ss-type-badge--out'">
-                                                    <i class="fas" :class="m.movement_type === 'in' ? 'fa-arrow-down' : 'fa-arrow-up'"></i>
-                                                    <span x-text="m.movement_type === 'in' ? 'In' : 'Out'"></span>
-                                                </span>
-                                                <span class="si-ref block mt-1" x-text="m.reference_number"></span>
-                                            </td>
-                                            <td>
-                                                <a :href="itemAnalyticsUrl(m.store_item_id)" class="font-semibold block hover:text-[var(--sinv-accent)]" x-text="m.item_name"></a>
-                                                <span class="text-[0.625rem] text-[var(--si-muted)]" x-text="m.item_ref"></span>
-                                            </td>
-                                            <td class="max-w-[9rem] truncate" x-text="m.item_category || '—'"></td>
-                                            <td class="text-right tabular-nums font-semibold" x-text="m.quantity"></td>
-                                            <td x-text="m.measure"></td>
-                                            <td class="text-right tabular-nums text-[var(--si-muted)]" x-text="m.quantity_before"></td>
-                                            <td class="text-right tabular-nums font-medium" x-text="m.quantity_after"></td>
-                                            <td class="text-right tabular-nums whitespace-nowrap">
-                                                <span x-show="m.movement_type === 'in'" x-text="formatKes(m.buying_price_display)"></span>
-                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
-                                            </td>
-                                            <td class="text-right tabular-nums font-semibold whitespace-nowrap">
-                                                <span x-show="m.movement_type === 'in'" x-text="formatKes(m.total_amount_display)"></span>
-                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
-                                            </td>
-                                            <td>
-                                                <template x-if="m.movement_type === 'in'">
-                                                    <div>
-                                                        <span class="ss-pay-badge" :class="paymentBadgeClass(m.payment_status)" x-text="m.payment_status || '—'"></span>
-                                                        <span class="block text-[0.625rem] text-[var(--si-muted)] mt-0.5 tabular-nums si-normal"
-                                                              x-show="m.amount_paid_display && m.amount_paid_display !== '—'"
-                                                              x-text="'Paid: KES ' + m.amount_paid_display"></span>
-                                                    </div>
-                                                </template>
-                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
-                                            </td>
-                                            <td class="max-w-[10rem]">
-                                                <template x-if="m.movement_type === 'in'">
-                                                    <div class="truncate" :title="m.supplier_name || ''">
-                                                        <span class="block truncate" x-text="m.supplier_name || '—'"></span>
-                                                    </div>
-                                                </template>
-                                                <template x-if="m.movement_type === 'out'">
-                                                    <span class="block truncate" :title="m.stock_out_purpose || ''" x-text="m.stock_out_purpose || '—'"></span>
-                                                </template>
-                                            </td>
-                                            <td class="max-w-[8rem] truncate si-normal" x-text="m.performed_by_name || '—'"></td>
-                                            <td class="max-w-[10rem] truncate si-normal">
-                                                <span x-show="m.movement_type === 'in'" :title="m.delivery_note || ''" x-text="m.delivery_note || '—'"></span>
-                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
-                                            </td>
-                                            <td class="max-w-[10rem] truncate si-normal" x-text="m.notes || '—'"></td>
-                                            <td class="text-center">
-                                                <a :href="printUrl(m.id)" target="_blank" rel="noopener" class="si-btn si-btn--icon" title="Print receipt"><i class="fas fa-print"></i></a>
-                                            </td>
-                                        </tr>
-                                    </template>
-                                </tbody>
-                            </table>
-                        </div>
-                        <p class="mt-3 text-xs text-[var(--si-muted)] si-normal">
-                            Showing <span x-text="movements.length"></span> record(s) in selected period (most recent first, max 500).
-                        </p>
+                                </template>
+                            </tbody>
+                        </table>
                     </div>
+                    <p class="mt-3 text-xs text-[var(--si-muted)] si-normal">
+                        Showing <span x-text="movements.length"></span> record(s) in selected period (most recent first, max 500).
+                    </p>
                 </div>
             </div>
         </section>

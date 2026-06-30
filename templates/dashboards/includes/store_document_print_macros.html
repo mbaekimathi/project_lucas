@@ -1,0 +1,447 @@
+{# Shared academic-report-style shell for store / LPO print pages #}
+
+{% macro sd_page_head(page_title) %}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ page_title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/store-document-print.css') }}">
+{% endmacro %}
+
+{% macro sd_school_contact() %}
+{%- set addr = school_settings.school_address or school_settings.address or school_settings.school_location or '' -%}
+{%- set phone = school_settings.phone or school_settings.phone_number or school_settings.school_phone or '' -%}
+{%- set email = school_settings.email or school_settings.school_email or '' -%}
+{%- if addr -%}{{ addr }}{% endif -%}
+{%- if phone -%}{% if addr %} · {% endif %}Tel: {{ phone }}{% endif -%}
+{%- if email -%}{% if addr or phone %} · {% endif %}{{ email }}{% endif -%}
+{% endmacro %}
+
+{% macro sd_actions(print_label, back_url, back_label='Back') %}
+<div class="sd-doc-actions no-print">
+    <button type="button" class="sd-doc-btn-print" onclick="window.print()">
+        <i class="fas fa-print"></i> {{ print_label }}
+    </button>
+    <a href="{{ back_url }}" class="sd-doc-btn-back">
+        <i class="fas fa-arrow-left"></i> {{ back_label }}
+    </a>
+</div>
+{% endmacro %}
+
+{% macro sd_header(kicker, doc_title, doc_ref='', badge_label='', badge_value='') %}
+<article class="ar-rc">
+    <div class="ar-rc-deco ar-rc-deco--tr"></div>
+    <div class="ar-rc-inner">
+        <header class="ar-rc-header">
+            <div class="ar-rc-header-band">
+                <div class="ar-rc-deco ar-rc-deco--tr"></div>
+                <div class="ar-rc-header-band-inner">
+                    <div class="ar-rc-header-main">
+                        <div class="ar-rc-logo-wrap">
+                            {% if school_settings.school_logo %}
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="School logo" class="ar-rc-logo">
+                            {% else %}
+                            <span class="text-[10px] font-semibold text-slate-400 tracking-wide">LOGO</span>
+                            {% endif %}
+                        </div>
+                        <div class="ar-rc-title-block">
+                            <p class="ar-rc-kicker">{{ kicker }}</p>
+                            <h1 class="ar-rc-school-name">{{ school_settings.school_name or 'School' }}</h1>
+                            <p class="ar-rc-school-contact">{{ sd_school_contact() }}</p>
+                        </div>
+                    </div>
+                    {% if badge_label and badge_value %}
+                    <div class="ar-rc-badge">
+                        <p class="ar-rc-badge-label">{{ badge_label }}</p>
+                        <p class="ar-rc-badge-value">{{ badge_value }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="ar-rc-doc-title-row">
+                <div class="ar-rc-doc-title-accent" aria-hidden="true"></div>
+                <h2 class="ar-rc-title">{{ doc_title }}</h2>
+            </div>
+        </header>
+        {% if doc_ref %}
+        <p style="margin:0 0 1rem;font-family:ui-monospace,monospace;font-size:0.875rem;font-weight:700;color:#475569;">Ref: {{ doc_ref }}</p>
+        {% endif %}
+{% endmacro %}
+
+{% macro sd_footer(text) %}
+        <div class="sd-doc-footer">{{ text }}</div>
+    </div>
+</article>
+{% endmacro %}
+
+{% macro sd_sig_field(label, short=false, value='') %}
+<div class="sd-sig-field{% if short %} sd-sig-field--short{% endif %}">
+    <label>{{ label }}</label>
+    <div class="sd-sig-line{% if short %} sd-sig-line--short{% endif %}{% if value %} sd-sig-line--filled{% endif %}">{% if value %}<span>{{ value }}</span>{% endif %}</div>
+</div>
+{% endmacro %}
+
+{% macro sd_signoff_panel_start(title='', hint='') %}
+<section class="sd-signoff">
+    {% if title %}
+    <header class="sd-signoff__header">
+        <h3 class="sd-signoff__title">{{ title }}</h3>
+        {% if hint %}<p class="sd-signoff__hint">{{ hint }}</p>{% endif %}
+    </header>
+    {% endif %}
+{% endmacro %}
+
+{% macro sd_signoff_panel_end() %}
+</section>
+{% endmacro %}
+
+{% macro sd_signoff_grid_start(columns=2) %}
+<div class="sd-signoff__grid sd-signoff__grid--{{ columns }}">
+{% endmacro %}
+
+{% macro sd_signoff_grid_end() %}
+</div>
+{% endmacro %}
+
+{% macro sd_signoff_card_start(title, role='', subtitle='') %}
+<article class="sd-signoff__card">
+    <header class="sd-signoff__card-head">
+        <span class="sd-signoff__card-accent" aria-hidden="true"></span>
+        <div class="sd-signoff__card-head-text">
+            <h4 class="sd-signoff__card-title">{{ title }}</h4>
+            {% if role %}<p class="sd-signoff__card-role">{{ role }}</p>{% endif %}
+            {% if subtitle %}<p class="sd-signoff__card-sub">{{ subtitle }}</p>{% endif %}
+        </div>
+    </header>
+    <div class="sd-signoff__card-body">
+{% endmacro %}
+
+{% macro sd_signoff_card_end() %}
+    </div>
+</article>
+{% endmacro %}
+
+{% macro sd_signoff_signature(image_src='') %}
+<div class="sd-signoff__signature">
+    <label>Signature</label>
+    {% if image_src %}
+    <div class="sd-signoff__signature-pad sd-signoff__signature-pad--has-img">
+        <img src="{{ image_src }}" alt="Signature" class="sd-signoff__signature-img">
+    </div>
+    {% else %}
+    <div class="sd-signoff__signature-pad"></div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro sd_witness_row(number, role_label='Witness') %}
+<div class="sd-sig-row sd-sig-row--witness">
+    <span class="sd-sig-row__label">{{ role_label }} {{ number }}</span>
+    {{ sd_sig_field('Full name') }}
+    {{ sd_sig_field('Designation') }}
+    {{ sd_sig_field('Signature') }}
+    {{ sd_sig_field('Date', true) }}
+</div>
+{% endmacro %}
+
+{% macro sd_witness_table(count=3, role_label='Witness', flat=false) %}
+<div class="sd-signoff__witness-wrap{% if flat %} sd-signoff__witness-wrap--flat{% endif %}">
+    <table class="sd-signoff__witness-table">
+        <thead>
+            <tr>
+                <th class="sd-signoff__witness-th-role"></th>
+                <th>Full name</th>
+                <th class="sd-signoff__witness-th-designation">Designation</th>
+                <th>Signature</th>
+                <th class="sd-signoff__witness-th-date">Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for n in range(1, count + 1) %}
+            <tr>
+                <td class="sd-signoff__witness-role">{{ role_label }} {{ n }}</td>
+                <td><div class="sd-signoff__write-cell"></div></td>
+                <td><div class="sd-signoff__write-cell"></div></td>
+                <td><div class="sd-signoff__write-cell sd-signoff__write-cell--sig"></div></td>
+                <td><div class="sd-signoff__write-cell sd-signoff__write-cell--date"></div></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+
+{% macro sd_compact_witness_table(count=3, role_label='Certified by') %}
+<table class="sd-sig-table sd-sig-table--witness">
+    <thead>
+        <tr>
+            <th class="sd-sig-table__th-role">Role</th>
+            <th>Full name</th>
+            <th class="sd-sig-table__th-designation">Designation</th>
+            <th>Signature</th>
+            <th class="sd-sig-table__th-date">Date</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for n in range(1, count + 1) %}
+        <tr>
+            <td class="sd-sig-table__role">{{ role_label }} {{ n }}</td>
+            <td><div class="sd-sig-line"></div></td>
+            <td><div class="sd-sig-line"></div></td>
+            <td><div class="sd-sig-line sd-sig-line--sig"></div></td>
+            <td><div class="sd-sig-line sd-sig-line--short"></div></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endmacro %}
+
+{% macro sd_compact_sig_block_start(title='', hint='') %}
+<section class="sd-sig-section sd-sig-section--flat">
+    {% if title %}<h3 class="sd-sig-section__title">{{ title }}</h3>{% endif %}
+    {% if hint %}<p class="sd-sig-section__hint">{{ hint }}</p>{% endif %}
+{% endmacro %}
+
+{% macro sd_compact_sig_block_end() %}
+</section>
+{% endmacro %}
+
+{% macro sd_compact_sig_section_start(title='', hint='') %}
+<section class="sd-sig-section sd-sig-section--flat">
+    {% if title %}<h3 class="sd-sig-section__title">{{ title }}</h3>{% endif %}
+    {% if hint %}<p class="sd-sig-section__hint">{{ hint }}</p>{% endif %}
+    <table class="sd-sig-table">
+        <thead>
+            <tr>
+                <th class="sd-sig-table__th-role">Role</th>
+                <th>Full name</th>
+                <th>Signature</th>
+                <th class="sd-sig-table__th-date">Date</th>
+            </tr>
+        </thead>
+        <tbody>
+{% endmacro %}
+
+{% macro sd_compact_sig_section_end() %}
+        </tbody>
+    </table>
+</section>
+{% endmacro %}
+
+{% macro sd_compact_sig_row(role, sub='', name_prefill='', date_prefill='', sig_image='') %}
+<tr>
+    <td class="sd-sig-table__role">
+        {{ role }}
+        {% if sub %}<span class="sd-sig-table__sub">{{ sub }}</span>{% endif %}
+    </td>
+    <td>
+        <div class="sd-sig-line{% if name_prefill %} sd-sig-line--filled{% endif %}">
+            {% if name_prefill %}<span>{{ name_prefill }}</span>{% endif %}
+        </div>
+    </td>
+    <td>
+        {% if sig_image %}
+        <div class="sd-sig-line sd-sig-line--sig sd-sig-line--img">
+            <img src="{{ sig_image }}" alt="Signature" class="sd-sig-img sd-sig-img--inline">
+        </div>
+        {% else %}
+        <div class="sd-sig-line sd-sig-line--sig"></div>
+        {% endif %}
+    </td>
+    <td>
+        <div class="sd-sig-line sd-sig-line--short{% if date_prefill %} sd-sig-line--filled{% endif %}">
+            {% if date_prefill %}<span>{{ date_prefill }}</span>{% endif %}
+        </div>
+    </td>
+</tr>
+{% endmacro %}
+
+{% macro sd_party_signatures(title, prefill='') %}
+<div class="sd-sig-parties-block">
+    <h3 class="sd-sig-section__title">{{ title }}</h3>
+    {% if prefill %}
+    <p class="sd-sig-section__hint">{{ prefill }}</p>
+    {% endif %}
+    {{ sd_sig_field('Signature') }}
+    {{ sd_sig_field('Full name') }}
+    {{ sd_sig_field('Date', true) }}
+</div>
+{% endmacro %}
+
+{% macro sd_compact_receive_items_start(title='Items received', hint='') %}
+<section class="sd-receive-items sd-receive-items--doc">
+    {% if title %}<h3 class="sd-grn-items__title">{{ title }}</h3>{% endif %}
+    {% if hint %}<p class="sd-sig-section__hint">{{ hint }}</p>{% endif %}
+    <table class="sd-doc-table sd-doc-table--receive">
+        <thead>
+            <tr>
+                <th class="sd-doc-table__th-check" title="Item verified">✓</th>
+                <th class="sd-doc-table__th-no">#</th>
+                <th class="sd-doc-table__th-item">Stock item</th>
+                <th>Unit</th>
+                <th>Qty ordered</th>
+                <th>Qty delivered</th>
+                <th>Unit price</th>
+            </tr>
+        </thead>
+        <tbody>
+{% endmacro %}
+
+{% macro sd_compact_receive_items_row(no, name, ref='', measure='', qty_ordered='', unit_price='—') %}
+<tr>
+    <td class="ar-rc-td-center"><span class="sd-check-box" aria-hidden="true"></span></td>
+    <td class="ar-rc-td-center sd-receive-items__no">{{ no }}</td>
+    <td class="ar-rc-td-subj">
+        {{ name }}
+        {% if ref %}<span class="ar-rc-td-sub">Ref: {{ ref }}</span>{% endif %}
+    </td>
+    <td class="ar-rc-td-center">{{ measure or '—' }}</td>
+    <td class="ar-rc-td-center sd-receive-items__qty-ordered">{{ qty_ordered }}</td>
+    <td class="ar-rc-td-center"><div class="sd-qty-line" aria-label="Write quantity delivered"></div></td>
+    <td class="ar-rc-td-num">{{ unit_price }}</td>
+</tr>
+{% endmacro %}
+
+{% macro sd_compact_receive_items_end(remarks=true) %}
+        </tbody>
+    </table>
+    {% if remarks %}
+    <div class="sd-doc-remarks">
+        <span class="sd-doc-remarks__label">Remarks (shortages, damages, substitutions)</span>
+        <span class="sd-doc-remarks__line"></span>
+    </div>
+    {% endif %}
+</section>
+{% endmacro %}
+
+{% macro sd_receive_items_start(title='Items received', hint='', flat=false) %}
+{% if flat %}
+<section class="sd-receive-items sd-receive-items--flat">
+    {% if title %}<h3 class="sd-grn-items__title">{{ title }}</h3>{% endif %}
+    {% if hint %}<p class="sd-sig-section__hint">{{ hint }}</p>{% endif %}
+    <table class="ar-rc-table sd-receive-items__table">
+{% else %}
+<section class="sd-receive-items">
+    <header class="sd-receive-items__header">
+        <h3 class="sd-receive-items__title">{{ title }}</h3>
+        {% if hint %}
+        <p class="sd-receive-items__hint">{{ hint }}</p>
+        {% endif %}
+    </header>
+    <div class="sd-receive-items__table-wrap">
+        <table class="ar-rc-table sd-receive-items__table">
+{% endif %}
+            <thead>
+                <tr>
+                    <th class="sd-receive-items__th-check" title="Item verified">✓</th>
+                    <th class="sd-receive-items__th-no">#</th>
+                    <th class="ar-rc-th-left">Stock item</th>
+                    <th>Unit</th>
+                    <th>Qty ordered</th>
+                    <th class="sd-receive-items__th-write">Qty delivered</th>
+                    <th>Unit price</th>
+                </tr>
+            </thead>
+            <tbody>
+{% endmacro %}
+
+{% macro sd_receive_items_row(no, name, ref='', measure='', qty_ordered='', unit_price='—') %}
+<tr>
+    <td class="ar-rc-td-center"><span class="sd-check-box" aria-hidden="true"></span></td>
+    <td class="ar-rc-td-center sd-receive-items__no">{{ no }}</td>
+    <td class="ar-rc-td-subj">
+        {{ name }}
+        {% if ref %}<span class="ar-rc-td-sub">Ref: {{ ref }}</span>{% endif %}
+    </td>
+    <td class="ar-rc-td-center">{{ measure or '—' }}</td>
+    <td class="ar-rc-td-center sd-receive-items__qty-ordered">{{ qty_ordered }}</td>
+    <td class="sd-receive-items__qty-cell"><div class="sd-qty-write-box" aria-label="Write quantity delivered"></div></td>
+    <td class="ar-rc-td-num">{{ unit_price }}</td>
+</tr>
+{% endmacro %}
+
+{% macro sd_receive_items_end(remarks=true, flat=false) %}
+            </tbody>
+        </table>
+{% if not flat %}
+    </div>
+{% endif %}
+    {% if remarks %}
+    <div class="sd-receive-items__remarks">
+        <label>Remarks (shortages, damages, substitutions)</label>
+        <div class="sd-receive-items__remarks-line"></div>
+    </div>
+    {% endif %}
+</section>
+{% endmacro %}
+
+{% macro sd_grn_items_start(title='Items received', lpo_mode=false) %}
+<section class="sd-grn-items">
+    <h3 class="sd-grn-items__title">{{ title }}</h3>
+    <div class="sd-grn-list{% if lpo_mode %} sd-grn-list--lpo{% endif %}">
+        <div class="sd-grn-list__head" aria-hidden="true">
+            <span class="sd-grn-list__cell sd-grn-list__cell--check">✓</span>
+            <span class="sd-grn-list__cell sd-grn-list__cell--no">#</span>
+            <span class="sd-grn-list__cell sd-grn-list__cell--item">Stock item</span>
+            {% if lpo_mode %}
+            <span class="sd-grn-list__cell sd-grn-list__cell--qty">Ordered</span>
+            <span class="sd-grn-list__cell sd-grn-list__cell--unit">Unit</span>
+            <span class="sd-grn-list__cell sd-grn-list__cell--qty">Received</span>
+            {% else %}
+            <span class="sd-grn-list__cell sd-grn-list__cell--qty">Qty</span>
+            <span class="sd-grn-list__cell sd-grn-list__cell--unit">Unit</span>
+            {% endif %}
+            <span class="sd-grn-list__cell sd-grn-list__cell--money">Price</span>
+            <span class="sd-grn-list__cell sd-grn-list__cell--money">Total</span>
+        </div>
+        <div class="sd-grn-list__body">
+{% endmacro %}
+
+{% macro sd_grn_items_end(total_label, total_value) %}
+        </div>
+    </div>
+    <div class="sd-grn-items__total">
+        <span class="sd-grn-items__total-label">{{ total_label }}</span>
+        <span class="sd-grn-items__total-value">{{ total_value }}</span>
+    </div>
+</section>
+{% endmacro %}
+
+{% macro sd_grn_item_card(
+    no,
+    name,
+    ref='',
+    category='',
+    measure='',
+    unit_price='—',
+    line_total='—',
+    qty_received='',
+    qty_received_blank=false,
+    qty_ordered=''
+) %}
+<div class="sd-grn-list__row">
+    <span class="sd-grn-list__cell sd-grn-list__cell--check"><span class="sd-check-box"></span></span>
+    <span class="sd-grn-list__cell sd-grn-list__cell--no">{{ no }}</span>
+    <span class="sd-grn-list__cell sd-grn-list__cell--item">
+        <strong class="sd-grn-list__name">{{ name }}</strong>
+        {% if ref or category %}
+        <span class="sd-grn-list__sub">Ref: {{ ref or '—' }}{% if category %} · {{ category }}{% endif %}</span>
+        {% endif %}
+    </span>
+    {% if qty_ordered %}
+    <span class="sd-grn-list__cell sd-grn-list__cell--qty">{{ qty_ordered }}</span>
+    <span class="sd-grn-list__cell sd-grn-list__cell--unit">{{ measure or '—' }}</span>
+    <span class="sd-grn-list__cell sd-grn-list__cell--qty">
+        {% if qty_received_blank %}<span class="sd-blank-inline">&nbsp;</span>{% else %}{{ qty_received or '—' }}{% endif %}
+    </span>
+    {% else %}
+    <span class="sd-grn-list__cell sd-grn-list__cell--qty">{{ qty_received or '—' }}</span>
+    <span class="sd-grn-list__cell sd-grn-list__cell--unit">{{ measure or '—' }}</span>
+    {% endif %}
+    <span class="sd-grn-list__cell sd-grn-list__cell--money">{{ unit_price }}</span>
+    <span class="sd-grn-list__cell sd-grn-list__cell--money sd-grn-list__cell--total">{{ line_total }}</span>
+</div>
+{% endmacro %}

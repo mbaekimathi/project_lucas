@@ -33,13 +33,26 @@ document.addEventListener('alpine:init', function () {
       supplierLookupTimer: null,
       notes: '',
       deliveryNote: '',
+      invoiceNumber: '',
+      receiptNumber: {{ next_stock_in_ref|tojson }},
+      nextStockInRef: {{ next_stock_in_ref|tojson }},
+      nextStockOutRef: {{ next_stock_out_ref|tojson }},
       stockOutPurpose: '',
       stockOutPurposes: {{ stock_out_purposes|tojson }},
+      stockOutDate: {{ today.isoformat()|tojson }},
+      defaultStockOutDate: {{ today.isoformat()|tojson }},
+      stockOutDepartment: '',
+      stockOutReceiverName: '',
+      departmentStations: {{ department_stations|tojson }},
       supplierLookupUrl: {{ employee_dash_url('store-stock/supplier-lookup')|tojson }},
       stockPostUrl: {{ employee_dash_url('store-stock')|tojson }},
       itemAnalyticsBase: {{ employee_dash_url('store-inventory')|tojson }},
       preselectItemId: {{ preselect_item_id|tojson }},
       itemPickerSearch: '',
+      itemSearch: '',
+      showItemDropdown: false,
+      itemSearchMessage: '',
+      itemDropdownStyle: '',
       init: function () {
         var el = document.getElementById('store-stock-items-json');
         try {
@@ -159,14 +172,112 @@ document.addEventListener('alpine:init', function () {
         this.buyingPrice = '';
         this.notes = '';
         this.deliveryNote = '';
+        this.invoiceNumber = '';
+        this.receiptNumber = this.stockMode === 'out' ? this.nextStockOutRef : this.nextStockInRef;
         this.stockOutPurpose = '';
+        this.stockOutDate = this.defaultStockOutDate;
+        this.stockOutDepartment = '';
+        this.stockOutReceiverName = '';
         this.itemPickerSearch = '';
+        this.itemSearch = '';
+        this.showItemDropdown = false;
+        this.itemSearchMessage = '';
+        this.itemDropdownStyle = '';
         this.resetSupplierFields();
+      },
+      syncItemSearchFromSelection: function () {
+        var item = this.selectedItem;
+        this.itemSearch = item ? (item.item_name || '') : '';
+      },
+      filteredPickerItems: function () {
+        var q = (this.itemSearch || '').trim().toLowerCase();
+        var pool = this.stockItems || [];
+        if (!q) return pool.slice(0, 15);
+        var terms = q.split(/\s+/).filter(Boolean);
+        var matched = pool.filter(function (it) {
+          var hay = [it.reference_code, it.item_name, it.item_category, it.measure, String(it.quantity_on_hand || 0)].join(' ').toLowerCase();
+          return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+        });
+        return matched.slice(0, 15);
+      },
+      onItemSearchFocus: function (inputEl) {
+        if (inputEl) this._itemSearchInput = inputEl;
+        this.showItemDropdown = true;
+        this.updateItemSearchStatus();
+        this.positionItemDropdown(inputEl);
+      },
+      onItemSearchInput: function (inputEl) {
+        if (inputEl) this._itemSearchInput = inputEl;
+        this.itemSearch = (this.itemSearch || '').toUpperCase();
+        if (this.storeItemId) {
+          var picked = this.selectedItem;
+          var pickedName = picked ? (picked.item_name || '').toUpperCase() : '';
+          if (this.itemSearch !== pickedName) this.storeItemId = '';
+        }
+        this.showItemDropdown = true;
+        this.updateItemSearchStatus();
+        this.positionItemDropdown(inputEl);
+      },
+      onItemSearchBlur: function () {
+        var self = this;
+        setTimeout(function () {
+          self.showItemDropdown = false;
+          self.itemDropdownStyle = '';
+          self.itemSearchMessage = '';
+        }, 180);
+      },
+      updateItemSearchStatus: function () {
+        var results = this.filteredPickerItems();
+        var q = (this.itemSearch || '').trim();
+        if (!q) {
+          this.itemSearchMessage = results.length
+            ? ('Type to filter · ' + results.length + ' item' + (results.length === 1 ? '' : 's'))
+            : 'No items in catalog';
+          return;
+        }
+        this.itemSearchMessage = results.length
+          ? (results.length + ' match' + (results.length === 1 ? '' : 'es'))
+          : ('No items match “' + q + '”');
+      },
+      repositionItemDropdown: function () {
+        if (this.showItemDropdown) this.positionItemDropdown(null);
+      },
+      positionItemDropdown: function (inputEl) {
+        var self = this;
+        this.$nextTick(function () {
+          var input = inputEl || self._itemSearchInput || self.$refs.stockItemSearch;
+          if (!input || typeof input.getBoundingClientRect !== 'function') return;
+          var rect = input.getBoundingClientRect();
+          var spaceBelow = window.innerHeight - rect.bottom - 8;
+          var maxH = Math.min(220, Math.max(spaceBelow, 120));
+          self.itemDropdownStyle = 'position:fixed;top:' + (rect.bottom + 4) + 'px;left:' + rect.left + 'px;width:' + rect.width + 'px;max-height:' + maxH + 'px;z-index:130;';
+        });
+      },
+      pickStockItem: function (it) {
+        this.storeItemId = String(it.id);
+        this.itemSearch = it.item_name || '';
+        this.showItemDropdown = false;
+        this.itemDropdownStyle = '';
+        this.itemSearchMessage = '';
+        if (this.stockMode === 'in') this.applyDefaultBuyingPrice();
+      },
+      clearStockItem: function () {
+        this.storeItemId = '';
+        this.itemSearch = '';
+        this.showItemDropdown = false;
+        this.itemDropdownStyle = '';
+        this.itemSearchMessage = '';
+        this.buyingPrice = '';
       },
       openMovementModal: function (mode, itemId) {
         this.stockMode = mode === 'out' ? 'out' : 'in';
         this.resetMovementFields();
         this.storeItemId = itemId ? String(itemId) : '';
+        if (this.storeItemId) {
+          this.syncItemSearchFromSelection();
+        } else {
+          this.itemSearch = '';
+        }
         if (this.stockMode === 'in') {
           this.applyDefaultBuyingPrice();
         }
@@ -203,9 +314,13 @@ document.addEventListener('alpine:init', function () {
       },
       switchMode: function (mode) {
         this.stockMode = mode === 'out' ? 'out' : 'in';
+        this.receiptNumber = this.stockMode === 'out' ? this.nextStockOutRef : this.nextStockInRef;
         this.itemPickerSearch = '';
         if (this.stockMode === 'in') {
           this.stockOutPurpose = '';
+          this.stockOutDate = this.defaultStockOutDate;
+          this.stockOutDepartment = '';
+          this.stockOutReceiverName = '';
           this.applyDefaultBuyingPrice();
         } else {
           this.resetSupplierFields();
@@ -298,6 +413,27 @@ document.addEventListener('alpine:init', function () {
           if (!this.stockOutPurpose) {
             $event.preventDefault();
             window.alert('Select the purpose of stock out.');
+            return;
+          }
+          if (!(this.stockOutDate || '').trim()) {
+            $event.preventDefault();
+            window.alert('Select the stock out date.');
+            return;
+          }
+          if (!(this.stockOutDepartment || '').trim()) {
+            $event.preventDefault();
+            window.alert('Select the department stocking out to.');
+            return;
+          }
+          if (!(this.stockOutReceiverName || '').trim()) {
+            $event.preventDefault();
+            window.alert('Enter the receiver name.');
+            return;
+          }
+          var outRef = (this.receiptNumber || '').trim().toUpperCase();
+          if (!outRef || !/^SOT-\d+$/.test(outRef)) {
+            $event.preventDefault();
+            window.alert('Enter a valid issue number like SOT-000001.');
           }
           return;
         }
@@ -321,6 +457,15 @@ document.addEventListener('alpine:init', function () {
         if (!this.supplierFound && !(this.supplierName || '').trim()) {
           $event.preventDefault();
           window.alert('Enter the supplier name for a new supplier.');
+          return;
+        }
+        var ref = (this.receiptNumber || '').trim().toUpperCase();
+        var refRx = this.stockMode === 'in' ? /^SIN-\d+$/ : /^SOT-\d+$/;
+        if (!ref || !refRx.test(ref)) {
+          $event.preventDefault();
+          window.alert(this.stockMode === 'in'
+            ? 'Enter a valid receipt number like SIN-000001.'
+            : 'Enter a valid issue number like SOT-000001.');
         }
       },
     };
@@ -333,7 +478,8 @@ document.addEventListener('alpine:init', function () {
 <div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }} si-page ss-page">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14"
          x-data="storeStockPage"
-         @keydown.escape.window="if (movementModalOpen) closeMovementModal()">
+         @keydown.escape.window="if (movementModalOpen) closeMovementModal()"
+         @resize.window="repositionItemDropdown()">
 
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -352,11 +498,19 @@ document.addEventListener('alpine:init', function () {
 
         {% if last_print_id %}
         <div id="print-success-banner" class="ss-alert ss-alert--success mb-5">
+            {% if default_mode == 'in' %}
+            <p class="font-medium"><i class="fas fa-check-circle mr-1.5"></i>Stock movement saved. You can print the goods received note.</p>
+            <a href="{{ employee_dash_url('store-stock/grn-print') }}/{{ last_print_id }}" target="_blank" rel="noopener"
+               class="si-btn ss-btn--in shrink-0">
+                <i class="fas fa-file-signature"></i> Print goods received note
+            </a>
+            {% else %}
             <p class="font-medium"><i class="fas fa-check-circle mr-1.5"></i>Stock movement saved. You can print the receipt.</p>
             <a href="{{ employee_dash_url('store-stock/print') }}/{{ last_print_id }}" target="_blank" rel="noopener"
                class="si-btn ss-btn--in shrink-0">
                 <i class="fas fa-print"></i> Print receipt
             </a>
+            {% endif %}
         </div>
         {% endif %}
 
@@ -479,195 +633,311 @@ document.addEventListener('alpine:init', function () {
 
         {# Stock in / out modal #}
         <div x-show="movementModalOpen" x-cloak
-             class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
+             class="ss-movement-modal-overlay fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
              role="dialog" aria-modal="true" :aria-labelledby="stockMode === 'in' ? 'ss-modal-in-title' : 'ss-modal-out-title'">
-            <div class="absolute inset-0 bg-gray-900/55 backdrop-blur-sm" @click="closeMovementModal()" aria-hidden="true"></div>
+            <div class="absolute inset-0 backdrop-blur-sm"
+                 :class="stockMode === 'in' ? 'bg-indigo-950/50' : 'bg-gray-900/55'"
+                 @click="closeMovementModal()" aria-hidden="true"></div>
             <div x-show="movementModalOpen" x-ref="movementModalPanel" tabindex="-1"
-                 class="relative mt-auto w-full max-h-[92vh] overflow-y-auto rounded-t-2xl border border-[var(--si-line)] bg-[var(--si-bg)] shadow-2xl sm:mt-0 sm:max-w-lg sm:rounded-2xl">
-                <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 ss-modal-head"
-                     :class="stockMode === 'in' ? 'ss-modal-head--in' : 'ss-modal-head--out'">
-                    <div class="min-w-0">
-                        <p class="ss-modal-head__eyebrow" x-text="stockMode === 'in' ? 'Receive stock' : 'Issue stock'"></p>
-                        <h2 class="ss-modal-head__title" :id="stockMode === 'in' ? 'ss-modal-in-title' : 'ss-modal-out-title'"
-                            x-text="stockMode === 'in' ? 'Stock in' : 'Stock out'"></h2>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div class="ss-mode-tabs ss-mode-tabs--compact" role="tablist">
-                            <button type="button" @click="switchMode('in')"
-                                    class="ss-mode-tab is-in" :class="stockMode === 'in' ? 'is-active' : ''">In</button>
-                            <button type="button" @click="switchMode('out')"
-                                    class="ss-mode-tab is-out" :class="stockMode === 'out' ? 'is-active' : ''">Out</button>
+                 x-transition:enter="transition ease-out duration-250"
+                 x-transition:enter-start="opacity-0 translate-y-6 sm:translate-y-4 sm:scale-[0.98]"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 class="ss-stock-form-modal ss-movement-modal relative mt-auto flex w-full max-h-[min(94dvh,94vh)] flex-col overflow-hidden rounded-t-2xl border bg-[var(--si-bg)] shadow-2xl sm:mt-0 sm:rounded-2xl"
+                 :class="stockMode === 'in' ? 'border-indigo-200/40 dark:border-indigo-500/20' : 'border-[var(--si-line)]'">
+
+                <div class="sticky top-0 z-20 shrink-0 ss-modal-head"
+                     :class="stockMode === 'in' ? 'ss-modal-head--stock-in' : 'ss-modal-head--out'">
+                    <div class="ss-modal-head__row">
+                        <div class="min-w-0 flex-1 pr-2">
+                            <p class="ss-modal-head__eyebrow" x-text="stockMode === 'in' ? 'Receive into store' : 'Issue from store'"></p>
+                            <h2 class="ss-modal-head__title" :id="stockMode === 'in' ? 'ss-modal-in-title' : 'ss-modal-out-title'"
+                                x-text="stockMode === 'in' ? 'Stock in' : 'Stock out'"></h2>
+                            <div class="ss-lpo-form-modal__meta si-normal">
+                                <span class="ss-lpo-form-modal__pill ss-lpo-form-modal__pill--serial">
+                                    <i class="fas fa-hashtag"></i>
+                                    <input type="text"
+                                           name="reference_number"
+                                           x-model="receiptNumber"
+                                           @input="receiptNumber = ($event.target.value || '').toUpperCase()"
+                                           :placeholder="stockMode === 'in' ? 'SIN-000001' : 'SOT-000001'"
+                                           maxlength="32"
+                                           required
+                                           class="ss-stock-receipt-input si-normal"
+                                           :aria-label="stockMode === 'in' ? 'Goods receipt number' : 'Stock issue number'" />
+                                </span>
+                                <span class="ss-lpo-form-modal__pill" x-show="stockMode === 'in'">
+                                    <i class="fas fa-truck-ramp-box"></i> Goods receipt
+                                </span>
+                            </div>
                         </div>
-                        <button type="button" @click="closeMovementModal()" class="ss-modal-close" aria-label="Close">
+                        <button type="button" @click="closeMovementModal()" class="ss-modal-close shrink-0" aria-label="Close">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
+                    <div class="ss-modal-head__toolbar">
+                        <div class="ss-mode-tabs ss-mode-tabs--compact ss-mode-tabs--modal" role="tablist">
+                            <button type="button" @click="switchMode('in')"
+                                    class="ss-mode-tab is-in" :class="stockMode === 'in' ? 'is-active' : ''">Stock in</button>
+                            <button type="button" @click="switchMode('out')"
+                                    class="ss-mode-tab is-out" :class="stockMode === 'out' ? 'is-active' : ''">Stock out</button>
+                        </div>
+                    </div>
                 </div>
 
-                <form method="post" :action="stockPostUrl" @submit="submitCheck($event)" class="p-4 sm:p-5 space-y-4 si-normal si-upper">
+                <form method="post" :action="stockPostUrl" @submit="submitCheck($event)" class="ss-movement-modal__form si-normal si-upper">
                     <input type="hidden" name="movement_type" :value="stockMode" />
 
-                    <template x-if="storeItemId">
-                        <input type="hidden" name="store_item_id" :value="storeItemId" />
-                    </template>
+                    <div class="ss-movement-modal__body ss-lpo-form-body ss-stock-form-body">
 
-                    <div class="ss-item-preview" x-show="selectedItem" x-cloak>
-                        <div class="ss-item-preview__block min-w-[5rem]">
-                            <p class="ss-item-preview__label">Reference</p>
-                            <p class="ss-item-preview__ref" x-text="selectedItem.reference_code"></p>
-                        </div>
-                        <div class="ss-item-preview__block flex-1 min-w-[8rem]">
-                            <p class="ss-item-preview__label">Item</p>
-                            <p class="ss-item-preview__value" x-text="selectedItem.item_name"></p>
-                        </div>
-                        <div class="ss-item-preview__block">
-                            <p class="ss-item-preview__label">Expense category</p>
-                            <p class="ss-item-preview__value" x-text="selectedItem.item_category"></p>
-                        </div>
-                        <div class="ss-item-preview__block">
-                            <p class="ss-item-preview__label">On hand</p>
-                            <p class="ss-item-preview__value">
-                                <span class="si-stock-qty" :class="stockQtyClass(selectedItem.quantity_on_hand)">
-                                    <span class="si-stock-num" x-text="selectedItem.quantity_on_hand || 0"></span>
-                                    <span class="si-stock-unit" x-text="selectedItem.measure"></span>
-                                </span>
-                            </p>
-                        </div>
-                    </div>
+                        <div class="ss-lpo-block">
+                            <div class="ss-lpo-block__title-row">
+                                <h3 class="ss-lpo-block__title mb-0">Store item</h3>
+                                <button type="button" x-show="storeItemId" x-cloak @click="clearStockItem()"
+                                        class="ss-lpo-btn-add ss-lpo-btn-add--ghost si-normal normal-case">
+                                    <i class="fas fa-exchange-alt"></i> Change
+                                </button>
+                            </div>
 
-                    <template x-if="!storeItemId">
-                        <div class="ss-picker-box">
-                            <label for="store_item_id_modal" class="si-label">Store item</label>
-                            <div class="ss-search-bar ss-picker-search si-normal" x-show="stockItems.length > 4">
-                                <div class="si-search-wrap">
-                                    <i class="fas fa-search"></i>
-                                    <input type="search"
-                                           x-model="itemPickerSearch"
-                                           @input="itemPickerSearch = ($event.target.value || '').toUpperCase()"
-                                           class="si-input si-upper"
-                                           placeholder="FILTER ITEMS…"
-                                           aria-label="Filter store items" />
+                            <template x-if="storeItemId">
+                                <input type="hidden" name="store_item_id" :value="storeItemId" />
+                            </template>
+
+                            <div class="ss-item-preview ss-item-preview--panel" x-show="storeItemId && selectedItem" x-cloak>
+                                <div class="ss-item-preview__block">
+                                    <p class="ss-item-preview__label">Reference</p>
+                                    <p class="ss-item-preview__ref" x-text="selectedItem.reference_code"></p>
                                 </div>
-                            </div>
-                            <select name="store_item_id" id="store_item_id_modal" required x-model="storeItemId"
-                                    class="si-select mt-2">
-                                <option value="">SELECT ITEM</option>
-                                <template x-for="it in filteredStockItems" :key="it.id">
-                                    <option :value="it.id" x-text="it.reference_code + ' — ' + it.item_name + ' · on hand: ' + (it.quantity_on_hand || 0)"></option>
-                                </template>
-                            </select>
-                        </div>
-                    </template>
-
-                    <div>
-                        <label for="quantity_modal" class="si-label">
-                            Quantity
-                            <span x-show="selectedItem && selectedItem.measure" class="text-[var(--si-brand)]" x-text="'(' + selectedItem.measure + ')'"></span>
-                        </label>
-                        <div class="ss-qty-wrap">
-                            <input type="number" name="quantity" id="quantity_modal" min="1" step="1" required x-model="quantity"
-                                   class="si-input tabular-nums"
-                                   :placeholder="selectedItem && selectedItem.measure ? 'QTY' : 'QTY'" />
-                            <span class="ss-qty-unit" x-text="selectedItem && selectedItem.measure ? selectedItem.measure : '—'"></span>
-                        </div>
-                    </div>
-
-                    <template x-if="stockMode === 'in'">
-                        <div class="space-y-4 pt-2 border-t border-[var(--si-line)]">
-                            <p class="ss-form-section-title"><i class="fas fa-truck-ramp-box mr-1.5 text-[var(--ss-in)]"></i> Stock in details</p>
-                            <div>
-                                <label for="buying_price_modal" class="si-label">Buying price (per unit)</label>
-                                <input type="number" name="buying_price" id="buying_price_modal" min="0" step="0.01" required
-                                       x-model="buyingPrice" class="si-input" />
-                                <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal"
-                                   x-show="selectedItem && selectedItem.avg_buying_price != null && selectedItem.avg_buying_price !== ''">
-                                    Prefilled with weighted average from previous stock in
-                                    (<span x-text="'KES ' + formatBuyingPrice(selectedItem.avg_buying_price)"></span>).
-                                    Edit if this delivery price differs.
-                                </p>
-                                <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal"
-                                   x-show="selectedItem && (selectedItem.avg_buying_price == null || selectedItem.avg_buying_price === '')">
-                                    No previous stock in price for this item — enter the buying price.
-                                </p>
-                            </div>
-                            <div class="ss-total-box">
-                                <p class="ss-total-label">Payment (pending)</p>
-                                <p class="ss-total-value">
-                                    <span x-text="computedTotal ? ('KES ' + computedTotal) : '—'"></span>
-                                </p>
-                            </div>
-                            <div class="ss-supplier-box space-y-3">
-                                <p class="ss-supplier-box__head"><i class="fas fa-building"></i> Supplier</p>
-                                <div>
-                                    <label for="supplier_phone_modal" class="si-label">Supplier contact</label>
-                                    <input type="tel" name="supplier_phone" id="supplier_phone_modal" required
-                                           x-model="supplierPhone" @input="onSupplierPhoneInput()"
-                                           placeholder="e.g. 0712 345 678" class="si-input" />
-                                    <p class="mt-1.5 text-xs"
-                                       :class="supplierLookupStatus === 'found' ? 'text-emerald-700 dark:text-emerald-400' : (supplierLookupStatus === 'new' ? 'text-amber-700 dark:text-amber-400' : 'text-[var(--si-muted)]')"
-                                       x-show="supplierLookupMessage" x-text="supplierLookupMessage"></p>
+                                <div class="ss-item-preview__block ss-item-preview__block--item">
+                                    <p class="ss-item-preview__label">Item</p>
+                                    <p class="ss-item-preview__value" x-text="selectedItem.item_name"></p>
                                 </div>
-                                <div>
-                                    <label for="supplier_name_modal" class="si-label">Supplier name</label>
-                                    <input type="text" name="supplier_name" id="supplier_name_modal" maxlength="255"
-                                           :required="!supplierFound"
-                                           :readonly="supplierFound"
-                                           x-model="supplierName"
-                                           @input="supplierName = ($event.target.value || '').toUpperCase()"
-                                           placeholder="SUPPLIER / COMPANY NAME"
-                                           class="si-input disabled:opacity-70" />
+                                <div class="ss-item-preview__block">
+                                    <p class="ss-item-preview__label">Category</p>
+                                    <p class="ss-item-preview__value" x-text="selectedItem.item_category"></p>
                                 </div>
-                            </div>
-                            <div class="ss-delivery-note-box space-y-2">
-                                <p class="ss-form-section-title text-sm mb-0">
-                                    <i class="fas fa-file-lines mr-1.5 text-[var(--ss-in)]"></i>
-                                    Delivery note <span class="font-normal normal-case text-[var(--si-muted)]">(optional)</span>
-                                </p>
-                                <div>
-                                    <label for="delivery_note_modal" class="si-label sr-only">Delivery note</label>
-                                    <input type="text" name="delivery_note" id="delivery_note_modal" maxlength="120"
-                                           x-model="deliveryNote"
-                                           @input="deliveryNote = ($event.target.value || '').toUpperCase()"
-                                           class="si-input"
-                                           placeholder="DN-12345, SUPPLIER DELIVERY REF…" />
-                                    <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal">
-                                        Reference from the supplier&apos;s delivery note or dispatch slip, if available.
+                                <div class="ss-item-preview__block">
+                                    <p class="ss-item-preview__label">On hand</p>
+                                    <p class="ss-item-preview__value">
+                                        <span class="si-stock-qty" :class="stockQtyClass(selectedItem.quantity_on_hand)">
+                                            <span class="si-stock-num" x-text="selectedItem.quantity_on_hand || 0"></span>
+                                            <span class="si-stock-unit" x-text="selectedItem.measure"></span>
+                                        </span>
                                     </p>
                                 </div>
                             </div>
-                        </div>
-                    </template>
 
-                    <template x-if="stockMode === 'out'">
-                        <div class="pt-2 border-t border-[var(--si-line)]">
-                            <p class="ss-form-section-title"><i class="fas fa-arrow-up-from-bracket mr-1.5 text-[var(--ss-out)]"></i> Stock out details</p>
-                            <label for="stock_out_purpose_modal" class="si-label">Purpose of stock out</label>
-                            <select name="stock_out_purpose" id="stock_out_purpose_modal" required x-model="stockOutPurpose" class="si-select">
-                                <option value="">SELECT PURPOSE</option>
-                                {% for p in stock_out_purposes %}
-                                <option value="{{ p }}">{{ p }}</option>
-                                {% endfor %}
-                            </select>
+                            <div x-show="!storeItemId" x-cloak>
+                                <div class="ss-lpo-line__search-wrap">
+                                    <i class="fas fa-search ss-lpo-line__search-icon" aria-hidden="true"></i>
+                                    <input type="text" required
+                                           x-ref="stockItemSearch"
+                                           x-model="itemSearch"
+                                           @input="onItemSearchInput($event.target)"
+                                           @focus="onItemSearchFocus($event.target)"
+                                           @blur="onItemSearchBlur()"
+                                           @keydown.escape.prevent="showItemDropdown = false; itemDropdownStyle = ''"
+                                           autocomplete="off"
+                                           placeholder="Type to search stock item…"
+                                           class="ss-lpo-line__search si-normal uppercase" />
+                                </div>
+                                <p class="ss-lpo-line__search-hint si-normal normal-case"
+                                   x-show="itemSearchMessage"
+                                   x-text="itemSearchMessage"></p>
+                            </div>
                         </div>
-                    </template>
 
-                    <div>
-                        <label for="notes_modal" class="si-label">Notes <span class="font-normal normal-case">(optional)</span></label>
-                        <input type="text" name="notes" id="notes_modal" maxlength="500" x-model="notes"
-                               @input="notes = ($event.target.value || '').toUpperCase()" class="si-input"
-                               :placeholder="stockMode === 'out' ? 'RECIPIENT, CLASS, DEPARTMENT…' : 'INVOICE REF, BATCH, REMARKS…'" />
+                        <div class="ss-lpo-block">
+                            <h3 class="ss-lpo-block__title">Quantity</h3>
+                            <div class="ss-lpo-fields ss-lpo-fields--2col">
+                                <div class="ss-lpo-field">
+                                    <label for="quantity_modal" class="si-label">
+                                        Amount
+                                        <span x-show="selectedItem && selectedItem.measure" class="text-[var(--si-brand)]" x-text="'(' + selectedItem.measure + ')'"></span>
+                                    </label>
+                                    <div class="ss-qty-wrap">
+                                        <input type="number" name="quantity" id="quantity_modal" min="1" step="1" inputmode="numeric" required
+                                               x-model="quantity" class="si-input si-input--compact tabular-nums si-normal" />
+                                        <span class="ss-qty-unit" x-text="selectedItem && selectedItem.measure ? selectedItem.measure : '—'"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <template x-if="stockMode === 'in'">
+                            <div class="ss-lpo-block">
+                                <h3 class="ss-lpo-block__title">Stock in details</h3>
+                                <div class="ss-lpo-fields ss-lpo-fields--2col ss-stock-in-grid--price-total">
+                                    <div class="ss-lpo-field">
+                                        <label for="buying_price_modal" class="si-label">Buying price (per unit)</label>
+                                        <input type="number" name="buying_price" id="buying_price_modal" min="0" step="0.01" inputmode="decimal" required
+                                               x-model="buyingPrice" class="si-input si-input--compact si-normal" />
+                                        <p class="ss-lpo-field-hint si-normal normal-case"
+                                           x-show="selectedItem && selectedItem.avg_buying_price != null && selectedItem.avg_buying_price !== ''">
+                                            Prefilled from weighted average (KES <span x-text="formatBuyingPrice(selectedItem.avg_buying_price)"></span>). Edit if this delivery differs.
+                                        </p>
+                                        <p class="ss-lpo-field-hint si-normal normal-case"
+                                           x-show="selectedItem && (selectedItem.avg_buying_price == null || selectedItem.avg_buying_price === '')">
+                                            No previous stock-in price — enter the buying price.
+                                        </p>
+                                    </div>
+                                    <div class="ss-total-box ss-total-box--modal">
+                                        <p class="ss-total-label">Payment (pending)</p>
+                                        <p class="ss-total-value tabular-nums">
+                                            <span x-text="computedTotal ? ('KES ' + Number(computedTotal).toLocaleString('en-KE', {minimumFractionDigits: 2})) : '—'"></span>
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="ss-lpo-block ss-lpo-block--nested">
+                                    <h3 class="ss-lpo-block__title">Supplier</h3>
+                                    <div class="ss-lpo-fields ss-lpo-fields--2col">
+                                        <div class="ss-lpo-field">
+                                            <label for="supplier_phone_modal" class="si-label">Phone</label>
+                                            <div class="ss-lpo-supplier-phone__wrap ss-lpo-supplier-phone__wrap--compact"
+                                                 :class="supplierLookupStatus ? ('ss-lpo-supplier-phone__wrap--' + supplierLookupStatus) : ''">
+                                                <span class="ss-lpo-supplier-phone__icon" aria-hidden="true">
+                                                    <i class="fas fa-phone" x-show="!supplierLookupStatus || supplierLookupStatus === 'typing'"></i>
+                                                    <i class="fas fa-spinner fa-spin" x-show="supplierLookupStatus === 'checking'" x-cloak></i>
+                                                    <i class="fas fa-circle-check" x-show="supplierLookupStatus === 'found'" x-cloak></i>
+                                                    <i class="fas fa-user-plus" x-show="supplierLookupStatus === 'new'" x-cloak></i>
+                                                    <i class="fas fa-circle-exclamation" x-show="supplierLookupStatus === 'error'" x-cloak></i>
+                                                </span>
+                                                <input type="tel" name="supplier_phone" id="supplier_phone_modal" required inputmode="tel"
+                                                       x-model="supplierPhone" @input="onSupplierPhoneInput()"
+                                                       placeholder="0712 345 678"
+                                                       class="ss-lpo-supplier-phone__input si-normal" autocomplete="tel" />
+                                            </div>
+                                            <p class="ss-lpo-field-hint si-normal normal-case"
+                                               x-show="supplierLookupMessage"
+                                               :class="'ss-lpo-field-hint--' + (supplierLookupStatus || 'default')"
+                                               x-text="supplierLookupMessage"></p>
+                                        </div>
+                                        <div class="ss-lpo-field">
+                                            <label for="supplier_name_modal" class="si-label">Name</label>
+                                            <input type="text" name="supplier_name" id="supplier_name_modal" maxlength="255"
+                                                   :required="!supplierFound"
+                                                   :readonly="supplierFound"
+                                                   x-model="supplierName"
+                                                   @input="supplierName = ($event.target.value || '').toUpperCase()"
+                                                   placeholder="SUPPLIER / COMPANY NAME"
+                                                   class="si-input si-input--compact disabled:opacity-70 si-normal" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="ss-lpo-field mt-3">
+                                    <label for="invoice_number_modal" class="si-label">Invoice number</label>
+                                    <input type="text" name="invoice_number" id="invoice_number_modal" maxlength="120"
+                                           x-model="invoiceNumber"
+                                           @input="invoiceNumber = ($event.target.value || '').toUpperCase()"
+                                           class="si-input si-input--compact si-normal"
+                                           placeholder="SUPPLIER TAX INVOICE NO…" />
+                                    <p class="ss-lpo-field-hint si-normal normal-case">Recorded on the goods received note and payments ledger.</p>
+                                </div>
+
+                                <div class="ss-lpo-field mt-3">
+                                    <label for="delivery_note_modal" class="si-label">Delivery note <span class="font-normal normal-case text-[var(--si-muted)]">(optional)</span></label>
+                                    <input type="text" name="delivery_note" id="delivery_note_modal" maxlength="120"
+                                           x-model="deliveryNote"
+                                           @input="deliveryNote = ($event.target.value || '').toUpperCase()"
+                                           class="si-input si-input--compact si-normal"
+                                           placeholder="DN-12345, SUPPLIER DISPATCH REF…" />
+                                </div>
+                            </div>
+                        </template>
+
+                        <template x-if="stockMode === 'out'">
+                            <div class="ss-lpo-block">
+                                <h3 class="ss-lpo-block__title">Stock out details</h3>
+                                <div class="ss-lpo-field">
+                                    <label for="stock_out_purpose_modal" class="si-label">Purpose</label>
+                                    <select name="stock_out_purpose" id="stock_out_purpose_modal" required x-model="stockOutPurpose"
+                                            class="si-select si-input--compact ss-modal-select si-normal">
+                                        <option value="">SELECT PURPOSE</option>
+                                        {% for p in stock_out_purposes %}
+                                        <option value="{{ p }}">{{ p }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="ss-lpo-field mt-3">
+                                    <label for="stock_out_date_modal" class="si-label">Date</label>
+                                    <input type="date" name="stock_out_date" id="stock_out_date_modal" required
+                                           x-model="stockOutDate" class="si-input si-input--compact si-normal" />
+                                </div>
+                                <div class="ss-lpo-field mt-3">
+                                    <label for="stock_out_department_modal" class="si-label">Department stocking out to</label>
+                                    <select name="stock_out_department" id="stock_out_department_modal" required
+                                            x-model="stockOutDepartment"
+                                            class="si-select si-input--compact ss-modal-select si-normal"
+                                            {% if not department_stations %}disabled{% endif %}>
+                                        <option value="">SELECT DEPARTMENT</option>
+                                        {% for st in department_stations %}
+                                        <option value="{{ st }}">{{ st }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    {% if not department_stations %}
+                                    <p class="ss-lpo-field-hint si-normal normal-case text-amber-700">
+                                        No departments registered yet. Add departments on your store dashboard first.
+                                    </p>
+                                    {% endif %}
+                                </div>
+                                <div class="ss-lpo-field mt-3">
+                                    <label for="stock_out_receiver_modal" class="si-label">Receiver name</label>
+                                    <input type="text" name="stock_out_receiver_name" id="stock_out_receiver_modal"
+                                           required maxlength="255" x-model="stockOutReceiverName"
+                                           @input="stockOutReceiverName = ($event.target.value || '').toUpperCase()"
+                                           class="si-input si-input--compact si-normal"
+                                           placeholder="NAME OF PERSON RECEIVING" />
+                                </div>
+                            </div>
+                        </template>
+
+                        <div class="ss-lpo-block">
+                            <h3 class="ss-lpo-block__title">Notes <span class="font-normal normal-case text-[var(--si-muted)]">(optional)</span></h3>
+                            <input type="text" name="notes" id="notes_modal" maxlength="500" x-model="notes"
+                                   @input="notes = ($event.target.value || '').toUpperCase()"
+                                   class="si-input si-input--compact si-normal"
+                                   :placeholder="stockMode === 'out' ? 'CLASS, REMARKS…' : 'INVOICE REF, BATCH, REMARKS…'" />
+                        </div>
                     </div>
 
-                    <div class="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t border-[var(--si-line)]">
-                        <button type="button" @click="closeMovementModal()" class="si-btn si-btn--ghost flex-1 sm:flex-none">Cancel</button>
-                        <button type="submit" :disabled="!stockItems.length"
-                                class="si-btn flex-1 sm:flex-none"
-                                :class="stockMode === 'in' ? 'ss-btn--in' : 'ss-btn--out'">
-                            <i class="fas" :class="stockMode === 'in' ? 'fa-arrow-down-to-bracket' : 'fa-arrow-up-from-bracket'"></i>
-                            <span x-text="stockMode === 'in' ? 'Confirm stock in' : 'Confirm stock out'"></span>
-                        </button>
+                    <div class="ss-movement-modal__footer"
+                         :class="stockMode === 'in' ? 'ss-lpo-form-footer ss-stock-form-footer-in' : ''">
+                        <template x-if="stockMode === 'in'">
+                            <div class="ss-lpo-form-footer__total si-normal">
+                                <span class="ss-lpo-form-footer__total-label">Payment (pending)</span>
+                                <span class="ss-lpo-form-footer__total-value tabular-nums"
+                                      x-text="computedTotal ? ('KES ' + Number(computedTotal).toLocaleString('en-KE', {minimumFractionDigits: 2})) : '—'"></span>
+                            </div>
+                        </template>
+                        <div class="ss-lpo-form-footer__actions" :class="stockMode === 'out' ? 'w-full sm:w-auto sm:ml-auto flex flex-col-reverse sm:flex-row gap-2' : ''">
+                            <button type="button" @click="closeMovementModal()" class="si-btn si-btn--ghost">Cancel</button>
+                            <button type="submit" :disabled="!stockItems.length"
+                                    class="si-btn"
+                                    :class="stockMode === 'in' ? 'ss-stock-form-submit' : 'ss-btn--out'">
+                                <i class="fas" :class="stockMode === 'in' ? 'fa-arrow-down-to-bracket' : 'fa-arrow-up-from-bracket'"></i>
+                                <span x-text="stockMode === 'in' ? 'Confirm stock in' : 'Confirm stock out'"></span>
+                            </button>
+                        </div>
                     </div>
                 </form>
+            </div>
+
+            <div x-show="movementModalOpen && showItemDropdown && !storeItemId"
+                 x-cloak
+                 :style="itemDropdownStyle"
+                 @mousedown.prevent
+                 class="ss-lpo-dropdown ss-lpo-dropdown--line ss-lpo-dropdown--fixed">
+                <template x-for="it in filteredPickerItems()" :key="it.id">
+                    <button type="button" @click="pickStockItem(it)" class="ss-lpo-dropdown__item si-normal normal-case">
+                        <span class="si-ref text-xs" x-text="it.reference_code"></span>
+                        <span class="font-semibold uppercase text-[var(--si-ink)] block" x-text="it.item_name"></span>
+                        <span class="text-xs text-[var(--si-muted)] uppercase" x-text="it.measure + ' · on hand: ' + (it.quantity_on_hand || 0)"></span>
+                    </button>
+                </template>
+                <p x-show="!filteredPickerItems().length"
+                   class="ss-lpo-dropdown__empty si-normal normal-case"
+                   x-text="'No items match “' + ((itemSearch || '').trim() || '…') + '”'"></p>
             </div>
         </div>
     </div>

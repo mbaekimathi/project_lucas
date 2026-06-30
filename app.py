@@ -21577,6 +21577,20 @@ def dashboard_employee():
                     print(f"Accountant dashboard accounts fallback: {acc_accounts_err}")
             finally:
                 acc_conn.close()
+
+    store_departments = []
+    if dashboard_content_role == 'store manager':
+        sd_conn = get_db_connection()
+        if sd_conn:
+            try:
+                with sd_conn.cursor() as cursor:
+                    ensure_store_departments_table(cursor)
+                    sd_conn.commit()
+                    store_departments = _fetch_store_departments(cursor)
+            except Exception as sd_err:
+                print(f"store manager dashboard departments: {sd_err}")
+            finally:
+                sd_conn.close()
     
     return render_template('dashboards/dashboard_employee.html', 
                          role=session.get('role', 'employee'),
@@ -21601,7 +21615,9 @@ def dashboard_employee():
                          teacher_profile=teacher_profile,
                          coordinator_dashboard=coordinator_dashboard,
                          coordinator_dashboard_name=coordinator_dashboard_name,
-                         accountant_dashboard=accountant_dashboard)
+                         accountant_dashboard=accountant_dashboard,
+                         store_departments=store_departments,
+                         store_department_categories=list(STORE_DEPARTMENT_CATEGORIES))
 
 
 EMPLOYEE_TPAD_ENDPOINTS = frozenset({
@@ -49161,7 +49177,30 @@ STORE_DEPARTMENT_STATIONS = (
 STORE_LIBRARY_DEPARTMENT_STATION = 'LIBRARY DEPARTMENT'
 LIBRARY_PENDING_ACADEMIC_CATEGORY = 'PENDING SETUP'
 
+STORE_DEFAULT_LOW_STOCK_THRESHOLD = 5
+
+STORE_DEPARTMENT_CATEGORIES = (
+    'ADMINISTRATION',
+    'FINANCE',
+    'ACADEMIC',
+    'STUDENT SERVICES',
+    'OPERATIONS',
+    'SPORTS & CO-CURRICULAR',
+    'OTHER',
+)
+
+_STORE_DEPARTMENT_SEED = (
+    ('ADMINISTRATION', 'ADMIN DEPARTMENT', None),
+    ('FINANCE', 'ACCOUNTS DEPARTMENT', None),
+    ('ACADEMIC', 'LIBRARY DEPARTMENT', None),
+    ('STUDENT SERVICES', 'STUDENTS DEPARTMENT', None),
+    ('OPERATIONS', 'KITCHEN DEPARTMENT', None),
+    ('SPORTS & CO-CURRICULAR', 'CLUBS AND SPORTS DEPARTMENT', None),
+    ('STUDENT SERVICES', 'HOSTEL DEPARTMENT', None),
+)
+
 _store_inventory_schema_ensuring = False
+_store_departments_schema_ensuring = False
 
 
 def ensure_store_inventory_items_table(cursor):
@@ -49219,8 +49258,167 @@ def migrate_store_inventory_department_station(cursor):
                 ADD COLUMN library_book_id INT NULL AFTER department_station
             """)
             print("OK: Added store_inventory_items.library_book_id")
+        cursor.execute("SHOW COLUMNS FROM store_inventory_items LIKE 'low_stock_threshold'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_inventory_items
+                ADD COLUMN low_stock_threshold INT NOT NULL DEFAULT 5 AFTER quantity_on_hand
+            """)
+            print("OK: Added store_inventory_items.low_stock_threshold")
     except Exception as e:
         print(f"migrate_store_inventory_department_station: {e}")
+
+
+def ensure_store_departments_table(cursor):
+    """School departments used as store inventory department stations."""
+    global _store_departments_schema_ensuring
+    if _store_departments_schema_ensuring:
+        return
+    _store_departments_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS store_departments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                department_category VARCHAR(80) NOT NULL,
+                department_name VARCHAR(120) NOT NULL,
+                description TEXT,
+                status ENUM('active', 'suspended') NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_store_department_name (department_name),
+                INDEX idx_store_department_category (department_category),
+                INDEX idx_store_department_status (status)
+            )
+        """)
+        cursor.execute("SELECT COUNT(*) AS c FROM store_departments")
+        row = cursor.fetchone()
+        count = int((row.get('c') if isinstance(row, dict) else row[0]) or 0)
+        if count == 0:
+            for cat, name, desc in _STORE_DEPARTMENT_SEED:
+                cursor.execute(
+                    """
+                    INSERT IGNORE INTO store_departments
+                        (department_category, department_name, description, status)
+                    VALUES (%s, %s, %s, 'active')
+                    """,
+                    (cat, name, desc),
+                )
+    except Exception as e:
+        print(f"ensure_store_departments_table: {e}")
+    finally:
+        _store_departments_schema_ensuring = False
+
+
+def _normalize_store_department_category(raw):
+    """Return normalized department category label or empty string."""
+    cat = (raw or '').strip()[:80].upper()
+    return cat
+
+
+def _fetch_store_departments(cursor, include_suspended=False, with_item_counts=False):
+    """All registered store departments (for dashboard list)."""
+    ensure_store_departments_table(cursor)
+    where = '' if include_suspended else "WHERE status = 'active'"
+    item_count_sql = ''
+    if with_item_counts:
+        ensure_store_inventory_items_table(cursor)
+        item_count_sql = """,
+            (SELECT COUNT(*) FROM store_inventory_items si
+             WHERE UPPER(TRIM(COALESCE(si.department_station, ''))) = store_departments.department_name
+            ) AS item_count"""
+    cursor.execute(
+        f"""
+        SELECT id, department_category, department_name, description, status, created_at{item_count_sql}
+        FROM store_departments
+        {where}
+        ORDER BY department_category ASC, department_name ASC, id ASC
+        """
+    )
+    out = []
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            data = {
+                'id': row.get('id'),
+                'department_category': (row.get('department_category') or '').strip(),
+                'department_name': (row.get('department_name') or '').strip(),
+                'description': (row.get('description') or '').strip() or None,
+                'status': (row.get('status') or 'active').strip(),
+                'created_at': row.get('created_at'),
+            }
+            if with_item_counts:
+                data['item_count'] = int(row.get('item_count') or 0)
+        else:
+            data = {
+                'id': row[0] if len(row) > 0 else None,
+                'department_category': (row[1] if len(row) > 1 else '') or '',
+                'department_name': (row[2] if len(row) > 2 else '') or '',
+                'description': ((row[3] if len(row) > 3 else '') or '').strip() or None,
+                'status': (row[4] if len(row) > 4 else 'active') or 'active',
+                'created_at': row[5] if len(row) > 5 else None,
+            }
+            if with_item_counts:
+                data['item_count'] = int(row[6] or 0) if len(row) > 6 else 0
+        out.append(data)
+    return out
+
+
+def _fetch_store_department_station_labels(cursor):
+    """Active department names for store item department_station pickers."""
+    return [d['department_name'] for d in _fetch_store_departments(cursor) if d.get('department_name')]
+
+
+def _load_store_department_station_options(cursor, connection=None):
+    """Ensure store_departments is ready and return active department names for pickers."""
+    ensure_store_departments_table(cursor)
+    if connection is not None:
+        connection.commit()
+    return _fetch_store_department_station_labels(cursor)
+
+
+def _fetch_store_department_station_set(cursor):
+    return frozenset(_fetch_store_department_station_labels(cursor))
+
+
+def _fetch_store_department_by_id(cursor, dept_id):
+    """Return one store department row dict, or None."""
+    return _fetch_store_department_row(cursor, dept_id, active_only=True)
+
+
+def _fetch_store_department_row(cursor, dept_id, active_only=False):
+    """Return one store department row dict (any status unless active_only)."""
+    if not dept_id:
+        return None
+    ensure_store_departments_table(cursor)
+    status_clause = " AND status = 'active'" if active_only else ''
+    cursor.execute(
+        f"""
+        SELECT id, department_category, department_name, description, status, created_at
+        FROM store_departments
+        WHERE id = %s{status_clause}
+        LIMIT 1
+        """,
+        (int(dept_id),),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return {
+            'id': row.get('id'),
+            'department_category': (row.get('department_category') or '').strip(),
+            'department_name': (row.get('department_name') or '').strip(),
+            'description': (row.get('description') or '').strip() or None,
+            'status': (row.get('status') or 'active').strip(),
+            'created_at': row.get('created_at'),
+        }
+    return {
+        'id': row[0] if len(row) > 0 else None,
+        'department_category': (row[1] if len(row) > 1 else '') or '',
+        'department_name': (row[2] if len(row) > 2 else '') or '',
+        'description': ((row[3] if len(row) > 3 else '') or '').strip() or None,
+        'status': (row[4] if len(row) > 4 else 'active') or 'active',
+        'created_at': row[5] if len(row) > 5 else None,
+    }
 
 
 _store_suppliers_schema_ensuring = False
@@ -57215,6 +57413,38 @@ def _normalize_store_supplier_phone(phone):
     return _normalize_library_supplier_phone(phone)
 
 
+def _store_lookup_supplier_by_id(cursor, supplier_id):
+    """Return a store_suppliers row dict by primary key, or None."""
+    ensure_store_suppliers_table(cursor)
+    try:
+        sid = int(supplier_id or 0)
+    except (TypeError, ValueError):
+        return None
+    if sid < 1:
+        return None
+    cursor.execute(
+        """
+        SELECT id, phone, UPPER(TRIM(company_name)) AS company_name
+        FROM store_suppliers WHERE id = %s LIMIT 1
+        """,
+        (sid,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return {
+            'id': int(row.get('id') or 0),
+            'phone': (row.get('phone') or '').strip(),
+            'company_name': (row.get('company_name') or '').strip(),
+        }
+    return {
+        'id': int(row[0] or 0),
+        'phone': (row[1] or '').strip() if len(row) > 1 else '',
+        'company_name': ((row[2] or '') if len(row) > 2 else '').strip(),
+    }
+
+
 def _store_lookup_supplier_by_phone(cursor, phone):
     ensure_store_suppliers_table(cursor)
     norm = _normalize_store_supplier_phone(phone)
@@ -57261,6 +57491,48 @@ def _store_upsert_supplier_for_stock_in(cursor, phone, company_name):
         (norm, company_clean),
     )
     return int(cursor.lastrowid), None
+
+
+def _store_resolve_supplier_for_form(cursor, supplier_id=None, phone=None, company_name=None):
+    """Resolve store_suppliers.id from an existing id and/or phone+name."""
+    ensure_store_suppliers_table(cursor)
+    if supplier_id:
+        existing = _store_lookup_supplier_by_id(cursor, supplier_id)
+        if existing:
+            return int(existing['id']), None
+    return _store_upsert_supplier_for_stock_in(cursor, phone, company_name)
+
+
+def _fetch_store_suppliers_list(cursor, limit=500):
+    """Registered store suppliers for LPO/stock pickers."""
+    ensure_store_suppliers_table(cursor)
+    results = []
+    try:
+        cursor.execute(
+            """
+            SELECT id, phone, UPPER(TRIM(company_name)) AS company_name
+            FROM store_suppliers
+            ORDER BY company_name ASC, id ASC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                results.append({
+                    'id': int(row.get('id') or 0),
+                    'phone': (row.get('phone') or '').strip(),
+                    'company_name': (row.get('company_name') or '').strip(),
+                })
+            else:
+                results.append({
+                    'id': int(row[0] or 0),
+                    'phone': (row[1] or '').strip() if len(row) > 1 else '',
+                    'company_name': ((row[2] or '') if len(row) > 2 else '').strip(),
+                })
+    except Exception as e:
+        print(f"_fetch_store_suppliers_list: {e}")
+    return results
 
 
 def _store_search_suppliers_by_name(cursor, name_query, limit=10):
@@ -57318,6 +57590,190 @@ def _generate_store_stock_reference_number(cursor, movement_type):
         if m:
             next_num = int(m.group(1)) + 1
     return f'{prefix}-{next_num:06d}'
+
+
+def _normalize_store_stock_reference(raw, movement_type):
+    """Normalize user-entered SIN-###### / SOT-###### reference."""
+    prefix = 'SIN' if movement_type == 'in' else 'SOT'
+    text = (raw or '').strip().upper()
+    if not text:
+        return None
+    m = re.match(rf'^{prefix}-(\d+)$', text)
+    if not m:
+        return None
+    return f'{prefix}-{int(m.group(1)):06d}'
+
+
+def _resolve_store_stock_reference(cursor, movement_type, requested_ref=None):
+    """Use requested reference when valid and unique, else generate the next one."""
+    ensure_store_stock_movements_table(cursor)
+    normalized = _normalize_store_stock_reference(requested_ref, movement_type)
+    if normalized:
+        cursor.execute(
+            """
+            SELECT 1 FROM store_stock_movements
+            WHERE reference_number = %s LIMIT 1
+            """,
+            (normalized,),
+        )
+        if cursor.fetchone():
+            prefix = 'SIN' if movement_type == 'in' else 'SOT'
+            return None, f'Reference {normalized} is already used. Enter a different receipt number.'
+        return normalized, None
+    if (requested_ref or '').strip():
+        prefix = 'SIN' if movement_type == 'in' else 'SOT'
+        return None, f'Receipt number must look like {prefix}-000001.'
+    return _generate_store_stock_reference_number(cursor, movement_type), None
+
+
+def _resolve_stock_in_document_refs(invoice_number_raw, delivery_note_raw, notes_raw):
+    """Map invoice + delivery note + notes for stock-in (matches LPO receive behaviour)."""
+    invoice_number = (invoice_number_raw or '').strip().upper()[:120]
+    delivery_note_input = (delivery_note_raw or '').strip().upper()[:120]
+    notes_input = (notes_raw or '').strip()
+
+    if invoice_number:
+        delivery_note = invoice_number
+    elif delivery_note_input:
+        delivery_note = delivery_note_input
+    else:
+        delivery_note = None
+
+    notes_parts = []
+    if delivery_note_input and invoice_number and delivery_note_input != invoice_number:
+        notes_parts.append(f'DN: {delivery_note_input}')
+    if notes_input:
+        notes_parts.append(notes_input.upper()[:500])
+    notes_val = '. '.join(notes_parts) if notes_parts else None
+    return delivery_note, notes_val
+
+
+def _store_record_stock_in(
+    cursor,
+    store_item_id,
+    quantity,
+    buying_price,
+    supplier_phone,
+    supplier_name,
+    delivery_note=None,
+    notes=None,
+    performed_by=None,
+    performed_by_name=None,
+    reference_number=None,
+    invoice_number=None,
+    supplier_id=None,
+):
+    """Record stock-in movement and update on-hand quantity.
+
+    Returns {'ok': True, 'movement_id', 'reference_number', 'total_amount'}
+    or {'ok': False, 'message': str}.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_inventory_items_table(cursor)
+
+    try:
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        return {'ok': False, 'message': 'Quantity must be a whole number of at least 1.'}
+
+    if quantity < 1:
+        return {'ok': False, 'message': 'Quantity must be a whole number of at least 1.'}
+
+    if isinstance(buying_price, str):
+        raw_price = (buying_price or '').strip().replace(',', '')
+        try:
+            buying_price = Decimal(raw_price).quantize(Decimal('0.01'))
+        except (InvalidOperation, ValueError):
+            buying_price = None
+    elif buying_price is not None:
+        try:
+            buying_price = Decimal(buying_price).quantize(Decimal('0.01'))
+        except (InvalidOperation, ValueError, TypeError):
+            buying_price = None
+
+    if buying_price is None or buying_price < 0:
+        return {'ok': False, 'message': 'Enter a valid buying price.'}
+
+    cursor.execute(
+        """
+        SELECT id, item_name, item_status,
+               COALESCE(quantity_on_hand, 0) AS quantity_on_hand
+        FROM store_inventory_items WHERE id = %s
+        """,
+        (int(store_item_id),),
+    )
+    item_row = cursor.fetchone()
+    if not item_row:
+        return {'ok': False, 'message': 'Store item not found.'}
+
+    if isinstance(item_row, dict):
+        item_status = (item_row.get('item_status') or '').strip()
+        qty_before = int(item_row.get('quantity_on_hand') or 0)
+    else:
+        item_status = (item_row[2] or '').strip() if len(item_row) > 2 else ''
+        qty_before = int(item_row[3] or 0) if len(item_row) > 3 else 0
+
+    if item_status != 'active':
+        return {'ok': False, 'message': 'This item is suspended. Unsuspend it before stocking.'}
+
+    if supplier_id:
+        existing = _store_lookup_supplier_by_id(cursor, supplier_id)
+        if not existing:
+            return {'ok': False, 'message': 'Selected supplier was not found.'}
+        supplier_id = int(existing['id'])
+    else:
+        supplier_id, sup_err = _store_upsert_supplier_for_stock_in(
+            cursor, supplier_phone, supplier_name,
+        )
+        if sup_err:
+            return {'ok': False, 'message': sup_err}
+
+    total_amount = (buying_price * quantity).quantize(Decimal('0.01'))
+    ref_no, ref_err = _resolve_store_stock_reference(cursor, 'in', reference_number)
+    if ref_err:
+        return {'ok': False, 'message': ref_err}
+    delivery_note_val, notes_val = _resolve_stock_in_document_refs(
+        invoice_number, delivery_note, notes,
+    )
+    if delivery_note_val:
+        delivery_note_val = delivery_note_val[:120]
+    if notes_val:
+        notes_val = notes_val[:500]
+    qty_after = qty_before + quantity
+    performed_name = (performed_by_name or '').strip() or None
+
+    cursor.execute(
+        """
+        INSERT INTO store_stock_movements
+            (reference_number, store_item_id, movement_type, quantity,
+             buying_price, total_amount, supplier_id, payment_status,
+             notes, delivery_note, quantity_before, quantity_after,
+             performed_by, performed_by_name)
+        VALUES (%s, %s, 'in', %s, %s, %s, %s, 'pending',
+                %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            ref_no, int(store_item_id), quantity, buying_price, total_amount,
+            supplier_id, notes_val, delivery_note_val, qty_before, qty_after,
+            performed_by, performed_name,
+        ),
+    )
+    movement_pk = int(cursor.lastrowid)
+    cursor.execute(
+        """
+        UPDATE store_inventory_items
+        SET quantity_on_hand = %s WHERE id = %s
+        """,
+        (qty_after, int(store_item_id)),
+    )
+    return {
+        'ok': True,
+        'movement_id': movement_pk,
+        'reference_number': ref_no,
+        'total_amount': total_amount,
+    }
 
 
 def _fetch_store_items_for_stock(cursor):
@@ -57387,6 +57843,7 @@ def _fetch_store_stock_movements_recent(cursor, limit=40):
             SELECT m.id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.notes,
                    m.delivery_note, m.stock_out_purpose,
+                   m.stock_out_date, m.stock_out_department, m.stock_out_receiver_name,
                    m.quantity_before, m.quantity_after, m.created_at,
                    si.reference_code AS item_ref, si.item_name, si.measure,
                    sup.company_name AS supplier_name, sup.phone AS supplier_phone
@@ -57411,6 +57868,9 @@ def _fetch_store_stock_movements_recent(cursor, limit=40):
                     'notes': (row.get('notes') or '').strip() or None,
                     'delivery_note': (row.get('delivery_note') or '').strip() or None,
                     'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
+                    'stock_out_date': row.get('stock_out_date'),
+                    'stock_out_department': (row.get('stock_out_department') or '').strip() or None,
+                    'stock_out_receiver_name': (row.get('stock_out_receiver_name') or '').strip() or None,
                     'quantity_before': int(row.get('quantity_before') or 0),
                     'quantity_after': int(row.get('quantity_after') or 0),
                     'created_at': row.get('created_at'),
@@ -57432,14 +57892,17 @@ def _fetch_store_stock_movements_recent(cursor, limit=40):
                     'notes': (row[7] or '').strip() or None if len(row) > 7 else None,
                     'delivery_note': (row[8] or '').strip() or None if len(row) > 8 else None,
                     'stock_out_purpose': (row[9] or '').strip() or None if len(row) > 9 else None,
-                    'quantity_before': int(row[10] or 0) if len(row) > 10 else 0,
-                    'quantity_after': int(row[11] or 0) if len(row) > 11 else 0,
-                    'created_at': row[12] if len(row) > 12 else None,
-                    'item_ref': (row[13] or '').strip() if len(row) > 13 else '',
-                    'item_name': (row[14] or '').strip() if len(row) > 14 else '',
-                    'measure': (row[15] or '').strip() if len(row) > 15 else '',
-                    'supplier_name': (row[16] or '').strip() or None if len(row) > 16 else None,
-                    'supplier_phone': (row[17] or '').strip() or None if len(row) > 17 else None,
+                    'stock_out_date': row[10] if len(row) > 10 else None,
+                    'stock_out_department': (row[11] or '').strip() or None if len(row) > 11 else None,
+                    'stock_out_receiver_name': (row[12] or '').strip() or None if len(row) > 12 else None,
+                    'quantity_before': int(row[13] or 0) if len(row) > 13 else 0,
+                    'quantity_after': int(row[14] or 0) if len(row) > 14 else 0,
+                    'created_at': row[15] if len(row) > 15 else None,
+                    'item_ref': (row[16] or '').strip() if len(row) > 16 else '',
+                    'item_name': (row[17] or '').strip() if len(row) > 17 else '',
+                    'measure': (row[18] or '').strip() if len(row) > 18 else '',
+                    'supplier_name': (row[19] or '').strip() or None if len(row) > 19 else None,
+                    'supplier_phone': (row[20] or '').strip() or None if len(row) > 20 else None,
                 })
     except Exception as e:
         print(f"_fetch_store_stock_movements_recent: {e}")
@@ -57461,6 +57924,9 @@ def _store_stock_movement_audit_row(row):
             'notes': (row.get('notes') or '').strip() or None,
             'delivery_note': (row.get('delivery_note') or '').strip() or None,
             'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
+            'stock_out_date': row.get('stock_out_date'),
+            'stock_out_department': (row.get('stock_out_department') or '').strip() or None,
+            'stock_out_receiver_name': (row.get('stock_out_receiver_name') or '').strip() or None,
             'quantity_before': int(row.get('quantity_before') or 0),
             'quantity_after': int(row.get('quantity_after') or 0),
             'created_at': row.get('created_at'),
@@ -57485,17 +57951,27 @@ def _store_stock_movement_audit_row(row):
             'notes': (row[8] or '').strip() or None if len(row) > 8 else None,
             'delivery_note': (row[9] or '').strip() or None if len(row) > 9 else None,
             'stock_out_purpose': (row[10] or '').strip() or None if len(row) > 10 else None,
-            'quantity_before': int(row[11] or 0) if len(row) > 11 else 0,
-            'quantity_after': int(row[12] or 0) if len(row) > 12 else 0,
-            'created_at': row[13] if len(row) > 13 else None,
-            'performed_by_name': (row[14] or '').strip() or None if len(row) > 14 else None,
-            'item_ref': (row[15] or '').strip() if len(row) > 15 else '',
-            'item_name': (row[16] or '').strip() if len(row) > 16 else '',
-            'item_category': (row[17] or '').strip() if len(row) > 17 else '',
-            'measure': (row[18] or '').strip() if len(row) > 18 else '',
-            'supplier_name': (row[19] or '').strip() or None if len(row) > 19 else None,
-            'supplier_phone': (row[20] or '').strip() or None if len(row) > 20 else None,
+            'stock_out_date': row[11] if len(row) > 11 else None,
+            'stock_out_department': (row[12] or '').strip() or None if len(row) > 12 else None,
+            'stock_out_receiver_name': (row[13] or '').strip() or None if len(row) > 13 else None,
+            'quantity_before': int(row[14] or 0) if len(row) > 14 else 0,
+            'quantity_after': int(row[15] or 0) if len(row) > 15 else 0,
+            'created_at': row[16] if len(row) > 16 else None,
+            'performed_by_name': (row[17] or '').strip() or None if len(row) > 17 else None,
+            'item_ref': (row[18] or '').strip() if len(row) > 18 else '',
+            'item_name': (row[19] or '').strip() if len(row) > 19 else '',
+            'item_category': (row[20] or '').strip() if len(row) > 20 else '',
+            'measure': (row[21] or '').strip() if len(row) > 21 else '',
+            'supplier_name': (row[22] or '').strip() or None if len(row) > 22 else None,
+            'supplier_phone': (row[23] or '').strip() or None if len(row) > 23 else None,
         }
+    sod = data.get('stock_out_date')
+    if sod and hasattr(sod, 'strftime'):
+        data['stock_out_date_display'] = sod.strftime('%d %b %Y')
+    elif sod:
+        data['stock_out_date_display'] = str(sod)
+    else:
+        data['stock_out_date_display'] = None
     ca = data.get('created_at')
     if ca and hasattr(ca, 'strftime'):
         data['created_at_display'] = ca.strftime('%d %b %Y, %H:%M')
@@ -57531,6 +58007,7 @@ def _fetch_store_stock_movements_audit(cursor, limit=2000):
             SELECT m.id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
                    m.notes, m.delivery_note, m.stock_out_purpose,
+                   m.stock_out_date, m.stock_out_department, m.stock_out_receiver_name,
                    m.quantity_before, m.quantity_after, m.created_at,
                    m.performed_by_name,
                    si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
@@ -57834,6 +58311,209 @@ def _aggregate_supplier_payables_by_phone(records, status_filter='all'):
 
     aggregated.sort(key=lambda r: (r['supplier_name'], r['supplier_phone']))
     return aggregated
+
+
+def _fetch_store_suppliers_overview(cursor, status_filter='all'):
+    """Registered suppliers plus stock-in payables, with balances and payment status."""
+    ensure_store_suppliers_table(cursor)
+    ensure_store_stock_movements_table(cursor)
+    status_filter = (status_filter or 'all').strip().lower()
+    if status_filter not in ('all', 'pending', 'partial', 'paid', 'outstanding', 'clear'):
+        status_filter = 'all'
+
+    registered = _fetch_store_suppliers_list(cursor, limit=5000)
+    movements = _fetch_store_stock_in_list(cursor, payment_filter='all', limit=5000)
+    payables = _aggregate_supplier_payables_by_phone(movements, status_filter='all')
+    payables_by_phone = {}
+    payables_by_key = {}
+    for payable in payables:
+        phone_norm = _normalize_store_supplier_phone(payable.get('supplier_phone') or '')
+        if phone_norm:
+            payables_by_phone[phone_norm] = payable
+        key = (payable.get('phone_key') or '').strip()
+        if key:
+            payables_by_key[key] = payable
+
+    seen_keys = set()
+    results = []
+
+    def _append_supplier_row(sup_id, phone, company_name, is_registered, payable):
+        balance = float(payable.get('balance_due') or 0) if payable else 0.0
+        if payable:
+            payment_status = payable.get('payment_status') or 'paid'
+            payment_status_label = payable.get('payment_status_label') or 'Paid'
+            invoice_count = int(payable.get('invoice_count') or 0)
+            total_invoiced = float(payable.get('total_invoiced') or 0)
+            total_paid = float(payable.get('total_paid') or 0)
+        else:
+            payment_status = 'paid'
+            payment_status_label = 'Clear'
+            invoice_count = 0
+            total_invoiced = 0.0
+            total_paid = 0.0
+        results.append({
+            'id': sup_id,
+            'phone': phone or '—',
+            'phone_key': (
+                (payable.get('phone_key') if payable else None)
+                or _normalize_store_supplier_phone(phone or '')
+                or (f"__reg_{sup_id}" if sup_id else '')
+            ),
+            'company_name': (company_name or '—').strip().upper() or '—',
+            'is_registered': bool(is_registered),
+            'payment_status': payment_status,
+            'payment_status_label': payment_status_label,
+            'balance_due': balance,
+            'balance_due_display': f'{balance:,.2f}',
+            'total_invoiced': total_invoiced,
+            'total_invoiced_display': f'{total_invoiced:,.2f}',
+            'total_paid': total_paid,
+            'total_paid_display': f'{total_paid:,.2f}',
+            'invoice_count': invoice_count,
+        })
+
+    for sup in registered:
+        phone_norm = _normalize_store_supplier_phone(sup.get('phone') or '')
+        payable = payables_by_phone.get(phone_norm)
+        seen_keys.add(phone_norm or f"__reg_{sup.get('id')}")
+        _append_supplier_row(
+            sup.get('id'),
+            sup.get('phone'),
+            sup.get('company_name'),
+            True,
+            payable,
+        )
+
+    for payable in payables:
+        phone_norm = _normalize_store_supplier_phone(payable.get('supplier_phone') or '')
+        phone_key = (payable.get('phone_key') or '').strip()
+        dedupe_key = phone_norm or phone_key
+        if not dedupe_key or dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
+        _append_supplier_row(
+            None,
+            payable.get('supplier_phone'),
+            payable.get('supplier_name'),
+            False,
+            payable,
+        )
+
+    if status_filter == 'outstanding':
+        results = [r for r in results if r['payment_status'] in ('pending', 'partial')]
+    elif status_filter == 'clear':
+        results = [r for r in results if r['payment_status'] == 'paid' and r['balance_due'] <= 0.005]
+    elif status_filter != 'all':
+        results = [r for r in results if r['payment_status'] == status_filter]
+
+    results.sort(key=lambda r: (r['company_name'], r['phone']))
+    return results
+
+
+def _fetch_store_supplier_detail_for_page(cursor, supplier_id=None, phone_key=None):
+    """Supplier profile with all stock-in supplies and payment status."""
+    ensure_store_suppliers_table(cursor)
+    ensure_store_stock_movements_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+
+    supplier_row = None
+    resolved_key = (phone_key or '').strip()
+
+    if supplier_id:
+        supplier_row = _store_lookup_supplier_by_id(cursor, supplier_id)
+        if not supplier_row:
+            return None
+        resolved_key = _normalize_store_supplier_phone(supplier_row.get('phone') or '') or resolved_key
+    elif resolved_key and not str(resolved_key).startswith('__no_phone_'):
+        phone_norm = _normalize_store_supplier_phone(resolved_key)
+        if phone_norm:
+            resolved_key = phone_norm
+            supplier_row = _store_lookup_supplier_by_phone(cursor, phone_norm)
+
+    if not resolved_key and not supplier_row:
+        return None
+    if not resolved_key and supplier_row:
+        resolved_key = _normalize_store_supplier_phone(supplier_row.get('phone') or '')
+
+    pack = _fetch_supplier_payment_statement_pack(cursor, resolved_key) if resolved_key else None
+    invoices = (pack or {}).get('invoices') or []
+    supplies = []
+    for inv in invoices:
+        supplies.append({
+            'id': inv.get('id'),
+            'reference_number': inv.get('reference_number'),
+            'delivery_note': inv.get('delivery_note'),
+            'invoice_label': _stock_in_invoice_dropdown_label(inv),
+            'item_ref': inv.get('item_ref'),
+            'item_name': inv.get('item_name'),
+            'item_category': inv.get('item_category'),
+            'measure': inv.get('measure'),
+            'quantity': inv.get('quantity'),
+            'buying_price_display': inv.get('buying_price_display'),
+            'total_amount_display': inv.get('total_amount_display'),
+            'amount_paid_display': inv.get('amount_paid_display'),
+            'balance_due_display': inv.get('balance_due_display'),
+            'payment_status': inv.get('payment_status'),
+            'payment_status_label': inv.get('payment_status_label'),
+            'created_at_display': inv.get('created_at_display'),
+            'performed_by_name': inv.get('performed_by_name'),
+        })
+
+    movements = _fetch_store_stock_in_list(cursor, payment_filter='all', limit=5000)
+    aggregated = _aggregate_supplier_payables_by_phone(movements, status_filter='all')
+    payable = next((row for row in aggregated if row.get('phone_key') == resolved_key), None)
+
+    company_name = (
+        (supplier_row.get('company_name') if supplier_row else None)
+        or (pack.get('supplier_name') if pack else None)
+        or '—'
+    )
+    phone = (
+        (supplier_row.get('phone') if supplier_row else None)
+        or (pack.get('supplier_phone') if pack else None)
+        or '—'
+    )
+    balance_due = float(payable.get('balance_due') or 0) if payable else sum(
+        float(inv.get('balance_due') or 0) for inv in invoices
+    )
+    total_invoiced = float(payable.get('total_invoiced') or 0) if payable else sum(
+        float(inv.get('total_amount') or 0) for inv in invoices
+    )
+    total_paid = float(payable.get('total_paid') or 0) if payable else sum(
+        float(inv.get('amount_paid') or 0) for inv in invoices
+    )
+
+    if payable:
+        payment_status = payable.get('payment_status') or 'paid'
+        payment_status_label = payable.get('payment_status_label') or 'Paid'
+    elif balance_due <= 0.005:
+        payment_status = 'paid'
+        payment_status_label = 'Clear'
+    elif total_paid <= 0.005:
+        payment_status = 'pending'
+        payment_status_label = 'Pending'
+    else:
+        payment_status = 'partial'
+        payment_status_label = 'Partial payment'
+
+    return {
+        'id': int(supplier_row['id']) if supplier_row and supplier_row.get('id') else None,
+        'company_name': str(company_name).strip().upper() or '—',
+        'phone': phone or '—',
+        'phone_key': resolved_key,
+        'is_registered': bool(supplier_row),
+        'invoice_count': len(supplies),
+        'payment_status': payment_status,
+        'payment_status_label': payment_status_label,
+        'balance_due': balance_due,
+        'balance_due_display': f'{balance_due:,.2f}',
+        'total_invoiced': total_invoiced,
+        'total_invoiced_display': f'{total_invoiced:,.2f}',
+        'total_paid': total_paid,
+        'total_paid_display': f'{total_paid:,.2f}',
+        'supplies': supplies,
+        'payment_lines': (pack or {}).get('payment_lines') or [],
+    }
 
 
 def _stock_in_payment_line_row_to_dict(row):
@@ -58494,6 +59174,7 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
             SELECT m.id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
                    m.notes, m.delivery_note, m.stock_out_purpose,
+                   m.stock_out_date, m.stock_out_department, m.stock_out_receiver_name,
                    m.quantity_before, m.quantity_after, m.created_at,
                    m.performed_by_name,
                    si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
@@ -58509,7 +59190,7 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
         if not row:
             return None
         if isinstance(row, dict):
-            return {
+            data = {
                 'id': int(row.get('id') or 0),
                 'reference_number': (row.get('reference_number') or '').strip(),
                 'movement_type': (row.get('movement_type') or '').strip(),
@@ -58521,6 +59202,9 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
                 'notes': (row.get('notes') or '').strip() or None,
                 'delivery_note': (row.get('delivery_note') or '').strip() or None,
                 'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
+                'stock_out_date': row.get('stock_out_date'),
+                'stock_out_department': (row.get('stock_out_department') or '').strip() or None,
+                'stock_out_receiver_name': (row.get('stock_out_receiver_name') or '').strip() or None,
                 'quantity_before': int(row.get('quantity_before') or 0),
                 'quantity_after': int(row.get('quantity_after') or 0),
                 'created_at': row.get('created_at'),
@@ -58532,32 +59216,109 @@ def _fetch_store_stock_movement_detail(cursor, movement_id):
                 'supplier_name': (row.get('supplier_name') or '').strip() or None,
                 'supplier_phone': (row.get('supplier_phone') or '').strip() or None,
             }
-        return {
-            'id': int(row[0] or 0),
-            'reference_number': (row[1] or '').strip(),
-            'movement_type': (row[2] or '').strip(),
-            'quantity': int(row[3] or 0),
-            'buying_price': row[4] if len(row) > 4 else None,
-            'total_amount': row[5] if len(row) > 5 else None,
-            'payment_status': (row[6] or '').strip() if len(row) > 6 else '',
-            'amount_paid': row[7] if len(row) > 7 else 0,
-            'notes': (row[8] or '').strip() or None if len(row) > 8 else None,
-            'delivery_note': (row[9] or '').strip() or None if len(row) > 9 else None,
-            'stock_out_purpose': (row[10] or '').strip() or None if len(row) > 10 else None,
-            'quantity_before': int(row[11] or 0) if len(row) > 11 else 0,
-            'quantity_after': int(row[12] or 0) if len(row) > 12 else 0,
-            'created_at': row[13] if len(row) > 13 else None,
-            'performed_by_name': (row[14] or '').strip() or None if len(row) > 14 else None,
-            'item_ref': (row[15] or '').strip() if len(row) > 15 else '',
-            'item_name': (row[16] or '').strip() if len(row) > 16 else '',
-            'item_category': (row[17] or '').strip() if len(row) > 17 else '',
-            'measure': (row[18] or '').strip() if len(row) > 18 else '',
-            'supplier_name': (row[19] or '').strip() or None if len(row) > 19 else None,
-            'supplier_phone': (row[20] or '').strip() or None if len(row) > 20 else None,
-        }
+        else:
+            data = {
+                'id': int(row[0] or 0),
+                'reference_number': (row[1] or '').strip(),
+                'movement_type': (row[2] or '').strip(),
+                'quantity': int(row[3] or 0),
+                'buying_price': row[4] if len(row) > 4 else None,
+                'total_amount': row[5] if len(row) > 5 else None,
+                'payment_status': (row[6] or '').strip() if len(row) > 6 else '',
+                'amount_paid': row[7] if len(row) > 7 else 0,
+                'notes': (row[8] or '').strip() or None if len(row) > 8 else None,
+                'delivery_note': (row[9] or '').strip() or None if len(row) > 9 else None,
+                'stock_out_purpose': (row[10] or '').strip() or None if len(row) > 10 else None,
+                'stock_out_date': row[11] if len(row) > 11 else None,
+                'stock_out_department': (row[12] or '').strip() or None if len(row) > 12 else None,
+                'stock_out_receiver_name': (row[13] or '').strip() or None if len(row) > 13 else None,
+                'quantity_before': int(row[14] or 0) if len(row) > 14 else 0,
+                'quantity_after': int(row[15] or 0) if len(row) > 15 else 0,
+                'created_at': row[16] if len(row) > 16 else None,
+                'performed_by_name': (row[17] or '').strip() or None if len(row) > 17 else None,
+                'item_ref': (row[18] or '').strip() if len(row) > 18 else '',
+                'item_name': (row[19] or '').strip() if len(row) > 19 else '',
+                'item_category': (row[20] or '').strip() if len(row) > 20 else '',
+                'measure': (row[21] or '').strip() if len(row) > 21 else '',
+                'supplier_name': (row[22] or '').strip() or None if len(row) > 22 else None,
+                'supplier_phone': (row[23] or '').strip() or None if len(row) > 23 else None,
+            }
+        sod = data.get('stock_out_date')
+        if sod and hasattr(sod, 'strftime'):
+            data['stock_out_date_display'] = sod.strftime('%d %b %Y')
+        elif sod:
+            data['stock_out_date_display'] = str(sod)
+        else:
+            data['stock_out_date_display'] = None
+        return data
     except Exception as e:
         print(f"_fetch_store_stock_movement_detail: {e}")
         return None
+
+
+def _grn_document_fields_from_movement(movement):
+    """Split invoice, delivery note ref, and free notes for GRN print."""
+    movement = movement or {}
+    notes = (movement.get('notes') or '').strip()
+    delivery_note = (movement.get('delivery_note') or '').strip()
+    grn_delivery = ''
+    grn_notes = notes
+    if notes.upper().startswith('DN: '):
+        parts = notes.split('. ', 1)
+        grn_delivery = parts[0][4:].strip()
+        grn_notes = parts[1].strip() if len(parts) > 1 else ''
+    return delivery_note or None, grn_delivery or None, grn_notes or None
+
+
+@app.route('/dashboard/employee/store-stock/grn-print/<int:movement_id>')
+@login_required
+def store_stock_grn_print(movement_id):
+    """Printable goods received note for a stock-in movement (physical sign-off)."""
+    from datetime import datetime
+
+    can_print = (
+        _store_inventory_effective_role() == 'store manager'
+        or _accountant_effective_role() == 'accountant'
+    )
+    if not can_print:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    movement = None
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                movement = _fetch_store_stock_movement_detail(cursor, movement_id)
+        finally:
+            connection.close()
+
+    if not movement:
+        flash('Stock record not found.', 'error')
+        return redirect(employee_dash_url('store-stock/audits'))
+    if (movement.get('movement_type') or '').strip().lower() != 'in':
+        flash('Goods received notes are only available for stock-in movements.', 'error')
+        return redirect(employee_dash_url('store-stock/audits'))
+
+    grn_invoice, grn_delivery_note, grn_notes = _grn_document_fields_from_movement(movement)
+    store_manager_name = (
+        session.get('full_name') or session.get('username') or ''
+    ).strip()
+    just_received = (request.args.get('received') or '').strip() in ('1', 'true', 'yes')
+
+    return render_template(
+        'dashboards/store_stock_grn_print.html',
+        movement=movement,
+        grn_invoice=grn_invoice,
+        grn_delivery_note=grn_delivery_note,
+        grn_notes=grn_notes,
+        store_manager_name=store_manager_name,
+        printed_at=datetime.now(),
+        just_received=just_received,
+        back_url=employee_dash_url('store-stock') if just_received else employee_dash_url('store-stock/audits'),
+        back_label='Back to stock in & out' if just_received else 'Back to audits',
+        school_settings=get_school_settings(),
+    )
 
 
 def _store_inventory_effective_role():
@@ -58754,12 +59515,152 @@ def _delete_store_item_image_file(image_path):
         print(f"_delete_store_item_image_file: {e}")
 
 
-def _normalize_store_department_station(raw):
+def _normalize_store_department_station(raw, cursor=None):
     """Return a valid department station label or empty string."""
     station = (raw or '').strip().upper()
+    if not station:
+        return ''
+    if cursor is not None:
+        if station in _fetch_store_department_station_set(cursor):
+            return station
+        return ''
     if station in STORE_DEPARTMENT_STATIONS:
         return station
     return ''
+
+
+def _register_store_department_from_request(cursor, request):
+    """
+    Register a new store department from POST form fields.
+    Caller must commit the connection on success.
+    Returns dict: ok, message.
+    """
+    department_category = _normalize_store_department_category(
+        request.form.get('department_category')
+    )
+    department_name = (request.form.get('department_name') or '').strip()[:120].upper()
+    desc_raw = (request.form.get('description') or '').strip()
+    description = desc_raw.upper() if desc_raw else None
+
+    if not department_category:
+        return {'ok': False, 'message': 'Department category is required.'}
+    if not department_name:
+        return {'ok': False, 'message': 'Department name is required.'}
+
+    ensure_store_departments_table(cursor)
+    cursor.execute(
+        "SELECT id FROM store_departments WHERE department_name = %s LIMIT 1",
+        (department_name,),
+    )
+    if cursor.fetchone():
+        return {'ok': False, 'message': 'A department with this name is already registered.'}
+
+    cursor.execute(
+        """
+        INSERT INTO store_departments
+            (department_category, department_name, description, status)
+        VALUES (%s, %s, %s, 'active')
+        """,
+        (department_category, department_name, description),
+    )
+    return {'ok': True, 'message': 'Department registered successfully.'}
+
+
+def _update_store_department_from_request(cursor, dept_id, request):
+    """Update an existing store department. Returns dict: ok, message."""
+    dept = _fetch_store_department_row(cursor, dept_id)
+    if not dept:
+        return {'ok': False, 'message': 'Department not found.'}
+
+    department_category = _normalize_store_department_category(
+        request.form.get('department_category')
+    )
+    department_name = (request.form.get('department_name') or '').strip()[:120].upper()
+    desc_raw = (request.form.get('description') or '').strip()
+    description = desc_raw.upper() if desc_raw else None
+    old_name = (dept.get('department_name') or '').strip().upper()
+
+    if not department_category:
+        return {'ok': False, 'message': 'Department category is required.'}
+    if not department_name:
+        return {'ok': False, 'message': 'Department name is required.'}
+
+    cursor.execute(
+        """
+        SELECT id FROM store_departments
+        WHERE department_name = %s AND id != %s
+        LIMIT 1
+        """,
+        (department_name, int(dept_id)),
+    )
+    if cursor.fetchone():
+        return {'ok': False, 'message': 'A department with this name is already registered.'}
+
+    cursor.execute(
+        """
+        UPDATE store_departments
+        SET department_category = %s, department_name = %s, description = %s
+        WHERE id = %s
+        """,
+        (department_category, department_name, description, int(dept_id)),
+    )
+    if old_name and department_name != old_name:
+        ensure_store_inventory_items_table(cursor)
+        cursor.execute(
+            """
+            UPDATE store_inventory_items
+            SET department_station = %s
+            WHERE UPPER(TRIM(COALESCE(department_station, ''))) = %s
+            """,
+            (department_name, old_name),
+        )
+    return {'ok': True, 'message': 'Department updated successfully.'}
+
+
+def _toggle_store_department_suspend(cursor, dept_id):
+    """Toggle store department between active and suspended."""
+    dept = _fetch_store_department_row(cursor, dept_id)
+    if not dept:
+        return {'ok': False, 'message': 'Department not found.'}
+    cursor.execute(
+        """
+        UPDATE store_departments
+        SET status = IF(status = 'suspended', 'active', 'suspended')
+        WHERE id = %s
+        """,
+        (int(dept_id),),
+    )
+    new_status = 'suspended' if (dept.get('status') or 'active') == 'active' else 'active'
+    label = 'suspended' if new_status == 'suspended' else 'reactivated'
+    return {'ok': True, 'message': f'Department {label} successfully.'}
+
+
+def _delete_store_department(cursor, dept_id):
+    """Delete a store department when no catalog items are linked."""
+    dept = _fetch_store_department_row(cursor, dept_id)
+    if not dept:
+        return {'ok': False, 'message': 'Department not found.'}
+    dept_name = (dept.get('department_name') or '').strip().upper()
+    ensure_store_inventory_items_table(cursor)
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS c FROM store_inventory_items
+        WHERE UPPER(TRIM(COALESCE(department_station, ''))) = %s
+        """,
+        (dept_name,),
+    )
+    row = cursor.fetchone()
+    count = int((row.get('c') if isinstance(row, dict) else row[0]) or 0)
+    if count > 0:
+        return {
+            'ok': False,
+            'message': (
+                f'Cannot delete this department — {count} catalog item'
+                f'{"s" if count != 1 else ""} still use it. Reassign or remove those items first.'
+            ),
+        }
+    cursor.execute("DELETE FROM store_departments WHERE id = %s", (int(dept_id),))
+    return {'ok': True, 'message': 'Department deleted successfully.'}
 
 
 def _store_station_is_library(station):
@@ -58915,7 +59816,9 @@ def _register_store_inventory_item_from_request(cursor, request):
     measure = (request.form.get('measure') or '').strip().upper()
     if measure not in STORE_ITEM_MEASURES:
         measure = ''
-    department_station = _normalize_store_department_station(request.form.get('department_station'))
+    department_station = _normalize_store_department_station(
+        request.form.get('department_station'), cursor=cursor
+    )
 
     if not item_category or not item_name:
         return {'ok': False, 'message': 'Expense category and item name are required.'}
@@ -58993,9 +59896,11 @@ def _fetch_store_inventory_summary(cursor):
             COALESCE(SUM(quantity_on_hand), 0) AS units_on_hand,
             SUM(CASE WHEN item_status = 'suspended' THEN 1 ELSE 0 END) AS suspended_count,
             SUM(CASE WHEN item_status != 'suspended'
-                     AND COALESCE(quantity_on_hand, 0) <= 5 THEN 1 ELSE 0 END) AS low_stock_count
+                     AND COALESCE(quantity_on_hand, 0) > 0
+                     AND COALESCE(quantity_on_hand, 0) <= COALESCE(low_stock_threshold, %s) THEN 1 ELSE 0 END) AS low_stock_count
         FROM store_inventory_items
-        """
+        """,
+        (STORE_DEFAULT_LOW_STOCK_THRESHOLD,),
     )
     row = cursor.fetchone()
     if isinstance(row, dict):
@@ -59013,7 +59918,106 @@ def _fetch_store_inventory_summary(cursor):
     }
 
 
-def _fetch_store_inventory_page(cursor, page=1, per_page=50, q=''):
+def _normalize_store_low_stock_threshold(value):
+    """Clamp per-item low stock alert threshold to a sensible whole number."""
+    try:
+        threshold = int(value)
+    except (TypeError, ValueError):
+        threshold = STORE_DEFAULT_LOW_STOCK_THRESHOLD
+    return max(1, min(threshold, 99999))
+
+
+def _store_approaching_stock_ceiling(low_stock_threshold=None):
+    """Upper quantity bound for the approaching-low band above the alert threshold."""
+    threshold = _normalize_store_low_stock_threshold(
+        low_stock_threshold if low_stock_threshold is not None else STORE_DEFAULT_LOW_STOCK_THRESHOLD
+    )
+    return threshold + max(int(threshold * 0.25), 5)
+
+
+def _store_item_stock_status(quantity_on_hand, item_status='active', low_stock_threshold=None):
+    """Derive stock health label for catalog rows."""
+    status = (item_status or 'active').strip().lower()
+    if status == 'suspended':
+        return 'suspended', 'Suspended'
+    qty = int(quantity_on_hand or 0)
+    threshold = _normalize_store_low_stock_threshold(
+        low_stock_threshold if low_stock_threshold is not None else STORE_DEFAULT_LOW_STOCK_THRESHOLD
+    )
+    if qty <= 0:
+        return 'out_of_stock', 'Out of stock'
+    if qty <= threshold:
+        return 'low_stock', 'Low stock'
+    if qty <= _store_approaching_stock_ceiling(threshold):
+        return 'approaching_low', 'Approaching low'
+    return 'in_stock', 'In stock'
+
+
+def _store_item_stock_sort_key(item):
+    """Sort key: attention items first, then lowest quantity, then name."""
+    status = (item or {}).get('stock_status') or ''
+    rank = {
+        'out_of_stock': 0,
+        'low_stock': 1,
+        'approaching_low': 2,
+        'in_stock': 3,
+        'suspended': 4,
+    }.get(status, 9)
+    return (
+        rank,
+        int((item or {}).get('quantity_on_hand') or 0),
+        ((item or {}).get('item_name') or '').upper(),
+        int((item or {}).get('id') or 0),
+    )
+
+
+def _store_inventory_client_item_with_stock_status(row):
+    """Serialize a catalog row with computed stock status for list pages."""
+    item = _store_inventory_client_item(row)
+    threshold = item.get('low_stock_threshold', STORE_DEFAULT_LOW_STOCK_THRESHOLD)
+    stock_key, stock_label = _store_item_stock_status(
+        item.get('quantity_on_hand'),
+        item.get('item_status'),
+        threshold,
+    )
+    item['stock_status'] = stock_key
+    item['stock_status_label'] = stock_label
+    return item
+
+
+def _sort_store_stock_items(items):
+    """Return stock rows with low/out-of-stock items listed first."""
+    return sorted(items or [], key=_store_item_stock_sort_key)
+
+
+def _update_store_item_low_stock_thresholds(cursor, updates):
+    """Bulk-update low_stock_threshold values for catalog items."""
+    ensure_store_inventory_items_table(cursor)
+    updated = 0
+    for entry in updates or []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            item_id = int(entry.get('id') or entry.get('item_id') or 0)
+        except (TypeError, ValueError):
+            continue
+        if item_id < 1:
+            continue
+        threshold = _normalize_store_low_stock_threshold(entry.get('low_stock_threshold'))
+        cursor.execute(
+            """
+            UPDATE store_inventory_items
+            SET low_stock_threshold = %s
+            WHERE id = %s
+            """,
+            (threshold, item_id),
+        )
+        if cursor.rowcount:
+            updated += 1
+    return updated
+
+
+def _fetch_store_inventory_page(cursor, page=1, per_page=50, q='', department_station=''):
     """Paginated store catalog rows."""
     ensure_store_inventory_items_table(cursor)
     ensure_store_stock_movements_table(cursor)
@@ -59021,8 +60025,12 @@ def _fetch_store_inventory_page(cursor, page=1, per_page=50, q=''):
     page = max(1, int(page or 1))
     offset = (page - 1) * per_page
     q = (q or '').strip()
+    department_station = (department_station or '').strip().upper()
     where = []
     params = []
+    if department_station:
+        where.append('UPPER(TRIM(COALESCE(si.department_station, \'\'))) = %s')
+        params.append(department_station)
     if q:
         like = '%' + q + '%'
         where.append(
@@ -59037,7 +60045,9 @@ def _fetch_store_inventory_page(cursor, page=1, per_page=50, q=''):
     cursor.execute(
         f"""
         SELECT si.id, si.reference_code, si.item_category, si.item_name, si.description, si.measure,
-               si.image_path, si.item_status, si.quantity_on_hand, si.department_station,
+               si.image_path, si.item_status, si.quantity_on_hand,
+               COALESCE(si.low_stock_threshold, %s) AS low_stock_threshold,
+               si.department_station,
                si.library_book_id, si.created_at,
                avg_bp.avg_buying_price
         FROM store_inventory_items si
@@ -59054,7 +60064,7 @@ def _fetch_store_inventory_page(cursor, page=1, per_page=50, q=''):
         ORDER BY si.department_station ASC, si.item_category ASC, si.item_name ASC, si.id ASC
         LIMIT %s OFFSET %s
         """,
-        tuple(params) + (per_page, offset),
+        (STORE_DEFAULT_LOW_STOCK_THRESHOLD,) + tuple(params) + (per_page, offset),
     )
     items = _store_inventory_rows_from_fetch(cursor.fetchall() or [])
     pages = max(1, (total + per_page - 1) // per_page) if total else 1
@@ -59077,12 +60087,15 @@ def _store_inventory_row_dict(row):
             'image_path': (row.get('image_path') or '').strip() or None,
             'item_status': (row.get('item_status') or 'active').strip(),
             'quantity_on_hand': int(row.get('quantity_on_hand') or 0),
+            'low_stock_threshold': _normalize_store_low_stock_threshold(
+                row.get('low_stock_threshold')
+            ),
             'department_station': (row.get('department_station') or '').strip(),
             'library_book_id': int(row.get('library_book_id') or 0) or None,
             'created_at': row.get('created_at'),
         }
     else:
-        avg_raw = row[12] if len(row) > 12 else None
+        avg_raw = row[13] if len(row) > 13 else None
         data = {
             'id': int(row[0] or 0),
             'reference_code': (row[1] or '').strip(),
@@ -59093,9 +60106,12 @@ def _store_inventory_row_dict(row):
             'image_path': (row[6] or '').strip() or None,
             'item_status': (row[7] or 'active').strip(),
             'quantity_on_hand': int(row[8] or 0) if len(row) > 8 else 0,
-            'department_station': (row[9] or '').strip() if len(row) > 9 else '',
-            'library_book_id': int(row[10] or 0) or None if len(row) > 10 else None,
-            'created_at': row[11] if len(row) > 11 else None,
+            'low_stock_threshold': _normalize_store_low_stock_threshold(
+                row[9] if len(row) > 9 else STORE_DEFAULT_LOW_STOCK_THRESHOLD
+            ),
+            'department_station': (row[10] or '').strip() if len(row) > 10 else '',
+            'library_book_id': int(row[11] or 0) or None if len(row) > 11 else None,
+            'created_at': row[12] if len(row) > 12 else None,
         }
     ca = data.get('created_at')
     if ca and hasattr(ca, 'strftime'):
@@ -59130,6 +60146,9 @@ def _store_inventory_client_item(row):
         'department_station': row.get('department_station') or '',
         'library_book_id': row.get('library_book_id'),
         'quantity_on_hand': int(row.get('quantity_on_hand') or 0),
+        'low_stock_threshold': _normalize_store_low_stock_threshold(
+            row.get('low_stock_threshold')
+        ),
         'created_at_display': row.get('created_at_display') or '—',
         'avg_buying_price': row.get('avg_buying_price'),
     }
@@ -59474,6 +60493,7 @@ def _fetch_store_item_usage_analytics(cursor, item_id, period='all', date_val=''
             SELECT m.id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
                    m.notes, m.delivery_note, m.stock_out_purpose,
+                   m.stock_out_date, m.stock_out_department, m.stock_out_receiver_name,
                    m.quantity_before, m.quantity_after, m.created_at,
                    m.performed_by_name,
                    sup.company_name AS supplier_name, sup.phone AS supplier_phone
@@ -59703,6 +60723,7 @@ def _fetch_store_stock_analytics(cursor, period='all', date_val='', date_from=''
             SELECT m.id, m.store_item_id, m.reference_number, m.movement_type, m.quantity,
                    m.buying_price, m.total_amount, m.payment_status, m.amount_paid,
                    m.notes, m.delivery_note, m.stock_out_purpose,
+                   m.stock_out_date, m.stock_out_department, m.stock_out_receiver_name,
                    m.quantity_before, m.quantity_after, m.created_at,
                    m.performed_by_name,
                    si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
@@ -59720,6 +60741,8 @@ def _fetch_store_stock_analytics(cursor, period='all', date_val='', date_from=''
             md = _store_stock_movement_audit_row(mrow)
             if isinstance(mrow, dict):
                 md['store_item_id'] = int(mrow.get('store_item_id') or 0)
+            else:
+                md['store_item_id'] = int(mrow[1] or 0) if len(mrow) > 1 else 0
             movements.append(md)
     except Exception as e:
         print(f"_fetch_store_stock_analytics movements: {e}")
@@ -62606,12 +63629,20 @@ def store_inventory_items_api():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
     q = (request.args.get('q') or '').strip()
+    department_station = ''
+    dept_id = request.args.get('department', type=int)
     connection = get_db_connection()
     if not connection:
         return jsonify({'success': False, 'message': 'Database unavailable'}), 500
     try:
         with connection.cursor() as cursor:
-            payload = _fetch_store_inventory_page(cursor, page=page, per_page=per_page, q=q)
+            if dept_id:
+                dept_row = _fetch_store_department_by_id(cursor, dept_id)
+                if dept_row:
+                    department_station = dept_row.get('department_name') or ''
+            payload = _fetch_store_inventory_page(
+                cursor, page=page, per_page=per_page, q=q, department_station=department_station
+            )
         client_items = [_store_inventory_client_item(it) for it in payload['items']]
         return jsonify({
             'success': True,
@@ -62771,6 +63802,38 @@ def store_inventory_toggle_suspend(item_id):
     return redirect(employee_dash_url('store-inventory'))
 
 
+@app.route('/dashboard/employee/store-departments', methods=['POST'])
+@login_required
+def store_departments_register():
+    """Register a school department for store inventory routing (store manager)."""
+    redir = _store_inventory_guard()
+    if redir:
+        return redir
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dashboard_path())
+
+    try:
+        with connection.cursor() as cursor:
+            result = _register_store_department_from_request(cursor, request)
+            if result.get('ok'):
+                connection.commit()
+                flash(result['message'], 'success')
+            else:
+                connection.rollback()
+                flash(result.get('message', 'Could not register the department.'), 'error')
+    except Exception as e:
+        connection.rollback()
+        print(f"store_departments_register: {e}")
+        flash('An error occurred while registering the department.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(employee_dashboard_path())
+
+
 @app.route('/dashboard/employee/store-inventory', methods=['GET', 'POST'])
 @login_required
 def store_inventory():
@@ -62785,6 +63848,8 @@ def store_inventory():
     category_suggestions = []
     fee_structure_votes = []
     items_q = (request.args.get('q') or '').strip() if request.method == 'GET' else ''
+    items_department_id = request.args.get('department', type=int) if request.method == 'GET' else None
+    items_department = None
     items_total = 0
     items_page = 1
     items_pages = 1
@@ -62794,10 +63859,20 @@ def store_inventory():
         'suspended_count': 0,
         'low_stock_count': 0,
     }
+    department_stations = []
 
     connection = get_db_connection()
     if not connection:
         flash('Could not connect to the database.', 'error')
+        dept_conn = get_db_connection()
+        if dept_conn:
+            try:
+                with dept_conn.cursor() as dept_cursor:
+                    department_stations = _load_store_department_station_options(dept_cursor, dept_conn)
+            except Exception as dept_err:
+                print(f"store_inventory departments fallback: {dept_err}")
+            finally:
+                dept_conn.close()
         return render_template(
             'dashboards/store_inventory.html',
             role=user_role,
@@ -62807,10 +63882,12 @@ def store_inventory():
             category_suggestions=category_suggestions,
             fee_structure_votes=fee_structure_votes,
             measures=list(STORE_ITEM_MEASURES),
-            department_stations=list(STORE_DEPARTMENT_STATIONS),
+            department_stations=department_stations,
             open_edit_item_id=None,
             inventory_form_open_default=False,
             items_q=items_q,
+            items_department_id=items_department_id,
+            items_department=items_department,
             items_total=items_total,
             items_page=items_page,
             items_pages=items_pages,
@@ -62821,6 +63898,7 @@ def store_inventory():
         with connection.cursor() as cursor:
             ensure_store_inventory_items_table(cursor)
             connection.commit()
+            department_stations = _load_store_department_station_options(cursor, connection)
 
             if request.method == 'POST':
                 item_id_update = request.form.get('item_id', type=int)
@@ -62832,7 +63910,8 @@ def store_inventory():
                 if measure not in STORE_ITEM_MEASURES:
                     measure = ''
                 department_station = _normalize_store_department_station(
-                    request.form.get('department_station')
+                    request.form.get('department_station'),
+                    cursor=cursor,
                 )
 
                 if not item_category or not item_name:
@@ -62951,9 +64030,19 @@ def store_inventory():
                     flash(result.get('message', 'Could not register the store item.'), 'error')
 
             items_q = (request.args.get('q') or '').strip() if request.method == 'GET' else ''
+            items_department_id = request.args.get('department', type=int) if request.method == 'GET' else None
+            items_department = None
+            if items_department_id:
+                items_department = _fetch_store_department_by_id(cursor, items_department_id)
+                if not items_department:
+                    items_department_id = None
             items_page_num = max(1, request.args.get('page', 1, type=int) or 1) if request.method == 'GET' else 1
             page_payload = _fetch_store_inventory_page(
-                cursor, page=items_page_num, per_page=50, q=items_q
+                cursor,
+                page=items_page_num,
+                per_page=50,
+                q=items_q,
+                department_station=(items_department or {}).get('department_name') or '',
             )
             items = page_payload.get('items') or []
             category_suggestions = _fetch_store_expense_categories(cursor)
@@ -62979,6 +64068,12 @@ def store_inventory():
     except Exception as e:
         print(f"store_inventory: {e}")
         flash('An error occurred loading store inventory.', 'error')
+        if not department_stations and connection:
+            try:
+                with connection.cursor() as dept_cursor:
+                    department_stations = _load_store_department_station_options(dept_cursor, connection)
+            except Exception as dept_err:
+                print(f"store_inventory departments recovery: {dept_err}")
     finally:
         connection.close()
 
@@ -63012,10 +64107,12 @@ def store_inventory():
         category_suggestions=category_suggestions,
         fee_structure_votes=fee_structure_votes,
         measures=list(STORE_ITEM_MEASURES),
-        department_stations=list(STORE_DEPARTMENT_STATIONS),
+        department_stations=department_stations,
         open_edit_item_id=open_edit_item_id,
         inventory_form_open_default=inventory_form_open_default,
         items_q=items_q,
+        items_department_id=items_department_id,
+        items_department=items_department,
         items_total=items_total,
         items_page=items_page,
         items_pages=items_pages,
@@ -63141,6 +64238,227 @@ def store_stock_analytics():
     )
 
 
+@app.route('/dashboard/employee/store-current-stock', methods=['GET'])
+@login_required
+def store_current_stock():
+    """Read-only view of all catalog items and their stock status."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    stock_items = []
+    stock_summary = {
+        'total_items': 0,
+        'units_on_hand': 0,
+        'suspended_count': 0,
+        'low_stock_count': 0,
+    }
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return render_template(
+            'dashboards/store_current_stock.html',
+            role=user_role,
+            is_technician=is_technician,
+            stock_items=[],
+            stock_summary=stock_summary,
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_inventory_items_table(cursor)
+            ensure_store_stock_movements_table(cursor)
+            connection.commit()
+            stock_summary = _fetch_store_inventory_summary(cursor)
+            page_data = _fetch_store_inventory_page(cursor, page=1, per_page=5000)
+            stock_items = _sort_store_stock_items([
+                _store_inventory_client_item_with_stock_status(row)
+                for row in (page_data.get('items') or [])
+            ])
+    except Exception as e:
+        print(f"store_current_stock: {e}")
+        flash('Could not load current stock.', 'error')
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/store_current_stock.html',
+        role=user_role,
+        is_technician=is_technician,
+        stock_items=stock_items,
+        stock_summary=stock_summary,
+    )
+
+
+@app.route('/dashboard/employee/store-current-stock/settings', methods=['POST'])
+@login_required
+def store_current_stock_settings():
+    """Save per-item low stock thresholds."""
+    if _store_inventory_effective_role() != 'store manager':
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    updates = payload.get('items')
+    if updates is None and request.form:
+        updates = []
+        ids = request.form.getlist('item_id')
+        thresholds = request.form.getlist('low_stock_threshold')
+        for idx, raw_id in enumerate(ids):
+            threshold = thresholds[idx] if idx < len(thresholds) else STORE_DEFAULT_LOW_STOCK_THRESHOLD
+            updates.append({'id': raw_id, 'low_stock_threshold': threshold})
+    if not isinstance(updates, list) or not updates:
+        return jsonify({'success': False, 'message': 'No settings to save.'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Could not connect to the database.'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_inventory_items_table(cursor)
+            updated = _update_store_item_low_stock_thresholds(cursor, updates)
+            connection.commit()
+        return jsonify({'success': True, 'updated': updated})
+    except Exception as e:
+        print(f"store_current_stock_settings: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not save stock settings.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/store-suppliers', methods=['GET'])
+@login_required
+def store_suppliers():
+    """All store suppliers with payable balances and payment status."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    status_filter = (request.args.get('status') or 'all').strip().lower()
+    suppliers = []
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return render_template(
+            'dashboards/store_suppliers.html',
+            role=user_role,
+            is_technician=is_technician,
+            suppliers=[],
+            status_filter=status_filter,
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_suppliers_table(cursor)
+            ensure_store_stock_movements_table(cursor)
+            ensure_store_stock_in_payment_lines_table(cursor)
+            connection.commit()
+            suppliers = _fetch_store_suppliers_overview(cursor, status_filter=status_filter)
+    except Exception as e:
+        print(f"store_suppliers: {e}")
+        flash('Could not load suppliers.', 'error')
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/store_suppliers.html',
+        role=user_role,
+        is_technician=is_technician,
+        suppliers=suppliers,
+        status_filter=status_filter,
+    )
+
+
+@app.route('/dashboard/employee/store-suppliers/view', methods=['GET'])
+@login_required
+def store_supplier_detail_by_key():
+    """Supplier supply history keyed by normalized phone / payable key."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    phone_key = (request.args.get('phone_key') or request.args.get('phone') or '').strip()
+    if not phone_key:
+        flash('Supplier not found.', 'error')
+        return redirect(employee_dash_url('store-suppliers'))
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    supplier_detail = None
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_store_suppliers_table(cursor)
+                ensure_store_stock_movements_table(cursor)
+                ensure_store_stock_in_payment_lines_table(cursor)
+                connection.commit()
+                supplier_detail = _fetch_store_supplier_detail_for_page(cursor, phone_key=phone_key)
+        except Exception as e:
+            print(f"store_supplier_detail_by_key: {e}")
+            flash('Could not load supplier details.', 'error')
+        finally:
+            connection.close()
+
+    if not supplier_detail:
+        flash('Supplier not found.', 'error')
+        return redirect(employee_dash_url('store-suppliers'))
+
+    return render_template(
+        'dashboards/store_supplier_detail.html',
+        role=user_role,
+        is_technician=is_technician,
+        supplier=supplier_detail,
+    )
+
+
+@app.route('/dashboard/employee/store-suppliers/<int:supplier_id>', methods=['GET'])
+@login_required
+def store_supplier_detail(supplier_id):
+    """Supplier supply history and payment status for a registered supplier."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    supplier_detail = None
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_store_suppliers_table(cursor)
+                ensure_store_stock_movements_table(cursor)
+                ensure_store_stock_in_payment_lines_table(cursor)
+                connection.commit()
+                supplier_detail = _fetch_store_supplier_detail_for_page(cursor, supplier_id=supplier_id)
+        except Exception as e:
+            print(f"store_supplier_detail: {e}")
+            flash('Could not load supplier details.', 'error')
+        finally:
+            connection.close()
+
+    if not supplier_detail:
+        flash('Supplier not found.', 'error')
+        return redirect(employee_dash_url('store-suppliers'))
+
+    return render_template(
+        'dashboards/store_supplier_detail.html',
+        role=user_role,
+        is_technician=is_technician,
+        supplier=supplier_detail,
+    )
+
+
 @app.route('/dashboard/employee/store-stock/audits', methods=['GET'])
 @login_required
 def store_stock_audits():
@@ -63186,6 +64504,8 @@ def store_stock_audits():
 @login_required
 def store_stock():
     """Stock in / stock out for school store items (quantities + movement modal)."""
+    from datetime import date
+
     if _store_inventory_effective_role() != 'store manager':
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -63197,14 +64517,32 @@ def store_stock():
     if default_mode not in ('in', 'out'):
         default_mode = 'in'
     last_print_id = request.args.get('print', type=int)
+    if last_print_id and default_mode == 'in':
+        return redirect(
+            employee_dash_url(f'store-stock/grn-print/{last_print_id}')
+            + '?received=1'
+        )
 
     connection = get_db_connection()
     fee_structure_votes = []
     register_form_open_default = request.args.get('register') == '1'
     preselect_item_id = request.args.get('item', type=int)
+    department_stations = []
+    next_stock_in_ref = 'SIN-000001'
+    next_stock_out_ref = 'SOT-000001'
+    today = date.today()
 
     if not connection:
         flash('Could not connect to the database.', 'error')
+        dept_conn = get_db_connection()
+        if dept_conn:
+            try:
+                with dept_conn.cursor() as dept_cursor:
+                    department_stations = _load_store_department_station_options(dept_cursor, dept_conn)
+            except Exception as dept_err:
+                print(f"store_stock departments fallback: {dept_err}")
+            finally:
+                dept_conn.close()
         return render_template(
             'dashboards/store_stock.html',
             role=user_role,
@@ -63216,9 +64554,12 @@ def store_stock():
             last_print_id=last_print_id,
             fee_structure_votes=fee_structure_votes,
             measures=list(STORE_ITEM_MEASURES),
-            department_stations=list(STORE_DEPARTMENT_STATIONS),
+            department_stations=department_stations,
             register_form_open_default=register_form_open_default,
             preselect_item_id=preselect_item_id,
+            next_stock_in_ref=next_stock_in_ref,
+            next_stock_out_ref=next_stock_out_ref,
+            today=today,
         )
 
     try:
@@ -63226,6 +64567,9 @@ def store_stock():
             ensure_store_stock_movements_table(cursor)
             ensure_store_inventory_items_table(cursor)
             connection.commit()
+            next_stock_in_ref = _generate_store_stock_reference_number(cursor, 'in')
+            next_stock_out_ref = _generate_store_stock_reference_number(cursor, 'out')
+            department_stations = _load_store_department_station_options(cursor, connection)
 
             if request.method == 'POST':
                 form_action = (request.form.get('form_action') or '').strip().lower()
@@ -63252,9 +64596,9 @@ def store_stock():
                     store_item_id = request.form.get('store_item_id', type=int)
                     qty_raw = (request.form.get('quantity') or '').strip()
                     notes_raw = (request.form.get('notes') or '').strip()
-                    notes = notes_raw.upper()[:500] if notes_raw else None
                     delivery_note_raw = (request.form.get('delivery_note') or '').strip()
-                    delivery_note = delivery_note_raw.upper()[:120] if delivery_note_raw else None
+                    invoice_number_raw = (request.form.get('invoice_number') or '').strip()
+                    reference_number_raw = (request.form.get('reference_number') or '').strip()
 
                     try:
                         quantity = int(qty_raw)
@@ -63292,97 +64636,111 @@ def store_stock():
                                     'error',
                                 )
                             elif movement_type == 'in':
-                                raw_price = (request.form.get('buying_price') or '').strip().replace(',', '')
-                                try:
-                                    buying_price = Decimal(raw_price).quantize(Decimal('0.01'))
-                                except (InvalidOperation, ValueError):
-                                    buying_price = None
                                 supplier_phone = (request.form.get('supplier_phone') or '').strip()
                                 supplier_name = (request.form.get('supplier_name') or '').strip()
-
-                                if buying_price is None or buying_price < 0:
-                                    flash('Enter a valid buying price.', 'error')
+                                raw_price = (request.form.get('buying_price') or '').strip().replace(',', '')
+                                performed_by = session.get('employee_id') or session.get('user_id')
+                                performed_name = (session.get('full_name') or session.get('username') or '').strip()
+                                stock_in = _store_record_stock_in(
+                                    cursor,
+                                    store_item_id,
+                                    quantity,
+                                    raw_price,
+                                    supplier_phone,
+                                    supplier_name,
+                                    delivery_note=delivery_note_raw,
+                                    notes=notes_raw,
+                                    performed_by=performed_by,
+                                    performed_by_name=performed_name,
+                                    reference_number=reference_number_raw,
+                                    invoice_number=invoice_number_raw,
+                                )
+                                if not stock_in.get('ok'):
+                                    flash(stock_in.get('message', 'Could not record stock in.'), 'error')
                                 else:
-                                    supplier_id, sup_err = _store_upsert_supplier_for_stock_in(
-                                        cursor, supplier_phone, supplier_name,
+                                    movement_pk = stock_in['movement_id']
+                                    connection.commit()
+                                    flash(
+                                        f"Stock in recorded as {stock_in['reference_number']}. "
+                                        f"Payment pending: {stock_in['total_amount']}.",
+                                        'success',
                                     )
-                                    if sup_err:
-                                        flash(sup_err, 'error')
-                                    else:
-                                        total_amount = (buying_price * quantity).quantize(Decimal('0.01'))
-                                        ref_no = _generate_store_stock_reference_number(cursor, 'in')
-                                        qty_after = qty_before + quantity
-                                        performed_by = session.get('employee_id') or session.get('user_id')
-                                        performed_name = (session.get('full_name') or session.get('username') or '').strip()
-                                        cursor.execute(
-                                            """
-                                            INSERT INTO store_stock_movements
-                                                (reference_number, store_item_id, movement_type, quantity,
-                                                 buying_price, total_amount, supplier_id, payment_status,
-                                                 notes, delivery_note, quantity_before, quantity_after,
-                                                 performed_by, performed_by_name)
-                                            VALUES (%s, %s, 'in', %s, %s, %s, %s, 'pending',
-                                                    %s, %s, %s, %s, %s, %s)
-                                            """,
-                                            (
-                                                ref_no, store_item_id, quantity, buying_price, total_amount,
-                                                supplier_id, notes, delivery_note, qty_before, qty_after,
-                                                performed_by, performed_name or None,
-                                            ),
-                                        )
-                                        movement_pk = cursor.lastrowid
-                                        cursor.execute(
-                                            """
-                                            UPDATE store_inventory_items
-                                            SET quantity_on_hand = %s WHERE id = %s
-                                            """,
-                                            (qty_after, store_item_id),
-                                        )
-                                        connection.commit()
-                                        flash(f'Stock in recorded as {ref_no}. Payment pending: {total_amount}.', 'success')
-                                        return redirect(
-                                            employee_dash_url('store-stock')
-                                            + f'?print={movement_pk}&mode=in'
-                                        )
+                                    return redirect(
+                                        employee_dash_url(f'store-stock/grn-print/{movement_pk}')
+                                        + '?received=1&auto=1'
+                                    )
                             elif movement_type == 'out':
                                 purpose_raw = (request.form.get('stock_out_purpose') or '').strip().upper()
+                                stock_out_date_raw = (request.form.get('stock_out_date') or '').strip()
+                                stock_out_department_raw = (request.form.get('stock_out_department') or '').strip().upper()
+                                stock_out_receiver_raw = (request.form.get('stock_out_receiver_name') or '').strip().upper()
                                 if purpose_raw not in STORE_STOCK_OUT_PURPOSES:
                                     flash('Select the purpose of stock out.', 'error')
+                                elif not stock_out_date_raw:
+                                    flash('Select the stock out date.', 'error')
                                 else:
-                                    ref_no = _generate_store_stock_reference_number(cursor, 'out')
-                                    qty_after = max(0, qty_before - quantity)
-                                    performed_by = session.get('employee_id') or session.get('user_id')
-                                    performed_name = (session.get('full_name') or session.get('username') or '').strip()
-                                    cursor.execute(
-                                        """
-                                        INSERT INTO store_stock_movements
-                                            (reference_number, store_item_id, movement_type, quantity,
-                                             buying_price, total_amount, supplier_id, payment_status,
-                                             notes, stock_out_purpose, quantity_before, quantity_after,
-                                             performed_by, performed_by_name)
-                                        VALUES (%s, %s, 'out', %s, NULL, NULL, NULL, 'na',
-                                                %s, %s, %s, %s, %s, %s)
-                                        """,
-                                        (
-                                            ref_no, store_item_id, quantity, notes, purpose_raw,
-                                            qty_before, qty_after,
-                                            performed_by, performed_name or None,
-                                        ),
-                                    )
-                                    movement_pk = cursor.lastrowid
-                                    cursor.execute(
-                                        """
-                                        UPDATE store_inventory_items
-                                        SET quantity_on_hand = %s WHERE id = %s
-                                        """,
-                                        (qty_after, store_item_id),
-                                    )
-                                    connection.commit()
-                                    flash(f'Stock out recorded as {ref_no}.', 'success')
-                                    return redirect(
-                                        employee_dash_url('store-stock')
-                                        + f'?print={movement_pk}&mode=out'
-                                    )
+                                    try:
+                                        stock_out_date = datetime.strptime(stock_out_date_raw, '%Y-%m-%d').date()
+                                    except (TypeError, ValueError):
+                                        flash('Enter a valid stock out date.', 'error')
+                                        stock_out_date = None
+                                    if stock_out_date is not None:
+                                        dept_set = _fetch_store_department_station_set(cursor)
+                                        if not stock_out_department_raw:
+                                            flash('Select the department stocking out to.', 'error')
+                                        elif not dept_set:
+                                            flash('Register departments on your store dashboard before stocking out.', 'error')
+                                        elif stock_out_department_raw not in dept_set:
+                                            flash('Select a valid department.', 'error')
+                                        elif not stock_out_receiver_raw:
+                                            flash('Enter the receiver name.', 'error')
+                                        else:
+                                            ref_no, ref_err = _resolve_store_stock_reference(
+                                                cursor, 'out', reference_number_raw,
+                                            )
+                                            if ref_err:
+                                                flash(ref_err, 'error')
+                                            else:
+                                                notes = notes_raw.upper()[:500] if notes_raw else None
+                                                qty_after = max(0, qty_before - quantity)
+                                                performed_by = session.get('employee_id') or session.get('user_id')
+                                                performed_name = (
+                                                    session.get('full_name') or session.get('username') or ''
+                                                ).strip()
+                                                cursor.execute(
+                                                    """
+                                                    INSERT INTO store_stock_movements
+                                                        (reference_number, store_item_id, movement_type, quantity,
+                                                         buying_price, total_amount, supplier_id, payment_status,
+                                                         notes, stock_out_purpose, stock_out_date,
+                                                         stock_out_department, stock_out_receiver_name,
+                                                         quantity_before, quantity_after,
+                                                         performed_by, performed_by_name)
+                                                    VALUES (%s, %s, 'out', %s, NULL, NULL, NULL, 'na',
+                                                            %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                                    """,
+                                                    (
+                                                        ref_no, store_item_id, quantity, notes, purpose_raw,
+                                                        stock_out_date, stock_out_department_raw,
+                                                        stock_out_receiver_raw[:255],
+                                                        qty_before, qty_after,
+                                                        performed_by, performed_name or None,
+                                                    ),
+                                                )
+                                                movement_pk = cursor.lastrowid
+                                                cursor.execute(
+                                                    """
+                                                    UPDATE store_inventory_items
+                                                    SET quantity_on_hand = %s WHERE id = %s
+                                                    """,
+                                                    (qty_after, store_item_id),
+                                                )
+                                                connection.commit()
+                                                flash(f'Stock out recorded as {ref_no}.', 'success')
+                                                return redirect(
+                                                    employee_dash_url('store-stock')
+                                                    + f'?print={movement_pk}&mode=out'
+                                                )
 
             stock_items = _fetch_store_items_for_stock(cursor)
             fee_structure_votes = _fetch_store_expense_category_picker_votes(cursor)
@@ -63390,6 +64748,12 @@ def store_stock():
         print(f"store_stock: {e}")
         connection.rollback()
         flash('An error occurred processing stock.', 'error')
+        if not department_stations:
+            try:
+                with connection.cursor() as dept_cursor:
+                    department_stations = _load_store_department_station_options(dept_cursor, connection)
+            except Exception as dept_err:
+                print(f"store_stock departments recovery: {dept_err}")
     finally:
         connection.close()
 
@@ -63403,10 +64767,13 @@ def store_stock():
         default_mode=default_mode,
         last_print_id=last_print_id,
         measures=list(STORE_ITEM_MEASURES),
-        department_stations=list(STORE_DEPARTMENT_STATIONS),
+        department_stations=department_stations,
         fee_structure_votes=fee_structure_votes,
         register_form_open_default=register_form_open_default,
         preselect_item_id=preselect_item_id,
+        next_stock_in_ref=next_stock_in_ref,
+        next_stock_out_ref=next_stock_out_ref,
+        today=today,
     )
 
 
@@ -63880,6 +65247,1255 @@ def store_requisitions():
         catalog_items_client=catalog_items,
         recent_requisitions=recent_requisitions,
         requisition_form_open_default=request.method == 'POST',
+    )
+
+
+_store_lpos_schema_ensuring = False
+
+
+def ensure_store_lpos_table(cursor):
+    """Local purchase orders raised by the store manager."""
+    global _store_lpos_schema_ensuring
+    if _store_lpos_schema_ensuring:
+        return
+    _store_lpos_schema_ensuring = True
+    try:
+        ensure_store_inventory_items_table(cursor)
+        ensure_store_suppliers_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS store_lpos (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                serial_number VARCHAR(32) NOT NULL,
+                lpo_date DATE NOT NULL,
+                supplier_id INT NULL,
+                delivery_to VARCHAR(500) NOT NULL,
+                deliver_on_or_before DATE NOT NULL,
+                store_item_id INT NULL,
+                measure VARCHAR(64) NULL,
+                quantity INT NULL,
+                buying_price DECIMAL(12, 2) NULL,
+                line_total DECIMAL(14, 2) NULL,
+                generated_by INT NULL,
+                generated_by_name VARCHAR(255) NULL,
+                signature_data MEDIUMTEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_store_lpo_serial (serial_number),
+                INDEX idx_store_lpo_date (lpo_date),
+                INDEX idx_store_lpo_supplier (supplier_id),
+                INDEX idx_store_lpo_item (store_item_id),
+                INDEX idx_store_lpo_created (created_at),
+                FOREIGN KEY (store_item_id) REFERENCES store_inventory_items(id) ON DELETE RESTRICT,
+                FOREIGN KEY (supplier_id) REFERENCES store_suppliers(id) ON DELETE SET NULL
+            )
+        """)
+        ensure_store_stock_movements_table(cursor)
+        cursor.execute("SHOW COLUMNS FROM store_lpos LIKE 'received_at'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_lpos
+                ADD COLUMN received_at TIMESTAMP NULL DEFAULT NULL AFTER created_at,
+                ADD COLUMN stock_movement_id INT NULL DEFAULT NULL AFTER received_at,
+                ADD INDEX idx_store_lpo_received (received_at),
+                ADD CONSTRAINT fk_store_lpo_stock_movement
+                    FOREIGN KEY (stock_movement_id) REFERENCES store_stock_movements(id)
+                    ON DELETE SET NULL
+            """)
+            print("OK: Added store_lpos receipt tracking columns")
+    except Exception as e:
+        print(f"ensure_store_lpos_table: {e}")
+    finally:
+        _store_lpos_schema_ensuring = False
+
+
+_store_lpo_lines_schema_ensuring = False
+
+
+def ensure_store_lpo_lines_table(cursor):
+    """Line items for local purchase orders (one LPO header, many lines)."""
+    global _store_lpo_lines_schema_ensuring
+    if _store_lpo_lines_schema_ensuring:
+        return
+    _store_lpo_lines_schema_ensuring = True
+    try:
+        ensure_store_lpos_table(cursor)
+        ensure_store_stock_movements_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS store_lpo_lines (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                lpo_id INT NOT NULL,
+                line_no INT NOT NULL DEFAULT 1,
+                store_item_id INT NOT NULL,
+                measure VARCHAR(64) NULL,
+                quantity INT NOT NULL,
+                buying_price DECIMAL(12, 2) NOT NULL,
+                line_total DECIMAL(14, 2) NOT NULL,
+                received_at TIMESTAMP NULL DEFAULT NULL,
+                stock_movement_id INT NULL DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_store_lpo_line (lpo_id, line_no),
+                INDEX idx_store_lpo_line_lpo (lpo_id),
+                INDEX idx_store_lpo_line_item (store_item_id),
+                INDEX idx_store_lpo_line_received (received_at),
+                FOREIGN KEY (lpo_id) REFERENCES store_lpos(id) ON DELETE CASCADE,
+                FOREIGN KEY (store_item_id) REFERENCES store_inventory_items(id) ON DELETE RESTRICT,
+                FOREIGN KEY (stock_movement_id) REFERENCES store_stock_movements(id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute("SHOW COLUMNS FROM store_lpos LIKE 'store_item_id'")
+        if cursor.fetchone():
+            cursor.execute("""
+                SELECT l.id, l.store_item_id, l.measure, l.quantity, l.buying_price, l.line_total,
+                       l.received_at, l.stock_movement_id
+                FROM store_lpos l
+                WHERE l.store_item_id IS NOT NULL
+            """)
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    lpo_id = int(row.get('id') or 0)
+                    store_item_id = int(row.get('store_item_id') or 0)
+                    measure = row.get('measure')
+                    quantity = int(row.get('quantity') or 0)
+                    buying_price = row.get('buying_price')
+                    line_total = row.get('line_total')
+                    received_at = row.get('received_at')
+                    stock_movement_id = row.get('stock_movement_id')
+                else:
+                    lpo_id = int(row[0] or 0)
+                    store_item_id = int(row[1] or 0)
+                    measure = row[2] if len(row) > 2 else None
+                    quantity = int(row[3] or 0) if len(row) > 3 else 0
+                    buying_price = row[4] if len(row) > 4 else 0
+                    line_total = row[5] if len(row) > 5 else 0
+                    received_at = row[6] if len(row) > 6 else None
+                    stock_movement_id = row[7] if len(row) > 7 else None
+                if not lpo_id or not store_item_id:
+                    continue
+                cursor.execute(
+                    "SELECT 1 FROM store_lpo_lines WHERE lpo_id = %s LIMIT 1",
+                    (lpo_id,),
+                )
+                if cursor.fetchone():
+                    continue
+                cursor.execute(
+                    """
+                    INSERT INTO store_lpo_lines
+                        (lpo_id, line_no, store_item_id, measure, quantity,
+                         buying_price, line_total, received_at, stock_movement_id)
+                    VALUES (%s, 1, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        lpo_id, store_item_id, measure, quantity,
+                        buying_price, line_total, received_at, stock_movement_id,
+                    ),
+                )
+            for col, ddl in (
+                ('store_item_id', 'MODIFY store_item_id INT NULL'),
+                ('measure', 'MODIFY measure VARCHAR(64) NULL'),
+                ('quantity', 'MODIFY quantity INT NULL'),
+                ('buying_price', 'MODIFY buying_price DECIMAL(12, 2) NULL'),
+                ('line_total', 'MODIFY line_total DECIMAL(14, 2) NULL'),
+            ):
+                try:
+                    cursor.execute(f"ALTER TABLE store_lpos {ddl}")
+                except Exception as col_err:
+                    print(f"ensure_store_lpo_lines_table alter {col}: {col_err}")
+    except Exception as e:
+        print(f"ensure_store_lpo_lines_table: {e}")
+    finally:
+        _store_lpo_lines_schema_ensuring = False
+
+
+def _store_lpo_line_dict(row):
+    """Normalize a store_lpo_lines row joined with item details."""
+    if isinstance(row, dict):
+        received_at = row.get('received_at')
+        return {
+            'id': int(row.get('id') or 0),
+            'lpo_id': int(row.get('lpo_id') or 0),
+            'line_no': int(row.get('line_no') or 0),
+            'store_item_id': int(row.get('store_item_id') or 0) or None,
+            'quantity': int(row.get('quantity') or 0),
+            'measure': (row.get('measure') or '').strip(),
+            'buying_price': float(row.get('buying_price') or 0),
+            'line_total': float(row.get('line_total') or 0),
+            'received_at': received_at.isoformat() if hasattr(received_at, 'isoformat') else received_at,
+            'stock_movement_id': int(row.get('stock_movement_id') or 0) or None,
+            'item_ref': (row.get('item_ref') or '').strip(),
+            'item_name': (row.get('item_name') or '').strip(),
+        }
+    return {
+        'id': int(row[0] or 0),
+        'lpo_id': int(row[1] or 0) if len(row) > 1 else 0,
+        'line_no': int(row[2] or 0) if len(row) > 2 else 0,
+        'store_item_id': int(row[3] or 0) or None if len(row) > 3 else None,
+        'quantity': int(row[4] or 0) if len(row) > 4 else 0,
+        'measure': (row[5] or '').strip() if len(row) > 5 else '',
+        'buying_price': float(row[6] or 0) if len(row) > 6 else 0,
+        'line_total': float(row[7] or 0) if len(row) > 7 else 0,
+        'received_at': row[8].isoformat() if len(row) > 8 and hasattr(row[8], 'isoformat') else (row[8] if len(row) > 8 else None),
+        'stock_movement_id': int(row[9] or 0) or None if len(row) > 9 else None,
+        'item_ref': (row[10] or '').strip() if len(row) > 10 else '',
+        'item_name': (row[11] or '').strip() if len(row) > 11 else '',
+    }
+
+
+def _fetch_store_lpo_lines(cursor, lpo_id):
+    ensure_store_lpo_lines_table(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT ll.id, ll.lpo_id, ll.line_no, ll.store_item_id, ll.quantity, ll.measure,
+                   ll.buying_price, ll.line_total, ll.received_at, ll.stock_movement_id,
+                   si.reference_code AS item_ref, si.item_name
+            FROM store_lpo_lines ll
+            INNER JOIN store_inventory_items si ON si.id = ll.store_item_id
+            WHERE ll.lpo_id = %s
+            ORDER BY ll.line_no ASC, ll.id ASC
+            """,
+            (int(lpo_id),),
+        )
+        for row in cursor.fetchall() or []:
+            rows.append(_store_lpo_line_dict(row))
+    except Exception as e:
+        print(f"_fetch_store_lpo_lines: {e}")
+    return rows
+
+
+def _store_lpo_line_received(line):
+    """True when an LPO line has been received into stock."""
+    if not line:
+        return False
+    received_at = line.get('received_at')
+    if received_at in (None, '', False, 0, '0', 'null', 'None'):
+        return False
+    return True
+
+
+def _store_lpo_receipt_status(lines):
+    lines = lines or []
+    if not lines:
+        return 'pending', 0, 0
+    received = sum(1 for ln in lines if _store_lpo_line_received(ln))
+    total = len(lines)
+    if received <= 0:
+        return 'pending', received, total
+    if received >= total:
+        return 'received', received, total
+    return 'partial', received, total
+
+
+def _store_lpo_items_summary(lines, max_names=2):
+    lines = lines or []
+    if not lines:
+        return '—', 0
+    names = [(ln.get('item_name') or '').strip() for ln in lines if (ln.get('item_name') or '').strip()]
+    qty_total = sum(int(ln.get('quantity') or 0) for ln in lines)
+    if len(names) <= max_names:
+        return ', '.join(names) if names else f'{len(lines)} item(s)', qty_total
+    shown = ', '.join(names[:max_names])
+    return f'{shown} +{len(names) - max_names} more', qty_total
+
+
+def _store_lpo_header_dict(row, lines=None):
+    """Normalize store_lpos header row with optional lines attached."""
+    lines = lines or []
+    status, received_count, line_count = _store_lpo_receipt_status(lines)
+    order_total = sum(float(ln.get('line_total') or 0) for ln in lines)
+    items_summary, qty_total = _store_lpo_items_summary(lines)
+    if isinstance(row, dict):
+        lpo_date = row.get('lpo_date')
+        deliver_on = row.get('deliver_on_or_before')
+        created_at = row.get('created_at')
+        base = {
+            'id': int(row.get('id') or 0),
+            'serial_number': (row.get('serial_number') or '').strip(),
+            'lpo_date': lpo_date.isoformat() if hasattr(lpo_date, 'isoformat') else lpo_date,
+            'delivery_to': (row.get('delivery_to') or '').strip(),
+            'deliver_on_or_before': deliver_on.isoformat() if hasattr(deliver_on, 'isoformat') else deliver_on,
+            'supplier_id': int(row.get('supplier_id') or 0) or None,
+            'generated_by_name': (row.get('generated_by_name') or '').strip() or None,
+            'created_at': created_at.isoformat() if hasattr(created_at, 'isoformat') else created_at,
+            'supplier_name': (row.get('supplier_name') or '').strip() or None,
+            'supplier_phone': (row.get('supplier_phone') or '').strip() or None,
+            'signature_data': row.get('signature_data'),
+        }
+    else:
+        lpo_date = row[2] if len(row) > 2 else None
+        deliver_on = row[4] if len(row) > 4 else None
+        has_signature = len(row) >= 11
+        created_at = row[8] if has_signature and len(row) > 8 else (row[7] if len(row) > 7 else None)
+        base = {
+            'id': int(row[0] or 0),
+            'serial_number': (row[1] or '').strip() if len(row) > 1 else '',
+            'lpo_date': lpo_date.isoformat() if hasattr(lpo_date, 'isoformat') else lpo_date,
+            'delivery_to': (row[3] or '').strip() if len(row) > 3 else '',
+            'deliver_on_or_before': deliver_on.isoformat() if hasattr(deliver_on, 'isoformat') else deliver_on,
+            'supplier_id': int(row[5] or 0) or None if len(row) > 5 else None,
+            'generated_by_name': (row[6] or '').strip() or None if len(row) > 6 else None,
+            'created_at': created_at.isoformat() if hasattr(created_at, 'isoformat') else created_at,
+            'supplier_name': (row[9] or '').strip() or None if has_signature and len(row) > 9 else ((row[8] or '').strip() or None if len(row) > 8 else None),
+            'supplier_phone': (row[10] or '').strip() or None if has_signature and len(row) > 10 else ((row[9] or '').strip() or None if len(row) > 9 else None),
+            'signature_data': row[7] if has_signature and len(row) > 7 else None,
+        }
+    first_line = lines[0] if lines else {}
+    base.update({
+        'lines': lines,
+        'line_count': line_count,
+        'received_count': received_count,
+        'pending_count': max(0, line_count - received_count),
+        'receipt_status': status,
+        'order_total': order_total,
+        'items_summary': items_summary,
+        'quantity_total': qty_total,
+        'received_at': lines[-1].get('received_at') if status == 'received' and lines else None,
+        'store_item_id': first_line.get('store_item_id'),
+        'quantity': first_line.get('quantity'),
+        'measure': first_line.get('measure'),
+        'buying_price': first_line.get('buying_price'),
+        'line_total': order_total if line_count != 1 else first_line.get('line_total', order_total),
+        'item_ref': first_line.get('item_ref'),
+        'item_name': first_line.get('item_name'),
+        'stock_movement_id': first_line.get('stock_movement_id') if line_count == 1 else None,
+    })
+    return base
+
+
+def _store_lpo_row_dict(row, lines=None):
+    """Normalize a store_lpos row for API/templates (header + lines)."""
+    if lines is None:
+        lines = []
+    return _store_lpo_header_dict(row, lines)
+
+
+def _generate_store_lpo_serial(cursor):
+    ensure_store_lpos_table(cursor)
+    cursor.execute("""
+        SELECT serial_number FROM store_lpos
+        ORDER BY id DESC LIMIT 1
+    """)
+    row = cursor.fetchone()
+    next_num = 1
+    if row:
+        code = (row.get('serial_number') if isinstance(row, dict) else row[0]) or ''
+        m = re.match(r'^LPO-(\d+)$', str(code).strip().upper())
+        if m:
+            next_num = int(m.group(1)) + 1
+    return f'LPO-{next_num:06d}'
+
+
+def _fetch_head_of_institution_name(cursor):
+    """Active head of institution name for document sign-off hints."""
+    try:
+        cursor.execute(
+            """
+            SELECT full_name FROM employees
+            WHERE role = 'head of institution' AND status = 'active'
+            ORDER BY id ASC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+        if not row:
+            return ''
+        name = row.get('full_name') if isinstance(row, dict) else row[0]
+        return (name or '').strip()
+    except Exception as e:
+        print(f"_fetch_head_of_institution_name: {e}")
+        return ''
+
+
+def _fetch_store_lpos_recent(cursor, limit=50):
+    ensure_store_lpo_lines_table(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT l.id, l.serial_number, l.lpo_date, l.delivery_to,
+                   l.deliver_on_or_before, l.supplier_id,
+                   l.generated_by_name, l.created_at,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_lpos l
+            LEFT JOIN store_suppliers sup ON sup.id = l.supplier_id
+            ORDER BY l.created_at DESC, l.id DESC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            lpo_id = int(row.get('id') if isinstance(row, dict) else row[0])
+            lines = _fetch_store_lpo_lines(cursor, lpo_id)
+            rows.append(_store_lpo_header_dict(row, lines))
+    except Exception as e:
+        print(f"_fetch_store_lpos_recent: {e}")
+    return rows
+
+
+def _fetch_store_lpo_detail(cursor, lpo_id):
+    ensure_store_lpo_lines_table(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT l.id, l.serial_number, l.lpo_date, l.delivery_to,
+                   l.deliver_on_or_before, l.supplier_id,
+                   l.generated_by_name, l.signature_data, l.created_at,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_lpos l
+            LEFT JOIN store_suppliers sup ON sup.id = l.supplier_id
+            WHERE l.id = %s
+            LIMIT 1
+            """,
+            (int(lpo_id),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        lines = _fetch_store_lpo_lines(cursor, int(lpo_id))
+        return _store_lpo_header_dict(row, lines)
+    except Exception as e:
+        print(f"_fetch_store_lpo_detail: {e}")
+        return None
+
+
+def _parse_lpo_lines_from_request():
+    """Parse LPO line items from JSON payload or legacy single-item form fields."""
+    import json as _json
+
+    raw = (request.form.get('lpo_lines_json') or '').strip()
+    if raw:
+        try:
+            data = _json.loads(raw)
+            if isinstance(data, list):
+                parsed = []
+                for idx, ln in enumerate(data, start=1):
+                    if not isinstance(ln, dict):
+                        continue
+                    try:
+                        store_item_id = int(ln.get('store_item_id') or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    try:
+                        quantity = int(ln.get('quantity') or 0)
+                    except (TypeError, ValueError):
+                        quantity = 0
+                    price_raw = ln.get('buying_price')
+                    parsed.append({
+                        'line_no': idx,
+                        'store_item_id': store_item_id,
+                        'quantity': quantity,
+                        'buying_price_raw': str(price_raw).strip() if price_raw is not None else '',
+                    })
+                if parsed:
+                    return parsed
+        except (_json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+    store_item_id = request.form.get('store_item_id', type=int)
+    qty_raw = (request.form.get('quantity') or '').strip()
+    price_raw = (request.form.get('buying_price') or '').strip()
+    if store_item_id:
+        try:
+            quantity = int(qty_raw)
+        except (TypeError, ValueError):
+            quantity = 0
+        return [{
+            'line_no': 1,
+            'store_item_id': store_item_id,
+            'quantity': quantity,
+            'buying_price_raw': price_raw,
+        }]
+    return []
+
+
+def _parse_lpo_receive_lines_from_request():
+    """Parse selected LPO receive lines from JSON payload."""
+    import json as _json
+
+    raw = (request.form.get('receive_lines_json') or '').strip()
+    if not raw:
+        return []
+    try:
+        data = _json.loads(raw)
+        if not isinstance(data, list):
+            return []
+        parsed = []
+        for ln in data:
+            if not isinstance(ln, dict):
+                continue
+            try:
+                line_id = int(ln.get('line_id') or 0)
+            except (TypeError, ValueError):
+                continue
+            try:
+                quantity = int(ln.get('quantity') or 0)
+            except (TypeError, ValueError):
+                quantity = 0
+            price_raw = ln.get('buying_price')
+            parsed.append({
+                'line_id': line_id,
+                'quantity': quantity,
+                'buying_price_raw': str(price_raw).strip() if price_raw is not None else '',
+            })
+        return parsed
+    except (_json.JSONDecodeError, TypeError, ValueError):
+        return []
+
+
+@app.route('/dashboard/employee/store-lpo/receive/<int:lpo_id>/bulk', methods=['POST'])
+@login_required
+def store_lpo_receive_bulk(lpo_id):
+    """Receive goods for multiple lines on one LPO (single supplier delivery)."""
+    return _store_lpo_receive_bulk_impl(lpo_id)
+
+
+@app.route('/dashboard/employee/store-lpo/receive/<int:lpo_id>/<int:line_id>', methods=['POST'])
+@login_required
+def store_lpo_receive_line(lpo_id, line_id):
+    """Receive goods for one line on a local purchase order (stock in)."""
+    return _store_lpo_receive_impl(lpo_id, line_id)
+
+
+@app.route('/dashboard/employee/store-lpo/receive/<int:lpo_id>', methods=['POST'])
+@login_required
+def store_lpo_receive(lpo_id):
+    """Legacy receive route — uses first pending line on the LPO."""
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+    line_id = None
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_lpo_lines_table(cursor)
+            lines = _fetch_store_lpo_lines(cursor, lpo_id)
+            for ln in lines:
+                if not ln.get('received_at'):
+                    line_id = ln.get('id')
+                    break
+    finally:
+        connection.close()
+    if not line_id:
+        flash('No pending line items to receive on this LPO.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+    return _store_lpo_receive_impl(lpo_id, line_id)
+
+
+def _store_lpo_receive_impl(lpo_id, line_id):
+    """Receive goods against a local purchase order (stock in)."""
+    from decimal import Decimal, InvalidOperation
+
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+
+    qty_raw = (request.form.get('quantity') or '').strip()
+    price_raw = (request.form.get('buying_price') or '').strip()
+    supplier_phone = (request.form.get('supplier_phone') or '').strip()
+    supplier_name = (request.form.get('supplier_name') or '').strip()
+    supplier_id_raw = request.form.get('supplier_id', type=int)
+    invoice_number_raw = (request.form.get('invoice_number') or '').strip()
+    delivery_note_raw = (request.form.get('delivery_note') or '').strip()
+    notes_raw = (request.form.get('notes') or '').strip()
+
+    try:
+        quantity = int(qty_raw)
+    except (TypeError, ValueError):
+        quantity = None
+    try:
+        buying_price = Decimal(price_raw)
+    except (InvalidOperation, TypeError, ValueError):
+        buying_price = None
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_lpo_lines_table(cursor)
+            connection.commit()
+            lpo = _fetch_store_lpo_detail(cursor, lpo_id)
+            if not lpo:
+                flash('LPO not found.', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            line = None
+            for ln in lpo.get('lines') or []:
+                if int(ln.get('id') or 0) == int(line_id):
+                    line = ln
+                    break
+            if not line:
+                flash('LPO line not found.', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+            if line.get('received_at'):
+                flash(
+                    f"Line item already received for {lpo.get('serial_number') or 'LPO'}.".strip(),
+                    'error',
+                )
+                return redirect(employee_dash_url('store-lpo'))
+
+            if quantity is None or quantity < 1:
+                flash('Quantity must be a whole number of at least 1.', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+            if buying_price is None or buying_price < 0:
+                flash('Enter a valid buying price.', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            digits = re.sub(r'\D', '', supplier_phone or '')
+            if not digits or len(digits) < 9:
+                flash('Enter the supplier contact (at least 9 digits).', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+            if not supplier_name.strip():
+                flash('Enter the supplier name.', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            resolved_supplier_id, sup_err = _store_resolve_supplier_for_form(
+                cursor,
+                supplier_id=supplier_id_raw or lpo.get('supplier_id'),
+                phone=supplier_phone,
+                company_name=supplier_name,
+            )
+            if sup_err:
+                flash(sup_err, 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            if invoice_number_raw:
+                delivery_note = invoice_number_raw
+            elif delivery_note_raw:
+                delivery_note = delivery_note_raw
+            else:
+                delivery_note = lpo.get('serial_number') or ''
+
+            notes_parts = []
+            if delivery_note_raw and invoice_number_raw:
+                dn_upper = delivery_note_raw.upper()
+                inv_upper = invoice_number_raw.upper()
+                if dn_upper != inv_upper:
+                    notes_parts.append(f'DN: {delivery_note_raw}')
+            if notes_raw:
+                notes_parts.append(notes_raw)
+            notes_combined = '. '.join(notes_parts) if notes_parts else ''
+
+            performed_by = session.get('employee_id') or session.get('user_id')
+            performed_name = (session.get('full_name') or session.get('username') or '').strip()
+
+            result = _store_record_stock_in(
+                cursor,
+                line.get('store_item_id'),
+                quantity,
+                buying_price,
+                supplier_phone,
+                supplier_name,
+                delivery_note=delivery_note,
+                notes=notes_combined,
+                performed_by=performed_by,
+                performed_by_name=performed_name,
+                supplier_id=resolved_supplier_id,
+            )
+            if not result.get('ok'):
+                connection.rollback()
+                flash(result.get('message', 'Could not receive stock.'), 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            movement_id = int(result['movement_id'])
+            cursor.execute(
+                """
+                UPDATE store_lpo_lines
+                SET received_at = CURRENT_TIMESTAMP, stock_movement_id = %s
+                WHERE id = %s AND lpo_id = %s AND received_at IS NULL
+                """,
+                (movement_id, int(line_id), int(lpo_id)),
+            )
+            if cursor.rowcount < 1:
+                connection.rollback()
+                flash('This line was already received by another session.', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            connection.commit()
+            ref_no = result.get('reference_number') or ''
+            total_amount = result.get('total_amount')
+            item_label = line.get('item_name') or 'item'
+            flash(
+                f"Goods received for {lpo.get('serial_number') or 'LPO'} ({item_label}) as {ref_no}. "
+                f'Payment pending: {total_amount}.',
+                'success',
+            )
+            return redirect(
+                employee_dash_url(f'store-lpo/receive-print/{lpo_id}')
+                + f'?line_id={int(line_id)}&received=1'
+            )
+    except Exception as e:
+        print(f"store_lpo_receive: {e}")
+        connection.rollback()
+        flash('An error occurred while receiving stock.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+    finally:
+        connection.close()
+
+
+def _store_lpo_receive_bulk_impl(lpo_id):
+    """Receive goods for multiple pending lines on one LPO in a single delivery."""
+    from decimal import Decimal, InvalidOperation
+
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+
+    line_specs = _parse_lpo_receive_lines_from_request()
+    if not line_specs:
+        flash('Select at least one line item to receive.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+
+    supplier_phone = (request.form.get('supplier_phone') or '').strip()
+    supplier_name = (request.form.get('supplier_name') or '').strip()
+    supplier_id_raw = request.form.get('supplier_id', type=int)
+    invoice_number_raw = (request.form.get('invoice_number') or '').strip()
+    delivery_note_raw = (request.form.get('delivery_note') or '').strip()
+    notes_raw = (request.form.get('notes') or '').strip()
+
+    digits = re.sub(r'\D', '', supplier_phone or '')
+    if not digits or len(digits) < 9:
+        flash('Enter the supplier contact (at least 9 digits).', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+    if not supplier_name.strip():
+        flash('Enter the supplier name.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_lpo_lines_table(cursor)
+            connection.commit()
+            lpo = _fetch_store_lpo_detail(cursor, lpo_id)
+            if not lpo:
+                flash('LPO not found.', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            pending_by_id = {
+                int(ln.get('id') or 0): ln
+                for ln in (lpo.get('lines') or [])
+                if not ln.get('received_at')
+            }
+            if not pending_by_id:
+                flash('No pending line items to receive on this LPO.', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            if invoice_number_raw:
+                delivery_note = invoice_number_raw
+            elif delivery_note_raw:
+                delivery_note = delivery_note_raw
+            else:
+                delivery_note = lpo.get('serial_number') or ''
+
+            notes_parts = []
+            if delivery_note_raw and invoice_number_raw:
+                dn_upper = delivery_note_raw.upper()
+                inv_upper = invoice_number_raw.upper()
+                if dn_upper != inv_upper:
+                    notes_parts.append(f'DN: {delivery_note_raw}')
+            if notes_raw:
+                notes_parts.append(notes_raw)
+            notes_combined = '. '.join(notes_parts) if notes_parts else ''
+
+            performed_by = session.get('employee_id') or session.get('user_id')
+            performed_name = (session.get('full_name') or session.get('username') or '').strip()
+
+            validated = []
+            seen_line_ids = set()
+            for spec in line_specs:
+                line_id = int(spec.get('line_id') or 0)
+                if not line_id or line_id in seen_line_ids:
+                    continue
+                seen_line_ids.add(line_id)
+                line = pending_by_id.get(line_id)
+                if not line:
+                    flash('One or more selected lines are not pending on this LPO.', 'error')
+                    return redirect(employee_dash_url('store-lpo'))
+                try:
+                    quantity = int(spec.get('quantity') or 0)
+                except (TypeError, ValueError):
+                    quantity = 0
+                try:
+                    buying_price = Decimal(spec.get('buying_price_raw') or '0')
+                except (InvalidOperation, TypeError, ValueError):
+                    buying_price = None
+                if quantity < 1:
+                    item_label = line.get('item_name') or 'item'
+                    flash(f'Quantity must be at least 1 for {item_label}.', 'error')
+                    return redirect(employee_dash_url('store-lpo'))
+                if buying_price is None or buying_price < 0:
+                    item_label = line.get('item_name') or 'item'
+                    flash(f'Enter a valid buying price for {item_label}.', 'error')
+                    return redirect(employee_dash_url('store-lpo'))
+                validated.append({
+                    'line_id': line_id,
+                    'line': line,
+                    'quantity': quantity,
+                    'buying_price': buying_price,
+                })
+
+            if not validated:
+                flash('Select at least one line item to receive.', 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            resolved_supplier_id, sup_err = _store_resolve_supplier_for_form(
+                cursor,
+                supplier_id=supplier_id_raw or lpo.get('supplier_id'),
+                phone=supplier_phone,
+                company_name=supplier_name,
+            )
+            if sup_err:
+                flash(sup_err, 'error')
+                return redirect(employee_dash_url('store-lpo'))
+
+            received_line_ids = []
+            ref_numbers = []
+            total_pending_amount = Decimal('0')
+            for entry in validated:
+                line = entry['line']
+                line_id = entry['line_id']
+                quantity = entry['quantity']
+                buying_price = entry['buying_price']
+
+                result = _store_record_stock_in(
+                    cursor,
+                    line.get('store_item_id'),
+                    quantity,
+                    buying_price,
+                    supplier_phone,
+                    supplier_name,
+                    delivery_note=delivery_note,
+                    notes=notes_combined,
+                    performed_by=performed_by,
+                    performed_by_name=performed_name,
+                    supplier_id=resolved_supplier_id,
+                )
+                if not result.get('ok'):
+                    connection.rollback()
+                    item_label = line.get('item_name') or 'item'
+                    flash(
+                        result.get('message', f'Could not receive {item_label}.'),
+                        'error',
+                    )
+                    return redirect(employee_dash_url('store-lpo'))
+
+                movement_id = int(result['movement_id'])
+                cursor.execute(
+                    """
+                    UPDATE store_lpo_lines
+                    SET received_at = CURRENT_TIMESTAMP, stock_movement_id = %s
+                    WHERE id = %s AND lpo_id = %s AND received_at IS NULL
+                    """,
+                    (movement_id, int(line_id), int(lpo_id)),
+                )
+                if cursor.rowcount < 1:
+                    connection.rollback()
+                    flash('One or more lines were already received by another session.', 'error')
+                    return redirect(employee_dash_url('store-lpo'))
+
+                received_line_ids.append(int(line_id))
+                ref_no = result.get('reference_number') or ''
+                if ref_no:
+                    ref_numbers.append(ref_no)
+                total_amt = result.get('total_amount')
+                if total_amt is not None:
+                    total_pending_amount += Decimal(str(total_amt))
+
+            connection.commit()
+            item_count = len(received_line_ids)
+            ref_summary = ref_numbers[0] if len(ref_numbers) == 1 else f'{len(ref_numbers)} GRNs'
+            flash(
+                f"Goods received for {lpo.get('serial_number') or 'LPO'}: "
+                f'{item_count} item{"s" if item_count != 1 else ""} as {ref_summary}. '
+                f'Payment pending: {total_pending_amount}.',
+                'success',
+            )
+            line_ids_param = ','.join(str(i) for i in received_line_ids)
+            return redirect(
+                employee_dash_url(f'store-lpo/receive-print/{lpo_id}')
+                + f'?line_ids={line_ids_param}&received=1'
+            )
+    except Exception as e:
+        print(f"store_lpo_receive_bulk: {e}")
+        connection.rollback()
+        flash('An error occurred while receiving stock.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/store-lpo/supplier-search', methods=['GET'])
+@login_required
+def store_lpo_supplier_search():
+    """Search store suppliers by company name (LPO autocomplete)."""
+    redir = _store_inventory_guard()
+    if redir:
+        return jsonify({'ok': False, 'results': [], 'message': 'Permission denied.'}), 403
+    query = (request.args.get('q') or '').strip()
+    if len(query) < 2:
+        return jsonify({'ok': True, 'results': [], 'message': 'Type at least 2 characters.'})
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'results': [], 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            results = _store_search_suppliers_by_name(cursor, query, limit=10)
+            return jsonify({'ok': True, 'results': results})
+    except Exception as e:
+        print(f"store_lpo_supplier_search: {e}")
+        return jsonify({'ok': False, 'results': [], 'message': 'Search failed.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/store-lpo/<int:lpo_id>/json')
+@login_required
+def store_lpo_json(lpo_id):
+    """JSON detail for LPO view / receive modals."""
+    if _store_inventory_effective_role() != 'store manager':
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            lpo = _fetch_store_lpo_detail(cursor, lpo_id)
+    finally:
+        connection.close()
+    if not lpo:
+        return jsonify({'ok': False, 'message': 'LPO not found.'}), 404
+    return jsonify({'ok': True, 'lpo': lpo})
+
+
+@app.route('/dashboard/employee/store-lpo/print/<int:lpo_id>')
+@login_required
+def store_lpo_print(lpo_id):
+    """Printable local purchase order."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    connection = get_db_connection()
+    lpo = None
+    principal_name = ''
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                lpo = _fetch_store_lpo_detail(cursor, lpo_id)
+                if lpo:
+                    principal_name = _fetch_head_of_institution_name(cursor)
+        finally:
+            connection.close()
+    if not lpo:
+        flash('LPO not found.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+    store_manager_name = (
+        (lpo.get('generated_by_name') or '').strip()
+        or (session.get('full_name') or session.get('username') or '').strip()
+    )
+    return render_template(
+        'dashboards/store_lpo_print.html',
+        lpo=lpo,
+        store_manager_name=store_manager_name,
+        principal_name=principal_name,
+        school_settings=get_school_settings(),
+    )
+
+
+@app.route('/dashboard/employee/store-lpo/receive-print/<int:lpo_id>')
+@login_required
+def store_lpo_receive_print(lpo_id):
+    """Printable goods received note for LPO delivery (physical sign-off)."""
+    from datetime import datetime
+
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    scope = (request.args.get('scope') or 'pending').strip().lower()
+    line_id = request.args.get('line_id', type=int)
+    line_ids_raw = (request.args.get('line_ids') or '').strip()
+    line_ids = []
+    if line_ids_raw:
+        for part in line_ids_raw.split(','):
+            part = part.strip()
+            if part.isdigit():
+                line_ids.append(int(part))
+
+    connection = get_db_connection()
+    lpo = None
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                lpo = _fetch_store_lpo_detail(cursor, lpo_id)
+        finally:
+            connection.close()
+
+    if not lpo:
+        flash('LPO not found.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+
+    all_lines = lpo.get('lines') or []
+    if line_ids:
+        line_id_set = set(line_ids)
+        receive_lines = [
+            ln for ln in all_lines if int(ln.get('id') or 0) in line_id_set
+        ]
+        receive_lines.sort(key=lambda ln: int(ln.get('line_no') or 0))
+        print_scope = 'lines' if len(receive_lines) > 1 else 'line'
+    elif line_id:
+        receive_lines = [ln for ln in all_lines if int(ln.get('id') or 0) == int(line_id)]
+        print_scope = 'line'
+    elif scope == 'all':
+        receive_lines = list(all_lines)
+        print_scope = 'all'
+    elif scope == 'received':
+        receive_lines = [ln for ln in all_lines if _store_lpo_line_received(ln)]
+        receive_lines.sort(key=lambda ln: int(ln.get('line_no') or 0))
+        print_scope = 'received'
+    else:
+        receive_lines = [ln for ln in all_lines if not _store_lpo_line_received(ln)]
+        print_scope = 'pending'
+
+    if not receive_lines and all_lines:
+        status, _, _ = _store_lpo_receipt_status(all_lines)
+        if scope == 'received' or status == 'received':
+            receive_lines = list(all_lines)
+            print_scope = 'received'
+        elif scope == 'pending' and status == 'partial':
+            receive_lines = [ln for ln in all_lines if not _store_lpo_line_received(ln)]
+            if not receive_lines:
+                receive_lines = list(all_lines)
+                print_scope = 'all'
+        elif scope in ('pending', 'all') and status == 'received':
+            receive_lines = list(all_lines)
+            print_scope = 'received'
+
+    if not receive_lines:
+        flash('No items available for a goods received note on this LPO.', 'error')
+        return redirect(employee_dash_url('store-lpo'))
+
+    receive_total = sum(float(ln.get('line_total') or 0) for ln in receive_lines)
+    store_manager_name = (
+        session.get('full_name') or session.get('username') or ''
+    ).strip()
+    just_received = (request.args.get('received') or '').strip() in ('1', 'true', 'yes')
+
+    return render_template(
+        'dashboards/store_lpo_receive_print.html',
+        lpo=lpo,
+        receive_lines=receive_lines,
+        receive_total=receive_total,
+        print_scope=print_scope,
+        store_manager_name=store_manager_name,
+        printed_at=datetime.now(),
+        just_received=just_received,
+        school_settings=get_school_settings(),
+    )
+
+
+@app.route('/dashboard/employee/store-lpo', methods=['GET', 'POST'])
+@login_required
+def store_lpo():
+    """Register local purchase orders (store manager)."""
+    from decimal import Decimal, InvalidOperation
+    from datetime import date
+
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    today = date.today()
+    generated_by_name = (
+        session.get('full_name') or session.get('username') or ''
+    ).strip()
+    catalog_items = []
+    recent_lpos = []
+    store_suppliers = []
+    next_serial = 'LPO-000001'
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return render_template(
+            'dashboards/store_lpo.html',
+            role=user_role,
+            is_technician=is_technician,
+            catalog_items=[],
+            catalog_items_client=[],
+            recent_lpos=[],
+            store_suppliers=[],
+            today=today,
+            next_serial=next_serial,
+            generated_by_name=generated_by_name,
+            lpo_form_open_default=False,
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_lpo_lines_table(cursor)
+            connection.commit()
+            next_serial = _generate_store_lpo_serial(cursor)
+
+            if request.method == 'POST':
+                delivery_to = (request.form.get('delivery_to') or '').strip().upper()
+                deliver_raw = (request.form.get('deliver_on_or_before') or '').strip()
+                supplier_phone = (request.form.get('supplier_phone') or '').strip()
+                supplier_name = (request.form.get('supplier_name') or '').strip()
+                supplier_id_raw = request.form.get('supplier_id', type=int)
+                signature_data = (request.form.get('signature_data') or '').strip() or None
+                lpo_date_raw = (request.form.get('lpo_date') or '').strip()
+                line_specs = _parse_lpo_lines_from_request()
+
+                try:
+                    lpo_date = datetime.strptime(lpo_date_raw, '%Y-%m-%d').date() if lpo_date_raw else today
+                except ValueError:
+                    lpo_date = today
+                try:
+                    deliver_on_or_before = (
+                        datetime.strptime(deliver_raw, '%Y-%m-%d').date() if deliver_raw else None
+                    )
+                except ValueError:
+                    deliver_on_or_before = None
+
+                if not delivery_to:
+                    flash('Enter the delivery destination.', 'error')
+                elif not deliver_on_or_before:
+                    flash('Select the delivery deadline (on or before).', 'error')
+                elif not line_specs:
+                    flash('Add at least one stock item to the LPO.', 'error')
+                else:
+                    validated_lines = []
+                    seen_items = set()
+                    line_errors = []
+                    for spec in line_specs:
+                        store_item_id = int(spec.get('store_item_id') or 0)
+                        if not store_item_id:
+                            line_errors.append(f'Line {spec.get("line_no")}: select a stock item.')
+                            continue
+                        if store_item_id in seen_items:
+                            line_errors.append(f'Line {spec.get("line_no")}: duplicate item on the same LPO.')
+                            continue
+                        seen_items.add(store_item_id)
+                        try:
+                            quantity = int(spec.get('quantity') or 0)
+                        except (TypeError, ValueError):
+                            quantity = 0
+                        try:
+                            buying_price = Decimal(spec.get('buying_price_raw') or '0')
+                        except (InvalidOperation, TypeError, ValueError):
+                            buying_price = None
+                        if quantity < 1:
+                            line_errors.append(f'Line {spec.get("line_no")}: quantity must be at least 1.')
+                            continue
+                        if buying_price is None or buying_price < 0:
+                            line_errors.append(f'Line {spec.get("line_no")}: enter a valid buying price.')
+                            continue
+                        cursor.execute(
+                            """
+                            SELECT id, item_name, measure, item_status
+                            FROM store_inventory_items WHERE id = %s
+                            """,
+                            (store_item_id,),
+                        )
+                        item_row = cursor.fetchone()
+                        if not item_row:
+                            line_errors.append(f'Line {spec.get("line_no")}: stock item not found.')
+                            continue
+                        if isinstance(item_row, dict):
+                            item_status = (item_row.get('item_status') or '').strip()
+                            measure = (item_row.get('measure') or '').strip()
+                        else:
+                            item_status = (item_row[3] or '').strip() if len(item_row) > 3 else ''
+                            measure = (item_row[2] or '').strip() if len(item_row) > 2 else ''
+                        if item_status != 'active':
+                            line_errors.append(f'Line {spec.get("line_no")}: item is suspended.')
+                            continue
+                        line_total = (buying_price * quantity).quantize(Decimal('0.01'))
+                        validated_lines.append({
+                            'line_no': int(spec.get('line_no') or len(validated_lines) + 1),
+                            'store_item_id': store_item_id,
+                            'measure': measure or None,
+                            'quantity': quantity,
+                            'buying_price': buying_price,
+                            'line_total': line_total,
+                        })
+
+                    if line_errors:
+                        flash(line_errors[0], 'error')
+                    elif not validated_lines:
+                        flash('Add at least one valid line item.', 'error')
+                    else:
+                        supplier_id, supplier_err = _store_upsert_supplier_for_stock_in(
+                            cursor, supplier_phone, supplier_name
+                        )
+                        if supplier_err:
+                            flash(supplier_err, 'error')
+                        else:
+                            serial_no = _generate_store_lpo_serial(cursor)
+                            generated_by = session.get('employee_id') or session.get('user_id')
+                            cursor.execute(
+                                """
+                                INSERT INTO store_lpos
+                                    (serial_number, lpo_date, supplier_id, delivery_to,
+                                     deliver_on_or_before, generated_by, generated_by_name, signature_data)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                """,
+                                (
+                                    serial_no, lpo_date, supplier_id, delivery_to[:500],
+                                    deliver_on_or_before, generated_by, generated_by_name or None,
+                                    signature_data[:500000] if signature_data else None,
+                                ),
+                            )
+                            lpo_id = int(cursor.lastrowid)
+                            for idx, ln in enumerate(validated_lines, start=1):
+                                cursor.execute(
+                                    """
+                                    INSERT INTO store_lpo_lines
+                                        (lpo_id, line_no, store_item_id, measure,
+                                         quantity, buying_price, line_total)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    """,
+                                    (
+                                        lpo_id, idx, ln['store_item_id'], ln['measure'],
+                                        ln['quantity'], ln['buying_price'], ln['line_total'],
+                                    ),
+                                )
+                            connection.commit()
+                            item_word = 'item' if len(validated_lines) == 1 else 'items'
+                            flash(
+                                f'LPO {serial_no} registered with {len(validated_lines)} {item_word}.',
+                                'success',
+                            )
+                            return redirect(employee_dash_url(f'store-lpo/print/{lpo_id}'))
+
+            catalog_items = _fetch_store_items_for_stock(cursor)
+            store_suppliers = _fetch_store_suppliers_list(cursor)
+            recent_lpos = _fetch_store_lpos_recent(cursor)
+    except Exception as e:
+        print(f"store_lpo: {e}")
+        connection.rollback()
+        flash('An error occurred processing the LPO.', 'error')
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/store_lpo.html',
+        role=user_role,
+        is_technician=is_technician,
+        catalog_items=catalog_items,
+        catalog_items_client=catalog_items,
+        recent_lpos=recent_lpos,
+        today=today,
+        next_serial=next_serial,
+        generated_by_name=generated_by_name,
+        lpo_form_open_default=request.method == 'POST',
     )
 
 

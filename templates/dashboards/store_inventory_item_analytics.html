@@ -13,21 +13,17 @@
 {% endblock %}
 
 {% block content %}
+{% include 'dashboards/includes/store_analytics_period_filter_script.html' %}
 <script>
 document.addEventListener('alpine:init', function () {
   Alpine.data('storeItemAnalyticsPage', function () {
-    return {
+    return Object.assign({}, storeAnalyticsPeriodFilterMixin(), {
       item: {{ item|tojson }},
       itemId: {{ item_id|tojson }},
       analyticsApiUrl: {{ (employee_dash_url('store-inventory') + '/' + item_id|string + '/analytics/data')|tojson }},
       printUrlBase: {{ employee_dash_url('store-stock/print')|tojson }},
       loading: true,
-      viewTab: 'visual',
-      period: 'all',
-      filterDate: '',
-      rangeFrom: '',
-      rangeTo: '',
-      periodLabel: 'All time',
+      viewTab: 'raw',
       summary: {},
       purposes: [],
       movements: [],
@@ -36,17 +32,7 @@ document.addEventListener('alpine:init', function () {
       charts: {},
       _chartTimer: null,
       init: function () {
-        var today = new Date();
-        var y = today.getFullYear();
-        var m = String(today.getMonth() + 1).padStart(2, '0');
-        var d = String(today.getDate()).padStart(2, '0');
-        this.filterDate = y + '-' + m + '-' + d;
-        this.rangeFrom = y + '-' + m + '-01';
-        this.rangeTo = y + '-' + m + '-' + d;
-        this.fetchAnalytics();
-      },
-      setPeriod: function (mode) {
-        this.period = mode;
+        this.initPeriodFilters();
         this.fetchAnalytics();
       },
       setViewTab: function (tab) {
@@ -59,16 +45,7 @@ document.addEventListener('alpine:init', function () {
       },
       buildQuery: function () {
         var p = new URLSearchParams();
-        p.set('period', this.period || 'all');
-        if (this.period === 'day' || this.period === 'month') {
-          if (this.filterDate) p.set('date', this.filterDate);
-        } else if (this.period === 'year') {
-          var y = (this.filterDate || '').slice(0, 4);
-          if (y) p.set('date', y);
-        } else if (this.period === 'range') {
-          if (this.rangeFrom) p.set('from', this.rangeFrom);
-          if (this.rangeTo) p.set('to', this.rangeTo);
-        }
+        this.appendPeriodQuery(p);
         return p.toString();
       },
       fetchAnalytics: function () {
@@ -366,17 +343,16 @@ document.addEventListener('alpine:init', function () {
         var n = parseFloat(v);
         return Number.isFinite(n) ? ('KES ' + n.toFixed(2)) : '—';
       },
-      paymentBadgeClass: function (status) {
-        var s = (status || '').toLowerCase();
-        if (s === 'paid') return 'ss-pay-badge--paid';
-        if (s === 'partial') return 'ss-pay-badge--partial';
-        if (s === 'pending') return 'ss-pay-badge--pending';
-        return '';
-      },
       printUrl: function (id) {
         return this.printUrlBase + '/' + id;
       },
-    };
+      stockQtyClass: function (qty) {
+        qty = parseInt(qty, 10) || 0;
+        if (qty === 0) return 'is-zero';
+        if (qty <= 5) return 'is-low';
+        return 'is-ok';
+      },
+    });
   });
 });
 </script>
@@ -387,11 +363,11 @@ document.addEventListener('alpine:init', function () {
         <header class="sinv-hero sinv-hero--analytics">
             <div class="sinv-hero__inner">
                 <div class="sinv-hero__top">
-                    <div class="min-w-0 flex gap-3.5">
+                    <div class="min-w-0 flex gap-3.5 flex-1">
                         <div class="sinv-hero__icon" aria-hidden="true"><i class="fas fa-chart-line"></i></div>
                         <div class="min-w-0">
                             <a href="{{ employee_dash_url('store-inventory') }}" class="sinv-hero__back">
-                                <i class="fas fa-chevron-left text-[0.5rem]"></i> Item catalog
+                                <i class="fas fa-chevron-left text-[0.5rem]"></i> Register item
                             </a>
                             <h1 class="sinv-hero__title" x-text="item.item_name"></h1>
                             <p class="sinv-hero__sub si-normal">
@@ -403,6 +379,13 @@ document.addEventListener('alpine:init', function () {
                             </p>
                         </div>
                     </div>
+                    <div class="sinv-hero__stock" aria-label="Current stock on hand">
+                        <span class="sinv-hero__stock-label">Current stock</span>
+                        <span class="sinv-hero__stock-qty" :class="stockQtyClass(item.quantity_on_hand)">
+                            <span class="sinv-hero__stock-num" x-text="item.quantity_on_hand ?? 0"></span>
+                            <span class="sinv-hero__stock-unit" x-text="item.measure || ''"></span>
+                        </span>
+                    </div>
                 </div>
             </div>
         </header>
@@ -412,7 +395,7 @@ document.addEventListener('alpine:init', function () {
             <div class="si-panel-head">
                 <div class="min-w-0">
                     <h2 class="si-title">Usage period</h2>
-                    <p class="si-subtitle si-normal">Filter analytics by day, month, year, or custom range — updates live.</p>
+                    <p class="si-subtitle si-normal">Choose a period type, then pick the date from the calendar.</p>
                     <span class="sinv-results-badge mt-2">
                         <i class="fas fa-calendar-days"></i>
                         <span x-text="periodLabel"></span>
@@ -420,53 +403,13 @@ document.addEventListener('alpine:init', function () {
                 </div>
             </div>
             <div class="si-panel-body sinv-analytics-filters si-normal">
-                <div class="sinv-period-tabs">
-                    <button type="button" @click="setPeriod('all')" class="sinv-period-tab" :class="period === 'all' ? 'is-active' : ''">All time</button>
-                    <button type="button" @click="setPeriod('day')" class="sinv-period-tab" :class="period === 'day' ? 'is-active' : ''">Day</button>
-                    <button type="button" @click="setPeriod('month')" class="sinv-period-tab" :class="period === 'month' ? 'is-active' : ''">Month</button>
-                    <button type="button" @click="setPeriod('year')" class="sinv-period-tab" :class="period === 'year' ? 'is-active' : ''">Year</button>
-                    <button type="button" @click="setPeriod('range')" class="sinv-period-tab" :class="period === 'range' ? 'is-active' : ''">Period</button>
-                </div>
-                <div class="sinv-period-inputs mt-3">
-                    <template x-if="period === 'day'">
-                        <div>
-                            <label class="si-label">Select day</label>
-                            <input type="date" x-model="filterDate" @change="onFilterChange()" class="si-input sinv-date-input" />
-                        </div>
-                    </template>
-                    <template x-if="period === 'month'">
-                        <div>
-                            <label class="si-label">Select month</label>
-                            <input type="month" x-model="filterDate" @change="onFilterChange()" class="si-input sinv-date-input" />
-                        </div>
-                    </template>
-                    <template x-if="period === 'year'">
-                        <div>
-                            <label class="si-label">Select year</label>
-                            <input type="number" min="2000" max="2100" step="1"
-                                   :value="(filterDate || '').slice(0, 4)"
-                                   @input="filterDate = ($event.target.value || '') + '-01-01'; onFilterChange()"
-                                   class="si-input sinv-date-input" />
-                        </div>
-                    </template>
-                    <template x-if="period === 'range'">
-                        <div class="sinv-range-grid">
-                            <div>
-                                <label class="si-label">From</label>
-                                <input type="date" x-model="rangeFrom" @change="onFilterChange()" class="si-input sinv-date-input" />
-                            </div>
-                            <div>
-                                <label class="si-label">To</label>
-                                <input type="date" x-model="rangeTo" @change="onFilterChange()" class="si-input sinv-date-input" />
-                            </div>
-                        </div>
-                    </template>
-                </div>
-                <p x-show="loading" class="mt-2 text-xs text-[var(--si-muted)]"><i class="fas fa-circle-notch fa-spin mr-1"></i> Updating…</p>
+                {% include 'dashboards/includes/store_analytics_period_filters.html' %}
+
+                <p x-show="loading" class="mt-3 text-xs text-[var(--si-muted)]"><i class="fas fa-circle-notch fa-spin mr-1"></i> Updating…</p>
             </div>
         </section>
 
-        {# View tabs: Visual analytics (default) | Raw data #}
+        {# View tabs: Transactions (default) | Visual analytics #}
         <section class="si-panel mt-5">
             <div class="si-panel-head">
                 <div class="min-w-0">
@@ -484,7 +427,7 @@ document.addEventListener('alpine:init', function () {
                     <button type="button" role="tab" @click="setViewTab('raw')"
                             class="sinv-view-tab" :class="viewTab === 'raw' ? 'is-active' : ''"
                             :aria-selected="viewTab === 'raw'">
-                        <i class="fas fa-table"></i> Raw data
+                        <i class="fas fa-table"></i> Transactions
                     </button>
                 </div>
 
@@ -565,8 +508,9 @@ document.addEventListener('alpine:init', function () {
                     </div>
                 </div>
 
-                {# —— Raw data —— #}
+                {# —— Transactions —— #}
                 <div x-show="viewTab === 'raw'" x-cloak>
+                    {% include 'dashboards/includes/store_analytics_visual_cta.html' %}
                     <div x-show="!loading && movements.length === 0" class="si-empty py-8">
                         <p class="si-normal text-sm">No movements in this period.</p>
                     </div>
@@ -581,8 +525,6 @@ document.addEventListener('alpine:init', function () {
                                         <th class="text-right">Before</th>
                                         <th class="text-right">After</th>
                                         <th class="text-right">Unit price</th>
-                                        <th class="text-right">Total</th>
-                                        <th>Payment</th>
                                         <th>Supplier / purpose</th>
                                         <th>Recorded by</th>
                                         <th>Delivery note</th>
@@ -607,21 +549,6 @@ document.addEventListener('alpine:init', function () {
                                             <td class="text-right tabular-nums font-medium" x-text="m.quantity_after"></td>
                                             <td class="text-right tabular-nums whitespace-nowrap">
                                                 <span x-show="m.movement_type === 'in'" x-text="formatKes(m.buying_price_display)"></span>
-                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
-                                            </td>
-                                            <td class="text-right tabular-nums font-semibold whitespace-nowrap">
-                                                <span x-show="m.movement_type === 'in'" x-text="formatKes(m.total_amount_display)"></span>
-                                                <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
-                                            </td>
-                                            <td>
-                                                <template x-if="m.movement_type === 'in'">
-                                                    <div>
-                                                        <span class="ss-pay-badge" :class="paymentBadgeClass(m.payment_status)" x-text="m.payment_status || '—'"></span>
-                                                        <span class="block text-[0.625rem] text-[var(--si-muted)] mt-0.5 tabular-nums si-normal"
-                                                              x-show="m.amount_paid_display && m.amount_paid_display !== '—'"
-                                                              x-text="'Paid: KES ' + m.amount_paid_display"></span>
-                                                    </div>
-                                                </template>
                                                 <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
                                             </td>
                                             <td class="max-w-[10rem]">

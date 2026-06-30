@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% from 'dashboards/includes/store_document_print_macros.html' import sd_page_head, sd_actions, sd_header, sd_footer, sd_compact_receive_items_start, sd_compact_receive_items_row, sd_compact_receive_items_end, sd_compact_sig_block_start, sd_compact_sig_block_end, sd_compact_sig_section_start, sd_compact_sig_section_end, sd_compact_sig_row, sd_compact_witness_table with context %}
+    {{ sd_page_head('Goods/Service Received Certificate — ' ~ lpo.serial_number) }}
+</head>
+<body class="sd-doc-page sd-doc-page--compact" style="--brand-primary: {{ school_settings.primary_color or '#166534' }}; --brand-secondary: {{ school_settings.secondary_color or '#22c55e' }};">
+    <div class="sd-doc-wrap">
+        {% if just_received %}
+        <div class="sd-doc-banner no-print">
+            <i class="fas fa-circle-check"></i>
+            Stock recorded successfully. Print this certificate for physical sign-off.
+        </div>
+        {% endif %}
+
+        {{ sd_actions('Print certificate', employee_dash_url('store-lpo'), 'Back to LPO') }}
+
+        {{ sd_header(
+            'Official store document',
+            'Goods/Service Received Certificate',
+            '',
+            'LPO',
+            lpo.serial_number
+        ) }}
+
+        {% set lpo_date_display -%}
+            {%- if lpo.lpo_date and lpo.lpo_date.strftime -%}
+                {{- lpo.lpo_date.strftime('%d %b %Y') -}}
+            {%- else -%}
+                {{- lpo.lpo_date -}}
+            {%- endif -%}
+        {%- endset %}
+
+        <p class="sd-doc-lead">
+            This is to certify that the <strong>goods/services indicated below</strong> were received from the supplier,
+            inspected, and found to be <strong>satisfactory in reference to the requisition and LPO issued</strong>.
+            Goods/services as indicated in <strong>LPO No. {{ lpo.serial_number }}</strong>
+            dated <strong>{{ lpo_date_display or '—' }}</strong>.
+            {% if print_scope == 'pending' %}
+            This certificate covers <strong>items pending receipt</strong> on this order.
+            {% elif print_scope == 'line' %}
+            This certificate covers <strong>one line item</strong> on this order.
+            {% elif print_scope == 'lines' %}
+            This certificate covers <strong>multiple line items</strong> received in one delivery.
+            {% elif print_scope == 'received' %}
+            This certificate confirms <strong>goods already received and recorded</strong> against this order.
+            {% else %}
+            This certificate lists <strong>all line items</strong> on this order.
+            {% endif %}
+        </p>
+
+        <table class="ar-rc-meta-table">
+            <tbody>
+                <tr>
+                    <th>Date of receipt</th>
+                    <td class="sd-meta-blank">&nbsp;</td>
+                    <th>LPO date</th>
+                    <td>{{ lpo_date_display or '—' }}</td>
+                </tr>
+                <tr>
+                    <th>Supplier</th>
+                    <td colspan="3">{{ lpo.supplier_name or '—' }}{% if lpo.supplier_phone %} · {{ lpo.supplier_phone }}{% endif %}</td>
+                </tr>
+                <tr>
+                    <th>Delivery to</th>
+                    <td>{{ lpo.delivery_to }}</td>
+                    <th>Vehicle / driver</th>
+                    <td class="sd-meta-blank">&nbsp;</td>
+                </tr>
+                <tr>
+                    <th>Invoice / tax no.</th>
+                    <td class="sd-meta-blank">&nbsp;</td>
+                    <th>Delivery note ref.</th>
+                    <td class="sd-meta-blank">&nbsp;</td>
+                </tr>
+            </tbody>
+        </table>
+
+        {{ sd_compact_receive_items_start(
+            'Items received',
+            'Tick each line when verified; write actual quantities delivered in the Qty delivered column.'
+        ) }}
+        {% for ln in receive_lines %}
+        {{ sd_compact_receive_items_row(
+            ln.line_no or loop.index,
+            ln.item_name,
+            ln.item_ref,
+            ln.measure,
+            ln.quantity,
+            'KES ' ~ '%.2f'|format(ln.buying_price)
+        ) }}
+        {% else %}
+        <tr>
+            <td colspan="7" class="sd-receive-items__empty">No items on this note.</td>
+        </tr>
+        {% endfor %}
+        {{ sd_compact_receive_items_end(remarks=true) }}
+
+        {{ sd_compact_sig_block_start(
+            'Certified by (employees)',
+            'We certify that the quantities and condition of goods received match this certificate.'
+        ) }}
+            {{ sd_compact_witness_table(3, 'Certified by') }}
+        {{ sd_compact_sig_block_end() }}
+
+        {{ sd_compact_sig_section_start('Delivery & receiving officers') }}
+            {{ sd_compact_sig_row(
+                'Supplier representative',
+                'Delivery confirmation'
+            ) }}
+            {{ sd_compact_sig_row(
+                'Store manager',
+                'Receiving officer'
+            ) }}
+        {{ sd_compact_sig_section_end() }}
+
+        {{ sd_footer(
+            'Goods/service received certificate · LPO ' ~ lpo.serial_number
+            ~ ' · ' ~ receive_lines|length ~ ' line item' ~ ('' if receive_lines|length == 1 else 's')
+            ~ (' · Printed ' ~ printed_at.strftime('%d %b %Y, %H:%M') if printed_at else '')
+        ) }}
+    </div>
+</body>
+</html>

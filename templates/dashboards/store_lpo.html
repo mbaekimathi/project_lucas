@@ -1,0 +1,2004 @@
+{% extends "base.html" %}
+
+{% block title %}LPO — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/store_stock_page_styles.html' %}
+{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/store_manager_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/store_analytics_period_filter_script.html' %}
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('storeLpoPage', function () {
+    return Object.assign({}, storeAnalyticsPeriodFilterMixin(), {
+      catalogItems: {{ catalog_items_client|tojson }},
+      formOpen: false,
+      lpoPostUrl: {{ employee_dash_url('store-lpo')|tojson }},
+      supplierLookupUrl: {{ employee_dash_url('store-stock/supplier-lookup')|tojson }},
+      supplierSearchUrl: {{ employee_dash_url('store-lpo/supplier-search')|tojson }},
+      lpoDate: {{ today.isoformat()|tojson }},
+      serialNumber: {{ next_serial|tojson }},
+      deliveryTo: 'SCHOOL',
+      deliverOnOrBefore: '',
+      lpoLines: [{ uid: 1, storeItemId: '', itemSearch: '', quantity: '1', buyingPrice: '', showDropdown: false }],
+      nextLineUid: 2,
+      catalogSearchMinLen: 2,
+      activePickLineUid: null,
+      lineDropdownHighlight: -1,
+      activeLineDropdown: null,
+      lineItemSearchMessage: '',
+      supplierPhone: '',
+      supplierName: '',
+      supplierFound: false,
+      supplierId: null,
+      supplierLookupStatus: '',
+      supplierLookupMessage: '',
+      supplierLookupTimer: null,
+      nameSearchResults: [],
+      nameSearchStatus: '',
+      nameSearchMessage: '',
+      nameSearchTimer: null,
+      showNameDropdown: false,
+      recentLpos: {{ recent_lpos|tojson }},
+      viewModalOpen: false,
+      viewLpo: null,
+      viewModalLines: [],
+      receiveModalOpen: false,
+      receiveLpo: null,
+      receiveLineRows: [],
+      receiveSupplierPhone: '',
+      receiveSupplierName: '',
+      receiveInvoiceNumber: '',
+      receiveDeliveryNote: '',
+      receiveNotes: '',
+      receiveSupplierFound: false,
+      receiveSupplierId: null,
+      receiveSupplierLookupStatus: '',
+      receiveSupplierLookupMessage: '',
+      receiveSupplierLookupTimer: null,
+      stockPrintUrlBase: {{ employee_dash_url('store-stock/print')|tojson }},
+      lpoPrintUrlBase: {{ employee_dash_url('store-lpo/print')|tojson }},
+      lpoReceivePrintUrlBase: {{ employee_dash_url('store-lpo/receive-print')|tojson }},
+      lpoDetailUrlBase: {{ employee_dash_url('store-lpo')|tojson }},
+      lpoSearch: '',
+      lpoStatusFilter: 'all',
+      init: function () {
+        this.initPeriodFilters();
+        this.updatePeriodLabel();
+        if ({{ lpo_form_open_default|default(false)|tojson }}) {
+          this.formOpen = true;
+        }
+        this.$watch('formOpen', function (open) {
+          document.body.classList.toggle('overflow-hidden', !!(open || this.receiveModalOpen || this.viewModalOpen));
+        }.bind(this));
+        this.$watch('receiveModalOpen', function (open) {
+          document.body.classList.toggle('overflow-hidden', !!(open || !!this.formOpen || this.viewModalOpen));
+        }.bind(this));
+        this.$watch('viewModalOpen', function (open) {
+          document.body.classList.toggle('overflow-hidden', !!(open || !!this.formOpen || this.receiveModalOpen));
+        }.bind(this));
+      },
+      openViewModal: function (lpo) {
+        if (!lpo) return;
+        var full = this.resolveLpoRecord(lpo);
+        var self = this;
+        this.viewLpo = full;
+        this.viewModalLines = this.buildLpoLines(full);
+        this.viewModalOpen = true;
+        this.$nextTick(function () {
+          var panel = this.$refs.viewModalPanel;
+          if (panel) panel.focus();
+        }.bind(this));
+        this.fetchLpoDetail(full.id).then(function (detail) {
+          if (!detail) return;
+          self.viewLpo = detail;
+          self.viewModalLines = self.buildLpoLines(detail);
+          var rows = self.recentLpos || [];
+          for (var i = 0; i < rows.length; i++) {
+            if (String(rows[i].id) === String(detail.id)) {
+              rows[i] = detail;
+              break;
+            }
+          }
+        });
+      },
+      closeViewModal: function () {
+        this.viewModalOpen = false;
+        this.viewLpo = null;
+        this.viewModalLines = [];
+      },
+      buildLpoLines: function (lpo) {
+        if (!lpo) return [];
+        var lines = Array.isArray(lpo.lines) ? lpo.lines.slice() : [];
+        if (lines.length) return lines;
+        if (lpo.item_name || lpo.store_item_id || lpo.quantity) {
+          return [{
+            id: 'header-' + (lpo.id || 'legacy'),
+            line_no: 1,
+            item_name: lpo.item_name || '—',
+            item_ref: lpo.item_ref || '',
+            measure: lpo.measure || '',
+            quantity: lpo.quantity || 0,
+            buying_price: lpo.buying_price || 0,
+            line_total: lpo.line_total || lpo.order_total || 0,
+            received_at: lpo.receipt_status === 'received' ? true : null,
+          }];
+        }
+        return [];
+      },
+      resolveLpoRecord: function (lpo) {
+        if (!lpo) return null;
+        var found = (this.recentLpos || []).find(function (row) {
+          return String(row.id) === String(lpo.id);
+        });
+        return found || lpo;
+      },
+      lpoPendingLines: function (lpo) {
+        var self = this;
+        return this.buildLpoLines(lpo).filter(function (ln) {
+          if (ln.received_at) return false;
+          var lineId = ln.id;
+          if (lineId === null || lineId === undefined || lineId === '') return false;
+          if (String(lineId).indexOf('header-') === 0) return false;
+          return Number.isFinite(parseInt(lineId, 10));
+        });
+      },
+      lpoCanReceive: function (lpo) {
+        return this.lpoPendingLines(lpo).length > 0;
+      },
+      lpoHasServerLines: function (lpo) {
+        var lines = Array.isArray(lpo && lpo.lines) ? lpo.lines : [];
+        return lines.some(function (ln) {
+          var lineId = ln && ln.id;
+          return lineId && String(lineId).indexOf('header-') !== 0 && Number.isFinite(parseInt(lineId, 10));
+        });
+      },
+      fetchLpoDetail: function (lpoId) {
+        var self = this;
+        if (!lpoId) return Promise.resolve(null);
+        return fetch(this.lpoDetailUrlBase + '/' + lpoId + '/json', {
+          headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin',
+        })
+          .then(function (response) {
+            if (!response.ok) return null;
+            return response.json();
+          })
+          .then(function (data) { return (data && data.ok && data.lpo) ? data.lpo : null; })
+          .catch(function () { return null; });
+      },
+      showViewModal: function (lpo) {
+        if (!lpo) return;
+        this.viewLpo = lpo;
+        this.viewModalLines = this.buildLpoLines(lpo);
+        this.viewModalOpen = true;
+        this.$nextTick(function () {
+          var panel = this.$refs.viewModalPanel;
+          if (panel) panel.focus();
+        }.bind(this));
+      },
+      viewModalLineCount: function () {
+        var n = (this.viewModalLines || []).length;
+        if (n) return n;
+        if (!this.viewLpo) return 0;
+        return parseInt(this.viewLpo.line_count, 10) || 0;
+      },
+      lpoPrintUrl: function (lpoId) {
+        if (lpoId === null || lpoId === undefined || lpoId === '') return '';
+        return this.lpoPrintUrlBase + '/' + encodeURIComponent(String(lpoId));
+      },
+      lpoReceivePrintUrl: function (lpo) {
+        if (!lpo || lpo.id === null || lpo.id === undefined || lpo.id === '') return '';
+        var base = this.lpoReceivePrintUrlBase + '/' + encodeURIComponent(String(lpo.id));
+        var lines = this.buildLpoLines(lpo);
+        var status = String(lpo.receipt_status || 'pending').toLowerCase();
+        if (status === 'received') {
+          return base + '?scope=received';
+        }
+        if (status === 'partial') {
+          var receivedIds = lines.filter(function (ln) { return ln.received_at; }).map(function (ln) { return ln.id; });
+          receivedIds = receivedIds.filter(function (id) { return id && String(id).indexOf('header-') !== 0; });
+          if (receivedIds.length) {
+            return base + '?line_ids=' + encodeURIComponent(receivedIds.join(','));
+          }
+        }
+        return base + '?scope=pending';
+      },
+      openLpoPrintTab: function (lpoId) {
+        var url = this.lpoPrintUrl(lpoId);
+        if (!url) return;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      },
+      openLpoGrnTab: function (lpo) {
+        var url = this.lpoReceivePrintUrl(lpo);
+        if (!url) return;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      },
+      printViewLpo: function () {
+        if (!this.viewLpo) return;
+        this.openLpoPrintTab(this.viewLpo.id);
+      },
+      printViewGrn: function () {
+        if (!this.viewLpo) return;
+        this.openLpoGrnTab(this.viewLpo);
+      },
+      printReceiveNote: function () {
+        if (!this.receiveLpo) return;
+        var base = this.lpoReceivePrintUrlBase + '/' + encodeURIComponent(String(this.receiveLpo.id));
+        var selected = this.receiveActiveRows();
+        if (selected.length) {
+          var ids = selected.map(function (row) { return row.id; }).join(',');
+          window.open(base + '?line_ids=' + encodeURIComponent(ids), '_blank', 'noopener,noreferrer');
+          return;
+        }
+        window.open(base + '?scope=pending', '_blank', 'noopener,noreferrer');
+      },
+      formatLpoDate: function (value) {
+        if (!value) return '—';
+        try {
+          var d = new Date(value);
+          if (!Number.isFinite(d.getTime())) return value;
+          return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        } catch (e) {
+          return value;
+        }
+      },
+      formatKes: function (value) {
+        var n = parseFloat(value);
+        if (!Number.isFinite(n)) return '—';
+        return 'KES ' + n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      },
+      lpoStatusLabel: function (lpo) {
+        if (!lpo) return 'Pending';
+        if (lpo.receipt_status === 'received') return 'Received';
+        if (lpo.receipt_status === 'partial') return 'Partial';
+        return 'Pending';
+      },
+      lpoStatusClass: function (lpo) {
+        if (!lpo) return 'ss-pay-badge--pending';
+        if (lpo.receipt_status === 'received') return 'ss-pay-badge--paid';
+        if (lpo.receipt_status === 'partial') return 'ss-pay-badge--partial';
+        return 'ss-pay-badge--pending';
+      },
+      lpoLineCount: function (lpo) {
+        if (!lpo) return 1;
+        var n = parseInt(lpo.line_count, 10);
+        if (Number.isFinite(n) && n > 0) return n;
+        return (lpo.lines || []).length || 1;
+      },
+      lpoIsSingleItem: function (lpo) {
+        return this.lpoLineCount(lpo) <= 1;
+      },
+      lpoPrimaryItemName: function (lpo) {
+        if (!lpo) return '—';
+        if (lpo.item_name) return lpo.item_name;
+        var lines = lpo.lines || [];
+        if (lines.length === 1 && lines[0].item_name) return lines[0].item_name;
+        return lpo.items_summary || '—';
+      },
+      get lpoStats() {
+        var all = this.recentLpos || [];
+        return {
+          total: all.length,
+          pending: all.filter(function (l) { return l.receipt_status === 'pending' || !l.receipt_status; }).length,
+          partial: all.filter(function (l) { return l.receipt_status === 'partial'; }).length,
+          received: all.filter(function (l) { return l.receipt_status === 'received'; }).length,
+        };
+      },
+      get filteredLpos() {
+        var pool = this.recentLpos || [];
+        var self = this;
+        if (this.lpoStatusFilter !== 'all') {
+          pool = pool.filter(function (l) {
+            var st = l.receipt_status || 'pending';
+            return st === self.lpoStatusFilter;
+          });
+        }
+        if ((this.period || 'all') !== 'all') {
+          pool = pool.filter(function (l) { return self.lpoMatchesPeriod(l); });
+        }
+        var q = (this.lpoSearch || '').trim().toUpperCase();
+        if (!q) return pool;
+        return pool.filter(function (l) {
+          var hay = [
+            l.serial_number,
+            l.supplier_name,
+            l.supplier_phone,
+            l.items_summary,
+            l.item_name,
+            l.generated_by_name,
+            l.delivery_to,
+          ].filter(Boolean).join(' ').toUpperCase();
+          return hay.indexOf(q) !== -1;
+        });
+      },
+      get hasActiveFilters() {
+        return !!(this.lpoSearch || '').trim()
+          || this.lpoStatusFilter !== 'all'
+          || (this.period || 'all') !== 'all';
+      },
+      lpoDateIso: function (lpo) {
+        var raw = lpo && lpo.lpo_date ? String(lpo.lpo_date) : '';
+        return raw.slice(0, 10);
+      },
+      lpoMatchesPeriod: function (lpo) {
+        var period = this.period || 'all';
+        if (period === 'all') return true;
+        var iso = this.lpoDateIso(lpo);
+        if (!iso) return false;
+        if (period === 'day') {
+          return iso === (this.filterDay || '').slice(0, 10);
+        }
+        if (period === 'month') {
+          return iso.slice(0, 7) === (this.filterMonth || '').slice(0, 7);
+        }
+        if (period === 'year') {
+          return iso.slice(0, 4) === (this.filterYearMonth || '').slice(0, 4);
+        }
+        if (period === 'range') {
+          var from = (this.rangeFrom || '').slice(0, 10);
+          var to = (this.rangeTo || '').slice(0, 10);
+          if (!from && !to) return true;
+          if (!from) from = to;
+          if (!to) to = from;
+          if (from > to) {
+            var swap = from;
+            from = to;
+            to = swap;
+          }
+          return iso >= from && iso <= to;
+        }
+        return true;
+      },
+      updatePeriodLabel: function () {
+        var period = this.period || 'all';
+        if (period === 'all') {
+          this.periodLabel = 'All time';
+          return;
+        }
+        if (period === 'day') {
+          this.periodLabel = this.formatLpoDate(this.filterDay) || 'Single day';
+          return;
+        }
+        if (period === 'month') {
+          var ym = (this.filterMonth || '').slice(0, 7);
+          if (!ym) {
+            this.periodLabel = 'Month';
+            return;
+          }
+          var parts = ym.split('-');
+          var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1);
+          this.periodLabel = Number.isFinite(d.getTime())
+            ? d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+            : ym;
+          return;
+        }
+        if (period === 'year') {
+          this.periodLabel = (this.filterYearMonth || '').slice(0, 4) || 'Year';
+          return;
+        }
+        if (period === 'range') {
+          var from = (this.rangeFrom || '').slice(0, 10);
+          var to = (this.rangeTo || '').slice(0, 10);
+          if (!from && !to) {
+            this.periodLabel = 'All time';
+            return;
+          }
+          if (!from) from = to;
+          if (!to) to = from;
+          if (from > to) {
+            var swapRange = from;
+            from = to;
+            to = swapRange;
+          }
+          this.periodLabel = from === to
+            ? this.formatLpoDate(from)
+            : (this.formatLpoDate(from) + ' – ' + this.formatLpoDate(to));
+          return;
+        }
+        this.periodLabel = 'All time';
+      },
+      onFilterChange: function () {
+        this.updatePeriodLabel();
+      },
+      clearLpoSearch: function () {
+        this.lpoSearch = '';
+      },
+      clearAllFilters: function () {
+        this.lpoSearch = '';
+        this.lpoStatusFilter = 'all';
+        this.period = 'all';
+        this.initPeriodFilters();
+        this.updatePeriodLabel();
+      },
+      onLpoSearchInput: function ($event) {
+        var val = ($event.target.value || '').toUpperCase();
+        $event.target.value = val;
+        this.lpoSearch = val;
+      },
+      openReceiveFromViewModal: function () {
+        if (!this.viewLpo) return;
+        var lpo = this.viewLpo;
+        var self = this;
+        this.fetchLpoDetail(lpo.id).then(function (detail) {
+          self.closeViewModal();
+          self.openReceiveModal(detail || lpo);
+        });
+      },
+      stockGrnUrl: function (movementId) {
+        if (!movementId) return '#';
+        return this.stockPrintUrlBase + '/' + movementId;
+      },
+      lineReceiptLabel: function (line) {
+        return line && line.received_at ? 'Received' : 'Pending';
+      },
+      lineReceiptClass: function (line) {
+        return line && line.received_at ? 'ss-pay-badge--paid' : 'ss-pay-badge--pending';
+      },
+      receiveActiveRows: function () {
+        var rows = this.receiveLineRows || [];
+        if (rows.length <= 1) return rows.slice();
+        return rows.filter(function (row) { return !!row.selected; });
+      },
+      receiveSelectedCount: function () {
+        return this.receiveActiveRows().length;
+      },
+      receivePaymentTotal: function () {
+        var total = 0;
+        var has = false;
+        this.receiveActiveRows().forEach(function (row) {
+          var q = parseFloat(row.quantity);
+          var p = parseFloat(row.buyingPrice);
+          if (Number.isFinite(q) && Number.isFinite(p) && q >= 0 && p >= 0) {
+            total += q * p;
+            has = true;
+          }
+        });
+        return has ? total : null;
+      },
+      formatReceivePaymentTotal: function () {
+        var total = this.receivePaymentTotal();
+        if (total === null) return '—';
+        return 'KES ' + total.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      },
+      receiveRowIsActive: function (row) {
+        if ((this.receiveLineRows || []).length <= 1) return true;
+        return !!row.selected;
+      },
+      get receiveSelectedRows() {
+        return this.receiveActiveRows();
+      },
+      get receivePendingLines() {
+        if (!this.receiveLpo || !this.receiveLpo.lines) return [];
+        return this.receiveLpo.lines.filter(function (ln) { return !ln.received_at; });
+      },
+      get receiveAllRowsSelected() {
+        var rows = this.receiveLineRows || [];
+        return rows.length > 0 && rows.every(function (row) { return row.selected; });
+      },
+      get receiveSomeRowsSelected() {
+        return (this.receiveLineRows || []).some(function (row) { return row.selected; });
+      },
+      get receiveGrandTotal() {
+        var total = this.receivePaymentTotal();
+        return total === null ? '' : total.toFixed(2);
+      },
+      receiveLineTotalFor: function (row) {
+        if (!this.receiveRowIsActive(row)) return '';
+        var q = parseFloat(row.quantity);
+        var p = parseFloat(row.buyingPrice);
+        if (!Number.isFinite(q) || !Number.isFinite(p) || q < 0 || p < 0) return '';
+        return (q * p).toFixed(2);
+      },
+      receivePostUrl: function () {
+        if (!this.receiveLpo || !this.receiveLpo.id) return '#';
+        return {{ employee_dash_url('store-lpo/receive')|tojson }}
+          + '/' + this.receiveLpo.id + '/bulk';
+      },
+      stockPrintUrl: function (movementId) {
+        if (!movementId) return '#';
+        return this.stockPrintUrlBase + '/' + movementId;
+      },
+      formatBuyingPrice: function (v) {
+        if (v === null || v === undefined || v === '') return '';
+        var n = parseFloat(v);
+        return Number.isFinite(n) ? n.toFixed(2) : '';
+      },
+      openReceiveModal: function (lpo, lineId) {
+        if (!lpo) return;
+        var full = this.resolveLpoRecord(lpo);
+        var pending = this.lpoPendingLines(full);
+        if (!pending.length) return;
+        this.receiveLpo = full;
+        this.receiveLineRows = pending.map(function (ln) {
+          return {
+            id: ln.id,
+            item_name: ln.item_name || '',
+            item_ref: ln.item_ref || '',
+            measure: ln.measure || '',
+            store_item_id: ln.store_item_id,
+            orderQty: ln.quantity || 1,
+            quantity: String(ln.quantity || 1),
+            buyingPrice: this.formatBuyingPrice(ln.buying_price),
+            selected: lineId ? String(ln.id) === String(lineId) : true,
+          };
+        }.bind(this));
+        if (this.receiveLineRows.length === 1) {
+          this.receiveLineRows[0].selected = true;
+        } else if (lineId && !this.receiveSelectedCount()) {
+          this.receiveLineRows.forEach(function (row) {
+            if (String(row.id) === String(lineId)) row.selected = true;
+          });
+        } else if (!this.receiveSelectedCount() && this.receiveLineRows.length) {
+          this.receiveLineRows[0].selected = true;
+        }
+        this.receiveSupplierPhone = full.supplier_phone || '';
+        this.receiveSupplierName = full.supplier_name || '';
+        this.receiveInvoiceNumber = '';
+        this.receiveDeliveryNote = '';
+        this.receiveNotes = full.serial_number ? ('LPO ' + full.serial_number) : '';
+        this.receiveSupplierFound = !!full.supplier_id;
+        this.receiveSupplierId = full.supplier_id || null;
+        this.receiveSupplierLookupStatus = full.supplier_id ? 'found' : '';
+        this.receiveSupplierLookupMessage = full.supplier_id ? 'Supplier from LPO.' : '';
+        this.receiveModalOpen = true;
+        this.$nextTick(function () {
+          var panel = this.$refs.receiveModalPanel;
+          if (panel) panel.focus();
+        }.bind(this));
+      },
+      toggleReceiveRow: function (row) {
+        row.selected = !row.selected;
+      },
+      toggleAllReceiveRows: function () {
+        var selectAll = !this.receiveAllRowsSelected;
+        (this.receiveLineRows || []).forEach(function (row) { row.selected = selectAll; });
+      },
+      closeReceiveModal: function () {
+        this.receiveModalOpen = false;
+        this.receiveLpo = null;
+        this.receiveLineRows = [];
+        this.resetReceiveFields();
+      },
+      resetReceiveFields: function () {
+        this.receiveLineRows = [];
+        this.receiveSupplierPhone = '';
+        this.receiveSupplierName = '';
+        this.receiveInvoiceNumber = '';
+        this.receiveDeliveryNote = '';
+        this.receiveNotes = '';
+        this.resetReceiveSupplierFields();
+      },
+      resetReceiveSupplierFields: function () {
+        if (this.receiveSupplierLookupTimer) {
+          clearTimeout(this.receiveSupplierLookupTimer);
+          this.receiveSupplierLookupTimer = null;
+        }
+        this.receiveSupplierFound = false;
+        this.receiveSupplierId = null;
+        this.receiveSupplierLookupStatus = '';
+        this.receiveSupplierLookupMessage = '';
+      },
+      onReceiveSupplierPhoneInput: function () {
+        this.receiveSupplierFound = false;
+        this.receiveSupplierId = null;
+        var phone = (this.receiveSupplierPhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          this.receiveSupplierLookupStatus = digits ? 'typing' : '';
+          this.receiveSupplierLookupMessage = digits ? 'Keep typing phone number…' : '';
+          if (!digits) this.receiveSupplierName = '';
+          return;
+        }
+        var local = this.findSupplierByPhone(phone);
+        if (local) {
+          this.receiveSupplierFound = true;
+          this.receiveSupplierId = local.id;
+          this.receiveSupplierName = local.company_name || '';
+          this.receiveSupplierPhone = local.phone || phone;
+          this.receiveSupplierLookupStatus = 'found';
+          this.receiveSupplierLookupMessage = 'Supplier found in directory.';
+          return;
+        }
+        var self = this;
+        if (this.receiveSupplierLookupTimer) clearTimeout(this.receiveSupplierLookupTimer);
+        this.receiveSupplierLookupStatus = 'checking';
+        this.receiveSupplierLookupMessage = 'Checking supplier…';
+        this.receiveSupplierLookupTimer = setTimeout(function () { self.lookupReceiveSupplier(); }, 450);
+      },
+      lookupReceiveSupplier: function () {
+        var phone = (this.receiveSupplierPhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9) return;
+        var self = this;
+        fetch(this.supplierLookupUrl + '?phone=' + encodeURIComponent(phone), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.receiveSupplierLookupStatus = 'error';
+              self.receiveSupplierLookupMessage = (data && data.message) || 'Could not check supplier.';
+              return;
+            }
+            if (data.found) {
+              self.receiveSupplierFound = true;
+              self.receiveSupplierId = data.supplier_id || null;
+              self.receiveSupplierName = data.company_name || '';
+              self.receiveSupplierLookupStatus = 'found';
+              self.receiveSupplierLookupMessage = data.message || 'Supplier found.';
+            } else if (data.ready) {
+              self.receiveSupplierFound = false;
+              self.receiveSupplierId = null;
+              self.receiveSupplierLookupStatus = 'new';
+              self.receiveSupplierLookupMessage = data.message || 'New supplier — enter name.';
+            }
+          })
+          .catch(function () {
+            self.receiveSupplierLookupStatus = 'error';
+            self.receiveSupplierLookupMessage = 'Could not check supplier. Try again.';
+          });
+      },
+      receiveSubmitCheck: function ($event) {
+        if (!this.receiveLpo || !this.receiveSelectedCount()) {
+          $event.preventDefault();
+          window.alert('Select at least one line item to receive.');
+          return;
+        }
+        var invalid = null;
+        this.receiveActiveRows().forEach(function (row) {
+          if (invalid) return;
+          var q = parseInt(row.quantity, 10);
+          if (!Number.isFinite(q) || q < 1) {
+            invalid = (row.item_name || 'item') + ': enter a whole number quantity of at least 1.';
+            return;
+          }
+          var price = parseFloat(row.buyingPrice);
+          if (!Number.isFinite(price) || price < 0) {
+            invalid = (row.item_name || 'item') + ': enter a valid buying price.';
+          }
+        });
+        if (invalid) {
+          $event.preventDefault();
+          window.alert(invalid);
+          return;
+        }
+        var digits = (this.receiveSupplierPhone || '').replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          $event.preventDefault();
+          window.alert('Enter the supplier contact (at least 9 digits).');
+          return;
+        }
+        if (this.receiveSupplierLookupStatus === 'checking') {
+          $event.preventDefault();
+          window.alert('Please wait while the supplier contact is verified.');
+          return;
+        }
+        if (!this.receiveSupplierFound && !(this.receiveSupplierName || '').trim()) {
+          $event.preventDefault();
+          window.alert('Enter the supplier name for a new supplier.');
+          return;
+        }
+        var payload = this.receiveActiveRows().map(function (row) {
+          return {
+            line_id: row.id,
+            quantity: parseInt(row.quantity, 10),
+            buying_price: row.buyingPrice,
+          };
+        });
+        var input = this.$refs.receiveLinesInput;
+        if (input) input.value = JSON.stringify(payload);
+      },
+      catalogItemById: function (id) {
+        if (!id) return null;
+        var sid = String(id);
+        return this.catalogItems.find(function (x) { return String(x.id) === sid; }) || null;
+      },
+      get activeLineForDropdown() {
+        if (!this.activeLineDropdown) return null;
+        return this.lpoLines.find(function (ln) { return ln.uid === this.activeLineDropdown; }.bind(this)) || null;
+      },
+      searchCatalogItems: function (query, forLineUid) {
+        var q = (query || '').trim().toLowerCase();
+        if (q.length < this.catalogSearchMinLen) return [];
+        var usedIds = {};
+        this.lpoLines.forEach(function (ln) {
+          if (ln.storeItemId && ln.uid !== forLineUid) usedIds[String(ln.storeItemId)] = true;
+        });
+        var pool = (this.catalogItems || []).filter(function (it) {
+          return !usedIds[String(it.id)];
+        });
+        var terms = q.split(/\s+/).filter(Boolean);
+        var matched = pool.filter(function (it) {
+          var hay = [it.reference_code, it.item_name, it.item_category, it.measure].join(' ').toLowerCase();
+          return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+        });
+        matched.sort(function (a, b) {
+          var an = (a.item_name || '').toLowerCase();
+          var bn = (b.item_name || '').toLowerCase();
+          var ar = (a.reference_code || '').toLowerCase();
+          var br = (b.reference_code || '').toLowerCase();
+          var aStarts = an.indexOf(q) === 0 || ar.indexOf(q) === 0;
+          var bStarts = bn.indexOf(q) === 0 || br.indexOf(q) === 0;
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+          return an.localeCompare(bn);
+        });
+        return matched.slice(0, 12);
+      },
+      stockQtyClass: function (qty) {
+        qty = parseInt(qty, 10) || 0;
+        if (qty === 0) return 'is-zero';
+        if (qty <= 5) return 'is-low';
+        return 'is-ok';
+      },
+      addLine: function () {
+        var uid = this.nextLineUid++;
+        this.lpoLines.push({
+          uid: uid,
+          storeItemId: '',
+          itemSearch: '',
+          quantity: '1',
+          buyingPrice: '',
+          showDropdown: false,
+        });
+        this.activePickLineUid = uid;
+        var self = this;
+        this.$nextTick(function () {
+          var scroller = self.$refs.lpoLinesScroll;
+          if (scroller) scroller.scrollTop = scroller.scrollHeight;
+          self.focusLinePick(self.lpoLines[self.lpoLines.length - 1]);
+        });
+      },
+      removeLine: function (uid) {
+        if (this.lpoLines.length <= 1) return;
+        this.lpoLines = this.lpoLines.filter(function (ln) { return ln.uid !== uid; });
+        if (this.activeLineDropdown === uid) {
+          this.activeLineDropdown = null;
+          this.lineItemSearchMessage = '';
+        }
+        if (this.activePickLineUid === uid) {
+          var first = this.lpoLines[0];
+          this.activePickLineUid = first ? first.uid : null;
+        }
+      },
+      onLineSearchFocus: function (line, inputEl) {
+        if (inputEl) line._searchInput = inputEl;
+        this.activePickLineUid = line.uid;
+        this.activeLineDropdown = line.uid;
+        line.showDropdown = true;
+        this.lineDropdownHighlight = -1;
+        this.updateLineItemSearchStatus(line);
+      },
+      onLineSearchInput: function (line, inputEl) {
+        if (inputEl) line._searchInput = inputEl;
+        line.itemSearch = (line.itemSearch || '').toUpperCase();
+        if (line.storeItemId) {
+          var picked = this.catalogItemById(line.storeItemId);
+          var pickedName = picked ? (picked.item_name || '').toUpperCase() : '';
+          if (line.itemSearch !== pickedName) line.storeItemId = '';
+        }
+        line.showDropdown = true;
+        this.activeLineDropdown = line.uid;
+        this.activePickLineUid = line.uid;
+        this.lineDropdownHighlight = -1;
+        this.updateLineItemSearchStatus(line);
+      },
+      onLineSearchKeydown: function (line, $event) {
+        var results = this.filteredItemsForLine(line);
+        var q = (line.itemSearch || '').trim();
+        if ($event.key === 'Escape') {
+          line.showDropdown = false;
+          this.activeLineDropdown = null;
+          this.lineItemSearchMessage = '';
+          return;
+        }
+        if (!line.showDropdown || q.length < this.catalogSearchMinLen) return;
+        if ($event.key === 'ArrowDown') {
+          $event.preventDefault();
+          this.lineDropdownHighlight = Math.min(this.lineDropdownHighlight + 1, results.length - 1);
+        } else if ($event.key === 'ArrowUp') {
+          $event.preventDefault();
+          this.lineDropdownHighlight = Math.max(this.lineDropdownHighlight - 1, 0);
+        } else if ($event.key === 'Enter' && results.length) {
+          $event.preventDefault();
+          var pick = this.lineDropdownHighlight >= 0 ? results[this.lineDropdownHighlight] : results[0];
+          if (pick) this.pickLineItem(line, pick);
+        }
+      },
+      onLineSearchBlur: function (line) {
+        var self = this;
+        setTimeout(function () {
+          if (self.activeLineDropdown !== line.uid) return;
+          line.showDropdown = false;
+          self.activeLineDropdown = null;
+          self.lineItemSearchMessage = '';
+        }, 180);
+      },
+      updateLineItemSearchStatus: function (line) {
+        var q = (line.itemSearch || '').trim();
+        if (q.length < this.catalogSearchMinLen) {
+          this.lineItemSearchMessage = q
+            ? 'Keep typing to search…'
+            : 'Type item name or reference to see suggestions';
+          return;
+        }
+        var results = this.filteredItemsForLine(line);
+        this.lineItemSearchMessage = results.length
+          ? (results.length + ' suggestion' + (results.length === 1 ? '' : 's'))
+          : ('No items match “' + q + '”');
+      },
+      pickLineItem: function (line, it) {
+        line.storeItemId = String(it.id);
+        line.itemSearch = it.item_name || '';
+        line.showDropdown = false;
+        this.activeLineDropdown = null;
+        this.lineItemSearchMessage = '';
+        this.lineDropdownHighlight = -1;
+        if (it.avg_buying_price !== null && it.avg_buying_price !== undefined && it.avg_buying_price !== '') {
+          line.buyingPrice = this.formatBuyingPrice(it.avg_buying_price);
+        } else if (!line.buyingPrice) {
+          line.buyingPrice = '';
+        }
+      },
+      clearLineItem: function (line) {
+        line.storeItemId = '';
+        line.itemSearch = '';
+        line.showDropdown = false;
+        line.buyingPrice = '';
+        this.activePickLineUid = line.uid;
+        if (this.activeLineDropdown === line.uid) {
+          this.activeLineDropdown = null;
+          this.lineItemSearchMessage = '';
+        }
+        this.focusLinePick(line);
+      },
+      filteredItemsForLine: function (line) {
+        return this.searchCatalogItems(line.itemSearch, line.uid);
+      },
+      focusLinePick: function (line) {
+        this.activePickLineUid = line.uid;
+        this.$nextTick(function () {
+          var input = this.$refs['lineSearch' + line.uid];
+          if (input && input.focus) input.focus();
+        }.bind(this));
+      },
+      lineTotalFor: function (line) {
+        var q = parseFloat(line.quantity);
+        var p = parseFloat(line.buyingPrice);
+        if (!Number.isFinite(q) || !Number.isFinite(p) || q < 0 || p < 0) return '';
+        return (q * p).toFixed(2);
+      },
+      get orderTotal() {
+        var sum = 0;
+        var has = false;
+        this.lpoLines.forEach(function (line) {
+          var t = parseFloat(this.lineTotalFor(line));
+          if (Number.isFinite(t)) {
+            sum += t;
+            has = true;
+          }
+        }.bind(this));
+        return has ? sum.toFixed(2) : '';
+      },
+      resetLpoLines: function () {
+        this.lpoLines = [{
+          uid: 1,
+          storeItemId: '',
+          itemSearch: '',
+          quantity: '1',
+          buyingPrice: '',
+          showDropdown: false,
+        }];
+        this.nextLineUid = 2;
+        this.activeLineDropdown = null;
+        this.lineItemSearchMessage = '';
+        this.activePickLineUid = 1;
+        this.lineDropdownHighlight = -1;
+      },
+      resetSupplierFields: function () {
+        if (this.supplierLookupTimer) {
+          clearTimeout(this.supplierLookupTimer);
+          this.supplierLookupTimer = null;
+        }
+        if (this.nameSearchTimer) {
+          clearTimeout(this.nameSearchTimer);
+          this.nameSearchTimer = null;
+        }
+        this.supplierPhone = '';
+        this.supplierName = '';
+        this.supplierFound = false;
+        this.supplierId = null;
+        this.supplierLookupStatus = '';
+        this.supplierLookupMessage = '';
+        this.nameSearchResults = [];
+        this.nameSearchStatus = '';
+        this.nameSearchMessage = '';
+        this.showNameDropdown = false;
+      },
+      openForm: function () {
+        if (!this.catalogItems.length) return;
+        this.formOpen = true;
+        this.resetLpoLines();
+        this.resetSupplierFields();
+        this.activeLineDropdown = null;
+        this.activePickLineUid = 1;
+        this.$nextTick(function () {
+          var panel = this.$refs.lpoFormModalPanel;
+          if (panel) panel.focus();
+          var firstLine = this.lpoLines[0];
+          if (firstLine) this.focusLinePick(firstLine);
+        }.bind(this));
+      },
+      closeForm: function () {
+        this.formOpen = false;
+        this.activeLineDropdown = null;
+        this.lineItemSearchMessage = '';
+        this.activePickLineUid = null;
+        this.resetSupplierFields();
+      },
+      onSupplierPhoneInput: function () {
+        this.supplierFound = false;
+        this.supplierId = null;
+        this.showNameDropdown = false;
+        var phone = (this.supplierPhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits) {
+          this.supplierLookupStatus = '';
+          this.supplierLookupMessage = '';
+          this.supplierName = '';
+          return;
+        }
+        if (digits.length >= 9) {
+          var local = this.findSupplierByPhone(phone);
+          if (local) {
+            this.pickSupplier(local);
+            this.supplierLookupStatus = 'found';
+            this.supplierLookupMessage = 'Supplier found in directory.';
+            return;
+          }
+        }
+        if (digits.length < 9) {
+          this.supplierLookupStatus = 'typing';
+          this.supplierLookupMessage = 'Keep typing — checking when you enter at least 9 digits…';
+          return;
+        }
+        var self = this;
+        if (this.supplierLookupTimer) clearTimeout(this.supplierLookupTimer);
+        this.supplierLookupStatus = 'checking';
+        this.supplierLookupMessage = 'Checking if supplier is registered…';
+        this.supplierLookupTimer = setTimeout(function () { self.lookupSupplier(); }, 400);
+      },
+      lookupSupplier: function () {
+        var phone = (this.supplierPhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9) return;
+        var self = this;
+        fetch(this.supplierLookupUrl + '?phone=' + encodeURIComponent(phone), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.supplierLookupStatus = 'error';
+              self.supplierLookupMessage = (data && data.message) || 'Could not check supplier.';
+              return;
+            }
+            if (data.found) {
+              self.supplierFound = true;
+              self.supplierId = data.supplier_id || null;
+              self.supplierName = data.company_name || '';
+              if (data.phone) self.supplierPhone = data.phone;
+              self.supplierLookupStatus = 'found';
+              self.supplierLookupMessage = data.message || 'Supplier registered — name filled in automatically.';
+              self.showNameDropdown = false;
+              self.nameSearchResults = [];
+            } else if (data.ready) {
+              self.supplierFound = false;
+              self.supplierId = null;
+              if (data.phone) self.supplierPhone = data.phone;
+              self.supplierLookupStatus = 'new';
+              self.supplierLookupMessage = data.message || 'Not registered yet — enter the supplier name below.';
+            }
+          })
+          .catch(function () {
+            self.supplierLookupStatus = 'error';
+            self.supplierLookupMessage = 'Could not check supplier. Try again.';
+          });
+      },
+      onSupplierNameInput: function () {
+        this.supplierName = (this.supplierName || '').toUpperCase();
+        if (this.supplierFound) return;
+        this.supplierFound = false;
+        this.supplierId = null;
+        var q = (this.supplierName || '').trim();
+        if (q.length < 2) {
+          this.nameSearchResults = [];
+          this.showNameDropdown = false;
+          this.nameSearchMessage = q.length ? 'Keep typing…' : '';
+          return;
+        }
+        var self = this;
+        if (this.nameSearchTimer) clearTimeout(this.nameSearchTimer);
+        this.nameSearchStatus = 'searching';
+        this.nameSearchMessage = 'Searching suppliers…';
+        this.nameSearchTimer = setTimeout(function () { self.searchSuppliersByName(); }, 350);
+      },
+      searchSuppliersByName: function () {
+        var q = (this.supplierName || '').trim();
+        if (q.length < 2) return;
+        var local = this.filterSuppliersByName(q, 10);
+        if (local.length) {
+          this.nameSearchResults = local;
+          this.nameSearchStatus = 'results';
+          this.nameSearchMessage = 'Select a supplier from the directory or continue typing for a new one.';
+          this.showNameDropdown = true;
+          return;
+        }
+        var self = this;
+        fetch(this.supplierSearchUrl + '?q=' + encodeURIComponent(q), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.nameSearchStatus = 'error';
+              self.nameSearchMessage = (data && data.message) || 'Search failed.';
+              self.nameSearchResults = [];
+              self.showNameDropdown = false;
+              return;
+            }
+            self.nameSearchResults = data.results || [];
+            self.nameSearchStatus = self.nameSearchResults.length ? 'results' : 'empty';
+            self.nameSearchMessage = self.nameSearchResults.length
+              ? 'Select a supplier or continue typing for a new one.'
+              : 'No match — enter contact to register a new supplier.';
+            self.showNameDropdown = self.nameSearchResults.length > 0;
+          })
+          .catch(function () {
+            self.nameSearchStatus = 'error';
+            self.nameSearchMessage = 'Could not search suppliers.';
+            self.showNameDropdown = false;
+          });
+      },
+      pickSupplier: function (s) {
+        this.supplierFound = true;
+        this.supplierId = s.id;
+        this.supplierName = s.company_name || '';
+        this.supplierPhone = s.phone || '';
+        this.supplierLookupStatus = 'found';
+        this.supplierLookupMessage = 'Supplier selected from directory.';
+        this.showNameDropdown = false;
+        this.nameSearchResults = [];
+      },
+      submitCheck: function ($event) {
+        var invalid = false;
+        this.lpoLines.forEach(function (line, idx) {
+          if (invalid) return;
+          if (!line.storeItemId) {
+            invalid = true;
+            window.alert('Please select a stock item for line ' + (idx + 1) + '.');
+            return;
+          }
+          var q = parseInt(line.quantity, 10);
+          if (!Number.isFinite(q) || q < 1) {
+            invalid = true;
+            window.alert('Enter a quantity of at least 1 on line ' + (idx + 1) + '.');
+            return;
+          }
+          var price = parseFloat(line.buyingPrice);
+          if (!Number.isFinite(price) || price < 0) {
+            invalid = true;
+            window.alert('Enter a valid buying price on line ' + (idx + 1) + '.');
+          }
+        });
+        if (invalid) {
+          $event.preventDefault();
+          return;
+        }
+        if (!(this.deliveryTo || '').trim()) {
+          $event.preventDefault();
+          window.alert('Enter the delivery destination.');
+          return;
+        }
+        if (!(this.deliverOnOrBefore || '').trim()) {
+          $event.preventDefault();
+          window.alert('Select the delivery deadline (on or before).');
+          return;
+        }
+        var digits = (this.supplierPhone || '').replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          $event.preventDefault();
+          window.alert('Enter the supplier contact (at least 9 digits).');
+          return;
+        }
+        if (this.supplierLookupStatus === 'checking' || this.nameSearchStatus === 'searching') {
+          $event.preventDefault();
+          window.alert('Please wait while the supplier phone is verified.');
+          return;
+        }
+        if (!this.supplierFound && !(this.supplierName || '').trim()) {
+          $event.preventDefault();
+          window.alert('Enter the supplier name, or pick one from the search results.');
+          return;
+        }
+        var linesPayload = this.lpoLines.map(function (line) {
+          return {
+            store_item_id: parseInt(line.storeItemId, 10),
+            quantity: parseInt(line.quantity, 10),
+            buying_price: parseFloat(line.buyingPrice),
+          };
+        });
+        var linesHidden = this.$refs.lpoLinesInput;
+        if (linesHidden) linesHidden.value = JSON.stringify(linesPayload);
+      },
+    });
+  });
+});
+</script>
+
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }} si-page ss-page">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14"
+         x-data="storeLpoPage"
+         @keydown.escape.window="if (receiveModalOpen) closeReceiveModal(); else if (viewModalOpen) closeViewModal(); else if (formOpen) closeForm()">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-5 space-y-2">
+            {% for category, message in messages %}
+            <div class="flex gap-3 rounded-xl border px-4 py-3 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100{% endif %}">
+                <span class="mt-0.5 shrink-0" aria-hidden="true">
+                    {% if category == 'success' %}<i class="fas fa-check"></i>{% elif category == 'error' %}<i class="fas fa-exclamation"></i>{% else %}<i class="fas fa-info"></i>{% endif %}
+                </span>
+                <span class="min-w-0 flex-1 si-normal">{{ message }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% if not catalog_items %}
+        <div class="ss-alert ss-alert--warn mb-5">
+            <p class="si-normal"><i class="fas fa-circle-info mr-1.5"></i>No active items in the catalog.
+                <a href="{{ employee_dash_url('store-inventory') }}" class="font-semibold underline">Register items</a> first.</p>
+        </div>
+        {% endif %}
+
+        <header class="ss-hero ss-hero--lpo">
+            <div class="ss-hero__inner">
+                <div class="ss-hero__top">
+                    <div class="min-w-0 flex gap-3.5">
+                        <div class="ss-hero__icon" aria-hidden="true"><i class="fas fa-file-invoice-dollar"></i></div>
+                        <div class="min-w-0">
+                            <h1 class="ss-hero__title">Local purchase orders</h1>
+                            <p class="ss-hero__sub si-normal">
+                                Raise orders for suppliers, track delivery status, and receive goods into stock when they arrive.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="ss-hero__actions">
+                        <button type="button" @click="openForm()" :disabled="!catalogItems.length"
+                                class="ss-hero__btn ss-hero__btn--lpo">
+                            <i class="fas fa-plus-circle"></i>
+                            <span>New LPO</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="ss-stats ss-stats--lpo" x-show="recentLpos.length > 0" x-cloak>
+            <div class="ss-stat">
+                <p class="ss-stat__label">Total orders</p>
+                <p class="ss-stat__value" x-text="lpoStats.total"></p>
+            </div>
+            <div class="ss-stat">
+                <p class="ss-stat__label">Pending</p>
+                <p class="ss-stat__value ss-stat__value--lpo-pending" x-text="lpoStats.pending"></p>
+                <p class="ss-stat__hint">Awaiting delivery</p>
+            </div>
+            <div class="ss-stat">
+                <p class="ss-stat__label">Partial</p>
+                <p class="ss-stat__value ss-stat__value--lpo-partial" x-text="lpoStats.partial"></p>
+                <p class="ss-stat__hint">Some lines received</p>
+            </div>
+            <div class="ss-stat">
+                <p class="ss-stat__label">Received</p>
+                <p class="ss-stat__value ss-stat__value--lpo-done" x-text="lpoStats.received"></p>
+                <p class="ss-stat__hint">Fully delivered</p>
+            </div>
+        </div>
+
+        <div class="ss-page-stack si-upper">
+
+            {# Onboarding CTA — shown when no orders yet #}
+            <section class="si-panel ss-lpo-cta-panel" x-show="!recentLpos.length" x-cloak>
+                <div class="ss-lpo-cta">
+                    <div class="ss-lpo-cta__glow" aria-hidden="true"></div>
+                    <div class="ss-lpo-cta__icon-wrap" aria-hidden="true">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                    </div>
+                    <div class="ss-lpo-cta__body si-normal">
+                        <p class="ss-lpo-cta__eyebrow">Get started</p>
+                        <h2 class="ss-lpo-cta__title">Create your first purchase order</h2>
+                        <p class="ss-lpo-cta__desc">Add stock items, pick a supplier, set delivery details, and sign — all in one simple flow.</p>
+                        <button type="button" @click="openForm()" :disabled="!catalogItems.length"
+                                class="ss-lpo-cta__btn">
+                            <i class="fas fa-plus-circle"></i>
+                            <span>Register LPO</span>
+                        </button>
+                    </div>
+                    <ul class="ss-lpo-cta__steps si-normal" aria-hidden="true">
+                        <li><span>1</span> Supplier</li>
+                        <li><span>2</span> Delivery</li>
+                        <li><span>3</span> Items</li>
+                        <li><span>4</span> Sign</li>
+                    </ul>
+                </div>
+            </section>
+
+            {# Recent LPOs #}
+            <section class="si-panel ss-lpo-list-panel">
+                <div class="si-panel-head ss-list-panel__head">
+                    <div class="min-w-0 flex-1">
+                        <h2 class="si-title">Recent orders</h2>
+                        <p class="si-subtitle si-normal">Latest local purchase orders. Receive goods into stock when delivery arrives.</p>
+                        <span class="ss-results-badge ss-results-badge--lpo mt-2" x-show="recentLpos.length > 0" x-cloak>
+                            <i class="fas fa-file-invoice"></i>
+                            <span x-text="filteredLpos.length + ' of ' + recentLpos.length + ' order' + (recentLpos.length === 1 ? '' : 's')"></span>
+                        </span>
+                        <span class="ss-results-badge ss-results-badge--period mt-2" x-show="recentLpos.length > 0 && period !== 'all'" x-cloak>
+                            <i class="fas fa-calendar-days"></i>
+                            <span x-text="periodLabel"></span>
+                        </span>
+                    </div>
+                </div>
+                <div class="si-panel-body">
+                    <div x-show="recentLpos.length > 0" x-cloak class="ss-lpo-list-toolbar si-normal">
+                        <div class="ss-search-bar ss-lpo-search-bar">
+                            <div class="si-search-wrap">
+                                <i class="fas fa-search"></i>
+                                <input type="search"
+                                       x-model="lpoSearch"
+                                       @input="onLpoSearchInput($event)"
+                                       class="si-input si-upper"
+                                       placeholder="SEARCH SERIAL, SUPPLIER, ITEM…"
+                                       aria-label="Search purchase orders" />
+                            </div>
+                            <button type="button" x-show="lpoSearch" x-cloak @click="clearLpoSearch()"
+                                    class="si-btn si-btn--ghost py-2 px-3 text-xs">Clear search</button>
+                        </div>
+                        <div class="ss-lpo-period-panel">
+                            {% include 'dashboards/includes/store_lpo_period_filters.html' %}
+                        </div>
+                        <div class="ss-lpo-status-tabs" role="tablist" aria-label="Filter by status">
+                            <button type="button" role="tab"
+                                    :aria-selected="lpoStatusFilter === 'all'"
+                                    @click="lpoStatusFilter = 'all'"
+                                    class="ss-lpo-status-tab"
+                                    :class="lpoStatusFilter === 'all' ? 'is-active' : ''">
+                                All
+                            </button>
+                            <button type="button" role="tab"
+                                    :aria-selected="lpoStatusFilter === 'pending'"
+                                    @click="lpoStatusFilter = 'pending'"
+                                    class="ss-lpo-status-tab"
+                                    :class="lpoStatusFilter === 'pending' ? 'is-active is-pending' : ''">
+                                Pending
+                            </button>
+                            <button type="button" role="tab"
+                                    :aria-selected="lpoStatusFilter === 'partial'"
+                                    @click="lpoStatusFilter = 'partial'"
+                                    class="ss-lpo-status-tab"
+                                    :class="lpoStatusFilter === 'partial' ? 'is-active is-partial' : ''">
+                                Partial
+                            </button>
+                            <button type="button" role="tab"
+                                    :aria-selected="lpoStatusFilter === 'received'"
+                                    @click="lpoStatusFilter = 'received'"
+                                    class="ss-lpo-status-tab"
+                                    :class="lpoStatusFilter === 'received' ? 'is-active is-received' : ''">
+                                Received
+                            </button>
+                        </div>
+                        <div class="ss-lpo-filter-actions" x-show="hasActiveFilters" x-cloak>
+                            <button type="button" @click="clearAllFilters()" class="si-btn si-btn--ghost py-2 px-3 text-xs">
+                                <i class="fas fa-filter-circle-xmark"></i> Clear all filters
+                            </button>
+                        </div>
+                    </div>
+
+                    {# Desktop table #}
+                    <div x-show="filteredLpos.length > 0" x-cloak class="ss-list-table ss-list-table--lpo mt-3">
+                        <div class="si-table-wrap">
+                            <table class="si-table ss-table--lpo si-normal">
+                                <thead>
+                                    <tr>
+                                        <th>Serial / date</th>
+                                        <th>Supplier</th>
+                                        <th>Items</th>
+                                        <th class="text-right">Lines</th>
+                                        <th class="text-right">Total</th>
+                                        <th>Status</th>
+                                        <th class="text-center ss-actions-col">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="l in filteredLpos" :key="l.id">
+                                        <tr class="ss-lpo-row">
+                                            <td class="ss-lpo-ref-cell">
+                                                <span class="si-ref ss-lpo-ref-cell__serial" x-text="l.serial_number"></span>
+                                                <span class="ss-lpo-ref-cell__date" x-text="formatLpoDate(l.lpo_date)"></span>
+                                            </td>
+                                            <td class="max-w-[10rem]">
+                                                <span class="font-semibold uppercase" x-text="l.supplier_name || '—'"></span>
+                                                <span class="block text-[0.625rem] text-[var(--si-muted)] tabular-nums"
+                                                      x-show="l.supplier_phone" x-text="l.supplier_phone"></span>
+                                            </td>
+                                            <td class="ss-lpo-items-cell">
+                                                <span class="font-semibold uppercase ss-lpo-items-cell__name"
+                                                      x-show="lpoIsSingleItem(l)"
+                                                      x-text="lpoPrimaryItemName(l)"></span>
+                                                <button type="button"
+                                                        x-show="!lpoIsSingleItem(l)" x-cloak
+                                                        @click="openViewModal(l)"
+                                                        class="ss-lpo-items-view-btn"
+                                                        :title="'View ' + lpoLineCount(l) + ' items'"
+                                                        :aria-label="'View ' + lpoLineCount(l) + ' items'">
+                                                    <i class="fas fa-eye" aria-hidden="true"></i>
+                                                </button>
+                                            </td>
+                                            <td class="text-right tabular-nums whitespace-nowrap" x-text="l.line_count || 1"></td>
+                                            <td class="text-right tabular-nums font-medium whitespace-nowrap"
+                                                x-text="formatKes(l.order_total || l.line_total || 0)"></td>
+                                            <td class="whitespace-nowrap">
+                                                <span class="ss-pay-badge" :class="lpoStatusClass(l)" x-text="lpoStatusLabel(l)"></span>
+                                            </td>
+                                            <td class="whitespace-nowrap ss-actions-col">
+                                                <button type="button" @click="openViewModal(l)"
+                                                        class="ss-lpo-action-btn ss-lpo-action-btn--view ss-lpo-action-btn--icon"
+                                                        title="View details"
+                                                        aria-label="View LPO details">
+                                                    <i class="fas fa-eye" aria-hidden="true"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {# Mobile cards #}
+                    <div x-show="filteredLpos.length > 0" x-cloak class="ss-lpo-cards mt-3">
+                        <template x-for="l in filteredLpos" :key="'card-' + l.id">
+                            <article class="ss-lpo-card">
+                                <div class="ss-lpo-card__head">
+                                    <div class="min-w-0">
+                                        <span class="si-ref ss-lpo-card__serial" x-text="l.serial_number"></span>
+                                        <span class="ss-lpo-card__date" x-text="formatLpoDate(l.lpo_date)"></span>
+                                    </div>
+                                    <span class="ss-pay-badge" :class="lpoStatusClass(l)" x-text="lpoStatusLabel(l)"></span>
+                                </div>
+                                <div class="ss-lpo-card__body">
+                                    <div class="ss-lpo-card__row">
+                                        <span class="ss-lpo-card__label">Supplier</span>
+                                        <span class="ss-lpo-card__value uppercase" x-text="l.supplier_name || '—'"></span>
+                                    </div>
+                                    <div class="ss-lpo-card__row">
+                                        <span class="ss-lpo-card__label">Items</span>
+                                        <span class="ss-lpo-card__value ss-lpo-card__value--items">
+                                            <span class="uppercase"
+                                                  x-show="lpoIsSingleItem(l)"
+                                                  x-text="lpoPrimaryItemName(l)"></span>
+                                            <button type="button"
+                                                    x-show="!lpoIsSingleItem(l)" x-cloak
+                                                    @click="openViewModal(l)"
+                                                    class="ss-lpo-items-view-btn ss-lpo-items-view-btn--card"
+                                                    :title="'View ' + lpoLineCount(l) + ' items'">
+                                                <i class="fas fa-eye" aria-hidden="true"></i>
+                                                <span x-text="lpoLineCount(l) + ' items'"></span>
+                                            </button>
+                                        </span>
+                                    </div>
+                                    <div class="ss-lpo-card__row ss-lpo-card__row--total">
+                                        <span class="ss-lpo-card__label">Total</span>
+                                        <span class="ss-lpo-card__total tabular-nums" x-text="formatKes(l.order_total || l.line_total || 0)"></span>
+                                    </div>
+                                </div>
+                                <div class="ss-lpo-card__actions">
+                                    <button type="button" @click="openViewModal(l)" class="ss-lpo-card__btn ss-lpo-card__btn--view ss-lpo-card__btn--solo">
+                                        <i class="fas fa-eye"></i> View details
+                                    </button>
+                                </div>
+                            </article>
+                        </template>
+                    </div>
+
+                    <div x-show="recentLpos.length > 0 && filteredLpos.length === 0" x-cloak class="si-empty mt-3">
+                        <i class="fas fa-magnifying-glass block"></i>
+                        <p class="font-semibold text-[var(--si-ink)] si-normal">No orders match your search</p>
+                        <p class="mt-1 text-sm si-normal">
+                            <button type="button" @click="clearAllFilters()" class="text-[var(--si-brand)] font-semibold underline">Clear all filters</button>
+                        </p>
+                    </div>
+
+                    <div x-show="!recentLpos.length" class="si-empty">
+                        <i class="fas fa-file-invoice block"></i>
+                        <p class="font-semibold text-[var(--si-ink)] si-normal">No LPOs registered yet</p>
+                        <p class="mt-1 text-sm si-normal">Click <strong>New LPO</strong> above to create your first purchase order.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        {# Register LPO modal #}
+        <div x-show="formOpen" x-cloak
+             class="ss-movement-modal-overlay ss-movement-modal-overlay--lpo fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4"
+             role="dialog" aria-modal="true" aria-labelledby="lpo-form-modal-title">
+            <div class="absolute inset-0 bg-indigo-950/55 backdrop-blur-sm" @click="closeForm()" aria-hidden="true"></div>
+            <div x-show="formOpen"
+                 x-ref="lpoFormModalPanel"
+                 tabindex="-1"
+                 x-transition:enter="transition ease-out duration-250"
+                 x-transition:enter-start="opacity-0 translate-y-6 sm:translate-y-4 sm:scale-[0.98]"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 class="ss-lpo-form-modal ss-lpo-form-modal--compact ss-movement-modal relative mt-auto flex w-full max-h-[min(94dvh,94vh)] flex-col overflow-hidden rounded-t-2xl border border-indigo-200/40 bg-[var(--si-bg)] shadow-2xl dark:border-indigo-500/20 sm:mt-0 sm:rounded-2xl">
+
+                <div class="sticky top-0 z-20 shrink-0 ss-modal-head ss-modal-head--lpo">
+                    <div class="ss-modal-head__row">
+                        <div class="min-w-0 flex-1 pr-2">
+                            <p class="ss-modal-head__eyebrow">New purchase order</p>
+                            <h2 class="ss-modal-head__title" id="lpo-form-modal-title">Register LPO</h2>
+                            <div class="ss-lpo-form-modal__meta si-normal">
+                                <span class="ss-lpo-form-modal__pill">
+                                    <i class="fas fa-calendar-day"></i>
+                                    <span x-text="lpoDate"></span>
+                                </span>
+                                <span class="ss-lpo-form-modal__pill ss-lpo-form-modal__pill--serial">
+                                    <i class="fas fa-hashtag"></i>
+                                    <span x-text="serialNumber"></span>
+                                </span>
+                                <span class="ss-lpo-form-modal__pill ss-lpo-form-modal__pill--items" x-show="lpoLines.length" x-cloak>
+                                    <i class="fas fa-boxes-stacked"></i>
+                                    <span x-text="lpoLines.length + ' line' + (lpoLines.length === 1 ? '' : 's')"></span>
+                                </span>
+                            </div>
+                        </div>
+                        <button type="button" @click="closeForm()" class="ss-modal-close shrink-0" aria-label="Close">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <form method="post" :action="lpoPostUrl" @submit="submitCheck($event)" class="ss-movement-modal__form si-normal si-upper">
+                    <input type="hidden" name="supplier_id" :value="supplierId || ''" />
+                    <div class="ss-movement-modal__body ss-lpo-form-body">
+
+                        <section class="ss-lpo-form-section ss-lpo-form-section--details">
+                            <h3 class="ss-lpo-form-section__title si-normal">Supplier &amp; delivery</h3>
+                            <div class="ss-lpo-fields ss-lpo-fields--register">
+                                <div class="ss-lpo-field">
+                                    <label for="lpo_supplier_phone" class="si-label">Phone</label>
+                                    <div class="ss-lpo-supplier-phone__wrap ss-lpo-supplier-phone__wrap--compact"
+                                         :class="supplierLookupStatus ? ('ss-lpo-supplier-phone__wrap--' + supplierLookupStatus) : ''">
+                                        <span class="ss-lpo-supplier-phone__icon" aria-hidden="true">
+                                            <i class="fas fa-phone" x-show="!supplierLookupStatus || supplierLookupStatus === 'typing'"></i>
+                                            <i class="fas fa-spinner fa-spin" x-show="supplierLookupStatus === 'checking'" x-cloak></i>
+                                            <i class="fas fa-circle-check" x-show="supplierLookupStatus === 'found'" x-cloak></i>
+                                            <i class="fas fa-user-plus" x-show="supplierLookupStatus === 'new'" x-cloak></i>
+                                            <i class="fas fa-circle-exclamation" x-show="supplierLookupStatus === 'error'" x-cloak></i>
+                                        </span>
+                                        <input type="tel" name="supplier_phone" id="lpo_supplier_phone" required
+                                               inputmode="tel" autocomplete="tel"
+                                               x-model="supplierPhone"
+                                               @input="onSupplierPhoneInput()"
+                                               @blur="if ((supplierPhone || '').replace(/\D/g, '').length >= 9 && supplierLookupStatus === 'typing') lookupSupplier()"
+                                               placeholder="0712 345 678"
+                                               class="ss-lpo-supplier-phone__input si-normal" />
+                                    </div>
+                                    <p class="ss-lpo-field-hint si-normal normal-case"
+                                       x-show="supplierLookupMessage"
+                                       :class="'ss-lpo-field-hint--' + (supplierLookupStatus || 'default')"
+                                       x-text="supplierLookupMessage"></p>
+                                </div>
+                                <div class="ss-lpo-field relative">
+                                    <label for="lpo_supplier_name" class="si-label">Name</label>
+                                    <input type="text" name="supplier_name" id="lpo_supplier_name" maxlength="255"
+                                           :required="!supplierFound"
+                                           x-model="supplierName"
+                                           @input="onSupplierNameInput()"
+                                           @focus="if (nameSearchResults.length && !supplierFound) showNameDropdown = true"
+                                           :readonly="supplierFound"
+                                           autocomplete="organization"
+                                           placeholder="Auto-filled or enter name"
+                                           class="si-input si-input--compact uppercase"
+                                           :class="supplierFound ? 'ss-lpo-input--locked' : ''" />
+                                    <div x-show="showNameDropdown && nameSearchResults.length && !supplierFound" x-cloak class="ss-lpo-dropdown ss-lpo-dropdown--modal">
+                                        <template x-for="s in nameSearchResults" :key="s.id">
+                                            <button type="button" @click="pickSupplier(s)" class="ss-lpo-dropdown__item si-normal">
+                                                <span class="font-semibold uppercase text-[var(--si-ink)] block" x-text="s.company_name"></span>
+                                                <span class="text-xs text-[var(--si-muted)] tabular-nums" x-text="s.phone"></span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+                                <div class="ss-lpo-field">
+                                    <label for="lpo_date" class="si-label">LPO date</label>
+                                    <input type="date" name="lpo_date" id="lpo_date" required x-model="lpoDate" class="si-input si-input--compact si-normal" />
+                                </div>
+                                <div class="ss-lpo-field">
+                                    <label for="delivery_to" class="si-label">Deliver to</label>
+                                    <input type="text" name="delivery_to" id="delivery_to" maxlength="500" required
+                                           x-model="deliveryTo"
+                                           @input="deliveryTo = ($event.target.value || '').toUpperCase()"
+                                           placeholder="SCHOOL"
+                                           class="si-input si-input--compact uppercase" />
+                                </div>
+                                <div class="ss-lpo-field">
+                                    <label for="deliver_on_or_before" class="si-label">On or before</label>
+                                    <input type="date" name="deliver_on_or_before" id="deliver_on_or_before" required
+                                           x-model="deliverOnOrBefore"
+                                           class="si-input si-input--compact si-normal" />
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="ss-lpo-form-section ss-lpo-form-section--items">
+                            <div class="ss-lpo-form-section__head">
+                                <h3 class="ss-lpo-form-section__title si-normal">
+                                    Order items
+                                    <span class="ss-lpo-form-section__count" x-text="'(' + lpoLines.length + ')'"></span>
+                                </h3>
+                                <button type="button" @click="addLine()" class="ss-lpo-btn-add ss-lpo-btn-add--primary si-normal">
+                                    <i class="fas fa-plus"></i> Add line
+                                </button>
+                            </div>
+                            <div class="ss-lpo-items-table" x-ref="lpoLinesScroll">
+                                <div class="ss-lpo-items-table__inner">
+                                <div class="ss-lpo-items-table__head si-normal" role="row">
+                                    <span class="ss-lpo-items-table__col ss-lpo-items-table__col--num" role="columnheader">#</span>
+                                    <span class="ss-lpo-items-table__col ss-lpo-items-table__col--item" role="columnheader">Item</span>
+                                    <span class="ss-lpo-items-table__col ss-lpo-items-table__col--qty" role="columnheader">Qty</span>
+                                    <span class="ss-lpo-items-table__col ss-lpo-items-table__col--price" role="columnheader">Price (KES)</span>
+                                    <span class="ss-lpo-items-table__col ss-lpo-items-table__col--total" role="columnheader">Total</span>
+                                    <span class="ss-lpo-items-table__col ss-lpo-items-table__col--act" role="columnheader"></span>
+                                </div>
+                                <div class="ss-lpo-lines-stack" role="rowgroup">
+                                    <template x-for="(line, lineIdx) in lpoLines" :key="line.uid">
+                                        <article class="ss-lpo-line"
+                                                 role="row"
+                                                 :class="{
+                                                   'ss-lpo-line--active': activeLineDropdown === line.uid,
+                                                   'ss-lpo-line--picked': !!line.storeItemId
+                                                 }">
+                                            <div class="ss-lpo-line__row">
+                                                <div class="ss-lpo-line__cell ss-lpo-line__cell--num" role="cell">
+                                                    <span class="ss-lpo-line__num si-normal" x-text="lineIdx + 1"></span>
+                                                </div>
+                                                <div class="ss-lpo-line__cell ss-lpo-line__cell--item" role="cell">
+                                                    <template x-if="line.storeItemId && catalogItemById(line.storeItemId)">
+                                                        <div class="ss-lpo-line__item-picked">
+                                                            <span class="ss-lpo-line__picked-ref si-ref"
+                                                                  x-text="catalogItemById(line.storeItemId).reference_code"></span>
+                                                            <span class="ss-lpo-line__picked-name uppercase"
+                                                                  x-text="catalogItemById(line.storeItemId).item_name"></span>
+                                                            <span class="ss-lpo-line__picked-onhand si-normal">
+                                                                On hand
+                                                                <span class="si-stock-qty"
+                                                                      :class="stockQtyClass(catalogItemById(line.storeItemId).quantity_on_hand)">
+                                                                    <span class="si-stock-num"
+                                                                          x-text="catalogItemById(line.storeItemId).quantity_on_hand || 0"></span>
+                                                                    <span class="si-stock-unit"
+                                                                          x-text="catalogItemById(line.storeItemId).measure"></span>
+                                                                </span>
+                                                            </span>
+                                                        </div>
+                                                    </template>
+                                                    <div x-show="!line.storeItemId" x-cloak class="ss-lpo-line__search-cell">
+                                                        <div class="ss-lpo-line__search-wrap">
+                                                            <i class="fas fa-search ss-lpo-line__search-icon" aria-hidden="true"></i>
+                                                            <input type="text"
+                                                                   :required="!line.storeItemId"
+                                                                   :x-ref="'lineSearch' + line.uid"
+                                                                   x-model="line.itemSearch"
+                                                                   @input="onLineSearchInput(line, $event.target)"
+                                                                   @focus="onLineSearchFocus(line, $event.target)"
+                                                                   @blur="onLineSearchBlur(line)"
+                                                                   @keydown="onLineSearchKeydown(line, $event)"
+                                                                   autocomplete="off"
+                                                                   placeholder="Type name or ref…"
+                                                                   class="ss-lpo-line__search si-normal uppercase" />
+                                                        </div>
+                                                        <p class="ss-lpo-line__search-hint si-normal"
+                                                           x-show="activeLineDropdown === line.uid && lineItemSearchMessage && (line.itemSearch || '').trim().length < catalogSearchMinLen"
+                                                           x-text="lineItemSearchMessage"></p>
+                                                        <div class="ss-lpo-line__suggest"
+                                                             x-show="activeLineDropdown === line.uid && (line.itemSearch || '').trim().length >= catalogSearchMinLen"
+                                                             @mousedown.prevent
+                                                             x-cloak>
+                                                            <template x-for="(it, di) in filteredItemsForLine(line)" :key="it.id">
+                                                                <button type="button"
+                                                                        @click="pickLineItem(line, it)"
+                                                                        class="ss-lpo-line__suggest-item si-normal"
+                                                                        :class="lineDropdownHighlight === di ? 'is-highlight' : ''">
+                                                                    <span class="si-ref text-xs" x-text="it.reference_code"></span>
+                                                                    <span class="ss-lpo-line__suggest-name uppercase" x-text="it.item_name"></span>
+                                                                    <span class="ss-lpo-line__suggest-meta">
+                                                                        <span x-text="it.item_category || '—'"></span>
+                                                                        <span class="si-stock-qty" :class="stockQtyClass(it.quantity_on_hand)">
+                                                                            <span class="si-stock-num" x-text="it.quantity_on_hand || 0"></span>
+                                                                            <span class="si-stock-unit" x-text="it.measure"></span>
+                                                                        </span>
+                                                                        <span x-show="it.avg_buying_price != null && it.avg_buying_price !== ''"
+                                                                              x-text="'KES ' + formatBuyingPrice(it.avg_buying_price)"></span>
+                                                                    </span>
+                                                                </button>
+                                                            </template>
+                                                            <p x-show="!filteredItemsForLine(line).length"
+                                                               class="ss-lpo-line__suggest-empty si-normal"
+                                                               x-text="'No items match “' + ((line.itemSearch || '').trim()) + '”'"></p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="ss-lpo-line__cell ss-lpo-line__cell--qty" role="cell" x-show="line.storeItemId" x-cloak>
+                                                    <label class="ss-lpo-line__cell-label si-normal">Qty</label>
+                                                    <input type="number" min="1" step="1" required
+                                                           x-model="line.quantity"
+                                                           aria-label="Quantity"
+                                                           class="ss-lpo-line__input ss-lpo-line__input--num si-normal" />
+                                                </div>
+                                                <div class="ss-lpo-line__cell ss-lpo-line__cell--price" role="cell" x-show="line.storeItemId" x-cloak>
+                                                    <label class="ss-lpo-line__cell-label si-normal">Price</label>
+                                                    <input type="number" min="0" step="0.01" required
+                                                           x-model="line.buyingPrice"
+                                                           aria-label="Unit price in KES"
+                                                           class="ss-lpo-line__input ss-lpo-line__input--num si-normal" />
+                                                </div>
+                                                <div class="ss-lpo-line__cell ss-lpo-line__cell--total" role="cell" x-show="line.storeItemId" x-cloak>
+                                                    <label class="ss-lpo-line__cell-label si-normal">Total</label>
+                                                    <strong class="ss-lpo-line__total-val tabular-nums si-normal"
+                                                            x-text="lineTotalFor(line) ? ('KES ' + Number(lineTotalFor(line)).toLocaleString('en-KE', {minimumFractionDigits: 2})) : '—'"></strong>
+                                                </div>
+                                                <div class="ss-lpo-line__cell ss-lpo-line__cell--act" role="cell">
+                                                    <button type="button"
+                                                            x-show="line.storeItemId"
+                                                            x-cloak
+                                                            @click.stop="clearLineItem(line)"
+                                                            class="ss-lpo-line__change si-normal"
+                                                            title="Change item">
+                                                        <i class="fas fa-pen"></i>
+                                                    </button>
+                                                    <button type="button" x-show="lpoLines.length > 1" x-cloak
+                                                            @click.stop="removeLine(line.uid)"
+                                                            class="ss-lpo-line__remove"
+                                                            title="Remove line">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </article>
+                                    </template>
+                                </div>
+                                </div>
+                            </div>
+                            <input type="hidden" name="lpo_lines_json" x-ref="lpoLinesInput" value="" />
+                        </section>
+                    </div>
+
+                    <div class="ss-movement-modal__footer ss-lpo-form-footer ss-lpo-form-footer--compact">
+                        <div class="ss-lpo-form-footer__summary si-normal">
+                            <span class="ss-lpo-form-footer__total-label">Order total</span>
+                            <strong class="ss-lpo-form-footer__total-value tabular-nums"
+                                    x-text="orderTotal ? ('KES ' + Number(orderTotal).toLocaleString('en-KE', {minimumFractionDigits: 2})) : '—'"></strong>
+                            <span class="ss-lpo-form-footer__hint normal-case" x-show="lpoLines.length > 1" x-cloak
+                                  x-text="lpoLines.length + ' line items'"></span>
+                        </div>
+                        <div class="ss-lpo-form-footer__actions">
+                            <button type="button" @click="closeForm()" class="si-btn ss-lpo-modal-btn ss-lpo-modal-btn--cancel">Cancel</button>
+                            <button type="submit" :disabled="!catalogItems.length" class="si-btn ss-lpo-modal-btn ss-lpo-modal-btn--submit">
+                                <i class="fas fa-file-signature"></i> Register LPO
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {# View LPO modal #}
+        <div x-show="viewModalOpen" x-cloak
+             class="ss-movement-modal-overlay ss-movement-modal-overlay--lpo fixed inset-0 z-[105] flex items-end sm:items-center justify-center p-0 sm:p-4"
+             role="dialog" aria-modal="true" aria-labelledby="lpo-view-modal-title"
+             @keydown.escape.window="viewModalOpen && closeViewModal()">
+            <div class="absolute inset-0 bg-indigo-950/55 backdrop-blur-sm" @click="closeViewModal()" aria-hidden="true"></div>
+            <div x-show="viewModalOpen" x-ref="viewModalPanel" tabindex="-1"
+                 x-transition:enter="transition ease-out duration-250"
+                 x-transition:enter-start="opacity-0 translate-y-6 sm:translate-y-4 sm:scale-[0.98]"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 class="ss-movement-modal ss-lpo-view-modal relative z-10 mt-auto flex w-full max-h-[min(92dvh,92vh)] flex-col overflow-hidden rounded-t-2xl border border-indigo-200/40 bg-[var(--si-bg)] shadow-2xl dark:border-indigo-500/20 sm:mt-0 sm:max-w-2xl sm:rounded-2xl">
+                <div class="sticky top-0 z-10 shrink-0 ss-modal-head ss-modal-head--lpo">
+                    <div class="ss-modal-head__row">
+                        <div class="min-w-0 flex-1 pr-2">
+                            <p class="ss-modal-head__eyebrow">Purchase order</p>
+                            <h2 class="ss-modal-head__title" id="lpo-view-modal-title">
+                                <span x-text="viewLpo ? viewLpo.serial_number : 'LPO'"></span>
+                            </h2>
+                            <div class="ss-lpo-form-modal__meta si-normal" x-show="viewLpo" x-cloak>
+                                <span class="ss-lpo-form-modal__pill">
+                                    <i class="fas fa-calendar-day"></i>
+                                    <span x-text="viewLpo ? formatLpoDate(viewLpo.lpo_date) : ''"></span>
+                                </span>
+                                <span class="ss-lpo-form-modal__pill">
+                                    <i class="fas fa-boxes-stacked"></i>
+                                    <span x-text="viewModalLineCount() + ' item(s)'"></span>
+                                </span>
+                                <span class="ss-pay-badge ss-lpo-view-modal__status" :class="lpoStatusClass(viewLpo)" x-text="lpoStatusLabel(viewLpo)"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ss-movement-modal__body si-normal space-y-4" x-show="viewLpo" x-cloak>
+                    <div class="ss-lpo-view-meta">
+                        <div class="ss-lpo-view-meta__item">
+                            <span class="ss-lpo-view-meta__label">Status</span>
+                            <span class="ss-pay-badge" :class="lpoStatusClass(viewLpo)" x-text="lpoStatusLabel(viewLpo)"></span>
+                        </div>
+                        <div class="ss-lpo-view-meta__item">
+                            <span class="ss-lpo-view-meta__label">Supplier</span>
+                            <span class="ss-lpo-view-meta__value uppercase" x-text="viewLpo.supplier_name || '—'"></span>
+                            <span class="ss-lpo-view-meta__sub tabular-nums" x-show="viewLpo.supplier_phone" x-text="viewLpo.supplier_phone"></span>
+                        </div>
+                        <div class="ss-lpo-view-meta__item">
+                            <span class="ss-lpo-view-meta__label">Deliver to</span>
+                            <span class="ss-lpo-view-meta__value uppercase" x-text="viewLpo.delivery_to || '—'"></span>
+                        </div>
+                        <div class="ss-lpo-view-meta__item">
+                            <span class="ss-lpo-view-meta__label">On or before</span>
+                            <span class="ss-lpo-view-meta__value" x-text="formatLpoDate(viewLpo.deliver_on_or_before)"></span>
+                        </div>
+                        <div class="ss-lpo-view-meta__item">
+                            <span class="ss-lpo-view-meta__label">Generated by</span>
+                            <span class="ss-lpo-view-meta__value" x-text="viewLpo.generated_by_name || '—'"></span>
+                        </div>
+                        <div class="ss-lpo-view-meta__item">
+                            <span class="ss-lpo-view-meta__label">Order total</span>
+                            <span class="ss-lpo-view-meta__value tabular-nums font-semibold" x-text="formatKes(viewLpo.order_total || viewLpo.line_total || 0)"></span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="si-label mb-2">Line items</h3>
+                        <div class="ss-lpo-view-lines">
+                            <div class="ss-lpo-view-lines__head" aria-hidden="true">
+                                <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--no">#</span>
+                                <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--item">Item</span>
+                                <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--qty">Qty</span>
+                                <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--money">Price</span>
+                                <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--money">Total</span>
+                                <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--status">Status</span>
+                            </div>
+                            <template x-for="(ln, idx) in viewModalLines" :key="'view-line-' + (ln.id || idx)">
+                                <div class="ss-lpo-view-lines__row">
+                                    <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--no tabular-nums" x-text="ln.line_no || (idx + 1)"></span>
+                                    <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--item">
+                                        <span class="font-semibold uppercase block" x-text="ln.item_name || '—'"></span>
+                                        <span class="text-[0.625rem] text-[var(--si-muted)] si-ref block" x-show="ln.item_ref" x-text="'Ref: ' + ln.item_ref"></span>
+                                        <span class="text-[0.625rem] text-[var(--si-muted)] block uppercase" x-show="ln.measure" x-text="ln.measure"></span>
+                                    </span>
+                                    <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--qty tabular-nums" x-text="ln.quantity"></span>
+                                    <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--money tabular-nums" x-text="formatKes(ln.buying_price)"></span>
+                                    <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--money tabular-nums font-medium" x-text="formatKes(ln.line_total)"></span>
+                                    <span class="ss-lpo-view-lines__cell ss-lpo-view-lines__cell--status">
+                                        <span class="ss-pay-badge text-[0.625rem]" :class="lineReceiptClass(ln)" x-text="lineReceiptLabel(ln)"></span>
+                                    </span>
+                                </div>
+                            </template>
+                            <p x-show="!viewModalLines.length" x-cloak class="ss-lpo-view-lines__empty">No line items on this order.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ss-movement-modal__footer ss-lpo-view-footer" x-show="viewLpo" x-cloak>
+                    <button type="button"
+                            @click.stop="printViewLpo()"
+                            class="si-btn ss-lpo-modal-btn ss-lpo-modal-btn--print flex-1 sm:flex-none">
+                        <i class="fas fa-print"></i> Print LPO
+                    </button>
+                    <button type="button"
+                            @click.stop="printViewGrn()"
+                            class="si-btn ss-lpo-modal-btn ss-lpo-modal-btn--note flex-1 sm:flex-none">
+                        <i class="fas fa-file-lines"></i> Print GRN
+                    </button>
+                    <button type="button"
+                            x-show="lpoCanReceive(viewLpo)"
+                            @click="openReceiveFromViewModal()"
+                            class="si-btn ss-lpo-modal-btn ss-lpo-modal-btn--receive flex-1 sm:flex-none">
+                        <i class="fas fa-truck-ramp-box"></i> Receive goods
+                    </button>
+                    <button type="button" @click="closeViewModal()" class="si-btn ss-lpo-modal-btn ss-lpo-modal-btn--close flex-1 sm:flex-none">Close</button>
+                </div>
+            </div>
+        </div>
+
+        {# Receive stock from LPO modal #}
+        <div x-show="receiveModalOpen" x-cloak
+             class="ss-movement-modal-overlay fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
+             role="dialog" aria-modal="true" aria-labelledby="lpo-receive-modal-title">
+            <div class="absolute inset-0 bg-gray-900/55 backdrop-blur-sm" @click="closeReceiveModal()" aria-hidden="true"></div>
+            <div x-show="receiveModalOpen" x-ref="receiveModalPanel" tabindex="-1"
+                 x-transition:enter="transition ease-out duration-250"
+                 x-transition:enter-start="opacity-0 translate-y-6 sm:translate-y-4 sm:scale-[0.98]"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 class="ss-movement-modal ss-lpo-receive-modal relative z-10 mt-auto flex w-full max-h-[min(92dvh,92vh)] flex-col overflow-hidden rounded-t-2xl border border-emerald-200/40 bg-[var(--si-bg)] shadow-2xl dark:border-emerald-500/20 sm:mt-0 sm:max-w-2xl sm:rounded-2xl">
+                <div class="sticky top-0 z-10 shrink-0 ss-modal-head ss-modal-head--in">
+                    <div class="ss-modal-head__row">
+                        <div class="min-w-0 flex-1 pr-2">
+                            <p class="ss-modal-head__eyebrow">Receive stock</p>
+                            <h2 class="ss-modal-head__title" id="lpo-receive-modal-title">Goods from supplier</h2>
+                            <p class="mt-1 text-xs text-[var(--si-muted)] si-normal" x-show="receiveLpo">
+                                <span class="font-mono font-bold text-brand-primary" x-text="receiveLpo.serial_number"></span>
+                                · <span x-text="receiveSelectedCount() + ' of ' + receiveLineRows.length + ' item(s)'"></span>
+                            </p>
+                        </div>
+                        <button type="button" @click="closeReceiveModal()" class="ss-modal-close shrink-0" aria-label="Close">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <form method="post" :action="receivePostUrl()" @submit="receiveSubmitCheck($event)"
+                      class="ss-movement-modal__form si-normal">
+                    <input type="hidden" name="supplier_id" :value="receiveSupplierId || ''" />
+                    <div class="ss-movement-modal__body space-y-4">
+
+                        <div class="ss-lpo-receive-tip si-normal">
+                            <i class="fas fa-circle-info"></i>
+                            <span>Select all items delivered in this shipment. Supplier, invoice, and delivery details apply to every selected line.</span>
+                        </div>
+
+                        <div x-show="receiveLineRows.length" x-cloak class="ss-lpo-receive-table-wrap">
+                            <div class="flex items-center justify-between gap-2 mb-2">
+                                <label class="si-label mb-0">Items to receive</label>
+                                <button type="button" x-show="receiveLineRows.length > 1" x-cloak
+                                        @click="toggleAllReceiveRows()"
+                                        class="text-xs font-semibold text-[var(--si-brand)] si-normal">
+                                    <span x-text="receiveAllRowsSelected ? 'Deselect all' : 'Select all'"></span>
+                                </button>
+                            </div>
+                            <div class="ss-lpo-receive-lines" :class="receiveLineRows.length > 1 ? 'ss-lpo-receive-lines--multi' : ''">
+                                <div class="ss-lpo-receive-lines__head" aria-hidden="true">
+                                    <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--check" x-show="receiveLineRows.length > 1" x-cloak></span>
+                                    <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--item">Item</span>
+                                    <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--qty">Qty</span>
+                                    <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--money">Price</span>
+                                    <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--money">Total</span>
+                                </div>
+                                <template x-for="row in receiveLineRows" :key="row.id">
+                                    <div class="ss-lpo-receive-lines__row"
+                                         :class="receiveRowIsActive(row) ? 'ss-lpo-receive-lines__row--selected' : 'ss-lpo-receive-lines__row--muted'">
+                                        <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--check" x-show="receiveLineRows.length > 1" x-cloak>
+                                            <input type="checkbox"
+                                                   :checked="row.selected"
+                                                   @change="toggleReceiveRow(row)"
+                                                   :aria-label="'Receive ' + row.item_name" />
+                                        </span>
+                                        <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--item">
+                                            <span class="font-semibold uppercase block" x-text="row.item_name"></span>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)] si-ref block" x-text="row.item_ref"></span>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)] block uppercase" x-text="row.measure"></span>
+                                        </span>
+                                        <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--qty">
+                                            <input type="number" min="1" step="1"
+                                                   :disabled="!receiveRowIsActive(row)"
+                                                   x-model="row.quantity"
+                                                   class="ss-lpo-receive-table__input si-normal tabular-nums"
+                                                   :aria-label="'Quantity for ' + row.item_name" />
+                                        </span>
+                                        <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--money">
+                                            <input type="number" min="0" step="0.01"
+                                                   :disabled="!receiveRowIsActive(row)"
+                                                   x-model="row.buyingPrice"
+                                                   class="ss-lpo-receive-table__input si-normal tabular-nums"
+                                                   :aria-label="'Price for ' + row.item_name" />
+                                        </span>
+                                        <span class="ss-lpo-receive-lines__cell ss-lpo-receive-lines__cell--money tabular-nums font-medium">
+                                            <span x-text="receiveLineTotalFor(row) ? ('KES ' + receiveLineTotalFor(row)) : '—'"></span>
+                                        </span>
+                                    </div>
+                                </template>
+                            </div>
+                            <input type="hidden" name="receive_lines_json" x-ref="receiveLinesInput" value="" />
+                        </div>
+
+                        <div class="space-y-4 pt-2 border-t border-[var(--si-line)]">
+                            <p class="ss-form-section-title"><i class="fas fa-truck-ramp-box mr-1.5 text-[var(--ss-in)]"></i> Delivery details</p>
+                            <div class="ss-stock-in-grid ss-stock-in-grid--price-total">
+                                <div class="ss-total-box ss-total-box--wide">
+                                    <p class="ss-total-label">Payment total (pending)</p>
+                                    <p class="ss-total-value">
+                                        <span x-text="formatReceivePaymentTotal()"></span>
+                                    </p>
+                                    <p class="mt-1 text-[0.625rem] text-[var(--si-muted)] si-normal" x-show="receiveSelectedCount() > 1" x-cloak>
+                                        <span x-text="receiveSelectedCount() + ' items in this delivery'"></span>
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="ss-supplier-box">
+                                <p class="ss-supplier-box__head"><i class="fas fa-building"></i> Supplier</p>
+                                <div class="ss-supplier-fields">
+                                    <div>
+                                        <label for="receive_supplier_phone" class="si-label">Supplier contact</label>
+                                        <input type="tel" name="supplier_phone" id="receive_supplier_phone" required
+                                               x-model="receiveSupplierPhone" @input="onReceiveSupplierPhoneInput()"
+                                               placeholder="e.g. 0712 345 678" class="si-input" />
+                                        <p class="mt-1.5 text-xs"
+                                           :class="receiveSupplierLookupStatus === 'found' ? 'text-emerald-700 dark:text-emerald-400' : (receiveSupplierLookupStatus === 'new' ? 'text-amber-700 dark:text-amber-400' : 'text-[var(--si-muted)]')"
+                                           x-show="receiveSupplierLookupMessage" x-text="receiveSupplierLookupMessage"></p>
+                                    </div>
+                                    <div>
+                                        <label for="receive_supplier_name" class="si-label">Supplier name</label>
+                                        <input type="text" name="supplier_name" id="receive_supplier_name" maxlength="255"
+                                               :required="!receiveSupplierFound"
+                                               :readonly="receiveSupplierFound"
+                                               x-model="receiveSupplierName"
+                                               @input="receiveSupplierName = ($event.target.value || '').toUpperCase()"
+                                               placeholder="SUPPLIER / COMPANY NAME"
+                                               class="si-input disabled:opacity-70" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="receive_invoice_number" class="si-label">Invoice number</label>
+                                <input type="text" name="invoice_number" id="receive_invoice_number" maxlength="120"
+                                       x-model="receiveInvoiceNumber"
+                                       @input="receiveInvoiceNumber = ($event.target.value || '').toUpperCase()"
+                                       class="si-input"
+                                       placeholder="SUPPLIER TAX INVOICE NO…" />
+                                <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal">Recorded on the goods received note and payments / invoices ledger.</p>
+                            </div>
+                            <div class="ss-delivery-note-box">
+                                <label for="receive_delivery_note" class="si-label">Delivery note <span class="font-normal normal-case text-[var(--si-muted)]">(optional)</span></label>
+                                <input type="text" name="delivery_note" id="receive_delivery_note" maxlength="120"
+                                       x-model="receiveDeliveryNote"
+                                       @input="receiveDeliveryNote = ($event.target.value || '').toUpperCase()"
+                                       class="si-input"
+                                       placeholder="SUPPLIER DISPATCH / DN REF…" />
+                            </div>
+                            <div>
+                                <label for="receive_notes" class="si-label">Notes <span class="font-normal normal-case">(optional)</span></label>
+                                <input type="text" name="notes" id="receive_notes" maxlength="500"
+                                       x-model="receiveNotes"
+                                       @input="receiveNotes = ($event.target.value || '').toUpperCase()"
+                                       class="si-input" placeholder="INVOICE REF, BATCH, REMARKS…" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ss-movement-modal__footer ss-lpo-receive-footer">
+                        <button type="button"
+                                @click.stop="printReceiveNote()"
+                                class="si-btn ss-lpo-modal-btn ss-lpo-modal-btn--note flex-1 sm:flex-none">
+                            <i class="fas fa-print"></i>
+                            <span>Print receive note</span>
+                        </button>
+                        <button type="button" @click="closeReceiveModal()" class="si-btn ss-lpo-modal-btn ss-lpo-modal-btn--cancel flex-1 sm:flex-none">Cancel</button>
+                        <button type="submit" :disabled="!receiveSelectedCount()" class="si-btn ss-lpo-modal-btn ss-lpo-modal-btn--receive flex-1 sm:flex-none">
+                            <i class="fas fa-truck-ramp-box"></i>
+                            <span x-text="receiveSelectedCount() > 1 ? ('Receive ' + receiveSelectedCount() + ' items') : 'Receive into stock'"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

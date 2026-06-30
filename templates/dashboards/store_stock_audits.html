@@ -19,6 +19,7 @@ document.addEventListener('alpine:init', function () {
       listMode: 'all',
       searchQuery: '',
       printUrlBase: {{ employee_dash_url('store-stock/print')|tojson }},
+      grnPrintUrlBase: {{ employee_dash_url('store-stock/grn-print')|tojson }},
       init: function () {},
       setListMode: function (mode) {
         this.listMode = mode === 'in' || mode === 'out' ? mode : 'all';
@@ -30,6 +31,13 @@ document.addEventListener('alpine:init', function () {
       },
       clearSearch: function () {
         this.searchQuery = '';
+      },
+      clearAllFilters: function () {
+        this.searchQuery = '';
+        this.listMode = 'all';
+      },
+      get hasActiveFilters() {
+        return !!(this.searchQuery || '').trim() || this.listMode !== 'all';
       },
       haystack: function (m) {
         return [
@@ -73,20 +81,29 @@ document.addEventListener('alpine:init', function () {
       get countOut() {
         return (this.movements || []).filter(function (m) { return m.movement_type === 'out'; }).length;
       },
-      paymentBadgeClass: function (status) {
-        var s = String(status || '').toLowerCase();
-        if (s === 'paid' || s === 'complete' || s === 'completed') return 'ss-pay-badge--paid';
-        if (s === 'partial') return 'ss-pay-badge--partial';
-        if (s === 'pending') return 'ss-pay-badge--pending';
-        return 'ss-pay-badge--muted';
-      },
       formatKes: function (v) {
         if (v === null || v === undefined || v === '' || v === '—') return '—';
         var n = parseFloat(v);
-        return Number.isFinite(n) ? ('KES ' + n.toFixed(2)) : '—';
+        return Number.isFinite(n) ? ('KES ' + n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '—';
       },
       printUrl: function (id) {
         return this.printUrlBase + '/' + id;
+      },
+      grnPrintUrl: function (id) {
+        return this.grnPrintUrlBase + '/' + id;
+      },
+      isStockIn: function (m) {
+        return String((m && m.movement_type) || '').toLowerCase() === 'in';
+      },
+      movementBadgeClass: function (m) {
+        return this.isStockIn(m) ? 'ss-audit-badge--in' : 'ss-audit-badge--out';
+      },
+      movementLabel: function (m) {
+        return this.isStockIn(m) ? 'Stock in' : 'Stock out';
+      },
+      partyLabel: function (m) {
+        if (this.isStockIn(m)) return m.supplier_name || '—';
+        return m.stock_out_purpose || '—';
       },
     };
   });
@@ -104,7 +121,7 @@ document.addEventListener('alpine:init', function () {
                 <span class="mt-0.5 shrink-0" aria-hidden="true">
                     {% if category == 'success' %}<i class="fas fa-check"></i>{% elif category == 'error' %}<i class="fas fa-exclamation"></i>{% else %}<i class="fas fa-info"></i>{% endif %}
                 </span>
-                <span class="min-w-0 flex-1">{{ message }}</span>
+                <span class="min-w-0 flex-1 si-normal">{{ message }}</span>
             </div>
             {% endfor %}
         </div>
@@ -122,167 +139,273 @@ document.addEventListener('alpine:init', function () {
                             </a>
                             <h1 class="ss-hero__title">Stock audits</h1>
                             <p class="ss-hero__sub si-normal">
-                                Full audit trail of every stock in and stock out — quantities, balances, suppliers, and who recorded each movement.
+                                Complete movement history — quantities, balances, suppliers, and who recorded each transaction.
                             </p>
                         </div>
                     </div>
-                </div>
-                <div class="ss-hero__actions">
-                    <a href="{{ employee_dash_url('store-stock') }}" class="ss-hero__link"><i class="fas fa-arrow-right-arrow-left"></i> Stock in &amp; out</a>
-                    <a href="{{ employee_dash_url('store-inventory') }}" class="ss-hero__link"><i class="fas fa-boxes-stacked"></i> Item catalog</a>
+                    <div class="ss-hero__actions ss-hero__actions--compact">
+                        <a href="{{ employee_dash_url('store-stock') }}" class="ss-hero__btn ss-hero__btn--in">
+                            <i class="fas fa-arrow-right-arrow-left"></i>
+                            <span>Record movement</span>
+                        </a>
+                    </div>
                 </div>
             </div>
         </header>
 
-        <section class="si-panel ss-audit-panel mt-5">
-            <div class="si-panel-head ss-list-panel__head">
-                <div class="min-w-0">
+        <div class="ss-stats ss-stats--audit mt-5" x-show="movements.length > 0" x-cloak>
+            <div class="ss-stat ss-stat--audit">
+                <p class="ss-stat__label">Total records</p>
+                <p class="ss-stat__value ss-stat__value--audit" x-text="movements.length"></p>
+                <p class="ss-stat__hint">All movements</p>
+            </div>
+            <div class="ss-stat ss-stat--audit ss-stat--audit-in">
+                <p class="ss-stat__label">Stock in</p>
+                <p class="ss-stat__value ss-stat__value--in" x-text="countIn"></p>
+                <p class="ss-stat__hint">Goods received</p>
+            </div>
+            <div class="ss-stat ss-stat--audit ss-stat--audit-out">
+                <p class="ss-stat__label">Stock out</p>
+                <p class="ss-stat__value ss-stat__value--out" x-text="countOut"></p>
+                <p class="ss-stat__hint">Issues &amp; dispatches</p>
+            </div>
+            <div class="ss-stat ss-stat--audit">
+                <p class="ss-stat__label">Showing</p>
+                <p class="ss-stat__value" x-text="filteredMovements.length"></p>
+                <p class="ss-stat__hint" x-show="hasActiveFilters" x-cloak>Filtered view</p>
+                <p class="ss-stat__hint" x-show="!hasActiveFilters" x-cloak>Current list</p>
+            </div>
+        </div>
+
+        <section class="si-panel ss-audit-panel">
+            <div class="si-panel-head ss-audit-panel__head">
+                <div class="min-w-0 flex-1">
                     <h2 class="si-title">Movement audit log</h2>
-                    <p class="si-subtitle si-normal">Detailed history of all stock movements.</p>
-                    <span class="ss-results-badge mt-2" x-show="movements.length > 0">
+                    <p class="si-subtitle si-normal">Search and filter every stock in and stock out. Most recent first.</p>
+                    <span class="ss-results-badge ss-results-badge--audit mt-2" x-show="movements.length > 0" x-cloak>
                         <i class="fas fa-list-check"></i>
-                        <span x-text="movements.length + ' record' + (movements.length === 1 ? '' : 's')"></span>
-                        <span class="opacity-80"> · </span>
-                        <span x-text="countIn + ' in'"></span>
-                        <span class="opacity-80"> / </span>
-                        <span x-text="countOut + ' out'"></span>
+                        <span x-text="filteredMovements.length + ' of ' + movements.length + ' record' + (movements.length === 1 ? '' : 's')"></span>
                     </span>
-                </div>
-                <div class="ss-list-tabs">
-                    <button type="button" @click="setListMode('all')"
-                            class="ss-list-tab" :class="listMode === 'all' ? 'is-active is-in' : ''">
-                        All (<span x-text="movements.length"></span>)
-                    </button>
-                    <button type="button" @click="setListMode('in')"
-                            class="ss-list-tab is-in" :class="listMode === 'in' ? 'is-active' : ''">
-                        Stock in (<span x-text="countIn"></span>)
-                    </button>
-                    <button type="button" @click="setListMode('out')"
-                            class="ss-list-tab is-out" :class="listMode === 'out' ? 'is-active' : ''">
-                        Stock out (<span x-text="countOut"></span>)
-                    </button>
                 </div>
             </div>
 
             <div class="si-panel-body">
-                <div class="ss-search-bar si-normal">
-                    <div class="si-search-wrap">
-                        <i class="fas fa-search"></i>
-                        <input type="search"
-                               x-model="searchQuery"
-                               @input="onSearchInput($event)"
-                               class="si-input si-upper"
-                               placeholder="SEARCH REF, ITEM, CATEGORY, SUPPLIER, DELIVERY NOTE, PURPOSE, USER…"
-                               aria-label="Search audit records" />
+                <div x-show="movements.length > 0" x-cloak class="ss-audit-toolbar si-normal">
+                    <div class="ss-search-bar ss-audit-search">
+                        <div class="si-search-wrap">
+                            <i class="fas fa-search"></i>
+                            <input type="search"
+                                   x-model="searchQuery"
+                                   @input="onSearchInput($event)"
+                                   class="si-input si-upper"
+                                   placeholder="SEARCH REF, ITEM, SUPPLIER, PURPOSE, USER…"
+                                   aria-label="Search audit records" />
+                        </div>
+                        <button type="button" x-show="searchQuery" x-cloak @click="clearSearch()"
+                                class="si-btn si-btn--ghost py-2 px-3 text-xs">Clear</button>
                     </div>
-                    <button type="button" x-show="searchQuery" x-cloak @click="clearSearch()" class="si-btn si-btn--ghost py-2 px-3 text-xs">Clear</button>
+                    <div class="ss-audit-tabs" role="tablist" aria-label="Filter by movement type">
+                        <button type="button" role="tab"
+                                :aria-selected="listMode === 'all'"
+                                @click="setListMode('all')"
+                                class="ss-audit-tab"
+                                :class="listMode === 'all' ? 'is-active' : ''">
+                            <i class="fas fa-layer-group"></i>
+                            All
+                            <span class="ss-audit-tab__count" x-text="movements.length"></span>
+                        </button>
+                        <button type="button" role="tab"
+                                :aria-selected="listMode === 'in'"
+                                @click="setListMode('in')"
+                                class="ss-audit-tab ss-audit-tab--in"
+                                :class="listMode === 'in' ? 'is-active' : ''">
+                            <i class="fas fa-arrow-down"></i>
+                            Stock in
+                            <span class="ss-audit-tab__count" x-text="countIn"></span>
+                        </button>
+                        <button type="button" role="tab"
+                                :aria-selected="listMode === 'out'"
+                                @click="setListMode('out')"
+                                class="ss-audit-tab ss-audit-tab--out"
+                                :class="listMode === 'out' ? 'is-active' : ''">
+                            <i class="fas fa-arrow-up"></i>
+                            Stock out
+                            <span class="ss-audit-tab__count" x-text="countOut"></span>
+                        </button>
+                    </div>
+                    <div class="ss-audit-toolbar__actions" x-show="hasActiveFilters" x-cloak>
+                        <button type="button" @click="clearAllFilters()" class="si-btn si-btn--ghost py-2 px-3 text-xs">
+                            <i class="fas fa-filter-circle-xmark"></i> Clear filters
+                        </button>
+                    </div>
                 </div>
 
-                <div x-show="movements.length === 0" class="si-empty mt-3">
-                    <i class="fas fa-clipboard-list block"></i>
-                    <p class="font-semibold text-[var(--si-ink)] si-normal">No stock movements recorded yet</p>
-                    <p class="mt-1 text-sm si-normal"><a href="{{ employee_dash_url('store-stock') }}" class="text-[var(--si-brand)] underline">Record stock in or out</a> to build the audit trail.</p>
+                <div x-show="movements.length === 0" class="si-empty ss-audit-empty">
+                    <div class="ss-audit-empty__icon" aria-hidden="true"><i class="fas fa-clipboard-list"></i></div>
+                    <p class="font-semibold text-[var(--si-ink)] si-normal">No stock movements yet</p>
+                    <p class="mt-1 text-sm si-normal text-[var(--si-muted)]">Record stock in or stock out to build your audit trail.</p>
+                    <a href="{{ employee_dash_url('store-stock') }}" class="ss-audit-empty__cta si-normal">
+                        <i class="fas fa-arrow-right-arrow-left"></i> Go to stock movements
+                    </a>
                 </div>
 
-                <div x-show="movements.length > 0 && filteredMovements.length === 0" x-cloak class="si-empty mt-3">
-                    <i class="fas fa-magnifying-glass block"></i>
+                <div x-show="movements.length > 0 && filteredMovements.length === 0" x-cloak class="si-empty ss-audit-empty mt-3">
+                    <div class="ss-audit-empty__icon" aria-hidden="true"><i class="fas fa-magnifying-glass"></i></div>
                     <p class="font-semibold text-[var(--si-ink)] si-normal">No records match your filters</p>
-                    <p class="mt-1 text-sm si-normal">Try a different search term or filter.</p>
+                    <p class="mt-1 text-sm si-normal">
+                        <button type="button" @click="clearAllFilters()" class="text-[var(--si-brand)] font-semibold underline">Clear all filters</button>
+                    </p>
                 </div>
 
-                <div x-show="filteredMovements.length > 0" class="ss-list-table mt-3">
-                    <div class="si-table-wrap ss-table-wrap ss-audit-table-wrap">
-                        <table class="si-table ss-table--audit">
+                {# Desktop table #}
+                <div x-show="filteredMovements.length > 0" x-cloak class="ss-list-table ss-list-table--audit mt-4">
+                    <div class="si-table-wrap ss-audit-table-wrap">
+                        <table class="si-table ss-table--audit si-normal">
                             <thead>
                                 <tr>
-                                    <th>Date &amp; time</th>
-                                    <th>Reference</th>
+                                    <th class="ss-audit-col--sticky">When &amp; ref</th>
                                     <th>Item</th>
-                                    <th>Expense category</th>
+                                    <th>Category</th>
                                     <th class="text-right">Qty</th>
-                                    <th>Measure</th>
-                                    <th class="text-right">Before</th>
-                                    <th class="text-right">After</th>
+                                    <th class="text-right">Balance</th>
                                     <th class="text-right">Unit price</th>
-                                    <th class="text-right">Total</th>
-                                    <th>Payment</th>
                                     <th>Supplier / purpose</th>
                                     <th>Recorded by</th>
-                                    <th>Delivery note</th>
-                                    <th>Notes</th>
-                                    <th class="text-center">Print</th>
+                                    <th class="text-center ss-actions-col">Documents</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <template x-for="m in filteredMovements" :key="m.id">
-                                    <tr :class="m.movement_type === 'in' ? 'ss-row--in' : 'ss-row--out'">
-                                        <td class="whitespace-nowrap text-[0.6875rem] si-normal" x-text="m.created_at_display"></td>
-                                        <td class="whitespace-nowrap">
-                                            <span class="ss-type-badge"
-                                                  :class="m.movement_type === 'in' ? 'ss-type-badge--in' : 'ss-type-badge--out'">
-                                                <i class="fas" :class="m.movement_type === 'in' ? 'fa-arrow-down' : 'fa-arrow-up'"></i>
-                                                <span x-text="m.movement_type === 'in' ? 'In' : 'Out'"></span>
+                                    <tr :class="isStockIn(m) ? 'ss-row--in' : 'ss-row--out'">
+                                        <td class="ss-audit-col--sticky whitespace-nowrap">
+                                            <span class="ss-audit-badge" :class="movementBadgeClass(m)">
+                                                <i class="fas" :class="isStockIn(m) ? 'fa-arrow-down' : 'fa-arrow-up'"></i>
+                                                <span x-text="movementLabel(m)"></span>
                                             </span>
-                                            <span class="si-ref block mt-1" x-text="m.reference_number"></span>
+                                            <span class="text-[0.6875rem] text-[var(--si-muted)] block mt-1.5" x-text="m.created_at_display"></span>
+                                            <span class="si-ref block mt-0.5" x-text="m.reference_number"></span>
                                         </td>
-                                        <td>
-                                            <span class="font-semibold block" x-text="m.item_name"></span>
-                                            <span class="text-[0.625rem] text-[var(--si-muted)]" x-text="m.item_ref"></span>
+                                        <td class="max-w-[11rem]">
+                                            <span class="font-semibold uppercase block leading-snug" x-text="m.item_name"></span>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)] si-ref" x-text="m.item_ref"></span>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)] block uppercase mt-0.5" x-text="m.measure"></span>
                                         </td>
-                                        <td class="max-w-[9rem] truncate" :title="m.item_category" x-text="m.item_category || '—'"></td>
-                                        <td class="text-right tabular-nums font-semibold" x-text="m.quantity"></td>
-                                        <td x-text="m.measure"></td>
-                                        <td class="text-right tabular-nums text-[var(--si-muted)]" x-text="m.quantity_before"></td>
-                                        <td class="text-right tabular-nums font-medium" x-text="m.quantity_after"></td>
+                                        <td class="max-w-[8rem]">
+                                            <span class="ss-audit-category" x-text="m.item_category || '—'"></span>
+                                        </td>
+                                        <td class="text-right tabular-nums">
+                                            <span class="ss-audit-qty" :class="isStockIn(m) ? 'ss-audit-qty--in' : 'ss-audit-qty--out'"
+                                                  x-text="(isStockIn(m) ? '+' : '−') + m.quantity"></span>
+                                        </td>
                                         <td class="text-right tabular-nums whitespace-nowrap">
-                                            <span x-show="m.movement_type === 'in'" x-text="formatKes(m.buying_price_display)"></span>
-                                            <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)] block" x-text="m.quantity_before + ' →'"></span>
+                                            <span class="font-semibold" x-text="m.quantity_after"></span>
                                         </td>
-                                        <td class="text-right tabular-nums font-semibold whitespace-nowrap">
-                                            <span x-show="m.movement_type === 'in'" x-text="formatKes(m.total_amount_display)"></span>
-                                            <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
-                                        </td>
-                                        <td>
-                                            <template x-if="m.movement_type === 'in'">
-                                                <div>
-                                                    <span class="ss-pay-badge" :class="paymentBadgeClass(m.payment_status)" x-text="m.payment_status || '—'"></span>
-                                                    <span class="block text-[0.625rem] text-[var(--si-muted)] mt-0.5 tabular-nums si-normal"
-                                                          x-show="m.amount_paid_display && m.amount_paid_display !== '—'"
-                                                          x-text="'Paid: KES ' + m.amount_paid_display"></span>
-                                                </div>
-                                            </template>
-                                            <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                        <td class="text-right tabular-nums whitespace-nowrap text-sm">
+                                            <span x-show="isStockIn(m)" x-text="formatKes(m.buying_price_display)"></span>
+                                            <span x-show="!isStockIn(m)" class="text-[var(--si-muted)]">—</span>
                                         </td>
                                         <td class="max-w-[10rem]">
-                                            <template x-if="m.movement_type === 'in'">
-                                                <div class="truncate" :title="m.supplier_name || ''">
-                                                    <span class="block truncate" x-text="m.supplier_name || '—'"></span>
-                                                    <span class="text-[0.625rem] text-[var(--si-muted)] si-normal block truncate"
-                                                          x-show="m.supplier_phone" x-text="m.supplier_phone"></span>
-                                                </div>
-                                            </template>
-                                            <template x-if="m.movement_type === 'out'">
-                                                <span class="block truncate" :title="m.stock_out_purpose || ''" x-text="m.stock_out_purpose || '—'"></span>
-                                            </template>
+                                            <span class="block truncate font-medium uppercase text-sm" :title="partyLabel(m)" x-text="partyLabel(m)"></span>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)] tabular-nums block truncate"
+                                                  x-show="isStockIn(m) && m.supplier_phone" x-text="m.supplier_phone"></span>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)] block truncate mt-0.5"
+                                                  x-show="isStockIn(m) && m.delivery_note" x-text="'DN: ' + m.delivery_note"></span>
+                                            <span class="text-[0.625rem] text-[var(--si-muted)] block truncate mt-0.5"
+                                                  x-show="m.notes" x-text="m.notes"></span>
                                         </td>
-                                        <td class="max-w-[8rem] truncate si-normal" :title="m.performed_by_name || ''" x-text="m.performed_by_name || '—'"></td>
-                                        <td class="max-w-[10rem] truncate si-normal">
-                                            <span x-show="m.movement_type === 'in'" :title="m.delivery_note || ''" x-text="m.delivery_note || '—'"></span>
-                                            <span x-show="m.movement_type !== 'in'" class="text-[var(--si-muted)]">—</span>
+                                        <td class="max-w-[7rem]">
+                                            <span class="text-sm truncate block" :title="m.performed_by_name || ''" x-text="m.performed_by_name || '—'"></span>
                                         </td>
-                                        <td class="max-w-[10rem] truncate si-normal" :title="m.notes || ''" x-text="m.notes || '—'"></td>
-                                        <td class="text-center">
-                                            <a :href="printUrl(m.id)" target="_blank" rel="noopener"
-                                               class="si-btn si-btn--icon" title="Print receipt"><i class="fas fa-print"></i></a>
+                                        <td class="text-center whitespace-nowrap ss-actions-col">
+                                            <div class="ss-audit-print-actions">
+                                                <a x-show="isStockIn(m)" :href="grnPrintUrl(m.id)" target="_blank" rel="noopener"
+                                                   class="ss-audit-action-btn ss-audit-action-btn--grn" title="Goods received note">
+                                                    <i class="fas fa-file-signature"></i>
+                                                    <span>GRN</span>
+                                                </a>
+                                                <a :href="printUrl(m.id)" target="_blank" rel="noopener"
+                                                   class="ss-audit-action-btn ss-audit-action-btn--print"
+                                                   :title="isStockIn(m) ? 'Print stock-in receipt' : 'Print stock-out receipt'">
+                                                    <i class="fas fa-print"></i>
+                                                    <span x-text="isStockIn(m) ? 'Receipt' : 'Print'"></span>
+                                                </a>
+                                            </div>
                                         </td>
                                     </tr>
                                 </template>
                             </tbody>
                         </table>
                     </div>
-                    <p class="mt-3 text-xs text-[var(--si-muted)] si-normal">
-                        Showing <span x-text="filteredMovements.length"></span> of <span x-text="movements.length"></span> records (most recent first).
+                    <p class="ss-audit-footnote si-normal">
+                        <i class="fas fa-circle-info"></i>
+                        Showing <strong x-text="filteredMovements.length"></strong> of <strong x-text="movements.length"></strong> records · newest first
                     </p>
+                </div>
+
+                {# Mobile cards #}
+                <div x-show="filteredMovements.length > 0" x-cloak class="ss-audit-cards mt-4">
+                    <template x-for="m in filteredMovements" :key="'card-' + m.id">
+                        <article class="ss-audit-card" :class="isStockIn(m) ? 'ss-audit-card--in' : 'ss-audit-card--out'">
+                            <div class="ss-audit-card__head">
+                                <div class="min-w-0 flex-1">
+                                    <span class="ss-audit-badge ss-audit-badge--sm" :class="movementBadgeClass(m)">
+                                        <i class="fas" :class="isStockIn(m) ? 'fa-arrow-down' : 'fa-arrow-up'"></i>
+                                        <span x-text="movementLabel(m)"></span>
+                                    </span>
+                                    <span class="si-ref ss-audit-card__ref" x-text="m.reference_number"></span>
+                                    <span class="ss-audit-card__date" x-text="m.created_at_display"></span>
+                                </div>
+                                <div class="ss-audit-card__qty-block">
+                                    <span class="ss-audit-card__qty-label">Qty</span>
+                                    <span class="ss-audit-qty" :class="isStockIn(m) ? 'ss-audit-qty--in' : 'ss-audit-qty--out'"
+                                          x-text="(isStockIn(m) ? '+' : '−') + m.quantity"></span>
+                                    <span class="ss-audit-card__measure" x-text="m.measure"></span>
+                                </div>
+                            </div>
+                            <div class="ss-audit-card__body">
+                                <p class="ss-audit-card__item uppercase" x-text="m.item_name"></p>
+                                <p class="ss-audit-card__meta si-ref" x-text="m.item_ref"></p>
+                                <div class="ss-audit-card__grid">
+                                    <div class="ss-audit-card__cell">
+                                        <span class="ss-audit-card__label">Balance</span>
+                                        <span class="ss-audit-card__value tabular-nums" x-text="m.quantity_before + ' → ' + m.quantity_after"></span>
+                                    </div>
+                                    <div class="ss-audit-card__cell">
+                                        <span class="ss-audit-card__label">Category</span>
+                                        <span class="ss-audit-card__value" x-text="m.item_category || '—'"></span>
+                                    </div>
+                                    <div class="ss-audit-card__cell" x-show="isStockIn(m)" x-cloak>
+                                        <span class="ss-audit-card__label">Unit price</span>
+                                        <span class="ss-audit-card__value tabular-nums" x-text="formatKes(m.buying_price_display)"></span>
+                                    </div>
+                                    <div class="ss-audit-card__cell">
+                                        <span class="ss-audit-card__label" x-text="isStockIn(m) ? 'Supplier' : 'Purpose'"></span>
+                                        <span class="ss-audit-card__value uppercase" x-text="partyLabel(m)"></span>
+                                    </div>
+                                    <div class="ss-audit-card__cell ss-audit-card__cell--wide">
+                                        <span class="ss-audit-card__label">Recorded by</span>
+                                        <span class="ss-audit-card__value" x-text="m.performed_by_name || '—'"></span>
+                                    </div>
+                                    <div class="ss-audit-card__cell ss-audit-card__cell--wide" x-show="m.notes || (isStockIn(m) && m.delivery_note)" x-cloak>
+                                        <span class="ss-audit-card__label">Notes</span>
+                                        <span class="ss-audit-card__value" x-text="m.notes || m.delivery_note || '—'"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="ss-audit-card__actions">
+                                <a x-show="isStockIn(m)" :href="grnPrintUrl(m.id)" target="_blank" rel="noopener"
+                                   class="ss-audit-card__btn ss-audit-card__btn--grn">
+                                    <i class="fas fa-file-signature"></i> GRN
+                                </a>
+                                <a :href="printUrl(m.id)" target="_blank" rel="noopener"
+                                   class="ss-audit-card__btn ss-audit-card__btn--print">
+                                    <i class="fas fa-print"></i>
+                                    <span x-text="isStockIn(m) ? 'Receipt' : 'Print'"></span>
+                                </a>
+                            </div>
+                        </article>
+                    </template>
                 </div>
             </div>
         </section>

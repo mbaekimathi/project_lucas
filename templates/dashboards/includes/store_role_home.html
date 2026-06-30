@@ -1,24 +1,357 @@
 {% set role_theme = 'store' %}
 {% set role_hero_eyebrow = 'Store manager' %}
 {% set role_hero_title = 'Store & inventory' %}
-{% set role_hero_subtitle = 'Stock movements, item catalog, and staff requisitions.' %}
+{% set role_hero_subtitle = 'Register departments, manage stock, and fulfil staff requisitions.' %}
 {% set role_hero_icon_class = 'fa-boxes-stacked' %}
 {% include 'dashboards/includes/role_hero.html' %}
 
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-    <a href="{{ employee_dash_url('store-stock') }}" class="role-quick-card">
-        <i class="fas fa-arrow-right-arrow-left text-amber-600 dark:text-amber-400"></i>
-        <span>Stock in &amp; out</span>
-        <small>Record stock received and issued</small>
-    </a>
-    <a href="{{ employee_dash_url('store-inventory') }}" class="role-quick-card">
-        <i class="fas fa-boxes-stacked text-orange-600 dark:text-orange-400"></i>
-        <span>Item catalog</span>
-        <small>Manage store items and measures</small>
-    </a>
-    <a href="{{ employee_dash_url('store-requisitions') }}" class="role-quick-card">
-        <i class="fas fa-clipboard-list text-slate-600 dark:text-slate-400"></i>
-        <span>Requisitions</span>
-        <small>Staff requests and fulfilment</small>
-    </a>
+{% include 'dashboards/includes/store_inventory_page_styles.html' %}
+
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('storeRoleHomePage', function () {
+    return {
+      deptFormOpen: false,
+      editModalOpen: false,
+      viewModalOpen: false,
+      editDept: { id: null, department_category: '', department_name: '', description: '' },
+      viewDept: {},
+      deptBaseUrl: {{ employee_dash_url('store-departments')|tojson }},
+      inventoryBaseUrl: {{ employee_dash_url('store-inventory')|tojson }},
+      syncBodyScrollLock: function () {
+        document.body.classList.toggle('overflow-hidden', !!(this.deptFormOpen || this.editModalOpen || this.viewModalOpen));
+      },
+      openDeptForm: function () {
+        this.deptFormOpen = true;
+        this.syncBodyScrollLock();
+        var self = this;
+        this.$nextTick(function () {
+          var panel = self.$refs.deptFormModal;
+          if (panel) panel.focus();
+        });
+      },
+      closeDeptForm: function () {
+        this.deptFormOpen = false;
+        this.syncBodyScrollLock();
+      },
+      openViewModal: function (dept) {
+        this.viewDept = dept || {};
+        this.viewModalOpen = true;
+        this.syncBodyScrollLock();
+      },
+      openViewModalFromEl: function (evt) {
+        var raw = evt && evt.currentTarget && evt.currentTarget.getAttribute('data-dept');
+        if (!raw) return;
+        try { this.openViewModal(JSON.parse(raw)); } catch (e) { /* ignore */ }
+      },
+      closeViewModal: function () {
+        this.viewModalOpen = false;
+        this.viewDept = {};
+        this.syncBodyScrollLock();
+      },
+      openEditModal: function (dept) {
+        this.editDept = {
+          id: dept.id,
+          department_category: dept.department_category || '',
+          department_name: dept.department_name || '',
+          description: dept.description || '',
+        };
+        this.editModalOpen = true;
+        this.syncBodyScrollLock();
+        var self = this;
+        this.$nextTick(function () {
+          var panel = self.$refs.editDeptModal;
+          if (panel) panel.focus();
+        });
+      },
+      openEditModalFromEl: function (evt) {
+        var raw = evt && evt.currentTarget && evt.currentTarget.getAttribute('data-dept');
+        if (!raw) return;
+        try { this.openEditModal(JSON.parse(raw)); } catch (e) { /* ignore */ }
+      },
+      closeEditModal: function () {
+        this.editModalOpen = false;
+        this.editDept = { id: null, department_category: '', department_name: '', description: '' };
+        this.syncBodyScrollLock();
+      },
+      deptUpdateUrl: function () {
+        return this.deptBaseUrl + '/' + this.editDept.id;
+      },
+      deptCatalogUrl: function (id) {
+        return this.inventoryBaseUrl + '?department=' + id;
+      },
+      statusLabel: function (status) {
+        return (status || 'active') === 'suspended' ? 'Suspended' : 'Active';
+      },
+      uppercaseInput: function (e) {
+        var el = e.target;
+        if (!el) return;
+        var start = el.selectionStart;
+        var end = el.selectionEnd;
+        el.value = (el.value || '').toUpperCase();
+        if (start != null && end != null) {
+          el.setSelectionRange(start, end);
+        }
+      },
+    };
+  });
+});
+</script>
+
+<div class="si-page sinv-page si-upper" x-data="storeRoleHomePage()"
+     @keydown.escape.window="if (editModalOpen) closeEditModal(); else if (viewModalOpen) closeViewModal(); else if (deptFormOpen) closeDeptForm();">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="mb-4 space-y-2">
+        {% for category, message in messages %}
+        <div class="rounded-lg border px-3 py-2.5 text-sm flex items-start gap-2
+            {% if category == 'error' %}border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200
+            {% elif category == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200
+            {% else %}border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200{% endif %}">
+            <i class="fas {% if category == 'error' %}fa-circle-exclamation{% elif category == 'success' %}fa-circle-check{% else %}fa-circle-info{% endif %} mt-0.5 shrink-0"></i>
+            <span class="min-w-0 flex-1 si-normal">{{ message }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <section class="si-panel sinv-panel-accent mb-6">
+        <div class="si-panel-head">
+            <div class="min-w-0">
+                <h2 class="si-title">Departments</h2>
+                <p class="si-subtitle si-normal">
+                    Register school departments used when adding store items. Each department becomes a station when you register items.
+                </p>
+            </div>
+        </div>
+        <div class="si-panel-body">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <button type="button" @click="openDeptForm()" class="role-quick-card text-left">
+                    <i class="fas fa-building text-orange-600 dark:text-orange-400"></i>
+                    <span>Register department</span>
+                    <small>Category · name · description</small>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="si-panel">
+        <div class="si-panel-head">
+            <div class="min-w-0">
+                <h2 class="si-title">Registered departments</h2>
+                <p class="si-subtitle si-normal">
+                    {{ (store_departments or [])|length }} department{{ '' if (store_departments or [])|length == 1 else 's' }} registered. View, edit, suspend, or delete departments using the actions column.
+                </p>
+            </div>
+        </div>
+        <div class="si-panel-body p-0 overflow-x-auto">
+            {% if store_departments %}
+            <table class="w-full text-left text-sm si-normal">
+                <thead>
+                    <tr class="border-b border-[var(--si-line)] text-[var(--si-muted)]">
+                        <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Category</th>
+                        <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Department</th>
+                        <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Description</th>
+                        <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Items</th>
+                        <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Status</th>
+                        <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for dept in store_departments %}
+                    <tr class="border-b border-[var(--si-line)] last:border-0 hover:bg-[var(--si-surface)]/60{% if dept.status == 'suspended' %} is-suspended opacity-75{% endif %}">
+                        <td class="px-4 py-3 whitespace-nowrap font-medium text-[var(--si-ink)]">{{ dept.department_category }}</td>
+                        <td class="px-4 py-3 font-semibold text-[var(--si-ink)]">{{ dept.department_name }}</td>
+                        <td class="px-4 py-3 text-[var(--si-muted)] max-w-[14rem] truncate" title="{{ dept.description or '' }}">{{ dept.description or '—' }}</td>
+                        <td class="px-4 py-3 tabular-nums whitespace-nowrap">{{ dept.item_count|default(0) }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="si-badge {% if dept.status == 'suspended' %}si-badge--warn{% else %}si-badge--brand{% endif %}">
+                                {{ 'Suspended' if dept.status == 'suspended' else 'Active' }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-center gap-1 flex-wrap">
+                                <button type="button"
+                                        data-dept='{{ dept|tojson }}'
+                                        @click="openViewModalFromEl($event)"
+                                        class="si-btn si-btn--icon" title="View department">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button type="button"
+                                        data-dept='{{ dept|tojson }}'
+                                        @click="openEditModalFromEl($event)"
+                                        class="si-btn si-btn--icon is-edit" title="Edit department">
+                                    <i class="fas fa-pen-to-square"></i>
+                                </button>
+                                <form method="post" action="{{ employee_dash_url('store-departments') }}/{{ dept.id }}/toggle-suspend" class="inline">
+                                    <button type="submit" class="si-btn si-btn--icon is-warn"
+                                            title="{{ 'Reactivate' if dept.status == 'suspended' else 'Suspend' }} department">
+                                        <i class="fas {% if dept.status == 'suspended' %}fa-circle-play{% else %}fa-circle-pause{% endif %}"></i>
+                                    </button>
+                                </form>
+                                <form method="post" action="{{ employee_dash_url('store-departments') }}/{{ dept.id }}/delete" class="inline"
+                                      onsubmit="return confirm('Delete {{ dept.department_name|e }}? This cannot be undone.');">
+                                    <button type="submit" class="si-btn si-btn--icon is-del" title="Delete department">
+                                        <i class="fas fa-trash-can"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="px-4 py-6 text-sm text-[var(--si-muted)] si-normal">
+                <i class="fas fa-circle-info mr-1.5"></i>No departments registered yet. Use <strong>Register department</strong> above.
+            </p>
+            {% endif %}
+        </div>
+    </section>
+
+    {# New department modal #}
+    <div x-show="deptFormOpen" x-cloak class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="si-new-dept-title">
+        <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" @click="closeDeptForm()" aria-hidden="true"></div>
+        <div x-show="deptFormOpen" x-ref="deptFormModal" tabindex="-1"
+             class="relative mt-auto w-full max-h-[92vh] overflow-y-auto rounded-t-2xl border border-[var(--si-line)] bg-[var(--si-bg)] shadow-2xl sm:mt-0 sm:max-w-lg sm:rounded-2xl">
+            <div class="sticky top-0 z-10 flex items-center justify-between sinv-modal-head">
+                <div class="min-w-0 pr-3">
+                    <h2 id="si-new-dept-title">New department</h2>
+                    <p class="text-xs text-white/80 mt-0.5 si-normal normal-case font-normal">Departments appear as stations when you register items.</p>
+                </div>
+                <button type="button" @click="closeDeptForm()" class="si-btn si-btn--icon shrink-0" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form method="post" action="{{ employee_dash_url('store-departments') }}" class="p-4 sm:p-5 si-upper">
+                <div class="si-form-grid">
+                    <div>
+                        <label for="department_category" class="si-label">Department category</label>
+                        <input type="text" name="department_category" id="department_category" required maxlength="80"
+                               autocomplete="off" autocapitalize="characters" spellcheck="false"
+                               @input="uppercaseInput($event)" @paste="uppercaseInput($event)"
+                               class="si-input uppercase" placeholder="E.G. ACADEMIC" />
+                    </div>
+                    <div>
+                        <label for="department_name" class="si-label">Department</label>
+                        <input type="text" name="department_name" id="department_name" required maxlength="120"
+                               autocomplete="off" autocapitalize="characters" spellcheck="false"
+                               @input="uppercaseInput($event)" @paste="uppercaseInput($event)"
+                               class="si-input uppercase" placeholder="E.G. SCIENCE DEPARTMENT" />
+                    </div>
+                    <div class="si-span-2">
+                        <label for="department_description" class="si-label">Department description <span class="font-normal normal-case">(optional)</span></label>
+                        <textarea name="description" id="department_description" rows="2"
+                                  autocapitalize="characters" spellcheck="false"
+                                  @input="uppercaseInput($event)" @paste="uppercaseInput($event)"
+                                  class="si-textarea uppercase"
+                                  placeholder="PURPOSE, LOCATION, OR NOTES"></textarea>
+                    </div>
+                </div>
+                <div class="flex flex-col-reverse sm:flex-row gap-2 mt-5 pt-4 border-t border-[var(--si-line)]">
+                    <button type="button" @click="closeDeptForm()" class="si-btn si-btn--ghost flex-1 sm:flex-none">Cancel</button>
+                    <button type="submit" class="si-btn si-btn--brand flex-1 sm:flex-none">
+                        <i class="fas fa-building"></i> Register department
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# View department modal #}
+    <div x-show="viewModalOpen" x-cloak class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="si-view-dept-title">
+        <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" @click="closeViewModal()" aria-hidden="true"></div>
+        <div x-show="viewModalOpen" tabindex="-1"
+             class="relative mt-auto w-full max-h-[92vh] overflow-y-auto rounded-t-2xl border border-[var(--si-line)] bg-[var(--si-bg)] shadow-2xl sm:mt-0 sm:max-w-md sm:rounded-2xl">
+            <div class="sticky top-0 z-10 flex items-center justify-between sinv-modal-head">
+                <h2 id="si-view-dept-title">Department details</h2>
+                <button type="button" @click="closeViewModal()" class="si-btn si-btn--icon shrink-0" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="p-4 sm:p-5 space-y-4 si-normal">
+                <div>
+                    <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Category</p>
+                    <p class="mt-1 font-medium text-[var(--si-ink)]" x-text="viewDept.department_category || '—'"></p>
+                </div>
+                <div>
+                    <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Department</p>
+                    <p class="mt-1 font-semibold text-[var(--si-ink)]" x-text="viewDept.department_name || '—'"></p>
+                </div>
+                <div>
+                    <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Description</p>
+                    <p class="mt-1 text-[var(--si-muted)]" x-text="viewDept.description || '—'"></p>
+                </div>
+                <div class="flex flex-wrap gap-6">
+                    <div>
+                        <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Catalog items</p>
+                        <p class="mt-1 font-semibold tabular-nums text-[var(--si-ink)]" x-text="viewDept.item_count ?? 0"></p>
+                    </div>
+                    <div>
+                        <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Status</p>
+                        <p class="mt-1">
+                            <span class="si-badge"
+                                  :class="(viewDept.status || 'active') === 'suspended' ? 'si-badge--warn' : 'si-badge--brand'"
+                                  x-text="statusLabel(viewDept.status)"></span>
+                        </p>
+                    </div>
+                </div>
+                <div class="flex flex-col-reverse sm:flex-row gap-2 pt-4 border-t border-[var(--si-line)]">
+                    <button type="button" @click="closeViewModal()" class="si-btn si-btn--ghost flex-1 sm:flex-none">Close</button>
+                    <a :href="deptCatalogUrl(viewDept.id)" class="si-btn si-btn--brand flex-1 sm:flex-none justify-center">
+                        <i class="fas fa-boxes-stacked"></i> Open item catalog
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Edit department modal #}
+    <div x-show="editModalOpen" x-cloak class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="si-edit-dept-title">
+        <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" @click="closeEditModal()" aria-hidden="true"></div>
+        <div x-show="editModalOpen" x-ref="editDeptModal" tabindex="-1"
+             class="relative mt-auto w-full max-h-[92vh] overflow-y-auto rounded-t-2xl border border-[var(--si-line)] bg-[var(--si-bg)] shadow-2xl sm:mt-0 sm:max-w-lg sm:rounded-2xl">
+            <div class="sticky top-0 z-10 flex items-center justify-between sinv-modal-head">
+                <h2 id="si-edit-dept-title">Edit department</h2>
+                <button type="button" @click="closeEditModal()" class="si-btn si-btn--icon shrink-0" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form method="post" :action="deptUpdateUrl()" class="p-4 sm:p-5 si-upper">
+                <div class="si-form-grid">
+                    <div>
+                        <label class="si-label">Department category</label>
+                        <input type="text" name="department_category" required maxlength="80"
+                               x-model="editDept.department_category"
+                               @input="editDept.department_category = ($event.target.value || '').toUpperCase()"
+                               class="si-input uppercase" />
+                    </div>
+                    <div>
+                        <label class="si-label">Department</label>
+                        <input type="text" name="department_name" required maxlength="120"
+                               x-model="editDept.department_name"
+                               @input="editDept.department_name = ($event.target.value || '').toUpperCase()"
+                               class="si-input uppercase" />
+                    </div>
+                    <div class="si-span-2">
+                        <label class="si-label">Department description <span class="font-normal normal-case">(optional)</span></label>
+                        <textarea name="description" rows="2"
+                                  x-model="editDept.description"
+                                  @input="editDept.description = ($event.target.value || '').toUpperCase()"
+                                  class="si-textarea uppercase"></textarea>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-[var(--si-muted)] si-normal normal-case">
+                    Renaming a department updates linked catalog items to use the new station name.
+                </p>
+                <div class="flex flex-col-reverse sm:flex-row gap-2 mt-5 pt-4 border-t border-[var(--si-line)]">
+                    <button type="button" @click="closeEditModal()" class="si-btn si-btn--ghost flex-1 sm:flex-none">Cancel</button>
+                    <button type="submit" class="si-btn si-btn--brand flex-1 sm:flex-none">
+                        <i class="fas fa-save"></i> Save changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>

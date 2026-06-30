@@ -1,0 +1,484 @@
+{% extends "base.html" %}
+
+{% block title %}Current Stock — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/store_inventory_page_styles.html' %}
+{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/store_manager_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('storeCurrentStockPage', function () {
+    return {
+      items: {{ stock_items|tojson }},
+      summary: {{ stock_summary|tojson }},
+      searchQuery: '',
+      statusFilter: 'all',
+      settingsOpen: false,
+      settingsSearch: '',
+      settingsDraft: [],
+      settingsSaving: false,
+      settingsMessage: '',
+      settingsError: false,
+      inventoryUrl: {{ employee_dash_url('store-inventory')|tojson }},
+      settingsPostUrl: {{ employee_dash_url('store-current-stock/settings')|tojson }},
+      defaultLowStockThreshold: 5,
+      approachingCeiling: function (threshold) {
+        threshold = parseInt(threshold, 10) || this.defaultLowStockThreshold;
+        return threshold + Math.max(Math.ceil(threshold * 0.25), 5);
+      },
+      stockQtyClass: function (it) {
+        var qty = parseInt(it.quantity_on_hand, 10) || 0;
+        var threshold = parseInt(it.low_stock_threshold, 10) || this.defaultLowStockThreshold;
+        if (qty <= 0) return 'is-zero';
+        if (qty <= threshold) return 'is-low';
+        if (qty <= this.approachingCeiling(threshold)) return 'is-approaching';
+        return 'is-ok';
+      },
+      stockStatusBadgeClass: function (it) {
+        var key = (it && it.stock_status) || '';
+        if (key === 'suspended') return 'si-badge--muted';
+        if (key === 'out_of_stock' || key === 'low_stock') return 'si-badge--danger';
+        if (key === 'approaching_low') return 'si-badge--warn';
+        return 'si-badge--brand';
+      },
+      rowHighlightClass: function (it) {
+        var key = (it && it.stock_status) || '';
+        if (key === 'out_of_stock' || key === 'low_stock') {
+          return 'bg-red-50/80 dark:bg-red-950/20';
+        }
+        if (key === 'approaching_low') {
+          return 'bg-amber-50/70 dark:bg-amber-950/20';
+        }
+        return '';
+      },
+      formatAvgPrice: function (v) {
+        if (v === null || v === undefined || v === '') return '—';
+        var n = parseFloat(v);
+        return Number.isFinite(n) ? ('KES ' + n.toFixed(2)) : '—';
+      },
+      haystack: function (it) {
+        return [
+          it.reference_code,
+          it.item_name,
+          it.item_category,
+          it.department_station,
+          it.measure,
+          it.stock_status_label,
+          it.item_status,
+        ].filter(Boolean).join(' ').toUpperCase();
+      },
+      settingsHaystack: function (row) {
+        return [
+          row.reference_code,
+          row.item_name,
+        ].filter(Boolean).join(' ').toUpperCase();
+      },
+      matchesSearch: function (it) {
+        var q = (this.searchQuery || '').trim().toUpperCase();
+        if (!q) return true;
+        return this.haystack(it).indexOf(q) !== -1;
+      },
+      matchesStatus: function (it) {
+        if (this.statusFilter === 'all') return true;
+        return (it.stock_status || '') === this.statusFilter;
+      },
+      stockSortRank: function (it) {
+        var ranks = { out_of_stock: 0, low_stock: 1, approaching_low: 2, in_stock: 3, suspended: 4 };
+        return ranks[it.stock_status] !== undefined ? ranks[it.stock_status] : 9;
+      },
+      compareStockItems: function (a, b) {
+        var ra = this.stockSortRank(a);
+        var rb = this.stockSortRank(b);
+        if (ra !== rb) return ra - rb;
+        var qa = parseInt(a.quantity_on_hand, 10) || 0;
+        var qb = parseInt(b.quantity_on_hand, 10) || 0;
+        if (qa !== qb) return qa - qb;
+        return (a.item_name || '').localeCompare(b.item_name || '');
+      },
+      recomputeItemStatus: function (it) {
+        if ((it.item_status || 'active') === 'suspended') {
+          it.stock_status = 'suspended';
+          it.stock_status_label = 'Suspended';
+          return;
+        }
+        var qty = parseInt(it.quantity_on_hand, 10) || 0;
+        var threshold = parseInt(it.low_stock_threshold, 10) || this.defaultLowStockThreshold;
+        if (qty <= 0) {
+          it.stock_status = 'out_of_stock';
+          it.stock_status_label = 'Out of stock';
+        } else if (qty <= threshold) {
+          it.stock_status = 'low_stock';
+          it.stock_status_label = 'Low stock';
+        } else if (qty <= this.approachingCeiling(threshold)) {
+          it.stock_status = 'approaching_low';
+          it.stock_status_label = 'Approaching low';
+        } else {
+          it.stock_status = 'in_stock';
+          it.stock_status_label = 'In stock';
+        }
+      },
+      resortItems: function () {
+        this.items = (this.items || []).slice().sort(this.compareStockItems.bind(this));
+      },
+      get filteredItems() {
+        var self = this;
+        return (this.items || []).filter(function (it) {
+          return self.matchesSearch(it) && self.matchesStatus(it);
+        }).sort(function (a, b) {
+          return self.compareStockItems(a, b);
+        });
+      },
+      get attentionItems() {
+        var self = this;
+        return (this.items || []).filter(function (it) {
+          return it.stock_status === 'out_of_stock'
+            || it.stock_status === 'low_stock'
+            || it.stock_status === 'approaching_low';
+        }).sort(function (a, b) {
+          return self.compareStockItems(a, b);
+        }).slice(0, 8);
+      },
+      get filteredSettingsDraft() {
+        var self = this;
+        var q = (this.settingsSearch || '').trim().toUpperCase();
+        return (this.settingsDraft || []).filter(function (row) {
+          if (!q) return true;
+          return self.settingsHaystack(row).indexOf(q) !== -1;
+        });
+      },
+      get countOutOfStock() {
+        return (this.items || []).filter(function (it) { return it.stock_status === 'out_of_stock'; }).length;
+      },
+      get countLowStock() {
+        return (this.items || []).filter(function (it) { return it.stock_status === 'low_stock'; }).length;
+      },
+      get countApproaching() {
+        return (this.items || []).filter(function (it) { return it.stock_status === 'approaching_low'; }).length;
+      },
+      itemAnalyticsUrl: function (id) {
+        return this.inventoryUrl + '/' + id + '/analytics';
+      },
+      openSettings: function () {
+        this.settingsMessage = '';
+        this.settingsError = false;
+        this.settingsSearch = '';
+        this.settingsDraft = (this.items || []).map(function (it) {
+          return {
+            id: it.id,
+            reference_code: it.reference_code || '',
+            item_name: it.item_name || '',
+            measure: it.measure || '',
+            quantity_on_hand: parseInt(it.quantity_on_hand, 10) || 0,
+            low_stock_threshold: parseInt(it.low_stock_threshold, 10) || 5,
+          };
+        });
+        this.settingsOpen = true;
+        this.syncBodyScrollLock();
+        var self = this;
+        this.$nextTick(function () {
+          var panel = self.$refs.settingsModal;
+          if (panel) panel.focus();
+        });
+      },
+      closeSettings: function () {
+        this.settingsOpen = false;
+        this.settingsSaving = false;
+        this.syncBodyScrollLock();
+      },
+      syncBodyScrollLock: function () {
+        document.body.classList.toggle('overflow-hidden', !!this.settingsOpen);
+      },
+      saveSettings: function () {
+        var self = this;
+        if (self.settingsSaving) return;
+        self.settingsSaving = true;
+        self.settingsMessage = '';
+        self.settingsError = false;
+        var payload = {
+          items: (self.settingsDraft || []).map(function (row) {
+            return {
+              id: row.id,
+              low_stock_threshold: parseInt(row.low_stock_threshold, 10) || self.defaultLowStockThreshold,
+            };
+          }),
+        };
+        fetch(self.settingsPostUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+          .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+          .then(function (result) {
+            if (!result.ok || !result.data || !result.data.success) {
+              throw new Error((result.data && result.data.message) || 'Could not save settings.');
+            }
+            var draftById = {};
+            (self.settingsDraft || []).forEach(function (row) {
+              draftById[row.id] = parseInt(row.low_stock_threshold, 10) || self.defaultLowStockThreshold;
+            });
+            (self.items || []).forEach(function (it) {
+              if (draftById[it.id] !== undefined) {
+                it.low_stock_threshold = draftById[it.id];
+                self.recomputeItemStatus(it);
+              }
+            });
+            self.resortItems();
+            self.summary.low_stock_count = self.countLowStock;
+            self.settingsMessage = 'Stock settings saved.';
+            self.settingsError = false;
+            setTimeout(function () { self.closeSettings(); }, 700);
+          })
+          .catch(function (err) {
+            self.settingsMessage = (err && err.message) || 'Could not save settings.';
+            self.settingsError = true;
+          })
+          .finally(function () {
+            self.settingsSaving = false;
+          });
+      },
+    };
+  });
+});
+</script>
+
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--store si-page sinv-page"
+     x-data="storeCurrentStockPage()"
+     @keydown.escape.window="if (settingsOpen) closeSettings()">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14">
+        <header class="sinv-hero mb-6">
+            <div class="sinv-hero__inner">
+                <div class="sinv-hero__top">
+                    <div class="min-w-0 flex gap-3.5">
+                        <div class="sinv-hero__icon" aria-hidden="true"><i class="fas fa-warehouse"></i></div>
+                        <div class="min-w-0">
+                            <a href="{{ employee_dash_url() }}" class="sinv-hero__back">
+                                <i class="fas fa-chevron-left text-[0.5rem]"></i> Store dashboard
+                            </a>
+                            <h1 class="sinv-hero__title">Current stock</h1>
+                            <p class="sinv-hero__sub si-normal">
+                                All registered items with on-hand quantities. Low-stock alerts use each item's threshold.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="sinv-hero__actions">
+                    <button type="button" @click="openSettings()" class="sinv-hero__link border-0 bg-transparent cursor-pointer">
+                        <i class="fas fa-sliders"></i> Stock settings
+                    </button>
+                    <a href="{{ employee_dash_url('store-stock') }}" class="sinv-hero__link"><i class="fas fa-arrow-right-arrow-left"></i> Stock in &amp; out</a>
+                    <a href="{{ employee_dash_url('store-inventory') }}" class="sinv-hero__link"><i class="fas fa-boxes-stacked"></i> Register item</a>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Catalog items</p>
+                <p class="mt-1 text-2xl font-bold tabular-nums text-[var(--si-ink)]" x-text="summary.total_items || 0"></p>
+            </div>
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Units on hand</p>
+                <p class="mt-1 text-2xl font-bold tabular-nums text-[var(--si-ink)]" x-text="summary.units_on_hand || 0"></p>
+            </div>
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Low stock</p>
+                <p class="mt-1 text-2xl font-bold tabular-nums text-red-700 dark:text-red-300" x-text="countLowStock"></p>
+            </div>
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Approaching low</p>
+                <p class="mt-1 text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-300" x-text="countApproaching"></p>
+            </div>
+            <div class="si-panel p-4 col-span-2 lg:col-span-1">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Out of stock</p>
+                <p class="mt-1 text-2xl font-bold tabular-nums text-red-700 dark:text-red-300" x-text="countOutOfStock"></p>
+            </div>
+        </div>
+
+        <section x-show="attentionItems.length > 0 && statusFilter === 'all' && !searchQuery" x-cloak class="si-panel sinv-panel-accent mb-6">
+            <div class="si-panel-head">
+                <div class="min-w-0">
+                    <h2 class="si-title">Needs attention</h2>
+                    <p class="si-subtitle si-normal">Red: low or out of stock. Orange: approaching the low-stock threshold.</p>
+                </div>
+            </div>
+            <div class="si-panel-body p-0 overflow-x-auto">
+                <table class="si-table sinv-catalog-table">
+                    <thead>
+                        <tr>
+                            <th>Ref</th>
+                            <th>Item</th>
+                            <th>On hand</th>
+                            <th>Low at</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="it in attentionItems" :key="'att-' + it.id">
+                            <tr :class="rowHighlightClass(it)">
+                                <td><span class="si-ref" x-text="it.reference_code"></span></td>
+                                <td class="font-semibold max-w-[14rem] truncate" x-text="it.item_name"></td>
+                                <td class="whitespace-nowrap">
+                                    <span class="si-stock-qty" :class="stockQtyClass(it)">
+                                        <span class="si-stock-num" x-text="it.quantity_on_hand || 0"></span>
+                                        <span class="si-stock-unit" x-text="it.measure"></span>
+                                    </span>
+                                </td>
+                                <td class="tabular-nums whitespace-nowrap text-[var(--si-muted)]" x-text="'≤ ' + (it.low_stock_threshold || 5)"></td>
+                                <td>
+                                    <span class="si-badge" :class="stockStatusBadgeClass(it)" x-text="it.stock_status_label"></span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="si-panel sinv-list-panel">
+            <div class="si-panel-head">
+                <div class="min-w-0">
+                    <h2 class="si-title">All stock levels</h2>
+                    <p class="si-subtitle si-normal">Sorted with attention items first. Red = low/out · orange = approaching threshold.</p>
+                </div>
+            </div>
+            <div class="si-panel-body">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+                    <div class="si-search-wrap flex-1">
+                        <i class="fas fa-search"></i>
+                        <input type="search" x-model="searchQuery" class="si-input si-upper" placeholder="SEARCH REF OR NAME…" aria-label="Search items" />
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" @click="statusFilter = 'all'" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'all' ? 'si-btn--brand' : 'si-btn--ghost'">All</button>
+                        <button type="button" @click="statusFilter = 'in_stock'" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'in_stock' ? 'si-btn--brand' : 'si-btn--ghost'">In stock</button>
+                        <button type="button" @click="statusFilter = 'low_stock'" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'low_stock' ? 'si-btn--brand' : 'si-btn--ghost'">Low</button>
+                        <button type="button" @click="statusFilter = 'approaching_low'" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'approaching_low' ? 'si-btn--brand' : 'si-btn--ghost'">Approaching</button>
+                        <button type="button" @click="statusFilter = 'out_of_stock'" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'out_of_stock' ? 'si-btn--brand' : 'si-btn--ghost'">Out</button>
+                        <button type="button" @click="statusFilter = 'suspended'" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'suspended' ? 'si-btn--brand' : 'si-btn--ghost'">Suspended</button>
+                    </div>
+                </div>
+
+                <div x-show="filteredItems.length === 0" class="si-empty">
+                    <i class="fas fa-warehouse block"></i>
+                    <p class="font-semibold text-[var(--si-ink)]">No items match</p>
+                    <p class="mt-1 text-sm si-normal" x-show="items.length === 0">Register items first, then record stock movements.</p>
+                </div>
+
+                <div x-show="filteredItems.length > 0" class="si-table-wrap">
+                    <table class="si-table sinv-catalog-table">
+                        <thead>
+                            <tr>
+                                <th>Ref</th>
+                                <th>Item</th>
+                                <th>On hand</th>
+                                <th>Low at</th>
+                                <th>Stock status</th>
+                                <th class="text-right">Avg unit price</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="it in filteredItems" :key="it.id">
+                                <tr :class="rowHighlightClass(it) + (it.item_status === 'suspended' ? ' is-suspended opacity-75' : '')">
+                                    <td><span class="si-ref" x-text="it.reference_code"></span></td>
+                                    <td>
+                                        <span class="font-semibold block truncate max-w-[14rem]" x-text="it.item_name"></span>
+                                        <span class="block text-[0.6875rem] text-[var(--si-muted)] truncate max-w-[14rem]" x-text="it.item_category || '—'"></span>
+                                    </td>
+                                    <td class="whitespace-nowrap">
+                                        <span class="si-stock-qty" :class="stockQtyClass(it)">
+                                            <span class="si-stock-num" x-text="it.quantity_on_hand || 0"></span>
+                                            <span class="si-stock-unit" x-text="it.measure"></span>
+                                        </span>
+                                    </td>
+                                    <td class="tabular-nums whitespace-nowrap text-[var(--si-muted)] text-[0.8125rem]" x-text="'≤ ' + (it.low_stock_threshold || 5)"></td>
+                                    <td>
+                                        <span class="si-badge" :class="stockStatusBadgeClass(it)" x-text="it.stock_status_label"></span>
+                                    </td>
+                                    <td class="text-right tabular-nums whitespace-nowrap text-[0.8125rem]" x-text="formatAvgPrice(it.avg_buying_price)"></td>
+                                    <td>
+                                        <div class="flex justify-center gap-1">
+                                            <a :href="itemAnalyticsUrl(it.id)" class="si-btn si-btn--icon" title="Usage analytics"><i class="fas fa-chart-line"></i></a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    {# Stock settings modal #}
+    <div x-show="settingsOpen" x-cloak class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="scs-settings-title">
+        <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" @click="closeSettings()" aria-hidden="true"></div>
+        <div x-show="settingsOpen" x-ref="settingsModal" tabindex="-1"
+             class="relative mt-auto w-full max-h-[92vh] overflow-hidden flex flex-col rounded-t-2xl border border-[var(--si-line)] bg-[var(--si-bg)] shadow-2xl sm:mt-0 sm:max-w-3xl sm:rounded-2xl">
+            <div class="sticky top-0 z-10 flex items-center justify-between sinv-modal-head shrink-0">
+                <div class="min-w-0 pr-3">
+                    <h2 id="scs-settings-title">Stock settings</h2>
+                    <p class="text-xs text-white/80 mt-0.5 si-normal normal-case font-normal">Set the low-stock alert quantity for each item.</p>
+                </div>
+                <button type="button" @click="closeSettings()" class="si-btn si-btn--icon shrink-0" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="p-4 sm:p-5 flex-1 overflow-y-auto si-normal">
+                <div class="si-search-wrap mb-4">
+                    <i class="fas fa-search"></i>
+                    <input type="search" x-model="settingsSearch" class="si-input si-upper" placeholder="SEARCH ITEM IN SETTINGS…" aria-label="Search settings items" />
+                </div>
+                <div class="si-table-wrap max-h-[50vh] overflow-y-auto border border-[var(--si-line)] rounded-xl">
+                    <table class="si-table sinv-catalog-table">
+                        <thead class="sticky top-0 bg-[var(--si-bg)] z-[1]">
+                            <tr>
+                                <th>Ref</th>
+                                <th>Item</th>
+                                <th>On hand</th>
+                                <th>Low-stock at</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="row in filteredSettingsDraft" :key="'set-' + row.id">
+                                <tr>
+                                    <td><span class="si-ref" x-text="row.reference_code"></span></td>
+                                    <td class="max-w-[12rem] truncate font-medium" x-text="row.item_name"></td>
+                                    <td class="tabular-nums whitespace-nowrap text-[var(--si-muted)]">
+                                        <span x-text="row.quantity_on_hand || 0"></span>
+                                        <span x-text="row.measure"></span>
+                                    </td>
+                                    <td>
+                                        <input type="number" min="1" step="1" x-model.number="row.low_stock_threshold"
+                                               class="si-input w-24 tabular-nums py-1.5 text-sm"
+                                               aria-label="Low stock threshold" />
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+                <p x-show="filteredSettingsDraft.length === 0" class="text-sm text-[var(--si-muted)] mt-3">No items match your search.</p>
+                <p class="mt-3 text-xs text-[var(--si-muted)] si-normal">
+                    An item is marked <strong>low stock</strong> when on-hand quantity is above zero but at or below this number.
+                </p>
+                <p x-show="settingsMessage" x-cloak class="mt-3 text-sm"
+                   :class="settingsError ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'"
+                   x-text="settingsMessage"></p>
+            </div>
+            <div class="sticky bottom-0 z-10 flex flex-col-reverse sm:flex-row gap-2 p-4 sm:p-5 border-t border-[var(--si-line)] bg-[var(--si-bg)] shrink-0">
+                <button type="button" @click="closeSettings()" class="si-btn si-btn--ghost flex-1 sm:flex-none" :disabled="settingsSaving">Cancel</button>
+                <button type="button" @click="saveSettings()" class="si-btn si-btn--brand flex-1 sm:flex-none" :disabled="settingsSaving">
+                    <i class="fas fa-spinner fa-spin" x-show="settingsSaving"></i>
+                    <span x-text="settingsSaving ? 'Saving…' : 'Save settings'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

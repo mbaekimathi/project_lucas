@@ -1,0 +1,61 @@
+<div class="sinv-period-dropdowns">
+    <div class="sinv-period-dropdown-field sinv-period-dropdown-field--type">
+        <label class="si-label" for="sinv-period-type">Period</label>
+        <select id="sinv-period-type" x-model="period" @change="onPeriodTypeChange()" class="si-select sinv-period-select" aria-label="Filter period type">
+            <option value="all">All time</option>
+            <option value="day">Single day</option>
+            <option value="month">Month</option>
+            <option value="year">Year</option>
+            <option value="range">Custom range</option>
+        </select>
+    </div>
+
+    <div x-show="period === 'day'" x-cloak class="sinv-period-calendar-row">
+        <label class="si-label" for="sinv-filter-day">Select day</label>
+        <div class="sinv-period-picker-card__input">
+            <input type="date" id="sinv-filter-day" x-ref="periodCalendarInput" x-model="filterDay" @change="onFilterChange()"
+                   class="si-input sinv-date-input sinv-date-input--calendar" aria-label="Select day" />
+            <button type="button" @click="openCalendarPicker()" class="si-btn si-btn--ghost sinv-calendar-open-btn">
+                <i class="fas fa-calendar"></i> Open calendar
+            </button>
+        </div>
+    </div>
+
+    <div x-show="period === 'month'" x-cloak class="sinv-period-calendar-row">
+        <label class="si-label" for="sinv-filter-month">Select month</label>
+        <div class="sinv-period-picker-card__input">
+            <input type="month" id="sinv-filter-month" x-ref="periodCalendarInput" x-model="filterMonth" @change="onFilterChange()"
+                   class="si-input sinv-date-input sinv-date-input--calendar" aria-label="Select month" />
+            <button type="button" @click="openCalendarPicker()" class="si-btn si-btn--ghost sinv-calendar-open-btn">
+                <i class="fas fa-calendar"></i> Open calendar
+            </button>
+        </div>
+    </div>
+
+    <div x-show="period === 'year'" x-cloak class="sinv-period-calendar-row">
+        <label class="si-label" for="sinv-filter-year">Select year</label>
+        <p class="sinv-period-calendar-hint">Pick any month in the calendar — the full year will be used.</p>
+        <div class="sinv-period-picker-card__input">
+            <input type="month" id="sinv-filter-year" x-ref="periodCalendarInput" x-model="filterYearMonth" @change="onFilterChange()"
+                   class="si-input sinv-date-input sinv-date-input--calendar" aria-label="Select year" />
+            <button type="button" @click="openCalendarPicker()" class="si-btn si-btn--ghost sinv-calendar-open-btn">
+                <i class="fas fa-calendar"></i> Open calendar
+            </button>
+        </div>
+    </div>
+
+    <div x-show="period === 'range'" x-cloak class="sinv-period-calendar-row sinv-period-calendar-row--range">
+        <div class="sinv-range-grid">
+            <div>
+                <label class="si-label" for="sinv-range-from">From</label>
+                <input type="date" id="sinv-range-from" x-model="rangeFrom" @change="onFilterChange()"
+                       class="si-input sinv-date-input sinv-date-input--calendar" aria-label="Range from date" />
+            </div>
+            <div>
+                <label class="si-label" for="sinv-range-to">To</label>
+                <input type="date" id="sinv-range-to" x-model="rangeTo" @change="onFilterChange()"
+                       class="si-input sinv-date-input sinv-date-input--calendar" aria-label="Range to date" />
+            </div>
+        </div>
+    </div>
+</div>

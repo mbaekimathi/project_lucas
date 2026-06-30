@@ -1,0 +1,61 @@
+<div class="ss-lpo-period-dropdowns">
+    <div class="ss-lpo-period-dropdown-field ss-lpo-period-dropdown-field--type">
+        <label class="si-label" for="ss-lpo-period-type">Date filter</label>
+        <select id="ss-lpo-period-type" x-model="period" @change="onPeriodTypeChange()" class="si-select ss-lpo-period-select" aria-label="Filter by date">
+            <option value="all">All time</option>
+            <option value="day">Single day</option>
+            <option value="month">Month</option>
+            <option value="year">Year</option>
+            <option value="range">Period</option>
+        </select>
+    </div>
+
+    <div x-show="period === 'day'" x-cloak class="ss-lpo-period-calendar-row">
+        <label class="si-label" for="ss-lpo-filter-day">Select day</label>
+        <div class="ss-lpo-period-picker-card__input">
+            <input type="date" id="ss-lpo-filter-day" x-ref="periodCalendarInput" x-model="filterDay" @change="onFilterChange()"
+                   class="si-input ss-lpo-date-input ss-lpo-date-input--calendar" aria-label="Select day" />
+            <button type="button" @click="openCalendarPicker()" class="si-btn si-btn--ghost ss-lpo-calendar-open-btn">
+                <i class="fas fa-calendar"></i> Calendar
+            </button>
+        </div>
+    </div>
+
+    <div x-show="period === 'month'" x-cloak class="ss-lpo-period-calendar-row">
+        <label class="si-label" for="ss-lpo-filter-month">Select month</label>
+        <div class="ss-lpo-period-picker-card__input">
+            <input type="month" id="ss-lpo-filter-month" x-ref="periodCalendarInput" x-model="filterMonth" @change="onFilterChange()"
+                   class="si-input ss-lpo-date-input ss-lpo-date-input--calendar" aria-label="Select month" />
+            <button type="button" @click="openCalendarPicker()" class="si-btn si-btn--ghost ss-lpo-calendar-open-btn">
+                <i class="fas fa-calendar"></i> Calendar
+            </button>
+        </div>
+    </div>
+
+    <div x-show="period === 'year'" x-cloak class="ss-lpo-period-calendar-row">
+        <label class="si-label" for="ss-lpo-filter-year">Select year</label>
+        <p class="ss-lpo-period-calendar-hint">Pick any month in the calendar — the full year is used.</p>
+        <div class="ss-lpo-period-picker-card__input">
+            <input type="month" id="ss-lpo-filter-year" x-ref="periodCalendarInput" x-model="filterYearMonth" @change="onFilterChange()"
+                   class="si-input ss-lpo-date-input ss-lpo-date-input--calendar" aria-label="Select year" />
+            <button type="button" @click="openCalendarPicker()" class="si-btn si-btn--ghost ss-lpo-calendar-open-btn">
+                <i class="fas fa-calendar"></i> Calendar
+            </button>
+        </div>
+    </div>
+
+    <div x-show="period === 'range'" x-cloak class="ss-lpo-period-calendar-row ss-lpo-period-calendar-row--range">
+        <div class="ss-lpo-range-grid">
+            <div>
+                <label class="si-label" for="ss-lpo-range-from">From</label>
+                <input type="date" id="ss-lpo-range-from" x-model="rangeFrom" @change="onFilterChange()"
+                       class="si-input ss-lpo-date-input ss-lpo-date-input--calendar" aria-label="Period from date" />
+            </div>
+            <div>
+                <label class="si-label" for="ss-lpo-range-to">To</label>
+                <input type="date" id="ss-lpo-range-to" x-model="rangeTo" @change="onFilterChange()"
+                       class="si-input ss-lpo-date-input ss-lpo-date-input--calendar" aria-label="Period to date" />
+            </div>
+        </div>
+    </div>
+</div>

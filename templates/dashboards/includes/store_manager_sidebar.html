@@ -1,33 +1,51 @@
 <p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Store</p>
-<a href="{{ employee_dash_url('store-stock') }}"
-   class="sidebar-item {% if request.endpoint in ('store_stock', 'store_stock_print') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-arrow-right-arrow-left w-5"></i>
-    <span>Stock in &amp; out</span>
-    {% if request.endpoint in ('store_stock', 'store_stock_print') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
-<a href="{{ employee_dash_url('store-stock/audits') }}"
-   class="sidebar-item {% if request.endpoint == 'store_stock_audits' %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-check w-5"></i>
-    <span>Stock audits</span>
-    {% if request.endpoint == 'store_stock_audits' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
-<a href="{{ employee_dash_url('store-stock/analytics') }}"
-   class="sidebar-item {% if request.endpoint in ('store_stock_analytics', 'store_stock_analytics_data') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-chart-line w-5"></i>
-    <span>Stock analytics</span>
-    {% if request.endpoint in ('store_stock_analytics', 'store_stock_analytics_data') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
-<a href="{{ employee_dash_url('store-inventory') }}"
-   class="sidebar-item {% if request.endpoint in ('store_inventory', 'store_inventory_item_analytics') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-boxes-stacked w-5"></i>
-    <span>Item catalog</span>
-    {% if request.endpoint in ('store_inventory', 'store_inventory_item_analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
 <a href="{{ employee_dash_url('store-requisitions') }}"
    class="sidebar-item {% if request.endpoint == 'store_requisitions' %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-list w-5"></i>
     <span>Requisitions</span>
     {% if request.endpoint == 'store_requisitions' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-lpo') }}"
+   class="sidebar-item {% if request.endpoint in ('store_lpo', 'store_lpo_print', 'store_lpo_receive_print', 'store_lpo_receive', 'store_lpo_receive_line', 'store_lpo_receive_bulk', 'store_lpo_supplier_search') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-invoice w-5"></i>
+    <span>LPO</span>
+    {% if request.endpoint in ('store_lpo', 'store_lpo_print', 'store_lpo_receive_print', 'store_lpo_receive', 'store_lpo_receive_line', 'store_lpo_receive_bulk') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-inventory') }}"
+   class="sidebar-item {% if request.endpoint in ('store_inventory', 'store_inventory_item_analytics') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-boxes-stacked w-5"></i>
+    <span>Register item</span>
+    {% if request.endpoint in ('store_inventory', 'store_inventory_item_analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-stock') }}"
+   class="sidebar-item {% if request.endpoint in ('store_stock', 'store_stock_print', 'store_stock_grn_print', 'store_stock_supplier_lookup') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-arrow-right-arrow-left w-5"></i>
+    <span>Stock in &amp; out</span>
+    {% if request.endpoint in ('store_stock', 'store_stock_print', 'store_stock_grn_print') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-stock/analytics') }}"
+   class="sidebar-item {% if request.endpoint in ('store_stock_analytics', 'store_stock_analytics_data') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Stock analysis</span>
+    {% if request.endpoint in ('store_stock_analytics', 'store_stock_analytics_data') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-current-stock') }}"
+   class="sidebar-item {% if request.endpoint == 'store_current_stock' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-warehouse w-5"></i>
+    <span>Current stock</span>
+    {% if request.endpoint == 'store_current_stock' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-suppliers') }}"
+   class="sidebar-item {% if request.endpoint in ('store_suppliers', 'store_supplier_detail', 'store_supplier_detail_by_key') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-truck-field w-5"></i>
+    <span>Suppliers</span>
+    {% if request.endpoint in ('store_suppliers', 'store_supplier_detail', 'store_supplier_detail_by_key') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-stock/audits') }}"
+   class="sidebar-item {% if request.endpoint == 'store_stock_audits' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Stock audit</span>
+    {% if request.endpoint == 'store_stock_audits' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% set acal_show_section_header = true %}
 {% set acal_section_pad_top = true %}

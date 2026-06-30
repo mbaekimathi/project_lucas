@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}{{ supplier.company_name }} — Suppliers — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/store_inventory_page_styles.html' %}
+{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/store_manager_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('storeSupplierDetailPage', function () {
+    return {
+      supplier: {{ supplier|tojson }},
+      searchQuery: '',
+      grnPrintUrlBase: {{ employee_dash_url('store-stock/grn-print')|tojson }},
+      paymentBadgeClass: function (status) {
+        status = (status || '').toLowerCase();
+        if (status === 'paid') return 'si-badge--brand';
+        if (status === 'partial') return 'si-badge--warn';
+        if (status === 'pending') return 'si-badge--danger';
+        return 'si-badge--muted';
+      },
+      formatKes: function (v) {
+        if (v === null || v === undefined || v === '') return '—';
+        var n = parseFloat(String(v).replace(/,/g, ''));
+        return Number.isFinite(n) ? ('KES ' + n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '—';
+      },
+      haystack: function (row) {
+        return [
+          row.reference_number,
+          row.delivery_note,
+          row.invoice_label,
+          row.item_name,
+          row.item_ref,
+          row.payment_status_label,
+          row.performed_by_name,
+        ].filter(Boolean).join(' ').toUpperCase();
+      },
+      get supplies() {
+        return (this.supplier && this.supplier.supplies) || [];
+      },
+      get filteredSupplies() {
+        var self = this;
+        var q = (this.searchQuery || '').trim().toUpperCase();
+        if (!q) return this.supplies;
+        return this.supplies.filter(function (row) {
+          return self.haystack(row).indexOf(q) !== -1;
+        });
+      },
+      grnPrintUrl: function (id) {
+        return this.grnPrintUrlBase + '/' + id;
+      },
+    };
+  });
+});
+</script>
+
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--store si-page sinv-page"
+     x-data="storeSupplierDetailPage()">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14">
+        <header class="sinv-hero mb-6">
+            <div class="sinv-hero__inner">
+                <div class="sinv-hero__top">
+                    <div class="min-w-0 flex gap-3.5">
+                        <div class="sinv-hero__icon" aria-hidden="true"><i class="fas fa-truck-field"></i></div>
+                        <div class="min-w-0">
+                            <a href="{{ employee_dash_url('store-suppliers') }}" class="sinv-hero__back">
+                                <i class="fas fa-chevron-left text-[0.5rem]"></i> All suppliers
+                            </a>
+                            <h1 class="sinv-hero__title" x-text="supplier.company_name"></h1>
+                            <p class="sinv-hero__sub si-normal">
+                                <span class="tabular-nums" x-text="supplier.phone"></span>
+                                · <span x-text="supplier.invoice_count + ' supply invoice' + (supplier.invoice_count === 1 ? '' : 's')"></span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-6">
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Status</p>
+                <p class="mt-2">
+                    <span class="si-badge" :class="paymentBadgeClass(supplier.payment_status)" x-text="supplier.payment_status_label"></span>
+                </p>
+            </div>
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Total invoiced</p>
+                <p class="mt-1 text-lg font-bold tabular-nums text-[var(--si-ink)]" x-text="formatKes(supplier.total_invoiced_display || supplier.total_invoiced)"></p>
+            </div>
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Total paid</p>
+                <p class="mt-1 text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-300" x-text="formatKes(supplier.total_paid_display || supplier.total_paid)"></p>
+            </div>
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Balance due</p>
+                <p class="mt-1 text-lg font-bold tabular-nums"
+                   :class="(parseFloat(supplier.balance_due) || 0) > 0 ? 'text-amber-800 dark:text-amber-200' : 'text-emerald-700 dark:text-emerald-300'"
+                   x-text="formatKes(supplier.balance_due_display || supplier.balance_due)"></p>
+            </div>
+        </div>
+
+        <section class="si-panel sinv-list-panel">
+            <div class="si-panel-head">
+                <div class="min-w-0">
+                    <h2 class="si-title">Supplies</h2>
+                    <p class="si-subtitle si-normal">All stock-in records from this supplier with payment status per invoice.</p>
+                </div>
+            </div>
+            <div class="si-panel-body">
+                <div class="si-search-wrap mb-4 max-w-md">
+                    <i class="fas fa-search"></i>
+                    <input type="search" x-model="searchQuery" class="si-input si-upper" placeholder="SEARCH REF, ITEM, INVOICE…" aria-label="Search supplies" />
+                </div>
+
+                <div x-show="filteredSupplies.length === 0" class="si-empty">
+                    <i class="fas fa-box-open block"></i>
+                    <p class="font-semibold text-[var(--si-ink)]">No supplies recorded</p>
+                    <p class="mt-1 text-sm si-normal">Stock-in entries for this supplier will appear here.</p>
+                </div>
+
+                <div x-show="filteredSupplies.length > 0" class="si-table-wrap">
+                    <table class="si-table sinv-catalog-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Reference</th>
+                                <th>Item</th>
+                                <th>Qty</th>
+                                <th class="text-right">Invoiced</th>
+                                <th class="text-right">Paid</th>
+                                <th class="text-right">Balance</th>
+                                <th>Payment status</th>
+                                <th class="text-center">GRN</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="row in filteredSupplies" :key="row.id">
+                                <tr>
+                                    <td class="whitespace-nowrap text-[0.8125rem] text-[var(--si-muted)]" x-text="row.created_at_display"></td>
+                                    <td>
+                                        <span class="si-ref block" x-text="row.reference_number"></span>
+                                        <span class="block text-[0.6875rem] text-[var(--si-muted)] truncate max-w-[10rem]" x-text="row.delivery_note || '—'"></span>
+                                    </td>
+                                    <td class="max-w-[12rem]">
+                                        <span class="font-semibold block truncate" x-text="row.item_name"></span>
+                                        <span class="block text-[0.6875rem] text-[var(--si-muted)] truncate" x-text="row.item_ref || '—'"></span>
+                                    </td>
+                                    <td class="tabular-nums whitespace-nowrap">
+                                        <span x-text="row.quantity || 0"></span>
+                                        <span class="text-[0.6875rem] text-[var(--si-muted)]" x-text="row.measure"></span>
+                                    </td>
+                                    <td class="text-right tabular-nums whitespace-nowrap text-[0.8125rem]" x-text="formatKes(row.total_amount_display)"></td>
+                                    <td class="text-right tabular-nums whitespace-nowrap text-[0.8125rem]" x-text="formatKes(row.amount_paid_display)"></td>
+                                    <td class="text-right tabular-nums whitespace-nowrap font-medium text-[0.8125rem]"
+                                        :class="parseFloat(String(row.balance_due_display || '0').replace(/,/g,'')) > 0 ? 'text-amber-800 dark:text-amber-200' : 'text-emerald-700 dark:text-emerald-300'"
+                                        x-text="formatKes(row.balance_due_display)"></td>
+                                    <td>
+                                        <span class="si-badge" :class="paymentBadgeClass(row.payment_status)" x-text="row.payment_status_label"></span>
+                                    </td>
+                                    <td class="text-center">
+                                        <a :href="grnPrintUrl(row.id)" target="_blank" rel="noopener" class="si-btn si-btn--icon" title="Print goods received note">
+                                            <i class="fas fa-print"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

@@ -19,6 +19,8 @@ document.addEventListener('alpine:init', function () {
       displayItems: {{ store_items_client|tojson }},
       itemsMeta: { page: {{ items_page|tojson }}, pages: {{ items_pages|tojson }}, total: {{ items_total|tojson }} },
       searchQuery: {{ items_q|tojson }},
+      departmentId: {{ items_department_id|tojson }},
+      departmentName: {{ (items_department.department_name if items_department else '')|tojson }},
       itemsLoading: false,
       itemsTotal: {{ items_total|tojson }},
       inventoryPostUrl: {{ employee_dash_url('store-inventory')|tojson }},
@@ -50,19 +52,26 @@ document.addEventListener('alpine:init', function () {
             window.history.replaceState({}, '', self.inventoryBaseUrl);
           }
         }
-        this.$watch('editModalOpen', function (open) {
-          document.body.classList.toggle('overflow-hidden', !!open);
-        });
+        if (self.inventoryFormOpen) {
+          self.syncBodyScrollLock();
+        }
+        this.$watch('editModalOpen', function () { self.syncBodyScrollLock(); });
+        this.$watch('inventoryFormOpen', function () { self.syncBodyScrollLock(); });
+      },
+      syncBodyScrollLock: function () {
+        document.body.classList.toggle('overflow-hidden', !!(this.editModalOpen || this.inventoryFormOpen));
       },
       openInventoryForm: function () {
         this.inventoryFormOpen = true;
+        this.syncBodyScrollLock();
         this.$nextTick(function () {
-          var panel = this.$refs.inventoryFormPanel;
-          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          var panel = this.$refs.inventoryFormModal;
+          if (panel) panel.focus();
         }.bind(this));
       },
       closeInventoryForm: function () {
         this.inventoryFormOpen = false;
+        this.syncBodyScrollLock();
       },
       openEditModal: function (row) {
         this.editItemId = row.id;
@@ -74,6 +83,7 @@ document.addEventListener('alpine:init', function () {
         this.editDepartmentStation = row.department_station || '';
         this.editImagePath = row.image_path || '';
         this.editModalOpen = true;
+        this.syncBodyScrollLock();
         this.$nextTick(function () {
           var p = this.$refs.editModalPanel;
           if (p) p.focus();
@@ -99,6 +109,7 @@ document.addEventListener('alpine:init', function () {
         this.editMeasure = '';
         this.editDepartmentStation = '';
         this.editImagePath = '';
+        this.syncBodyScrollLock();
       },
       uppercaseInput: function ($event) {
         var el = $event.target;
@@ -122,6 +133,7 @@ document.addEventListener('alpine:init', function () {
         self.itemsLoading = true;
         var q = (self.searchQuery || '').trim();
         var url = self.inventoryItemsApiUrl + '?page=' + (page || 1) + '&per_page=50';
+        if (self.departmentId) url += '&department=' + encodeURIComponent(self.departmentId);
         if (q) url += '&q=' + encodeURIComponent(q);
         fetch(url, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
           .then(function (r) { return r.json(); })
@@ -167,7 +179,7 @@ document.addEventListener('alpine:init', function () {
 <div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }} si-page sinv-page">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14"
          x-data="storeInventoryPage"
-         @keydown.escape.window="if (editModalOpen) closeEditModal()">
+         @keydown.escape.window="if (editModalOpen) closeEditModal(); else if (inventoryFormOpen) closeInventoryForm()">
 
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -190,12 +202,19 @@ document.addEventListener('alpine:init', function () {
                     <div class="min-w-0 flex gap-3.5">
                         <div class="sinv-hero__icon" aria-hidden="true"><i class="fas fa-boxes-stacked"></i></div>
                         <div class="min-w-0">
-                            <a href="{{ employee_dash_url('store-stock') }}" class="sinv-hero__back">
-                                <i class="fas fa-chevron-left text-[0.5rem]"></i> Stock in &amp; out
+                            <a href="{{ employee_dash_url() }}" class="sinv-hero__back">
+                                <i class="fas fa-chevron-left text-[0.5rem]"></i> Store dashboard
                             </a>
-                            <h1 class="sinv-hero__title">Item catalog</h1>
+                            <h1 class="sinv-hero__title">
+                                {% if items_department %}{{ items_department.department_name }}{% else %}Register item{% endif %}
+                            </h1>
                             <p class="sinv-hero__sub si-normal">
+                                {% if items_department %}
+                                Catalog items for {{ items_department.department_name }}.
+                                <a href="{{ employee_dash_url('store-inventory') }}" class="underline font-medium text-[var(--si-brand)]">View all departments</a>
+                                {% else %}
                                 Register store items by expense category, department, and measure. Quantities are updated on the Stock page.
+                                {% endif %}
                             </p>
                         </div>
                     </div>
@@ -217,89 +236,20 @@ document.addEventListener('alpine:init', function () {
 
         {# Register item panel #}
         <section class="si-panel sinv-panel-accent">
-            <div class="si-panel-head" x-show="!inventoryFormOpen" x-transition>
+            <div class="si-panel-head">
                 <div class="min-w-0">
                     <h2 class="si-title">Register store item</h2>
                     <p class="si-subtitle si-normal">Add a catalog entry. A reference code is assigned when you save.</p>
                 </div>
             </div>
-            <div class="si-panel-body" x-show="!inventoryFormOpen">
-                <button type="button" @click="openInventoryForm()" class="sinv-register-cta">
-                    <span class="sinv-register-cta__icon"><i class="fas fa-plus"></i></span>
-                    <span class="sinv-register-cta__title">Register new item</span>
-                    <span class="sinv-register-cta__desc">Expense category · department · measure</span>
-                </button>
-            </div>
-
-            <div x-show="inventoryFormOpen" x-cloak x-ref="inventoryFormPanel" class="si-panel-body border-t border-[var(--si-line)]">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5">
-                    <div>
-                        <h2 class="si-title">New store item</h2>
-                        <p class="si-subtitle si-normal">Complete required fields. Image is optional.</p>
-                    </div>
-                    <button type="button" @click="closeInventoryForm()" class="si-btn si-btn--ghost shrink-0">
-                        <i class="fas fa-times"></i> Close
+            <div class="si-panel-body">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <button type="button" @click="openInventoryForm()" class="role-quick-card text-left">
+                        <i class="fas fa-plus text-orange-600 dark:text-orange-400"></i>
+                        <span>Register new item</span>
+                        <small>Expense category · department · measure</small>
                     </button>
                 </div>
-                <form method="post" action="{{ employee_dash_url('store-inventory') }}" enctype="multipart/form-data">
-                    <div class="si-form-grid">
-                        <div class="si-span-2">
-                            <label for="item_category" class="si-label">Expense category</label>
-                            <select name="item_category" id="item_category" required class="si-select si-select--fee-votes">
-                                <option value="">SELECT EXPENSE CATEGORY</option>
-                                {% for vote in fee_structure_votes %}
-                                <option value="{{ vote.name }}" title="{{ vote.description or '—' }}">{{ vote.label }}</option>
-                                {% endfor %}
-                            </select>
-                            <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal">
-                                Expense categories from Student fees → Fee structures. Ask the accountant to add new categories there.
-                            </p>
-                            {% if not fee_structure_votes %}
-                            <p class="mt-1.5 text-xs text-amber-700 si-normal">
-                                <i class="fas fa-info-circle"></i> No expense categories found yet. Create fee structures first so categories appear here.
-                            </p>
-                            {% endif %}
-                        </div>
-                        <div class="si-span-2">
-                            <label for="item_name" class="si-label">Item name</label>
-                            <input type="text" name="item_name" id="item_name" required maxlength="255" autocomplete="off"
-                                   @input="uppercaseInput($event)" class="si-input" placeholder="ITEM NAME" />
-                        </div>
-                        <div class="si-span-2">
-                            <label for="department_station" class="si-label">Department station</label>
-                            <select name="department_station" id="department_station" required class="si-select">
-                                <option value="">SELECT STATION</option>
-                                {% for st in department_stations %}
-                                <option value="{{ st }}">{{ st }}</option>
-                                {% endfor %}
-                            </select>
-                            <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal">Library Department items appear in the librarian books catalog.</p>
-                        </div>
-                        <div class="si-span-2">
-                            <label for="description" class="si-label">Description <span class="font-normal normal-case">(optional)</span></label>
-                            <textarea name="description" id="description" rows="2" @input="uppercaseInput($event)" class="si-textarea" placeholder="SIZE, BRAND, NOTES"></textarea>
-                        </div>
-                        <div>
-                            <label for="measure" class="si-label">Measure</label>
-                            <select name="measure" id="measure" required class="si-select">
-                                <option value="">SELECT MEASURE</option>
-                                {% for m in measures %}
-                                <option value="{{ m }}">{{ m }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div>
-                            <label for="image" class="si-label">Image <span class="font-normal normal-case">(optional)</span></label>
-                            <input type="file" name="image" id="image" accept="image/png,image/jpeg,image/gif,image/webp"
-                                   class="si-input si-normal py-2 file:mr-2 file:rounded file:border-0 file:bg-[var(--si-brand-soft)] file:px-2 file:py-1 file:text-xs file:font-semibold file:text-[var(--si-brand)]" />
-                        </div>
-                    </div>
-                    <div class="mt-5 pt-4 border-t border-[var(--si-line)]">
-                        <button type="submit" class="si-btn si-btn--brand w-full sm:w-auto">
-                            <i class="fas fa-plus"></i> Add to inventory
-                        </button>
-                    </div>
-                </form>
             </div>
         </section>
 
@@ -446,6 +396,90 @@ document.addEventListener('alpine:init', function () {
                 </div>
             </div>
         </section>
+        </div>
+
+        {# New item modal #}
+        <div x-show="inventoryFormOpen" x-cloak class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="si-new-item-title">
+            <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" @click="closeInventoryForm()" aria-hidden="true"></div>
+            <div x-show="inventoryFormOpen" x-ref="inventoryFormModal" tabindex="-1"
+                 class="relative mt-auto w-full max-h-[92vh] overflow-y-auto rounded-t-2xl border border-[var(--si-line)] bg-[var(--si-bg)] shadow-2xl sm:mt-0 sm:max-w-lg sm:rounded-2xl">
+                <div class="sticky top-0 z-10 flex items-center justify-between sinv-modal-head">
+                    <div class="min-w-0 pr-3">
+                        <h2 id="si-new-item-title">New store item</h2>
+                        <p class="text-xs text-white/80 mt-0.5 si-normal normal-case font-normal">Complete required fields. Image is optional.</p>
+                    </div>
+                    <button type="button" @click="closeInventoryForm()" class="si-btn si-btn--icon shrink-0" aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form method="post" action="{{ employee_dash_url('store-inventory') }}" enctype="multipart/form-data" class="p-4 sm:p-5 si-upper">
+                    <div class="si-form-grid">
+                        <div class="si-span-2">
+                            <label for="item_category" class="si-label">Expense category</label>
+                            <select name="item_category" id="item_category" required class="si-select si-select--fee-votes">
+                                <option value="">SELECT EXPENSE CATEGORY</option>
+                                {% for vote in fee_structure_votes %}
+                                <option value="{{ vote.name }}" title="{{ vote.description or '—' }}">{{ vote.label }}</option>
+                                {% endfor %}
+                            </select>
+                            <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal">
+                                Expense categories from Student fees → Fee structures. Ask the accountant to add new categories there.
+                            </p>
+                            {% if not fee_structure_votes %}
+                            <p class="mt-1.5 text-xs text-amber-700 si-normal">
+                                <i class="fas fa-info-circle"></i> No expense categories found yet. Create fee structures first so categories appear here.
+                            </p>
+                            {% endif %}
+                        </div>
+                        <div class="si-span-2">
+                            <label for="item_name" class="si-label">Item name</label>
+                            <input type="text" name="item_name" id="item_name" required maxlength="255" autocomplete="off"
+                                   @input="uppercaseInput($event)" class="si-input" placeholder="ITEM NAME" />
+                        </div>
+                        <div class="si-span-2">
+                            <label for="department_station" class="si-label">Department station</label>
+                            <select name="department_station" id="department_station" required class="si-select"{% if not department_stations %} disabled{% endif %}>
+                                <option value="">SELECT STATION</option>
+                                {% for st in department_stations %}
+                                <option value="{{ st }}"{% if items_department and st == items_department.department_name %} selected{% endif %}>{{ st }}</option>
+                                {% endfor %}
+                            </select>
+                            {% if not department_stations %}
+                            <p class="mt-1.5 text-xs text-amber-700 si-normal">
+                                <i class="fas fa-info-circle"></i> No departments registered yet.
+                                <a href="{{ employee_dash_url() }}" class="underline font-medium">Register departments</a> on your store dashboard first.
+                            </p>
+                            {% else %}
+                            <p class="mt-1.5 text-xs text-[var(--si-muted)] si-normal">Register new departments on your <a href="{{ employee_dash_url() }}" class="underline font-medium text-[var(--si-brand)]">store dashboard</a>. Library Department items appear in the librarian books catalog.</p>
+                            {% endif %}
+                        </div>
+                        <div class="si-span-2">
+                            <label for="description" class="si-label">Description <span class="font-normal normal-case">(optional)</span></label>
+                            <textarea name="description" id="description" rows="2" @input="uppercaseInput($event)" class="si-textarea" placeholder="SIZE, BRAND, NOTES"></textarea>
+                        </div>
+                        <div>
+                            <label for="measure" class="si-label">Measure</label>
+                            <select name="measure" id="measure" required class="si-select">
+                                <option value="">SELECT MEASURE</option>
+                                {% for m in measures %}
+                                <option value="{{ m }}">{{ m }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="image" class="si-label">Image <span class="font-normal normal-case">(optional)</span></label>
+                            <input type="file" name="image" id="image" accept="image/png,image/jpeg,image/gif,image/webp"
+                                   class="si-input si-normal py-2 file:mr-2 file:rounded file:border-0 file:bg-[var(--si-brand-soft)] file:px-2 file:py-1 file:text-xs file:font-semibold file:text-[var(--si-brand)]" />
+                        </div>
+                    </div>
+                    <div class="flex flex-col-reverse sm:flex-row gap-2 mt-5 pt-4 border-t border-[var(--si-line)]">
+                        <button type="button" @click="closeInventoryForm()" class="si-btn si-btn--ghost flex-1 sm:flex-none">Cancel</button>
+                        <button type="submit" class="si-btn si-btn--brand flex-1 sm:flex-none">
+                            <i class="fas fa-plus"></i> Add to inventory
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
 
         {# Edit modal #}

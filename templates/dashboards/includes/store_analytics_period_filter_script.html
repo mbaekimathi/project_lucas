@@ -1,0 +1,58 @@
+<script>
+function storeAnalyticsPeriodFilterMixin() {
+  return {
+    period: 'all',
+    filterDay: '',
+    filterMonth: '',
+    filterYearMonth: '',
+    rangeFrom: '',
+    rangeTo: '',
+    periodLabel: 'All time',
+    initPeriodFilters: function () {
+      var today = new Date();
+      var y = today.getFullYear();
+      var m = String(today.getMonth() + 1).padStart(2, '0');
+      var d = String(today.getDate()).padStart(2, '0');
+      this.filterDay = y + '-' + m + '-' + d;
+      this.filterMonth = y + '-' + m;
+      this.filterYearMonth = y + '-' + m;
+      this.rangeFrom = y + '-' + m + '-01';
+      this.rangeTo = y + '-' + m + '-' + d;
+    },
+    onPeriodTypeChange: function () {
+      var self = this;
+      if (this.period !== 'all') {
+        this.$nextTick(function () {
+          var input = self.$refs.periodCalendarInput;
+          if (input && typeof input.showPicker === 'function') {
+            try { input.showPicker(); } catch (e) { /* unsupported */ }
+          }
+        });
+      }
+      if (typeof this.onFilterChange === 'function') this.onFilterChange();
+    },
+    openCalendarPicker: function () {
+      var input = this.$refs.periodCalendarInput;
+      if (input && typeof input.showPicker === 'function') {
+        try { input.showPicker(); } catch (e) { /* unsupported */ }
+      } else if (input) {
+        input.focus();
+      }
+    },
+    appendPeriodQuery: function (p) {
+      p.set('period', this.period || 'all');
+      if (this.period === 'day') {
+        if (this.filterDay) p.set('date', this.filterDay);
+      } else if (this.period === 'month') {
+        if (this.filterMonth) p.set('date', this.filterMonth);
+      } else if (this.period === 'year') {
+        var y = (this.filterYearMonth || '').slice(0, 4);
+        if (y) p.set('date', y);
+      } else if (this.period === 'range') {
+        if (this.rangeFrom) p.set('from', this.rangeFrom);
+        if (this.rangeTo) p.set('to', this.rangeTo);
+      }
+    },
+  };
+}
+</script>

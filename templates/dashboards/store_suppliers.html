@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Suppliers — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/store_inventory_page_styles.html' %}
+{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/store_manager_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('storeSuppliersPage', function () {
+    return {
+      suppliers: {{ suppliers|tojson }},
+      searchQuery: '',
+      statusFilter: {{ status_filter|tojson }},
+      suppliersBaseUrl: {{ employee_dash_url('store-suppliers')|tojson }},
+      paymentBadgeClass: function (status) {
+        status = (status || '').toLowerCase();
+        if (status === 'paid') return 'si-badge--brand';
+        if (status === 'partial') return 'si-badge--warn';
+        if (status === 'pending') return 'si-badge--danger';
+        return 'si-badge--muted';
+      },
+      formatKes: function (v) {
+        if (v === null || v === undefined || v === '') return '—';
+        var n = parseFloat(String(v).replace(/,/g, ''));
+        return Number.isFinite(n) ? ('KES ' + n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '—';
+      },
+      supplierViewUrl: function (s) {
+        if (s && s.id) return this.suppliersBaseUrl + '/' + s.id;
+        var key = (s && (s.phone_key || s.phone)) || '';
+        return this.suppliersBaseUrl + '/view?phone_key=' + encodeURIComponent(key);
+      },
+      haystack: function (s) {
+        return [s.company_name, s.phone, s.payment_status_label].filter(Boolean).join(' ').toUpperCase();
+      },
+      matchesSearch: function (s) {
+        var q = (this.searchQuery || '').trim().toUpperCase();
+        if (!q) return true;
+        return this.haystack(s).indexOf(q) !== -1;
+      },
+      get filteredSuppliers() {
+        var self = this;
+        return (this.suppliers || []).filter(function (s) {
+          return self.matchesSearch(s);
+        });
+      },
+      get totalOutstanding() {
+        return (this.suppliers || []).reduce(function (sum, s) {
+          return sum + (parseFloat(s.balance_due) || 0);
+        }, 0);
+      },
+      get countOutstanding() {
+        return (this.suppliers || []).filter(function (s) {
+          return (s.payment_status === 'pending' || s.payment_status === 'partial');
+        }).length;
+      },
+      filterUrl: function (status) {
+        if (!status || status === 'all') return this.suppliersBaseUrl;
+        return this.suppliersBaseUrl + '?status=' + encodeURIComponent(status);
+      },
+    };
+  });
+});
+</script>
+
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--store si-page sinv-page"
+     x-data="storeSuppliersPage()">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14">
+        <header class="sinv-hero mb-6">
+            <div class="sinv-hero__inner">
+                <div class="sinv-hero__top">
+                    <div class="min-w-0 flex gap-3.5">
+                        <div class="sinv-hero__icon" aria-hidden="true"><i class="fas fa-truck-field"></i></div>
+                        <div class="min-w-0">
+                            <a href="{{ employee_dash_url() }}" class="sinv-hero__back">
+                                <i class="fas fa-chevron-left text-[0.5rem]"></i> Store dashboard
+                            </a>
+                            <h1 class="sinv-hero__title">Suppliers</h1>
+                            <p class="sinv-hero__sub si-normal">
+                                All suppliers with invoice counts and balances. Open a supplier to see every supply and payment status.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="sinv-hero__actions">
+                    <a href="{{ employee_dash_url('store-lpo') }}" class="sinv-hero__link"><i class="fas fa-file-invoice"></i> LPO</a>
+                    <a href="{{ employee_dash_url('store-stock') }}" class="sinv-hero__link"><i class="fas fa-arrow-right-arrow-left"></i> Stock in</a>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Suppliers</p>
+                <p class="mt-1 text-2xl font-bold tabular-nums text-[var(--si-ink)]" x-text="suppliers.length"></p>
+            </div>
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">With outstanding balance</p>
+                <p class="mt-1 text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-300" x-text="countOutstanding"></p>
+            </div>
+            <div class="si-panel p-4">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Total payable</p>
+                <p class="mt-1 text-2xl font-bold tabular-nums text-[var(--si-ink)]" x-text="formatKes(totalOutstanding)"></p>
+            </div>
+        </div>
+
+        <section class="si-panel sinv-list-panel">
+            <div class="si-panel-head">
+                <div class="min-w-0">
+                    <h2 class="si-title">Supplier accounts</h2>
+                    <p class="si-subtitle si-normal">Click <strong>View</strong> to open the supplier and see all stock-in supplies.</p>
+                </div>
+            </div>
+            <div class="si-panel-body">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+                    <div class="si-search-wrap flex-1">
+                        <i class="fas fa-search"></i>
+                        <input type="search" x-model="searchQuery" class="si-input si-upper" placeholder="SEARCH NAME OR PHONE…" aria-label="Search suppliers" />
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <a :href="filterUrl('all')" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'all' ? 'si-btn--brand' : 'si-btn--ghost'">All</a>
+                        <a :href="filterUrl('outstanding')" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'outstanding' ? 'si-btn--brand' : 'si-btn--ghost'">Outstanding</a>
+                        <a :href="filterUrl('pending')" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'pending' ? 'si-btn--brand' : 'si-btn--ghost'">Pending</a>
+                        <a :href="filterUrl('partial')" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'partial' ? 'si-btn--brand' : 'si-btn--ghost'">Partial</a>
+                        <a :href="filterUrl('clear')" class="si-btn py-1.5 px-3 text-xs" :class="statusFilter === 'clear' ? 'si-btn--brand' : 'si-btn--ghost'">Clear</a>
+                    </div>
+                </div>
+
+                <div x-show="filteredSuppliers.length === 0" class="si-empty">
+                    <i class="fas fa-truck-field block"></i>
+                    <p class="font-semibold text-[var(--si-ink)]">No suppliers in this view</p>
+                    <p class="mt-1 text-sm si-normal">Suppliers are registered when you record stock in or raise an LPO.</p>
+                </div>
+
+                <div x-show="filteredSuppliers.length > 0" class="si-table-wrap">
+                    <table class="si-table sinv-catalog-table">
+                        <thead>
+                            <tr>
+                                <th>Supplier</th>
+                                <th>Phone</th>
+                                <th class="text-center">Invoices</th>
+                                <th>Status</th>
+                                <th class="text-right">Balance due</th>
+                                <th class="text-center">View</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="s in filteredSuppliers" :key="(s.id || s.phone_key || s.phone) + '-' + s.company_name">
+                                <tr>
+                                    <td class="font-semibold max-w-[14rem] truncate" x-text="s.company_name"></td>
+                                    <td class="tabular-nums whitespace-nowrap" x-text="s.phone"></td>
+                                    <td class="tabular-nums text-center" x-text="s.invoice_count || 0"></td>
+                                    <td>
+                                        <span class="si-badge" :class="paymentBadgeClass(s.payment_status)" x-text="s.payment_status_label"></span>
+                                    </td>
+                                    <td class="text-right tabular-nums whitespace-nowrap font-semibold"
+                                        :class="(parseFloat(s.balance_due) || 0) > 0 ? 'text-amber-800 dark:text-amber-200' : 'text-emerald-700 dark:text-emerald-300'"
+                                        x-text="formatKes(s.balance_due_display || s.balance_due)"></td>
+                                    <td class="text-center">
+                                        <a :href="supplierViewUrl(s)" class="si-btn si-btn--icon" title="View supplies">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
