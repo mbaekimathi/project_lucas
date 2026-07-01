@@ -179,11 +179,18 @@
     applyBounds(true);
   }
 
+  function syncPrintLetterhead() {
+    if (typeof window.syncAcrPrintLetterhead === 'function') {
+      window.syncAcrPrintLetterhead();
+    }
+  }
+
   function updateMastheadMeta(periodLabel, generatedAt) {
     var periodEl = qs('acr-masthead-period');
     var genEl = qs('acr-masthead-generated');
     if (periodEl) periodEl.textContent = periodLabel || mastheadPeriodLabel();
     if (genEl && generatedAt) genEl.textContent = generatedAt;
+    syncPrintLetterhead();
   }
 
   function loadReport() {
@@ -310,4 +317,76 @@
   if (!cfg.skipInitialFetch && !hasUrlFilters) {
     scheduleLoad(0);
   }
+
+  function reportHasPrintableData() {
+    var body = qs('acr-report-body');
+    if (!body) return false;
+    return !!body.querySelector('.acr-report-section .acr-table tbody tr, .acr-report-section table tbody tr');
+  }
+
+  function printDocumentTitle() {
+    var bits = [];
+    var title = document.getElementById('acr-print-title');
+    var acct = document.getElementById('acr-print-account');
+    var period = document.getElementById('acr-print-period');
+    if (title && title.textContent) bits.push(title.textContent.trim());
+    if (acct && acct.textContent) bits.push(acct.textContent.trim());
+    if (period && period.textContent) bits.push(period.textContent.trim());
+    return bits.join(' — ');
+  }
+
+  function printAccountReport() {
+    if (!document.querySelector('.acr-report-page')) {
+      window.print();
+      return;
+    }
+    if (!reportHasPrintableData()) {
+      window.alert('No report data to print for the selected period.');
+      return;
+    }
+    var nextTitle = printDocumentTitle();
+    if (typeof window.printAccountsInFrame === 'function') {
+      window.printAccountsInFrame({
+        title: nextTitle || document.title,
+        htmlClass: 'acr-accounts-print acr-report-print-doc',
+        bodyClass: 'acr-accounts-print acr-report-print-doc',
+        collect: window.collectAcrAccountReportPrintHtml,
+      });
+      return;
+    }
+    syncPrintLetterhead();
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
+    var prevTitle = document.title;
+    if (nextTitle) document.title = nextTitle;
+    document.documentElement.classList.add('acr-report-print-doc', 'acr-accounts-print');
+    window.print();
+    window.setTimeout(function () {
+      document.documentElement.classList.remove('acr-report-print-doc', 'acr-accounts-print');
+      if (typeof window.unpinAccountsPrintFooters === 'function') {
+        window.unpinAccountsPrintFooters();
+      }
+      document.title = prevTitle;
+    }, 500);
+  }
+
+  window.printAccountReport = printAccountReport;
+
+  window.addEventListener('beforeprint', function () {
+    if (window.__acrIframePrintActive) return;
+    if (!document.querySelector('.acr-report-page')) return;
+    if (document.documentElement.classList.contains('acr-pcb-print-doc')) return;
+    syncPrintLetterhead();
+    document.documentElement.classList.add('acr-report-print-doc', 'acr-accounts-print');
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
+  });
+  window.addEventListener('afterprint', function () {
+    document.documentElement.classList.remove('acr-report-print-doc', 'acr-accounts-print');
+    if (typeof window.unpinAccountsPrintFooters === 'function') {
+      window.unpinAccountsPrintFooters();
+    }
+  });
 })();

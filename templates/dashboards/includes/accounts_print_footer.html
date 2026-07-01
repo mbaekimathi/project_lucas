@@ -1,0 +1,20 @@
+{# Shared accounts print footer — once at the bottom of the last printed page.
+   Expects: school_settings, report_title (optional fallback)
+   Optional: print_footer_id, print_footer_title_id, footer_always_visible #}
+{% set _footer_id = print_footer_id|default('acr-print-footer') %}
+{% set _title_id = print_footer_title_id|default('acr-print-footer-title') %}
+{% set _visible = footer_always_visible|default(false) %}
+{% set _school = school_settings.school_name or 'School' %}
+{% set _title = report_title|default('Accounts report') %}
+<div id="{{ _footer_id }}" class="acr-print-footer{% if not _visible %} acr-print-only{% endif %}" aria-hidden="{{ 'false' if _visible else 'true' }}">
+    <div class="acr-print-footer__inner">
+        <div class="acr-print-footer__row acr-print-footer__row--main">
+            <span class="acr-print-footer__school">{{ _school }}</span>
+            <span class="acr-print-footer__title" id="{{ _title_id }}">{{ _title }}</span>
+        </div>
+        <div class="acr-print-footer__row acr-print-footer__row--sub">
+            <span class="acr-print-footer__credit">powered by educentric</span>
+            <span class="acr-print-footer__page" aria-hidden="true"></span>
+        </div>
+    </div>
+</div>

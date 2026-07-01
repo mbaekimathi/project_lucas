@@ -108,6 +108,54 @@
 .dark .fa-action-btn--unsuspend { color: #4ade80; background: rgba(34, 197, 94, 0.12); }
 .fa-action-btn--delete { color: #be123c; background: #fff1f2; border-color: #fecdd3; }
 .dark .fa-action-btn--delete { color: #fb7185; background: rgba(244, 63, 94, 0.12); }
+.fa-view-modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid var(--acc-line);
+}
+.fa-view-modal-actions__end {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+.fa-view-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: 0.5rem;
+    padding: 0.625rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.fa-view-action-btn--delete {
+    color: #be123c;
+    background: #fff1f2;
+    border-color: #fecdd3;
+}
+.dark .fa-view-action-btn--delete { color: #fb7185; background: rgba(244, 63, 94, 0.12); border-color: rgba(244, 63, 94, 0.35); }
+.fa-view-action-btn--suspend {
+    color: #b45309;
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+.dark .fa-view-action-btn--suspend { color: #fbbf24; background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); }
+.fa-view-action-btn--unsuspend {
+    color: #15803d;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+.dark .fa-view-action-btn--unsuspend { color: #4ade80; background: rgba(34, 197, 94, 0.12); border-color: rgba(34, 197, 94, 0.35); }
 .fa-edit-modal-backdrop {
     position: fixed; inset: 0; z-index: 100;
     display: flex; align-items: flex-end; justify-content: center;
@@ -269,7 +317,7 @@
                     </span>
                     <div class="min-w-0">
                         <h2 class="text-sm font-bold text-[var(--acc-ink)]">Register account</h2>
-                        <p class="text-[11px] text-[var(--acc-muted)]">Category, name, payment mode(s), and academic levels are required. Company name/number are captured under Bank.</p>
+                        <p class="text-[11px] text-[var(--acc-muted)]">Category, name, and payment mode(s) are required. Link academic levels only for fee-related accounts. Company name/number are captured under Bank.</p>
                     </div>
                 </div>
                 <button type="button" @click="toggleForm()"
@@ -352,7 +400,7 @@
                     {% endwith %}
                     <div class="fa-span-2">
                         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-                            <label class="fa-field-label mb-0">Academic levels linked <span class="text-red-500">*</span></label>
+                            <label class="fa-field-label mb-0">Academic levels linked <span class="text-[var(--acc-muted)] font-normal">(optional)</span></label>
                             <div class="flex gap-2 text-xs">
                                 <button type="button" @click="selectAllLevels(true)"
                                         class="text-teal-700 dark:text-teal-400 font-semibold hover:underline">Select all</button>
@@ -361,7 +409,7 @@
                                         class="text-[var(--acc-muted)] font-semibold hover:underline">Clear</button>
                             </div>
                         </div>
-                        <p class="text-[11px] text-[var(--acc-muted)] mb-3">Choose every class/grade this account applies to.</p>
+                        <p class="text-[11px] text-[var(--acc-muted)] mb-3">Link classes/grades only if this account receives fees. Leave blank for general accounts.</p>
                         {% if levels_by_category %}
                         <div class="space-y-4 max-h-64 overflow-y-auto rounded-lg border border-[var(--acc-line)] p-3 bg-slate-50/80 dark:bg-slate-900/40">
                             {% for cat, levels in levels_by_category.items() %}
@@ -415,7 +463,7 @@
                             <th class="px-4 py-3 font-semibold hidden lg:table-cell">Payment modes</th>
                             <th class="px-4 py-3 font-semibold hidden sm:table-cell">Registered</th>
                             <th class="px-4 py-3 font-semibold">Status</th>
-                            <th class="px-4 py-3 font-semibold text-right sticky right-0 bg-slate-50 dark:bg-slate-800/80 z-[1]">Actions</th>
+                            <th class="px-4 py-3 font-semibold text-right sticky right-0 bg-slate-50 dark:bg-slate-800/80 z-[1]">View</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-[var(--acc-line)]">
@@ -481,29 +529,6 @@
                                             class="fa-action-btn fa-action-btn--view">
                                         <i class="fas fa-eye text-sm"></i>
                                     </button>
-                                    <button type="button" @click="openEditModal({{ row.id }})"
-                                            title="Edit account"
-                                            class="fa-action-btn fa-action-btn--edit">
-                                        <i class="fas fa-pen-to-square text-sm"></i>
-                                    </button>
-                                    <form method="post" action="{{ employee_dash_url('accounts/' ~ row.id ~ '/toggle-suspend') }}" class="inline">
-                                        <button type="submit"
-                                                title="{% if row.account_status == 'suspended' %}Unsuspend account{% else %}Suspend account{% endif %}"
-                                                class="fa-action-btn {% if row.account_status == 'suspended' %}fa-action-btn--unsuspend{% else %}fa-action-btn--suspend{% endif %}">
-                                            {% if row.account_status == 'suspended' %}
-                                            <i class="fas fa-circle-play text-sm"></i>
-                                            {% else %}
-                                            <i class="fas fa-circle-pause text-sm"></i>
-                                            {% endif %}
-                                        </button>
-                                    </form>
-                                    <form method="post" action="{{ employee_dash_url('accounts/' ~ row.id ~ '/delete') }}" class="inline"
-                                          onsubmit="return confirm('Delete this account permanently? This cannot be undone.');">
-                                        <button type="submit" title="Delete account"
-                                                class="fa-action-btn fa-action-btn--delete">
-                                            <i class="fas fa-trash-can text-sm"></i>
-                                        </button>
-                                    </form>
                                 </div>
                             </td>
                         </tr>
@@ -590,15 +615,36 @@
                     </div>
                     <p x-show="!viewAccount.academic_levels || !viewAccount.academic_levels.length"
                        class="text-xs text-[var(--acc-muted)]">—</p>
-                    <div class="flex justify-end gap-2 pt-4 mt-2 border-t border-[var(--acc-line)]">
-                        <button type="button" @click="closeViewModal()"
-                                class="accounts-btn-ghost inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
-                            Close
-                        </button>
-                        <button type="button" @click="closeViewModal(); openEditModal(viewAccount.id)"
-                                class="accounts-btn-primary inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold text-white">
-                            <i class="fas fa-pen-to-square"></i> Edit
-                        </button>
+                    <div class="fa-view-modal-actions" x-show="viewAccount">
+                        <form method="post" class="inline"
+                              x-bind:action="viewAccount ? accountPostUrl(viewAccount.id, 'delete') : '#'"
+                              @submit="if (!confirm('Delete this account permanently? This cannot be undone.')) $event.preventDefault()">
+                            <button type="submit" class="fa-view-action-btn fa-view-action-btn--delete">
+                                <i class="fas fa-trash-can" aria-hidden="true"></i>
+                                Delete
+                            </button>
+                        </form>
+                        <div class="fa-view-modal-actions__end">
+                            <button type="button" @click="closeViewModal()"
+                                    class="accounts-btn-ghost inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
+                                Close
+                            </button>
+                            <form method="post" class="inline"
+                                  x-bind:action="viewAccount ? accountPostUrl(viewAccount.id, 'toggle-suspend') : '#'">
+                                <button type="submit"
+                                        class="fa-view-action-btn"
+                                        :class="(viewAccount.account_status || '') === 'suspended' ? 'fa-view-action-btn--unsuspend' : 'fa-view-action-btn--suspend'">
+                                    <i class="fas" aria-hidden="true"
+                                       :class="(viewAccount.account_status || '') === 'suspended' ? 'fa-circle-play' : 'fa-circle-pause'"></i>
+                                    <span x-text="(viewAccount.account_status || '') === 'suspended' ? 'Unsuspend' : 'Suspend'"></span>
+                                </button>
+                            </form>
+                            <button type="button" @click="closeViewModal(); openEditModal(viewAccount.id)"
+                                    class="accounts-btn-primary inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold text-white">
+                                <i class="fas fa-pen-to-square" aria-hidden="true"></i>
+                                Edit
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -678,7 +724,7 @@
                     {% endwith %}
                     <div class="fa-span-2">
                         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-                            <label class="fa-field-label mb-0">Academic levels linked <span class="text-red-500">*</span></label>
+                            <label class="fa-field-label mb-0">Academic levels linked <span class="text-[var(--acc-muted)] font-normal">(optional)</span></label>
                             <div class="flex gap-2 text-xs">
                                 <button type="button" @click="selectEditLevels(true)"
                                         class="text-teal-700 dark:text-teal-400 font-semibold hover:underline">Select all</button>
@@ -687,6 +733,7 @@
                                         class="text-[var(--acc-muted)] font-semibold hover:underline">Clear</button>
                             </div>
                         </div>
+                        <p class="text-[11px] text-[var(--acc-muted)] mb-3">Link classes/grades that receive fees into this account. Leave blank for accounts that do not collect fees.</p>
                         {% if levels_by_category %}
                         <div class="space-y-4 max-h-52 overflow-y-auto rounded-lg border border-[var(--acc-line)] p-3 bg-slate-50/80 dark:bg-slate-900/40">
                             {% for cat, levels in levels_by_category.items() %}
@@ -734,6 +781,8 @@ function accountsPage() {
         categoryAddMarker: {{ account_category_add_value|default('__add_new__')|tojson }},
         accountsBaseUrl: {{ employee_dash_url('accounts')|tojson }},
         schoolMpesaPresets: {{ mpesa_account_presets|default([])|tojson }},
+        viewModalOpen: false,
+        viewAccount: null,
         editModalOpen: false,
         editAccount: null,
         editLevelIds: [],
@@ -795,6 +844,10 @@ function accountsPage() {
                 return val;
             }
             return String(val);
+        },
+        accountPostUrl: function (accountId, action) {
+            var base = String(this.accountsBaseUrl || '').replace(/\/$/, '');
+            return base + '/' + accountId + '/' + action;
         },
         openViewModal: function (accountId) {
             var id = parseInt(accountId, 10);
@@ -1265,7 +1318,6 @@ function accountsPage() {
         },
         validateRegisterForm: function (e) {
             if (!this.validateCategoryFields('reg', e)) return false;
-            if (!this.validateLevels(e)) return false;
             return this.validatePaymentFields('reg', e);
         },
         validateEditForm: function (e) {
@@ -1275,7 +1327,6 @@ function accountsPage() {
                 return false;
             }
             if (!this.validateCategoryFields('edit', e)) return false;
-            if (!this.validateEditLevels(e)) return false;
             return this.validatePaymentFields('edit', e);
         },
         openEditModal: function (accountId) {
@@ -1339,27 +1390,6 @@ function accountsPage() {
             form.querySelectorAll('.fa-edit-level-cb').forEach(function (cb) {
                 cb.checked = !!checked;
             });
-        },
-        validateLevels: function (e) {
-            var boxes = document.querySelectorAll('.fa-level-cb');
-            if (!boxes.length) return true;
-            for (var i = 0; i < boxes.length; i++) {
-                if (boxes[i].checked) return true;
-            }
-            e.preventDefault();
-            alert('Select at least one academic level to link to this account.');
-            return false;
-        },
-        validateEditLevels: function (e) {
-            var form = this.getEditFormEl();
-            var boxes = form ? form.querySelectorAll('.fa-edit-level-cb') : [];
-            if (!boxes.length) return true;
-            for (var i = 0; i < boxes.length; i++) {
-                if (boxes[i].checked) return true;
-            }
-            e.preventDefault();
-            alert('Select at least one academic level to link to this account.');
-            return false;
         },
         uppercaseField: function (e) {
             var el = e.target;

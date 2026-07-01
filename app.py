@@ -140,7 +140,7 @@ def school_whatsapp_chat_url(phone_raw):
 # Employee sub-roles stored in employees.role — must match MySQL ENUM, role switch, and UI
 EMPLOYEE_SUB_ROLES = (
     'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
-    'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician',
+    'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician', 'cateress',
 )
 EMPLOYEE_SUB_ROLES_SET = frozenset(EMPLOYEE_SUB_ROLES)
 
@@ -1457,8 +1457,12 @@ def inject_school_settings():
 
     settings = get_school_settings()
     active_font = settings.get('font_family', 'Inter')
+    school_website_url = public_portal_url('home')
+    school_website_qr_data_url = _portal_qr_data_url(school_website_url)
     return {
         'school_settings': settings,
+        'school_website_url': school_website_url,
+        'school_website_qr_data_url': school_website_qr_data_url,
         'academic_levels': academic_levels,
         'employees_list': employees_list,
         'viewing_as_employee_info': viewing_as_employee_info,
@@ -3779,13 +3783,99 @@ def _enrich_calendar_report_term_rows(terms):
     return out
 
 
+def _format_finance_payment_method_calendar_row(method_row):
+    """Structured payment method row for the academic calendar report."""
+    mode = (method_row.get('payment_mode') or '').lower()
+    fields = []
+    category = 'Other'
+    category_order = 99
+    mode_label = _finance_payment_mode_label(method_row)
+
+    if mode == 'mpesa':
+        mt = (method_row.get('mpesa_type') or '').lower()
+        category = 'Mobile money (M-PESA)'
+        category_order = 1
+        biz = (method_row.get('business_name') or '').strip() or '—'
+        num = (method_row.get('account_number') or '').strip()
+        shortcode = (method_row.get('mpesa_shortcode') or '').strip()
+        fields.append({'label': 'Business / institution name', 'value': biz})
+        if mt == 'paybill':
+            if num:
+                fields.append({'label': 'Paybill number', 'value': num})
+            ref = _finance_mpesa_paybill_account_display()
+            if ref:
+                fields.append({'label': 'Account reference', 'value': ref})
+        elif mt == 'till':
+            if num:
+                fields.append({'label': 'Till number', 'value': num})
+        elif num:
+            fields.append({'label': 'Number', 'value': num})
+        if shortcode and shortcode != num:
+            fields.append({'label': 'M-PESA shortcode', 'value': shortcode})
+    elif mode == 'bank':
+        category = 'Bank transfer'
+        category_order = 2
+        bn = (method_row.get('bank_name') or '').strip() or '—'
+        ac = (method_row.get('account_number') or '').strip() or '—'
+        fields.append({'label': 'Bank / company name', 'value': bn})
+        fields.append({'label': 'Account number', 'value': ac})
+    elif mode == 'cash':
+        category = 'In person'
+        category_order = 3
+        fields.append({
+            'label': 'Instructions',
+            'value': 'Pay at the school finance office during official office hours.',
+        })
+    elif mode == 'cheque':
+        category = 'In person'
+        category_order = 3
+        fields.append({
+            'label': 'Instructions',
+            'value': 'Cheques should be made payable to the school name shown on this report.',
+        })
+    else:
+        fields.append({'label': 'Details', 'value': 'Contact the finance office for payment instructions.'})
+
+    return {
+        'category': category,
+        'category_order': category_order,
+        'mode_label': mode_label,
+        'mode_key': mode or 'other',
+        'fields': fields,
+    }
+
+
+def _group_calendar_payment_methods(method_rows):
+    """Group structured calendar payment methods by category for display."""
+    groups = {}
+    seen = set()
+    for raw in method_rows or []:
+        row = _format_finance_payment_method_calendar_row(raw)
+        dedupe = (
+            row.get('mode_label'),
+            tuple((f.get('label'), f.get('value')) for f in row.get('fields') or []),
+        )
+        if dedupe in seen:
+            continue
+        seen.add(dedupe)
+        cat = row.get('category') or 'Other'
+        if cat not in groups:
+            groups[cat] = {
+                'category': cat,
+                'category_order': row.get('category_order') or 99,
+                'methods': [],
+            }
+        groups[cat]['methods'].append(row)
+    return sorted(groups.values(), key=lambda g: (g.get('category_order') or 99, g.get('category') or ''))
+
+
 def _fetch_academic_calendar_report_fee_sections(cursor, academic_year_id, term_id=None):
     """School-fee payment methods and deadlines for the printable calendar report."""
     ensure_fee_structures_finance_account_column(cursor)
     try:
         academic_year_id = int(academic_year_id)
     except (TypeError, ValueError):
-        return {'payment_methods': [], 'fee_deadlines': []}
+        return {'payment_methods': [], 'payment_method_groups': [], 'fee_deadlines': []}
 
     where = ["fs.status = 'active'", 'fs.academic_year_id = %s']
     params = [academic_year_id]
@@ -3849,19 +3939,28 @@ def _fetch_academic_calendar_report_fee_sections(cursor, academic_year_id, term_
         })
 
     payment_methods = []
+    payment_method_groups = []
     seen_pm = set()
     if account_ids:
         pmap = _fetch_finance_account_payment_methods_map(cursor, list(set(account_ids)))
+        raw_methods = []
         for aid in sorted(set(account_ids)):
-            for line in _format_finance_payment_methods_detail(pmap.get(aid) or []):
-                key = (line.get('mode_label'), line.get('detail'))
+            raw_methods.extend(pmap.get(aid) or [])
+        payment_method_groups = _group_calendar_payment_methods(raw_methods)
+        for group in payment_method_groups:
+            for method in group.get('methods') or []:
+                key = (
+                    method.get('mode_label'),
+                    tuple((f.get('label'), f.get('value')) for f in method.get('fields') or []),
+                )
                 if key in seen_pm:
                     continue
                 seen_pm.add(key)
-                payment_methods.append(line)
+                payment_methods.append(method)
 
     return {
         'payment_methods': payment_methods,
+        'payment_method_groups': payment_method_groups,
         'fee_deadlines': deadlines,
     }
 
@@ -12450,7 +12549,7 @@ def init_db():
                     id_number VARCHAR(50) NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
                     profile_picture VARCHAR(500),
-                    role ENUM('employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician') DEFAULT 'employee',
+                    role ENUM('employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician', 'cateress') DEFAULT 'employee',
                     status ENUM('pending approval', 'active', 'suspended', 'fired', 'retired') DEFAULT 'pending approval',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -12464,7 +12563,7 @@ def init_db():
                 cursor.execute("""
                     ALTER TABLE employees MODIFY COLUMN role ENUM(
                         'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
-                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician'
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician', 'cateress'
                     ) DEFAULT 'employee'
                 """)
             except Exception:
@@ -12478,7 +12577,7 @@ def init_db():
                         'principal', 'head of institution',
                         'deputy principal', 'deputy head of institution',
                         'academic coordinator', 'curriculum coordinator',
-                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician'
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician', 'cateress'
                     ) DEFAULT 'employee'
                 """)
             except Exception:
@@ -12493,7 +12592,18 @@ def init_db():
                 cursor.execute("""
                     ALTER TABLE employees MODIFY COLUMN role ENUM(
                         'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
-                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician'
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician', 'cateress'
+                    ) DEFAULT 'employee'
+                """)
+            except Exception:
+                pass
+
+            # Migration: cateress employee sub-role
+            try:
+                cursor.execute("""
+                    ALTER TABLE employees MODIFY COLUMN role ENUM(
+                        'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician', 'cateress'
                     ) DEFAULT 'employee'
                 """)
             except Exception:
@@ -18259,7 +18369,7 @@ def check_staff_number():
         allowed_roles=[
             'employee', 'super admin', 'head of institution', 'deputy head of institution',
             'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-            'warden', 'transport manager', 'store manager', 'technician',
+            'warden', 'transport manager', 'store manager', 'technician', 'cateress',
         ],
     )
     if not has_access:
@@ -21728,7 +21838,9 @@ def dashboard_employee():
                 with sd_conn.cursor() as cursor:
                     ensure_store_departments_table(cursor)
                     sd_conn.commit()
-                    store_departments = _fetch_store_departments(cursor)
+                    store_departments = _fetch_store_departments(
+                        cursor, include_suspended=True, with_item_counts=True,
+                    )
             except Exception as sd_err:
                 print(f"store manager dashboard departments: {sd_err}")
             finally:
@@ -21759,7 +21871,8 @@ def dashboard_employee():
                          coordinator_dashboard_name=coordinator_dashboard_name,
                          accountant_dashboard=accountant_dashboard,
                          store_departments=store_departments,
-                         store_department_categories=list(STORE_DEPARTMENT_CATEGORIES))
+                         store_department_categories=list(STORE_DEPARTMENT_CATEGORIES),
+                         store_department_role_labels=dict(STORE_DEPARTMENT_ROLE_LABELS))
 
 
 EMPLOYEE_TPAD_ENDPOINTS = frozenset({
@@ -24830,21 +24943,63 @@ def teacher_class_books_return():
 @app.route('/dashboard/employee/finance-overview')
 @login_required
 def finance_overview():
-    """Accounts reports hub — pick a report (does not open a specific report by default)."""
+    """Finance overview — same analytics dashboard as the accountant home."""
     if not _finance_overview_has_access():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
+
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_leadership_finance = (
+        user_role in ('head of institution', 'deputy head of institution')
+        or viewing_as_role in ('head of institution', 'deputy head of institution')
+    )
+
+    accountant_dashboard = _accountant_dashboard_analytics_empty()
+    filter_options = {
+        'class_options': [],
+        'academic_years': [],
+        'terms': [],
+        'finance_accounts': [],
+        'default_academic_year_id': None,
+        'default_term_id': None,
+        'default_date_from': '',
+        'default_date_to': '',
+        'financial_year_label': '',
+        'financial_year_configured': False,
+        'default_financial_year_id': None,
+        'financial_years': [],
+    }
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                accountant_dashboard = _fetch_accountant_dashboard_analytics(cursor)
+                filter_options = _load_finance_overview_filter_options(cursor)
+        except Exception as e:
+            print(f"finance_overview: {e}")
+            import traceback
+            traceback.print_exc()
+            accountant_dashboard = _accountant_dashboard_analytics_empty()
+            try:
+                with connection.cursor() as cursor:
+                    accountant_dashboard['accounts'] = _fetch_accountant_accounts_breakdown(cursor)
+                    filter_options = _load_finance_overview_filter_options(cursor)
+            except Exception as accounts_err:
+                print(f"finance_overview accounts fallback: {accounts_err}")
+        finally:
+            connection.close()
+
     return render_template(
-        'dashboards/finance_reports_hub.html',
-        finance_report_nav=finance_reports_mod.FINANCE_REPORT_NAV,
-        expenditure_books_nav=finance_reports_mod.EXPENDITURE_BOOKS_NAV,
-        filter_options={'default_financial_year_id': None, 'default_date_from': '', 'default_date_to': ''},
+        'dashboards/finance_overview.html',
         role=user_role,
         is_secretary_finance=is_secretary,
-        report_generated_at=_account_report_generated_at(),
+        can_open_accounts_portal=is_accountant or is_leadership_finance,
+        accountant_dashboard=accountant_dashboard,
+        finance_report_nav=finance_reports_mod.FINANCE_REPORT_NAV,
+        filter_options=filter_options,
     )
 
 
@@ -24983,6 +25138,8 @@ def finance_overview_report(report_slug):
         report_slug=report_slug,
         report_meta=meta,
         finance_report_nav=finance_reports_mod.FINANCE_REPORT_NAV,
+        finance_core_report_nav=finance_reports_mod.FINANCE_CORE_REPORT_NAV,
+        finance_core_report_slugs=list(finance_reports_mod.FINANCE_CORE_REPORT_SLUGS),
         filter_options=filter_options,
         role=user_role,
         is_secretary_finance=is_secretary,
@@ -24998,6 +25155,8 @@ def finance_overview_report(report_slug):
         financial_statement=(request.args.get('statement') or '').strip().lower(),
         financial_statements_nav=finance_reports_mod.FINANCIAL_STATEMENTS_NAV,
         financial_statement_initial=financial_statement_initial,
+        revenue_book=(request.args.get('book') or 'general-ledger').strip().lower(),
+        revenue_book_nav=finance_reports_mod.REVENUE_BOOK_NAV,
     )
 
 
@@ -25035,6 +25194,9 @@ def finance_overview_report_data(report_slug):
         return jsonify({'success': False, 'message': 'Database unavailable'}), 500
     try:
         with connection.cursor() as cursor:
+            if report_slug == 'revenue-collection':
+                ensure_finance_accounts_table(cursor)
+                ensure_finance_account_transactions_table(cursor)
             filters = _apply_financial_year_report_filters(cursor, filters)
             payload = finance_reports_mod.fetch_report_payload(
                 cursor, report_slug, filters, _finance_report_data_helpers(),
@@ -33037,7 +33199,7 @@ def salary_audits():
 STAFF_MANAGEMENT_VIEW_ROLES = [
     'employee', 'super admin', 'head of institution', 'deputy head of institution',
     'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-    'warden', 'transport manager', 'store manager', 'technician',
+    'warden', 'transport manager', 'store manager', 'technician', 'cateress',
 ]
 
 STAFF_MANAGEMENT_LIST_SORTS = {
@@ -33455,7 +33617,7 @@ def update_employee(employee_id):
     has_access = check_permission_or_role('edit_staff', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'store manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to update employees.'}), 403
@@ -33746,7 +33908,7 @@ def get_employee(employee_id):
 STUDENT_MANAGEMENT_VIEW_ROLES = [
     'employee', 'super admin', 'head of institution', 'deputy head of institution',
     'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-    'warden', 'transport manager', 'store manager', 'technician',
+    'warden', 'transport manager', 'store manager', 'technician', 'cateress',
 ]
 
 STUDENT_MANAGEMENT_LIST_SORTS = {
@@ -33990,7 +34152,7 @@ def get_student(student_id):
     has_access = check_permission_or_role('view_students', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'store manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to access this.'}), 403
@@ -34056,7 +34218,7 @@ def update_student(student_id):
     has_access = check_permission_or_role('edit_students', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'store manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to update students.'}), 403
@@ -34237,7 +34399,7 @@ def _student_fingerprint_api_access():
         allowed_roles=[
             'employee', 'super admin', 'head of institution', 'deputy head of institution',
             'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-            'warden', 'transport manager', 'store manager', 'technician',
+            'warden', 'transport manager', 'store manager', 'technician', 'cateress',
         ],
     )
 
@@ -34409,7 +34571,7 @@ def delete_student(student_id):
     has_access = check_permission_or_role('delete_students', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'store manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to delete students.'}), 403
@@ -34450,7 +34612,7 @@ def approve_student(student_id):
     has_access = check_permission_or_role('edit_students', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'store manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     
     if not has_access:
         flash('You do not have permission to approve students.', 'error')
@@ -36097,7 +36259,7 @@ def _attendance_register_page(attendance_mode):
     has_access = check_permission_or_role('view_students',
         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-                      'warden', 'transport manager', 'store manager', 'technician'])
+                      'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -40309,7 +40471,7 @@ def students_progress():
     has_access = check_permission_or_role('view_students',
         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-                      'warden', 'transport manager', 'store manager', 'technician'])
+                      'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -40338,7 +40500,7 @@ def students_progress_levels_api():
     has_access = check_permission_or_role('view_students',
         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-                      'warden', 'transport manager', 'store manager', 'technician'])
+                      'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     if not has_access:
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
     connection = get_db_connection()
@@ -40361,7 +40523,7 @@ def students_progress_students_api():
     has_access = check_permission_or_role('view_students',
         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-                      'warden', 'transport manager', 'store manager', 'technician'])
+                      'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     if not has_access:
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
     level_name = (request.args.get('level') or '').strip()
@@ -40384,6 +40546,59 @@ def students_progress_students_api():
             pass
 
 
+@app.route('/dashboard/employee/store-overview')
+@login_required
+def store_overview():
+    """Leadership hub for school store operations."""
+    if not _operations_overview_has_access():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    return render_template(
+        'dashboards/operations_overview.html',
+        operations_hub='store',
+        hub_eyebrow='Operations',
+        hub_title='Store overview',
+        hub_subtitle='Stock, requisitions, suppliers, and inventory management.',
+        hub_icon='fa-boxes-stacked',
+    )
+
+
+@app.route('/dashboard/employee/kitchen-overview')
+@login_required
+def kitchen_overview():
+    """Leadership hub for kitchen and catering supplies."""
+    if not _operations_overview_has_access():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    if _is_institution_leadership_viewer():
+        session['leadership_dept_store_role'] = 'cateress'
+    return render_template(
+        'dashboards/operations_overview.html',
+        operations_hub='kitchen',
+        hub_eyebrow='Operations',
+        hub_title='Kitchen overview',
+        hub_subtitle='Kitchen requisitions, store items, and catering supply analytics.',
+        hub_icon='fa-utensils',
+    )
+
+
+@app.route('/dashboard/employee/library-overview')
+@login_required
+def library_overview():
+    """Leadership hub for library operations."""
+    if not _operations_overview_has_access():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    return render_template(
+        'dashboards/operations_overview.html',
+        operations_hub='library',
+        hub_eyebrow='Operations',
+        hub_title='Library overview',
+        hub_subtitle='Books inventory, class allocation, and issue or return records.',
+        hub_icon='fa-book',
+    )
+
+
 @app.route('/student-management/students-progress/<student_id>')
 @login_required
 def student_progress_detail(student_id):
@@ -40391,7 +40606,7 @@ def student_progress_detail(student_id):
     has_access = check_permission_or_role('view_students',
         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-                      'warden', 'transport manager', 'store manager', 'technician'])
+                      'warden', 'transport manager', 'store manager', 'technician', 'cateress'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -49364,6 +49579,28 @@ STORE_DEPARTMENT_STATIONS = (
     'CLUBS AND SPORTS DEPARTMENT',
     'HOSTEL DEPARTMENT',
 )
+
+# Core departments always registered on the store manager dashboard, each linked to one staff role.
+STORE_DEPARTMENT_ROLE_LINKS = {
+    'secretary': 'ADMIN DEPARTMENT',
+    'cateress': 'KITCHEN DEPARTMENT',
+    'warden': 'HOSTEL DEPARTMENT',
+    'librarian': 'LIBRARY DEPARTMENT',
+}
+STORE_DEPARTMENT_ROLE_LABELS = {
+    'secretary': 'Administration',
+    'cateress': 'Kitchen',
+    'warden': 'Boarding',
+    'librarian': 'Library',
+}
+STORE_DEPARTMENT_STAFF_ROLES = frozenset(STORE_DEPARTMENT_ROLE_LINKS.keys())
+
+_STORE_CORE_DEPARTMENTS = (
+    ('ADMINISTRATION', 'ADMIN DEPARTMENT', 'Administration office supplies and assets.', 'secretary'),
+    ('OPERATIONS', 'KITCHEN DEPARTMENT', 'Kitchen and catering supplies.', 'cateress'),
+    ('STUDENT SERVICES', 'HOSTEL DEPARTMENT', 'Boarding and hostel supplies.', 'warden'),
+    ('ACADEMIC', 'LIBRARY DEPARTMENT', 'Library materials and supplies.', 'librarian'),
+)
 STORE_LIBRARY_DEPARTMENT_STATION = 'LIBRARY DEPARTMENT'
 LIBRARY_PENDING_ACADEMIC_CATEGORY = 'PENDING SETUP'
 
@@ -49493,10 +49730,67 @@ def ensure_store_departments_table(cursor):
                     """,
                     (cat, name, desc),
                 )
+        migrate_store_departments_role_links(cursor)
+        _sync_core_store_departments(cursor)
     except Exception as e:
         print(f"ensure_store_departments_table: {e}")
     finally:
         _store_departments_schema_ensuring = False
+
+
+def migrate_store_departments_role_links(cursor):
+    """Add linked_role / is_core columns for role-linked core departments."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM store_departments LIKE 'linked_role'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_departments
+                ADD COLUMN linked_role VARCHAR(64) NULL AFTER description
+            """)
+            print("OK: Added store_departments.linked_role")
+        cursor.execute("SHOW COLUMNS FROM store_departments LIKE 'is_core'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_departments
+                ADD COLUMN is_core TINYINT(1) NOT NULL DEFAULT 0 AFTER linked_role
+            """)
+            print("OK: Added store_departments.is_core")
+    except Exception as e:
+        print(f"migrate_store_departments_role_links: {e}")
+
+
+def _sync_core_store_departments(cursor):
+    """Ensure the four role-linked departments are always registered and active."""
+    migrate_store_departments_role_links(cursor)
+    for cat, name, desc, linked in _STORE_CORE_DEPARTMENTS:
+        cursor.execute(
+            "SELECT id FROM store_departments WHERE department_name = %s LIMIT 1",
+            (name,),
+        )
+        row = cursor.fetchone()
+        if row:
+            dept_id = row.get('id') if isinstance(row, dict) else row[0]
+            cursor.execute(
+                """
+                UPDATE store_departments
+                SET department_category = %s,
+                    description = %s,
+                    linked_role = %s,
+                    is_core = 1,
+                    status = 'active'
+                WHERE id = %s
+                """,
+                (cat, desc, linked, int(dept_id)),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO store_departments
+                    (department_category, department_name, description, linked_role, is_core, status)
+                VALUES (%s, %s, %s, %s, 1, 'active')
+                """,
+                (cat, name, desc, linked),
+            )
 
 
 def _normalize_store_department_category(raw):
@@ -49518,7 +49812,8 @@ def _fetch_store_departments(cursor, include_suspended=False, with_item_counts=F
             ) AS item_count"""
     cursor.execute(
         f"""
-        SELECT id, department_category, department_name, description, status, created_at{item_count_sql}
+        SELECT id, department_category, department_name, description,
+               linked_role, is_core, status, created_at{item_count_sql}
         FROM store_departments
         {where}
         ORDER BY department_category ASC, department_name ASC, id ASC
@@ -49532,6 +49827,8 @@ def _fetch_store_departments(cursor, include_suspended=False, with_item_counts=F
                 'department_category': (row.get('department_category') or '').strip(),
                 'department_name': (row.get('department_name') or '').strip(),
                 'description': (row.get('description') or '').strip() or None,
+                'linked_role': (row.get('linked_role') or '').strip() or None,
+                'is_core': bool(int(row.get('is_core') or 0)),
                 'status': (row.get('status') or 'active').strip(),
                 'created_at': row.get('created_at'),
             }
@@ -49543,11 +49840,13 @@ def _fetch_store_departments(cursor, include_suspended=False, with_item_counts=F
                 'department_category': (row[1] if len(row) > 1 else '') or '',
                 'department_name': (row[2] if len(row) > 2 else '') or '',
                 'description': ((row[3] if len(row) > 3 else '') or '').strip() or None,
-                'status': (row[4] if len(row) > 4 else 'active') or 'active',
-                'created_at': row[5] if len(row) > 5 else None,
+                'linked_role': ((row[4] if len(row) > 4 else '') or '').strip() or None,
+                'is_core': bool(int(row[5] or 0)) if len(row) > 5 else False,
+                'status': (row[6] if len(row) > 6 else 'active') or 'active',
+                'created_at': row[7] if len(row) > 7 else None,
             }
             if with_item_counts:
-                data['item_count'] = int(row[6] or 0) if len(row) > 6 else 0
+                data['item_count'] = int(row[8] or 0) if len(row) > 8 else 0
         out.append(data)
     return out
 
@@ -49582,7 +49881,8 @@ def _fetch_store_department_row(cursor, dept_id, active_only=False):
     status_clause = " AND status = 'active'" if active_only else ''
     cursor.execute(
         f"""
-        SELECT id, department_category, department_name, description, status, created_at
+        SELECT id, department_category, department_name, description,
+               linked_role, is_core, status, created_at
         FROM store_departments
         WHERE id = %s{status_clause}
         LIMIT 1
@@ -49598,6 +49898,8 @@ def _fetch_store_department_row(cursor, dept_id, active_only=False):
             'department_category': (row.get('department_category') or '').strip(),
             'department_name': (row.get('department_name') or '').strip(),
             'description': (row.get('description') or '').strip() or None,
+            'linked_role': (row.get('linked_role') or '').strip() or None,
+            'is_core': bool(int(row.get('is_core') or 0)),
             'status': (row.get('status') or 'active').strip(),
             'created_at': row.get('created_at'),
         }
@@ -49606,8 +49908,398 @@ def _fetch_store_department_row(cursor, dept_id, active_only=False):
         'department_category': (row[1] if len(row) > 1 else '') or '',
         'department_name': (row[2] if len(row) > 2 else '') or '',
         'description': ((row[3] if len(row) > 3 else '') or '').strip() or None,
-        'status': (row[4] if len(row) > 4 else 'active') or 'active',
-        'created_at': row[5] if len(row) > 5 else None,
+        'linked_role': ((row[4] if len(row) > 4 else '') or '').strip() or None,
+        'is_core': bool(int(row[5] or 0)) if len(row) > 5 else False,
+        'status': (row[6] if len(row) > 6 else 'active') or 'active',
+        'created_at': row[7] if len(row) > 7 else None,
+    }
+
+
+def _fetch_store_department_by_linked_role(cursor, role):
+    """Return the store department row linked to a staff role, if any."""
+    role = (role or '').strip().lower()
+    if not role:
+        return None
+    ensure_store_departments_table(cursor)
+    cursor.execute(
+        """
+        SELECT id, department_category, department_name, description,
+               linked_role, is_core, status, created_at
+        FROM store_departments
+        WHERE LOWER(TRIM(COALESCE(linked_role, ''))) = %s
+        LIMIT 1
+        """,
+        (role,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return {
+            'id': row.get('id'),
+            'department_category': (row.get('department_category') or '').strip(),
+            'department_name': (row.get('department_name') or '').strip(),
+            'description': (row.get('description') or '').strip() or None,
+            'linked_role': (row.get('linked_role') or '').strip() or None,
+            'is_core': bool(int(row.get('is_core') or 0)),
+            'status': (row.get('status') or 'active').strip(),
+            'created_at': row.get('created_at'),
+        }
+    return {
+        'id': row[0] if len(row) > 0 else None,
+        'department_category': (row[1] if len(row) > 1 else '') or '',
+        'department_name': (row[2] if len(row) > 2 else '') or '',
+        'description': ((row[3] if len(row) > 3 else '') or '').strip() or None,
+        'linked_role': ((row[4] if len(row) > 4 else '') or '').strip() or None,
+        'is_core': bool(int(row[5] or 0)) if len(row) > 5 else False,
+        'status': (row[6] if len(row) > 6 else 'active') or 'active',
+        'created_at': row[7] if len(row) > 7 else None,
+    }
+
+
+def _resolve_department_store_station(cursor, role=None):
+    """Department station name for a role-linked store (database first, then constants)."""
+    role = (role or _department_store_effective_role() or '').strip().lower()
+    if not role:
+        return ''
+    dept = _fetch_store_department_by_linked_role(cursor, role)
+    if dept and (dept.get('department_name') or '').strip():
+        return (dept['department_name'] or '').strip().upper()
+    return (STORE_DEPARTMENT_ROLE_LINKS.get(role) or '').strip().upper()
+
+
+def _department_store_movements_scope_sql(dept_filter, movement_alias='m'):
+    """SQL WHERE fragment for movements tied to a department."""
+    dept = (dept_filter or '').strip().upper()
+    if not dept:
+        return '1=1', []
+    alias = movement_alias
+    clause = f"""(
+        {alias}.store_item_id IN (
+            SELECT id FROM store_inventory_items
+            WHERE item_status != 'deleted'
+              AND UPPER(TRIM(COALESCE(department_station, ''))) = %s
+        )
+        OR ({alias}.movement_type = 'out'
+            AND UPPER(TRIM(COALESCE({alias}.stock_out_department, ''))) = %s)
+        OR ({alias}.movement_type = 'out'
+            AND UPPER(TRIM(COALESCE({alias}.department_source, ''))) = %s)
+    )"""
+    return clause, [dept, dept, dept]
+
+
+def _department_store_catalog_items_scope_sql(dept_filter, item_alias='si'):
+    """SQL WHERE fragment for catalog items belonging to a department store."""
+    dept = (dept_filter or '').strip().upper()
+    if not dept:
+        return '1=1', []
+    alias = item_alias
+    clause = f"""(
+        UPPER(TRIM(COALESCE({alias}.department_station, ''))) = %s
+        OR {alias}.id IN (
+            SELECT alloc.store_item_id
+            FROM (
+                SELECT store_item_id,
+                    GREATEST(0,
+                        COALESCE(SUM(CASE
+                            WHEN UPPER(TRIM(COALESCE(department_source, ''))) = ''
+                                 AND UPPER(TRIM(COALESCE(stock_out_department, ''))) = %s
+                            THEN quantity ELSE 0 END), 0)
+                        - COALESCE(SUM(CASE
+                            WHEN UPPER(TRIM(COALESCE(department_source, ''))) = %s
+                            THEN quantity ELSE 0 END), 0)
+                    ) AS allocated_qty
+                FROM store_stock_movements
+                WHERE movement_type = 'out'
+                GROUP BY store_item_id
+            ) alloc
+            WHERE alloc.allocated_qty > 0
+        )
+    )"""
+    return clause, [dept, dept, dept]
+
+
+def _department_store_item_in_catalog(cursor, store_item_id, department_station):
+    """True when an active catalog item belongs to the department store."""
+    dept = (department_station or '').strip().upper()
+    if not dept or not store_item_id:
+        return False
+    ensure_store_inventory_items_table(cursor)
+    ensure_store_stock_movements_table(cursor)
+    scope_sql, scope_params = _department_store_catalog_items_scope_sql(dept, 'si')
+    try:
+        cursor.execute(
+            f"""
+            SELECT 1 FROM store_inventory_items si
+            WHERE si.id = %s AND si.item_status = 'active' AND {scope_sql}
+            LIMIT 1
+            """,
+            (int(store_item_id),) + tuple(scope_params),
+        )
+        return bool(cursor.fetchone())
+    except Exception as e:
+        print(f"_department_store_item_in_catalog: {e}")
+        return False
+
+
+def _fetch_department_items_for_requisition(cursor, department_station):
+    """Active department catalog items formatted for the requisition picker."""
+    dept = (department_station or '').strip().upper()
+    if not dept:
+        return []
+    items = []
+    for row in _fetch_department_allocated_inventory(cursor, dept):
+        if (row.get('item_status') or '').strip() != 'active':
+            continue
+        avg_raw = row.get('avg_buying_price')
+        avg_buying_price = None
+        if avg_raw is not None:
+            try:
+                avg_buying_price = float(avg_raw)
+                if avg_buying_price < 0:
+                    avg_buying_price = None
+            except (TypeError, ValueError):
+                avg_buying_price = None
+        items.append({
+            'id': int(row.get('id') or 0),
+            'reference_code': (row.get('reference_code') or '').strip(),
+            'item_category': (row.get('item_category') or '').strip(),
+            'item_name': (row.get('item_name') or '').strip(),
+            'measure': (row.get('measure') or '').strip(),
+            'quantity_on_hand': int(row.get('quantity_on_hand') or 0),
+            'avg_buying_price': avg_buying_price,
+        })
+    return items
+
+
+def _fetch_department_allocated_inventory(cursor, department_station=''):
+    """
+    Items for a department: registered under its station, or issued via stock-out.
+    """
+    department_station = (department_station or '').strip().upper()
+    if not department_station:
+        return []
+    ensure_store_inventory_items_table(cursor)
+    ensure_store_stock_movements_table(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT si.id, si.reference_code, si.item_category, si.item_name, si.description, si.measure,
+                   si.image_path, si.item_status,
+                   CASE
+                     WHEN UPPER(TRIM(COALESCE(si.department_station, ''))) = %s
+                     THEN COALESCE(si.quantity_on_hand, 0)
+                     ELSE COALESCE(alloc.allocated_qty, 0)
+                   END AS quantity_on_hand,
+                   COALESCE(si.low_stock_threshold, %s) AS low_stock_threshold,
+                   si.department_station,
+                   si.library_book_id, si.created_at,
+                   avg_bp.avg_buying_price
+            FROM store_inventory_items si
+            LEFT JOIN (
+                SELECT store_item_id,
+                    GREATEST(0,
+                        COALESCE(SUM(CASE
+                            WHEN UPPER(TRIM(COALESCE(department_source, ''))) = ''
+                                 AND UPPER(TRIM(COALESCE(stock_out_department, ''))) = %s
+                            THEN quantity ELSE 0 END), 0)
+                        - COALESCE(SUM(CASE
+                            WHEN UPPER(TRIM(COALESCE(department_source, ''))) = %s
+                            THEN quantity ELSE 0 END), 0)
+                    ) AS allocated_qty
+                FROM store_stock_movements
+                WHERE movement_type = 'out'
+                GROUP BY store_item_id
+            ) alloc ON alloc.store_item_id = si.id
+            LEFT JOIN (
+                SELECT store_item_id,
+                       ROUND(SUM(buying_price * quantity) / NULLIF(SUM(quantity), 0), 2) AS avg_buying_price
+                FROM store_stock_movements
+                WHERE movement_type = 'in'
+                  AND buying_price IS NOT NULL
+                  AND quantity > 0
+                GROUP BY store_item_id
+            ) avg_bp ON avg_bp.store_item_id = si.id
+            WHERE si.item_status != 'deleted'
+              AND (
+                    UPPER(TRIM(COALESCE(si.department_station, ''))) = %s
+                    OR COALESCE(alloc.allocated_qty, 0) > 0
+              )
+            ORDER BY si.item_category ASC, si.item_name ASC, si.id ASC
+            """,
+            (
+                department_station,
+                STORE_DEFAULT_LOW_STOCK_THRESHOLD,
+                department_station,
+                department_station,
+                department_station,
+            ),
+        )
+        return _store_inventory_rows_from_fetch(cursor.fetchall() or [])
+    except Exception as e:
+        print(f"_fetch_department_allocated_inventory: {e}")
+        return []
+
+
+def _department_store_item_is_registered(item_row, department_station):
+    """True when the catalog item is registered under the department station."""
+    dept = (department_station or '').strip().upper()
+    station = ''
+    if isinstance(item_row, dict):
+        station = (item_row.get('department_station') or '').strip().upper()
+    return bool(dept) and station == dept
+
+
+def _department_store_available_qty(cursor, store_item_id, department_station):
+    """On-hand quantity available for department stock-out."""
+    department_station = (department_station or '').strip().upper()
+    if not department_station or not store_item_id:
+        return 0
+    ensure_store_inventory_items_table(cursor)
+    ensure_store_stock_movements_table(cursor)
+    cursor.execute(
+        """
+        SELECT department_station, COALESCE(quantity_on_hand, 0) AS quantity_on_hand
+        FROM store_inventory_items
+        WHERE id = %s AND item_status != 'deleted'
+        LIMIT 1
+        """,
+        (int(store_item_id),),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return 0
+    if isinstance(row, dict):
+        station = (row.get('department_station') or '').strip().upper()
+        on_hand = int(row.get('quantity_on_hand') or 0)
+    else:
+        station = (row[0] or '').strip().upper()
+        on_hand = int(row[1] or 0)
+    if station == department_station:
+        return max(0, on_hand)
+    cursor.execute(
+        """
+        SELECT GREATEST(0,
+            COALESCE(SUM(CASE
+                WHEN UPPER(TRIM(COALESCE(department_source, ''))) = ''
+                     AND UPPER(TRIM(COALESCE(stock_out_department, ''))) = %s
+                THEN quantity ELSE 0 END), 0)
+            - COALESCE(SUM(CASE
+                WHEN UPPER(TRIM(COALESCE(department_source, ''))) = %s
+                THEN quantity ELSE 0 END), 0)
+        ) AS net_qty
+        FROM store_stock_movements
+        WHERE movement_type = 'out' AND store_item_id = %s
+        """,
+        (department_station, department_station, int(store_item_id)),
+    )
+    net_row = cursor.fetchone()
+    if not net_row:
+        return 0
+    return int((net_row.get('net_qty') if isinstance(net_row, dict) else net_row[0]) or 0)
+
+
+def _record_department_store_stock_out(
+    cursor,
+    store_item_id,
+    department_station,
+    quantity,
+    purpose,
+    stock_out_date,
+    receiver_name,
+    notes=None,
+    performed_by=None,
+    performed_by_name=None,
+):
+    """Record stock-out from a department's allocated quantity."""
+    department_station = (department_station or '').strip().upper()
+    purpose = (purpose or '').strip().upper()
+    receiver_name = (receiver_name or '').strip().upper()[:255]
+    if purpose not in STORE_STOCK_OUT_PURPOSES:
+        return {'ok': False, 'message': 'Select a valid stock out purpose.'}
+    if not department_station:
+        return {'ok': False, 'message': 'Department not found.'}
+    if not receiver_name:
+        return {'ok': False, 'message': 'Enter the receiver name.'}
+    if not stock_out_date:
+        return {'ok': False, 'message': 'Select the stock out date.'}
+    try:
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        quantity = 0
+    if quantity < 1:
+        return {'ok': False, 'message': 'Enter a whole number quantity of at least 1.'}
+
+    ensure_store_inventory_items_table(cursor)
+    cursor.execute(
+        """
+        SELECT id, item_name, item_status, department_station, COALESCE(quantity_on_hand, 0) AS quantity_on_hand
+        FROM store_inventory_items WHERE id = %s LIMIT 1
+        """,
+        (int(store_item_id),),
+    )
+    item_row = cursor.fetchone()
+    if not item_row:
+        return {'ok': False, 'message': 'Store item not found.'}
+    if isinstance(item_row, dict):
+        item_status = (item_row.get('item_status') or '').strip()
+        item_station = (item_row.get('department_station') or '').strip().upper()
+        central_qty = int(item_row.get('quantity_on_hand') or 0)
+    else:
+        item_status = (item_row[2] or '').strip() if len(item_row) > 2 else ''
+        item_station = (item_row[3] or '').strip().upper() if len(item_row) > 3 else ''
+        central_qty = int(item_row[4] or 0) if len(item_row) > 4 else 0
+    if item_status != 'active':
+        return {'ok': False, 'message': 'This item is suspended.'}
+
+    available = _department_store_available_qty(cursor, store_item_id, department_station)
+    if available < 1:
+        return {'ok': False, 'message': 'No allocated quantity available for this item.'}
+    if quantity > available:
+        return {
+            'ok': False,
+            'message': f'Cannot stock out {quantity} — only {available} allocated.',
+        }
+
+    ref_no = _generate_store_stock_reference_number(cursor, 'out')
+    qty_before = available
+    qty_after = max(0, available - quantity)
+    notes_val = (notes or '').strip().upper()[:500] or None
+    is_registered = item_station == department_station
+
+    cursor.execute(
+        """
+        INSERT INTO store_stock_movements
+            (reference_number, store_item_id, movement_type, quantity,
+             buying_price, total_amount, supplier_id, payment_status,
+             notes, stock_out_purpose, stock_out_date,
+             stock_out_department, stock_out_receiver_name, department_source,
+             quantity_before, quantity_after,
+             performed_by, performed_by_name)
+        VALUES (%s, %s, 'out', %s, NULL, NULL, NULL, 'na',
+                %s, %s, %s, NULL, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            ref_no, int(store_item_id), quantity, notes_val, purpose,
+            stock_out_date, receiver_name, department_station,
+            qty_before, qty_after,
+            performed_by, performed_by_name or None,
+        ),
+    )
+    if is_registered:
+        cursor.execute(
+            """
+            UPDATE store_inventory_items
+            SET quantity_on_hand = GREATEST(0, COALESCE(quantity_on_hand, 0) - %s)
+            WHERE id = %s
+            """,
+            (quantity, int(store_item_id)),
+        )
+    return {
+        'ok': True,
+        'message': f'Stock out {ref_no} recorded successfully.',
+        'reference_number': ref_no,
+        'quantity_after': qty_after,
     }
 
 
@@ -49701,6 +50393,22 @@ def ensure_store_stock_movements_table(cursor):
                 ADD COLUMN paid_to_company_phone VARCHAR(20) NULL AFTER paid_to_company_name
             """)
             print("OK: Added store_stock_movements payment tracking columns")
+        cursor.execute("SHOW COLUMNS FROM store_stock_movements LIKE 'stock_out_date'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_stock_movements
+                ADD COLUMN stock_out_date DATE NULL AFTER stock_out_purpose,
+                ADD COLUMN stock_out_department VARCHAR(120) NULL AFTER stock_out_date,
+                ADD COLUMN stock_out_receiver_name VARCHAR(255) NULL AFTER stock_out_department
+            """)
+            print("OK: Added store_stock_movements stock-out detail columns")
+        cursor.execute("SHOW COLUMNS FROM store_stock_movements LIKE 'department_source'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_stock_movements
+                ADD COLUMN department_source VARCHAR(120) NULL AFTER stock_out_receiver_name
+            """)
+            print("OK: Added store_stock_movements.department_source")
         try:
             cursor.execute("""
                 ALTER TABLE store_stock_movements
@@ -49860,11 +50568,17 @@ def ensure_finance_account_expense_votes_table(cursor):
             CREATE TABLE IF NOT EXISTS finance_account_expense_votes (
                 finance_account_id INT NOT NULL,
                 vote_name VARCHAR(255) NOT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
                 PRIMARY KEY (finance_account_id, vote_name),
                 INDEX idx_faev_vote (vote_name),
                 FOREIGN KEY (finance_account_id) REFERENCES finance_accounts(id) ON DELETE CASCADE
             )
         """)
+        if not _table_has_column(cursor, 'finance_account_expense_votes', 'sort_order'):
+            cursor.execute(
+                "ALTER TABLE finance_account_expense_votes "
+                "ADD COLUMN sort_order INT NOT NULL DEFAULT 0 AFTER vote_name"
+            )
     except Exception as e:
         print(f"ensure_finance_account_expense_votes_table: {e}")
     finally:
@@ -49891,17 +50605,17 @@ def _save_finance_account_expense_votes(cursor, account_id, vote_names):
         "DELETE FROM finance_account_expense_votes WHERE finance_account_id = %s",
         (account_id,),
     )
-    for name in vote_names or []:
+    for idx, name in enumerate(vote_names or []):
         vote = str(name or '').strip().upper()
         if not vote:
             continue
         cursor.execute(
             """
             INSERT IGNORE INTO finance_account_expense_votes
-                (finance_account_id, vote_name)
-            VALUES (%s, %s)
+                (finance_account_id, vote_name, sort_order)
+            VALUES (%s, %s, %s)
             """,
-            (account_id, vote),
+            (account_id, vote, int(idx)),
         )
 
 
@@ -49919,7 +50633,7 @@ def _fetch_finance_account_expense_votes_map(cursor, account_ids):
             SELECT finance_account_id, vote_name
             FROM finance_account_expense_votes
             WHERE finance_account_id IN ({placeholders})
-            ORDER BY vote_name ASC
+            ORDER BY sort_order ASC, vote_name ASC
             """,
             tuple(ids),
         )
@@ -50010,6 +50724,73 @@ def _fetch_petty_cash_expense_particulars_map(cursor, account_id):
     except Exception as e:
         print(f"_fetch_petty_cash_expense_particulars_map: {e}")
     return out
+
+
+def _expense_vote_description_map(cursor):
+    """Map expense vote name (uppercase) → description from fee structure votes."""
+    out = {}
+    try:
+        for v in _fetch_store_expense_category_picker_votes(cursor):
+            name = (v.get('name') or '').strip().upper()
+            if not name:
+                continue
+            desc = (v.get('description') or '').strip()
+            if desc:
+                out[name] = desc
+    except Exception as e:
+        print(f"_expense_vote_description_map: {e}")
+    return out
+
+
+def _fetch_petty_cash_book_expense_rows(cursor, account_id, filters):
+    """Petty cash expenses in the selected period for the cash book report."""
+    ensure_petty_cash_expenses_table(cursor)
+    filters = filters or {}
+    where = ['pce.finance_account_id = %s']
+    params = [int(account_id)]
+    date_parts, date_params = _finance_report_date_clause('pce.created_at', filters)
+    if date_parts:
+        where.extend(date_parts)
+        params.extend(date_params)
+    rows = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT pce.id, pce.vote_name, pce.notes, pce.paid_to_name, pce.paid_to_phone,
+                   pce.reference_number, pce.payment_reference, pce.amount
+            FROM petty_cash_expenses pce
+            WHERE {' AND '.join(where)}
+            ORDER BY pce.created_at ASC, pce.id ASC
+            LIMIT 3000
+            """,
+            tuple(params),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'id': row.get('id'),
+                    'vote_name': row.get('vote_name'),
+                    'notes': row.get('notes'),
+                    'paid_to_name': row.get('paid_to_name'),
+                    'paid_to_phone': row.get('paid_to_phone'),
+                    'reference_number': row.get('reference_number'),
+                    'payment_reference': row.get('payment_reference'),
+                    'amount': row.get('amount'),
+                })
+            else:
+                rows.append({
+                    'id': row[0] if len(row) > 0 else None,
+                    'vote_name': row[1] if len(row) > 1 else None,
+                    'notes': row[2] if len(row) > 2 else None,
+                    'paid_to_name': row[3] if len(row) > 3 else None,
+                    'paid_to_phone': row[4] if len(row) > 4 else None,
+                    'reference_number': row[5] if len(row) > 5 else None,
+                    'payment_reference': row[6] if len(row) > 6 else None,
+                    'amount': row[7] if len(row) > 7 else None,
+                })
+    except Exception as e:
+        print(f"_fetch_petty_cash_book_expense_rows: {e}")
+    return rows
 
 
 def _petty_cash_expense_vote_detail_rows(cursor, filters, vote_name=None):
@@ -53171,6 +53952,169 @@ def _financial_year_report_context(cursor, filters=None):
         'closing_balance_display': fy.get('closing_balance_display', '0.00'),
         'is_locked': bool(fy.get('is_locked')),
     }
+
+
+def _account_ledger_vote_map(cursor, account_id, ledger_rows):
+    """Map (related_type, related_id) → expense vote label for account ledger lines."""
+    from collections import defaultdict
+
+    out = {}
+    by_type = defaultdict(set)
+    for row in ledger_rows or []:
+        related_type = (row.get('related_type') or '').strip().lower()
+        related_id = row.get('related_id')
+        if not related_type or related_id is None:
+            continue
+        try:
+            by_type[related_type].add(int(related_id))
+        except (TypeError, ValueError):
+            continue
+
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return out
+
+    petty_ids = by_type.get('petty_cash_expense') or set()
+    if petty_ids:
+        ensure_petty_cash_expenses_table(cursor)
+        placeholders = ','.join(['%s'] * len(petty_ids))
+        try:
+            cursor.execute(
+                f"""
+                SELECT id, UPPER(TRIM(vote_name)) AS vote_name
+                FROM petty_cash_expenses
+                WHERE id IN ({placeholders})
+                """,
+                tuple(petty_ids),
+            )
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    eid = row.get('id')
+                    vote = (row.get('vote_name') or '').strip()
+                else:
+                    eid = row[0] if row else None
+                    vote = (row[1] or '').strip() if len(row) > 1 else ''
+                if eid is not None:
+                    out[('petty_cash_expense', int(eid))] = vote or '—'
+        except Exception as e:
+            print(f'_account_ledger_vote_map petty_cash: {e}')
+
+    payment_ids = by_type.get('student_payment') or set()
+    if payment_ids:
+        placeholders = ','.join(['%s'] * len(payment_ids))
+        try:
+            cursor.execute(
+                f"""
+                SELECT sp.id AS payment_id, fi.item_name, fi.amount, fi.finance_account_id,
+                       fs.finance_account_id AS fs_finance_account_id, fs.academic_level_id
+                FROM student_payments sp
+                LEFT JOIN fee_structures fs ON fs.id = sp.fee_structure_id
+                LEFT JOIN fee_items fi ON fi.fee_structure_id = sp.fee_structure_id
+                WHERE sp.id IN ({placeholders})
+                ORDER BY sp.id ASC, fi.item_order ASC, fi.id ASC
+                """,
+                tuple(payment_ids),
+            )
+            votes_by_payment = defaultdict(set)
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    pid = row.get('payment_id')
+                    item_name = row.get('item_name')
+                    item = {
+                        'item_name': item_name,
+                        'amount': float(row.get('amount') or 0),
+                        'finance_account_id': row.get('finance_account_id'),
+                    }
+                    fs_fa = row.get('fs_finance_account_id')
+                    level_id = row.get('academic_level_id')
+                else:
+                    pid = row[0] if row else None
+                    item_name = row[1] if len(row) > 1 else None
+                    item = {
+                        'item_name': item_name,
+                        'amount': float(row[2] or 0) if len(row) > 2 else 0.0,
+                        'finance_account_id': row[3] if len(row) > 3 else None,
+                    }
+                    fs_fa = row[4] if len(row) > 4 else None
+                    level_id = row[5] if len(row) > 5 else None
+                if pid is None:
+                    continue
+                if not item_name:
+                    continue
+                target = _resolve_fee_item_finance_account_id(
+                    cursor, item, fs_fa, level_id,
+                )
+                if target is None or int(target) != account_id:
+                    continue
+                vote = (item_name or '').strip().upper()
+                if vote:
+                    votes_by_payment[int(pid)].add(vote)
+            for pid in payment_ids:
+                votes = sorted(votes_by_payment.get(int(pid)) or [])
+                out[('student_payment', int(pid))] = ', '.join(votes) if votes else 'Fees'
+        except Exception as e:
+            print(f'_account_ledger_vote_map student_payment: {e}')
+
+    line_ids = by_type.get('stock_in_payment_line') or set()
+    if line_ids:
+        ensure_store_stock_in_payment_lines_table(cursor)
+        ensure_store_stock_movements_table(cursor)
+        ensure_store_inventory_items_table(cursor)
+        placeholders = ','.join(['%s'] * len(line_ids))
+        try:
+            cursor.execute(
+                f"""
+                SELECT pl.id, UPPER(TRIM(COALESCE(si.item_category, ''))) AS vote_name
+                FROM store_stock_in_payment_lines pl
+                INNER JOIN store_stock_movements m ON m.id = pl.movement_id
+                INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+                WHERE pl.id IN ({placeholders})
+                """,
+                tuple(line_ids),
+            )
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    lid = row.get('id')
+                    vote = (row.get('vote_name') or '').strip()
+                else:
+                    lid = row[0] if row else None
+                    vote = (row[1] or '').strip() if len(row) > 1 else ''
+                if lid is not None:
+                    out[('stock_in_payment_line', int(lid))] = vote or '—'
+        except Exception as e:
+            print(f'_account_ledger_vote_map stock_in_payment_line: {e}')
+
+    revenue_ids = by_type.get('accountant_revenue') or set()
+    if revenue_ids:
+        ensure_accountant_revenue_table(cursor)
+        placeholders = ','.join(['%s'] * len(revenue_ids))
+        try:
+            cursor.execute(
+                f"""
+                SELECT id, UPPER(TRIM(source_type)) AS source_type
+                FROM accountant_revenue
+                WHERE id IN ({placeholders})
+                """,
+                tuple(revenue_ids),
+            )
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    rid = row.get('id')
+                    source = (row.get('source_type') or '').strip()
+                else:
+                    rid = row[0] if row else None
+                    source = (row[1] or '').strip() if len(row) > 1 else ''
+                if rid is not None:
+                    label = source.title() if source else 'Income'
+                    out[('accountant_revenue', int(rid))] = label
+        except Exception as e:
+            print(f'_account_ledger_vote_map accountant_revenue: {e}')
+
+    for pid in by_type.get('student_pocket_money') or set():
+        out[('student_pocket_money', int(pid))] = 'Pocket money'
+
+    return out
 
 
 def _account_balance_before_date(cursor, account_id, date_before):
@@ -56423,6 +57367,168 @@ def _load_account_for_report(cursor, account_id):
     return account
 
 
+def _fetch_account_fee_votes_meta_for_cash_book(cursor, account_id):
+    """Fee votes for an account — name, description, priority order from fee items."""
+    ensure_fee_items_finance_account_column(cursor)
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return []
+    votes = []
+    seen = set()
+    try:
+        cursor.execute(
+            """
+            SELECT fs.id AS fee_structure_id, fs.finance_account_id AS fs_finance_account_id,
+                   fs.academic_level_id
+            FROM fee_structures fs
+            LEFT JOIN finance_account_academic_levels fal
+                ON fal.academic_level_id = fs.academic_level_id
+            WHERE fal.finance_account_id = %s OR fs.finance_account_id = %s
+            ORDER BY fs.id ASC
+            """,
+            (account_id, account_id),
+        )
+        structures = cursor.fetchall() or []
+        for fs_row in structures:
+            if isinstance(fs_row, dict):
+                fs_id = fs_row.get('fee_structure_id')
+                fs_fa = fs_row.get('fs_finance_account_id')
+                level_id = fs_row.get('academic_level_id')
+            else:
+                fs_id = fs_row[0] if len(fs_row) > 0 else None
+                fs_fa = fs_row[1] if len(fs_row) > 1 else None
+                level_id = fs_row[2] if len(fs_row) > 2 else None
+            if not fs_id:
+                continue
+            items = _fetch_fee_structure_items_with_accounts_cached(
+                cursor, fs_id, fs_fa, level_id,
+            )
+            for item in items:
+                target = _resolve_fee_item_finance_account_id(
+                    cursor, item, fs_fa, level_id,
+                )
+                if target is None or int(target) != account_id:
+                    continue
+                raw_name = (item.get('item_name') or '').strip()
+                key = raw_name.upper()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                votes.append({
+                    'key': key,
+                    'name': raw_name or key,
+                    'description': (item.get('item_description') or '').strip(),
+                })
+    except Exception as e:
+        print(f'_fetch_account_fee_votes_meta_for_cash_book: {e}')
+    return votes
+
+
+def _fetch_account_fee_vote_names_for_cash_book(cursor, account_id):
+    """Backward-compatible vote key list for cash book."""
+    return [v.get('key') for v in _fetch_account_fee_votes_meta_for_cash_book(cursor, account_id)]
+
+
+def _cash_book_student_payment_vote_context(cursor, payment_id, account_id, registered_votes):
+    """Vote order and expected amounts for a student payment credited to account_id."""
+    try:
+        payment_id = int(payment_id)
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return None
+    registered = [
+        (v or '').strip().upper()
+        for v in (registered_votes or [])
+        if (v or '').strip() and (v or '').strip().upper() != '—'
+    ]
+    reg_set = set(registered)
+    try:
+        cursor.execute(
+            """
+            SELECT sp.student_id, sp.fee_structure_id,
+                   fs.finance_account_id AS fs_finance_account_id,
+                   fs.academic_level_id
+            FROM student_payments sp
+            LEFT JOIN fee_structures fs ON fs.id = sp.fee_structure_id
+            WHERE sp.id = %s
+            LIMIT 1
+            """,
+            (payment_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        if isinstance(row, dict):
+            student_id = row.get('student_id')
+            fee_structure_id = row.get('fee_structure_id')
+            fs_fa = row.get('fs_finance_account_id')
+            level_id = row.get('academic_level_id')
+        else:
+            student_id = row[0] if len(row) > 0 else None
+            fee_structure_id = row[1] if len(row) > 1 else None
+            fs_fa = row[2] if len(row) > 2 else None
+            level_id = row[3] if len(row) > 3 else None
+        if not fee_structure_id:
+            return None
+
+        items = _fetch_fee_structure_items_with_accounts_cached(
+            cursor, fee_structure_id, fs_fa, level_id,
+        )
+        account_items = []
+        for item in items:
+            target = item.get('target_account_id')
+            if target is None or int(target) != account_id:
+                continue
+            vote = (item.get('item_name') or '').strip().upper()
+            if not vote:
+                continue
+            account_items.append({
+                'vote_name': vote,
+                'expected': float(item.get('amount') or 0),
+            })
+
+        vote_rows = _fetch_student_fee_vote_rows(cursor, student_id, fee_structure_id)
+        expected = {}
+        for item in account_items:
+            expected[item['vote_name']] = item['expected']
+        if vote_rows:
+            for vr in vote_rows:
+                vote = (vr.get('item_name') or '').strip().upper()
+                if not vote:
+                    continue
+                if vote in expected or not reg_set or vote in reg_set:
+                    expected[vote] = float(vr.get('amount') or expected.get(vote, 0))
+
+        item_order = [it['vote_name'] for it in account_items]
+        column_votes = [
+            (v or '').strip().upper()
+            for v in (registered_votes or [])
+            if (v or '').strip() and (v or '').strip().upper() != '—'
+        ]
+        if column_votes:
+            vote_order = [v for v in column_votes if v in expected or v in item_order]
+            for vote in item_order:
+                if vote not in vote_order:
+                    vote_order.append(vote)
+            if not vote_order:
+                vote_order = column_votes
+        else:
+            vote_order = item_order or list(expected.keys())
+
+        if not vote_order:
+            return None
+        return {
+            'student_id': student_id,
+            'fee_structure_id': int(fee_structure_id),
+            'vote_order': vote_order,
+            'expected': expected,
+        }
+    except Exception as e:
+        print(f'_cash_book_student_payment_vote_context: {e}')
+        return None
+
+
 def _finance_account_report_helpers():
     return {
         'ensure_ledger_table': ensure_finance_account_transactions_table,
@@ -56437,6 +57543,14 @@ def _finance_account_report_helpers():
         'fetch_financial_year_context': _financial_year_report_context,
         'account_balance_before': _account_balance_before_date,
         'account_balance_through': _account_balance_through_date,
+        'ledger_vote_map': _account_ledger_vote_map,
+        'load_account_expense_votes': lambda cursor, aid: (
+            _fetch_finance_account_expense_votes_map(cursor, [aid]).get(int(aid), [])
+        ),
+        'load_account_fee_vote_names': _fetch_account_fee_vote_names_for_cash_book,
+        'load_account_fee_votes_meta': _fetch_account_fee_votes_meta_for_cash_book,
+        'load_expense_vote_descriptions': _expense_vote_description_map,
+        'load_student_payment_vote_context': _cash_book_student_payment_vote_context,
     }
 
 
@@ -56743,7 +57857,8 @@ def _fetch_petty_cash_book_context(raw_filters=None):
                 cursor, account_id, filters, {
                     **helpers,
                     'preloaded_account': account,
-                    'load_petty_cash_expense_particulars': _fetch_petty_cash_expense_particulars_map,
+                    'load_petty_cash_expense_rows': _fetch_petty_cash_book_expense_rows,
+                    'load_expense_vote_descriptions': _expense_vote_description_map,
                 },
             )
             connection.commit()
@@ -59460,6 +60575,182 @@ def _grn_document_fields_from_movement(movement):
     return delivery_note or None, grn_delivery or None, grn_notes or None
 
 
+def _store_print_date_display(val):
+    if val and hasattr(val, 'strftime'):
+        return val.strftime('%d %b %Y')
+    text = str(val or '').strip()
+    return text or '—'
+
+
+def _store_print_kes_display(val):
+    if val is None or val == '':
+        return '—'
+    try:
+        return f'KES {float(val):.2f}'
+    except (TypeError, ValueError):
+        return '—'
+
+
+def _store_receive_cert_scope_label(print_scope):
+    scope = (print_scope or '').strip().lower()
+    if scope == 'pending':
+        return 'Items pending receipt'
+    if scope == 'line':
+        return 'Single line item'
+    if scope == 'lines':
+        return 'Multiple line items'
+    if scope == 'received':
+        return 'Goods already received'
+    return 'All line items'
+
+
+def _store_receive_cert_line(line_no, item_name, item_ref='', measure='', quantity='', buying_price=None):
+    return {
+        'line_no': line_no,
+        'item_name': (item_name or '').strip() or '—',
+        'item_ref': (item_ref or '').strip(),
+        'measure': (measure or '').strip() or '—',
+        'quantity': quantity,
+        'unit_price_display': _store_print_kes_display(buying_price),
+    }
+
+
+def _store_receive_cert_context_from_movement(
+    movement,
+    *,
+    just_received=False,
+    back_url,
+    back_label,
+    store_manager_name,
+    printed_at,
+    delivery_to='School store',
+):
+    invoice, delivery_note, notes = _grn_document_fields_from_movement(movement)
+    return {
+        'cert_source': 'stock',
+        'cert_doc_ref_label': 'Store receipt',
+        'cert_doc_ref': (movement.get('reference_number') or '').strip() or '—',
+        'cert_order_date_display': _store_print_date_display(movement.get('created_at')),
+        'cert_print_scope': 'received',
+        'cert_scope_label': _store_receive_cert_scope_label('received'),
+        'cert_supplier_name': (movement.get('supplier_name') or '').strip() or '—',
+        'cert_supplier_phone': (movement.get('supplier_phone') or '').strip(),
+        'cert_delivery_to': (delivery_to or '').strip() or 'School store',
+        'cert_invoice_tax_no': (invoice or '').strip(),
+        'cert_delivery_note_ref': (delivery_note or '').strip(),
+        'cert_notes': (notes or '').strip(),
+        'cert_recorded_by': (movement.get('performed_by_name') or '').strip(),
+        'cert_lines': [
+            _store_receive_cert_line(
+                1,
+                movement.get('item_name'),
+                movement.get('item_ref'),
+                movement.get('measure'),
+                movement.get('quantity'),
+                movement.get('buying_price'),
+            )
+        ],
+        'just_received': just_received,
+        'back_url': back_url,
+        'back_label': back_label,
+        'store_manager_name': store_manager_name,
+        'printed_at': printed_at,
+    }
+
+
+def _store_receive_cert_context_from_lpo(
+    lpo,
+    receive_lines,
+    print_scope,
+    *,
+    just_received=False,
+    back_url,
+    back_label,
+    store_manager_name,
+    printed_at,
+):
+    cert_lines = []
+    for ln in receive_lines or []:
+        cert_lines.append(_store_receive_cert_line(
+            ln.get('line_no') or len(cert_lines) + 1,
+            ln.get('item_name'),
+            ln.get('item_ref'),
+            ln.get('measure'),
+            ln.get('quantity'),
+            ln.get('buying_price'),
+        ))
+    return {
+        'cert_source': 'lpo',
+        'cert_doc_ref_label': 'LPO No.',
+        'cert_doc_ref': (lpo.get('serial_number') or '').strip() or '—',
+        'cert_order_date_display': _store_print_date_display(lpo.get('lpo_date')),
+        'cert_print_scope': (print_scope or 'all').strip().lower(),
+        'cert_scope_label': _store_receive_cert_scope_label(print_scope),
+        'cert_supplier_name': (lpo.get('supplier_name') or '').strip() or '—',
+        'cert_supplier_phone': (lpo.get('supplier_phone') or '').strip(),
+        'cert_delivery_to': (lpo.get('delivery_to') or '').strip() or '—',
+        'cert_invoice_tax_no': '',
+        'cert_delivery_note_ref': '',
+        'cert_notes': '',
+        'cert_recorded_by': '',
+        'cert_lines': cert_lines,
+        'just_received': just_received,
+        'back_url': back_url,
+        'back_label': back_label,
+        'store_manager_name': store_manager_name,
+        'printed_at': printed_at,
+    }
+
+
+def _resolve_lpo_receive_print_lines(lpo, scope='pending', line_id=None, line_ids=None):
+    """Choose LPO lines included on a goods received certificate."""
+    scope = (scope or 'pending').strip().lower()
+    all_lines = (lpo or {}).get('lines') or []
+    receive_lines = []
+    print_scope = scope
+
+    if line_ids:
+        line_id_set = set(line_ids)
+        receive_lines = [
+            ln for ln in all_lines if int(ln.get('id') or 0) in line_id_set
+        ]
+        receive_lines.sort(key=lambda ln: int(ln.get('line_no') or 0))
+        print_scope = 'lines' if len(receive_lines) > 1 else 'line'
+    elif line_id:
+        receive_lines = [ln for ln in all_lines if int(ln.get('id') or 0) == int(line_id)]
+        print_scope = 'line'
+    elif scope == 'all':
+        receive_lines = list(all_lines)
+        print_scope = 'all'
+    elif scope == 'received':
+        receive_lines = [ln for ln in all_lines if _store_lpo_line_received(ln)]
+        receive_lines.sort(key=lambda ln: int(ln.get('line_no') or 0))
+        print_scope = 'received'
+    else:
+        receive_lines = [ln for ln in all_lines if not _store_lpo_line_received(ln)]
+        print_scope = 'pending'
+
+    if not receive_lines and all_lines:
+        status, _, _ = _store_lpo_receipt_status(all_lines)
+        if scope == 'received' or status == 'received':
+            receive_lines = list(all_lines)
+            print_scope = 'received'
+        elif scope == 'pending' and status == 'partial':
+            receive_lines = [ln for ln in all_lines if not _store_lpo_line_received(ln)]
+            if not receive_lines:
+                receive_lines = list(all_lines)
+                print_scope = 'all'
+        elif scope in ('pending', 'all') and status == 'received':
+            receive_lines = list(all_lines)
+            print_scope = 'received'
+
+    return receive_lines, print_scope
+
+
+def _render_store_goods_received_certificate(**context):
+    return render_template('dashboards/store_goods_received_certificate_print.html', **context)
+
+
 @app.route('/dashboard/employee/store-stock/grn-print/<int:movement_id>')
 @login_required
 def store_stock_grn_print(movement_id):
@@ -59467,7 +60758,7 @@ def store_stock_grn_print(movement_id):
     from datetime import datetime
 
     can_print = (
-        _store_inventory_effective_role() == 'store manager'
+        _can_access_store_manager_portal()
         or _accountant_effective_role() == 'accountant'
     )
     if not can_print:
@@ -59490,24 +60781,29 @@ def store_stock_grn_print(movement_id):
         flash('Goods received notes are only available for stock-in movements.', 'error')
         return redirect(employee_dash_url('store-stock/audits'))
 
-    grn_invoice, grn_delivery_note, grn_notes = _grn_document_fields_from_movement(movement)
     store_manager_name = (
         session.get('full_name') or session.get('username') or ''
     ).strip()
     just_received = (request.args.get('received') or '').strip() in ('1', 'true', 'yes')
+    school_settings = get_school_settings()
+    delivery_to = (
+        (school_settings.get('school_name') or '').strip() + ' store'
+        if school_settings.get('school_name')
+        else 'School store'
+    )
 
-    return render_template(
-        'dashboards/store_stock_grn_print.html',
-        movement=movement,
-        grn_invoice=grn_invoice,
-        grn_delivery_note=grn_delivery_note,
-        grn_notes=grn_notes,
-        store_manager_name=store_manager_name,
-        printed_at=datetime.now(),
+    cert_ctx = _store_receive_cert_context_from_movement(
+        movement,
         just_received=just_received,
         back_url=employee_dash_url('store-stock') if just_received else employee_dash_url('store-stock/audits'),
         back_label='Back to stock in & out' if just_received else 'Back to audits',
-        school_settings=get_school_settings(),
+        store_manager_name=store_manager_name,
+        printed_at=datetime.now(),
+        delivery_to=delivery_to,
+    )
+    return _render_store_goods_received_certificate(
+        school_settings=school_settings,
+        **cert_ctx,
     )
 
 
@@ -59518,12 +60814,95 @@ def _store_inventory_effective_role():
     return viewing_as_role if is_technician and viewing_as_role else user_role
 
 
+INSTITUTION_LEADERSHIP_ROLES = frozenset({
+    'head of institution', 'deputy head of institution', 'super admin',
+})
+
+
+def _is_institution_leadership_viewer():
+    eff = (_store_inventory_effective_role() or '').strip().lower()
+    return eff in INSTITUTION_LEADERSHIP_ROLES
+
+
+def _can_access_store_manager_portal():
+    eff = (_store_inventory_effective_role() or '').strip().lower()
+    return eff == 'store manager' or _is_institution_leadership_viewer()
+
+
+def _can_access_librarian_portal(role=None):
+    eff = (role or _store_inventory_effective_role() or '').strip().lower()
+    return eff == 'librarian' or _is_institution_leadership_viewer()
+
+
+def _department_store_effective_role():
+    eff = (_store_inventory_effective_role() or '').strip().lower()
+    if _is_institution_leadership_viewer():
+        override = (request.args.get('dept_role') or session.get('leadership_dept_store_role') or '').strip().lower()
+        if override in STORE_DEPARTMENT_ROLE_LINKS:
+            return override
+    return eff
+
+
+def _operations_overview_has_access():
+    user_role = session.get('role', '').lower()
+    return _is_institution_leadership_viewer() or user_role == 'technician'
+
+
 def _store_inventory_guard():
     """Redirect if current user is not allowed to manage store inventory."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
     return None
+
+
+def _store_role_is_department_staff(role=None):
+    role = (role or _department_store_effective_role() or '').strip().lower()
+    return role in STORE_DEPARTMENT_STAFF_ROLES
+
+
+def _department_store_station_for_role(role=None):
+    role = (role or _department_store_effective_role() or '').strip().lower()
+    return STORE_DEPARTMENT_ROLE_LINKS.get(role)
+
+
+def _department_store_label_for_role(role=None):
+    role = (role or _department_store_effective_role() or '').strip().lower()
+    return STORE_DEPARTMENT_ROLE_LABELS.get(role, role.replace('_', ' ').title())
+
+
+def _persist_leadership_department_store_role():
+    """Remember leadership dept-role override for subsequent API requests."""
+    if not _is_institution_leadership_viewer():
+        return
+    dept_role = (request.args.get('dept_role') or '').strip().lower()
+    if dept_role in STORE_DEPARTMENT_ROLE_LINKS:
+        session['leadership_dept_store_role'] = dept_role
+
+
+def _department_store_only_guard():
+    """Redirect unless the user is a role with a linked department store."""
+    _persist_leadership_department_store_role()
+    role = _department_store_effective_role()
+    if role not in STORE_DEPARTMENT_STAFF_ROLES:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    if not _department_store_station_for_role(role):
+        flash('No store department is linked to your role.', 'error')
+        return redirect(employee_dashboard_path())
+    return None
+
+
+def _department_store_template_context(department_station=None):
+    """Shared template context for department-linked store pages."""
+    eff = _department_store_effective_role()
+    station = (department_station or _department_store_station_for_role(eff) or '').strip().upper()
+    return {
+        'department_store_mode': True,
+        'department_store_role': eff,
+        'department_store_label': _department_store_label_for_role(eff),
+        'department_store_station': station,
+    }
 
 
 STORE_FEE_VOTE_NAME_COL = 28
@@ -59812,6 +61191,8 @@ def _toggle_store_department_suspend(cursor, dept_id):
     dept = _fetch_store_department_row(cursor, dept_id)
     if not dept:
         return {'ok': False, 'message': 'Department not found.'}
+    if dept.get('is_core'):
+        return {'ok': False, 'message': 'Core role-linked departments cannot be suspended.'}
     cursor.execute(
         """
         UPDATE store_departments
@@ -59830,6 +61211,8 @@ def _delete_store_department(cursor, dept_id):
     dept = _fetch_store_department_row(cursor, dept_id)
     if not dept:
         return {'ok': False, 'message': 'Department not found.'}
+    if dept.get('is_core'):
+        return {'ok': False, 'message': 'Core role-linked departments cannot be deleted.'}
     dept_name = (dept.get('department_name') or '').strip().upper()
     ensure_store_inventory_items_table(cursor)
     cursor.execute(
@@ -60724,8 +62107,9 @@ def _fetch_store_item_usage_analytics(cursor, item_id, period='all', date_val=''
     }
 
 
-def _fetch_store_stock_analytics(cursor, period='all', date_val='', date_from='', date_to=''):
-    """Analytics across all catalog items for the store stock analytics page."""
+def _fetch_store_stock_analytics(cursor, period='all', date_val='', date_from='', date_to='',
+                                 department_station=''):
+    """Analytics across catalog items for the store stock analytics page."""
     ensure_store_stock_movements_table(cursor)
     ensure_store_inventory_items_table(cursor)
 
@@ -60734,6 +62118,11 @@ def _fetch_store_stock_analytics(cursor, period='all', date_val='', date_from=''
     )
     where = ['1=1']
     params = []
+    dept_filter = (department_station or '').strip().upper()
+    if dept_filter:
+        scope_sql, scope_params = _department_store_movements_scope_sql(dept_filter, 'm')
+        where.append(scope_sql)
+        params.extend(scope_params)
     if start_dt is not None and end_dt is not None:
         where.append('m.created_at >= %s AND m.created_at < %s')
         params.extend([start_dt, end_dt])
@@ -60754,14 +62143,19 @@ def _fetch_store_stock_analytics(cursor, period='all', date_val='', date_from=''
         'pending_payments': 0,
     }
     try:
-        cursor.execute(
-            "SELECT COUNT(*) AS cnt FROM store_inventory_items WHERE item_status != 'deleted'"
-        )
-        crow = cursor.fetchone()
-        if crow:
-            summary['catalog_items'] = int(
-                (crow.get('cnt') if isinstance(crow, dict) else crow[0]) or 0
+        if dept_filter:
+            summary['catalog_items'] = len(
+                _fetch_department_allocated_inventory(cursor, dept_filter)
             )
+        else:
+            cursor.execute(
+                "SELECT COUNT(*) AS cnt FROM store_inventory_items WHERE item_status != 'deleted'"
+            )
+            crow = cursor.fetchone()
+            if crow:
+                summary['catalog_items'] = int(
+                    (crow.get('cnt') if isinstance(crow, dict) else crow[0]) or 0
+                )
     except Exception as e:
         print(f"_fetch_store_stock_analytics catalog count: {e}")
 
@@ -60986,7 +62380,7 @@ def _books_inventory_librarian_guard():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_technician = user_role == 'technician'
     effective = viewing_as_role if is_technician and viewing_as_role else user_role
-    if effective != 'librarian':
+    if not _can_access_librarian_portal(effective):
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
     return None
@@ -63658,7 +65052,7 @@ def _books_inventory_json_guard():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_technician = user_role == 'technician'
     effective = viewing_as_role if is_technician and viewing_as_role else user_role
-    if effective != 'librarian':
+    if not _can_access_librarian_portal(effective):
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
     return None
 
@@ -63860,7 +65254,7 @@ def books_inventory():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_technician = user_role == 'technician'
     effective = viewing_as_role if is_technician and viewing_as_role else user_role
-    if effective != 'librarian':
+    if not _can_access_librarian_portal(effective):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -64229,7 +65623,7 @@ def books_inventory():
 @app.route('/dashboard/employee/store-inventory/items', methods=['GET'])
 @login_required
 def store_inventory_items_api():
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
@@ -64269,7 +65663,7 @@ def store_inventory_items_api():
 @app.route('/dashboard/employee/store-inventory/<int:item_id>/analytics/data', methods=['GET'])
 @login_required
 def store_inventory_item_analytics_data(item_id):
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
     period = request.args.get('period') or 'all'
     date_val = request.args.get('date') or ''
@@ -64298,7 +65692,7 @@ def store_inventory_item_analytics_data(item_id):
 @login_required
 def store_inventory_item_analytics(item_id):
     """Per-item stock usage analytics."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -64443,7 +65837,7 @@ def store_departments_register():
 @login_required
 def store_inventory():
     """Register and manage school store inventory items (store manager)."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -64776,7 +66170,7 @@ def store_stock_supplier_lookup():
 def store_stock_print(movement_id):
     """Printable stock-in / stock-out receipt."""
     can_print = (
-        _store_inventory_effective_role() == 'store manager'
+        _can_access_store_manager_portal()
         or _accountant_effective_role() == 'accountant'
     )
     if not can_print:
@@ -64803,7 +66197,7 @@ def store_stock_print(movement_id):
 @app.route('/dashboard/employee/store-stock/analytics/data', methods=['GET'])
 @login_required
 def store_stock_analytics_data():
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
     period = request.args.get('period') or 'all'
     date_val = request.args.get('date') or ''
@@ -64830,7 +66224,7 @@ def store_stock_analytics_data():
 @login_required
 def store_stock_analytics():
     """Stock analytics across all catalog items."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -64847,7 +66241,7 @@ def store_stock_analytics():
 @login_required
 def store_current_stock():
     """Read-only view of all catalog items and their stock status."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -64902,7 +66296,7 @@ def store_current_stock():
 @login_required
 def store_current_stock_settings():
     """Save per-item low stock thresholds."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
 
     payload = request.get_json(silent=True) or {}
@@ -64939,7 +66333,7 @@ def store_current_stock_settings():
 @login_required
 def store_suppliers():
     """All store suppliers with payable balances and payment status."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -64985,7 +66379,7 @@ def store_suppliers():
 @login_required
 def store_supplier_detail_by_key():
     """Supplier supply history keyed by normalized phone / payable key."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -65029,7 +66423,7 @@ def store_supplier_detail_by_key():
 @login_required
 def store_supplier_detail(supplier_id):
     """Supplier supply history and payment status for a registered supplier."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -65068,7 +66462,7 @@ def store_supplier_detail(supplier_id):
 @login_required
 def store_stock_audits():
     """Detailed stock movement audit trail."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -65111,7 +66505,7 @@ def store_stock():
     """Stock in / stock out for school store items (quantities + movement modal)."""
     from datetime import date
 
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -65447,22 +66841,35 @@ def _generate_store_requisition_reference(cursor):
     return f'REQ-{next_num:05d}'
 
 
-def _fetch_store_requisitions_recent(cursor, limit=50):
+def _fetch_store_requisitions_recent(cursor, limit=50, requested_by=None, department_station=None):
     ensure_store_requisitions_table(cursor)
     rows = []
     try:
+        clauses = []
+        params = []
+        if requested_by is not None and str(requested_by).strip() != '':
+            clauses.append('r.requested_by = %s')
+            params.append(requested_by)
+        dept = (department_station or '').strip().upper()
+        if dept:
+            scope_sql, scope_params = _department_store_catalog_items_scope_sql(dept, 'si')
+            clauses.append(scope_sql)
+            params.extend(scope_params)
+        where = (' WHERE ' + ' AND '.join(clauses)) if clauses else ''
+        params.append(int(limit))
         cursor.execute(
-            """
+            f"""
             SELECT r.id, r.reference_number, r.quantity_requested, r.notes,
                    r.status, r.requested_by_name, r.created_at,
                    si.reference_code AS item_ref, si.item_name, si.measure,
                    si.item_category
             FROM store_requisitions r
             INNER JOIN store_inventory_items si ON si.id = r.store_item_id
+            {where}
             ORDER BY r.created_at DESC, r.id DESC
             LIMIT %s
             """,
-            (int(limit),),
+            tuple(params),
         )
         for row in cursor.fetchall() or []:
             if isinstance(row, dict):
@@ -65663,8 +67070,14 @@ def _accountant_effective_role():
     return viewing_as_role if is_technician and viewing_as_role else user_role
 
 
+def _can_access_accountant_finance_portal(role=None):
+    """Accountant finance UI — also available to institution leadership."""
+    eff = (role or _accountant_effective_role() or '').strip().lower()
+    return eff == 'accountant' or eff in ('head of institution', 'deputy head of institution')
+
+
 def _accountant_guard():
-    if _accountant_effective_role() != 'accountant':
+    if not _can_access_accountant_finance_portal():
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
     return None
@@ -65692,7 +67105,8 @@ ACCOUNTANT_ACCOUNTS_PORTAL_PATH_MARKERS = (
 
 def _is_accountant_accounts_portal_page():
     """True on accountant finance/accounts UI pages and accountant dashboard home."""
-    if _accountant_effective_role() != 'accountant':
+    eff = (_accountant_effective_role() or '').strip().lower()
+    if eff not in ('accountant', 'head of institution', 'deputy head of institution'):
         return False
     if not has_request_context():
         return False
@@ -65706,7 +67120,8 @@ def _is_accountant_accounts_portal_page():
 
 def _show_accountant_account_subnav():
     """True only on the accounts list page (per-account sidebar links)."""
-    if _accountant_effective_role() != 'accountant':
+    eff = (_accountant_effective_role() or '').strip().lower()
+    if eff not in ('accountant', 'head of institution', 'deputy head of institution'):
         return False
     if not has_request_context():
         return False
@@ -65749,11 +67164,365 @@ def _financial_year_session_snapshot(cursor):
     }
 
 
+@app.route('/dashboard/employee/department-store/requisitions', methods=['GET', 'POST'])
+@login_required
+def department_store_requisitions():
+    """Submit and view store requisitions for a role-linked department."""
+    guard = _department_store_only_guard()
+    if guard:
+        return guard
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    dept_ctx = _department_store_template_context()
+    catalog_items = []
+    recent_requisitions = []
+    requested_by = session.get('employee_id') or session.get('user_id')
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return render_template(
+            'dashboards/store_requisitions.html',
+            role=user_role,
+            is_technician=is_technician,
+            catalog_items=[],
+            catalog_items_client=[],
+            recent_requisitions=[],
+            requisition_form_open_default=False,
+            **dept_ctx,
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_requisitions_table(cursor)
+            ensure_store_departments_table(cursor)
+            connection.commit()
+            dept_station = _resolve_department_store_station(cursor)
+            dept_ctx = _department_store_template_context(dept_station)
+
+            if request.method == 'POST':
+                store_item_id = request.form.get('store_item_id', type=int)
+                qty_raw = (request.form.get('quantity_requested') or '').strip()
+                notes_raw = (request.form.get('notes') or '').strip()
+                notes = notes_raw.upper()[:500] if notes_raw else None
+
+                try:
+                    quantity_requested = int(qty_raw)
+                except (TypeError, ValueError):
+                    quantity_requested = None
+
+                if not store_item_id:
+                    flash('Please select an item to request.', 'error')
+                elif quantity_requested is None or quantity_requested < 1:
+                    flash('Amount must be a whole number of at least 1.', 'error')
+                else:
+                    cursor.execute(
+                        """
+                        SELECT id, item_name, item_status
+                        FROM store_inventory_items WHERE id = %s
+                        """,
+                        (store_item_id,),
+                    )
+                    item_row = cursor.fetchone()
+                    if not item_row:
+                        flash('Store item not found.', 'error')
+                    else:
+                        if isinstance(item_row, dict):
+                            item_status = (item_row.get('item_status') or '').strip()
+                        else:
+                            item_status = (item_row[2] or '').strip() if len(item_row) > 2 else ''
+                        if item_status != 'active':
+                            flash('This item is suspended. Choose another item.', 'error')
+                        elif not _department_store_item_in_catalog(
+                            cursor, store_item_id, dept_station,
+                        ):
+                            flash('This item is not in your department store.', 'error')
+                        else:
+                            ref_no = _generate_store_requisition_reference(cursor)
+                            requested_name = (
+                                session.get('full_name') or session.get('username') or ''
+                            ).strip()
+                            cursor.execute(
+                                """
+                                INSERT INTO store_requisitions
+                                    (reference_number, store_item_id, quantity_requested,
+                                     notes, status, requested_by, requested_by_name)
+                                VALUES (%s, %s, %s, %s, 'pending', %s, %s)
+                                """,
+                                (
+                                    ref_no, store_item_id, quantity_requested, notes,
+                                    requested_by, requested_name or None,
+                                ),
+                            )
+                            connection.commit()
+                            flash(f'Requisition {ref_no} submitted successfully.', 'success')
+                            return redirect(employee_dash_url('department-store/requisitions'))
+
+            catalog_items = _fetch_department_items_for_requisition(cursor, dept_station)
+            recent_requisitions = _fetch_store_requisitions_recent(
+                cursor, department_station=dept_station,
+            )
+    except Exception as e:
+        print(f"department_store_requisitions: {e}")
+        connection.rollback()
+        flash('An error occurred processing the requisition.', 'error')
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/store_requisitions.html',
+        role=user_role,
+        is_technician=is_technician,
+        catalog_items=catalog_items,
+        catalog_items_client=catalog_items,
+        recent_requisitions=recent_requisitions,
+        requisition_form_open_default=request.method == 'POST',
+        **dept_ctx,
+    )
+
+
+@app.route('/dashboard/employee/department-store/items', methods=['GET'])
+@login_required
+def department_store_items():
+    """Read-only view of catalog items assigned to the role-linked department."""
+    guard = _department_store_only_guard()
+    if guard:
+        return guard
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    dept_ctx = {}
+    dept_station = ''
+    stock_items = []
+    stock_summary = {
+        'total_items': 0,
+        'units_on_hand': 0,
+        'suspended_count': 0,
+        'low_stock_count': 0,
+    }
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        dept_ctx = _department_store_template_context()
+        return render_template(
+            'dashboards/department_store_items.html',
+            role=user_role,
+            is_technician=is_technician,
+            stock_items=[],
+            stock_summary=stock_summary,
+            stock_out_purposes=list(STORE_STOCK_OUT_PURPOSES),
+            stock_out_post_url=employee_dash_url('department-store/items/stock-out'),
+            default_receiver_name=(
+                session.get('full_name') or session.get('username') or ''
+            ).strip(),
+            today=date_cls.today(),
+            open_stock_out_item_id=None,
+            **dept_ctx,
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_inventory_items_table(cursor)
+            ensure_store_stock_movements_table(cursor)
+            ensure_store_departments_table(cursor)
+            connection.commit()
+            dept_station = _resolve_department_store_station(cursor)
+            dept_ctx = _department_store_template_context(dept_station)
+            stock_items = _sort_store_stock_items([
+                _store_inventory_client_item_with_stock_status(row)
+                for row in _fetch_department_allocated_inventory(cursor, dept_station)
+            ])
+            stock_summary = {
+                'total_items': len(stock_items),
+                'units_on_hand': sum(int(it.get('quantity_on_hand') or 0) for it in stock_items),
+                'suspended_count': sum(
+                    1 for it in stock_items if (it.get('item_status') or '') == 'suspended'
+                ),
+                'low_stock_count': sum(
+                    1 for it in stock_items
+                    if (it.get('stock_status') or '') in ('low_stock', 'out_of_stock')
+                ),
+            }
+    except Exception as e:
+        print(f"department_store_items: {e}")
+        flash('Could not load department store items.', 'error')
+        if not dept_ctx:
+            dept_ctx = _department_store_template_context()
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/department_store_items.html',
+        role=user_role,
+        is_technician=is_technician,
+        stock_items=stock_items,
+        stock_summary=stock_summary,
+        stock_out_purposes=list(STORE_STOCK_OUT_PURPOSES),
+        stock_out_post_url=employee_dash_url('department-store/items/stock-out'),
+        default_receiver_name=(
+            session.get('full_name') or session.get('username') or ''
+        ).strip(),
+        today=date_cls.today(),
+        open_stock_out_item_id=request.args.get('stock_out_item', type=int),
+        **dept_ctx,
+    )
+
+
+@app.route('/dashboard/employee/department-store/items/stock-out', methods=['POST'])
+@login_required
+def department_store_stock_out():
+    """Stock out from a department's allocated quantity."""
+    guard = _department_store_only_guard()
+    if guard:
+        return guard
+
+    store_item_id = request.form.get('store_item_id', type=int)
+    qty_raw = (request.form.get('quantity') or '').strip()
+    purpose = (request.form.get('stock_out_purpose') or '').strip()
+    stock_out_date_raw = (request.form.get('stock_out_date') or '').strip()
+    receiver_name = (request.form.get('stock_out_receiver_name') or '').strip()
+    notes_raw = (request.form.get('notes') or '').strip()
+
+    try:
+        quantity = int(qty_raw)
+    except (TypeError, ValueError):
+        quantity = 0
+
+    stock_out_date = None
+    if stock_out_date_raw:
+        try:
+            stock_out_date = datetime.strptime(stock_out_date_raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            stock_out_date = None
+
+    redirect_url = employee_dash_url('department-store/items')
+    if store_item_id:
+        redirect_url += '?' + urlencode({'stock_out_item': store_item_id})
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(redirect_url)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_stock_movements_table(cursor)
+            ensure_store_departments_table(cursor)
+            dept_station = _resolve_department_store_station(cursor)
+            if not dept_station:
+                flash('No store department is linked to your role.', 'error')
+                return redirect(employee_dash_url('department-store/items'))
+
+            if not store_item_id:
+                flash('Item not found.', 'error')
+                return redirect(employee_dash_url('department-store/items'))
+
+            available = _department_store_available_qty(cursor, store_item_id, dept_station)
+            if available < 1:
+                flash('No allocated quantity available for this item.', 'error')
+                return redirect(redirect_url)
+
+            performed_by = session.get('employee_id') or session.get('user_id')
+            performed_name = (
+                session.get('full_name') or session.get('username') or ''
+            ).strip()
+            result = _record_department_store_stock_out(
+                cursor,
+                store_item_id,
+                dept_station,
+                quantity,
+                purpose,
+                stock_out_date,
+                receiver_name,
+                notes=notes_raw,
+                performed_by=performed_by,
+                performed_by_name=performed_name,
+            )
+            if result.get('ok'):
+                connection.commit()
+                flash(result.get('message', 'Stock out recorded.'), 'success')
+                return redirect(employee_dash_url('department-store/items'))
+            connection.rollback()
+            flash(result.get('message', 'Could not record stock out.'), 'error')
+    except Exception as e:
+        connection.rollback()
+        print(f"department_store_stock_out: {e}")
+        flash('An error occurred while recording stock out.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(redirect_url)
+
+
+@app.route('/dashboard/employee/department-store/analytics/data', methods=['GET'])
+@login_required
+def department_store_analytics_data():
+    _persist_leadership_department_store_role()
+    if not _store_role_is_department_staff():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    period = request.args.get('period') or 'all'
+    date_val = request.args.get('date') or ''
+    date_from = request.args.get('from') or ''
+    date_to = request.args.get('to') or ''
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_departments_table(cursor)
+            dept_station = _resolve_department_store_station(cursor)
+            if not dept_station:
+                return jsonify({'success': False, 'message': 'No linked department'}), 403
+            payload = _fetch_store_stock_analytics(
+                cursor, period=period, date_val=date_val,
+                date_from=date_from, date_to=date_to,
+                department_station=dept_station,
+            )
+        return jsonify({'success': True, **payload})
+    except Exception as e:
+        print(f"department_store_analytics_data: {e}")
+        return jsonify({'success': False, 'message': 'Could not load analytics'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/department-store/analytics', methods=['GET'])
+@login_required
+def department_store_analytics():
+    """Stock analytics for items in the role-linked department."""
+    guard = _department_store_only_guard()
+    if guard:
+        return guard
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    dept_ctx = _department_store_template_context()
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_store_departments_table(cursor)
+                dept_station = _resolve_department_store_station(cursor)
+                dept_ctx = _department_store_template_context(dept_station)
+        except Exception as e:
+            print(f"department_store_analytics: {e}")
+        finally:
+            connection.close()
+    return render_template(
+        'dashboards/store_stock_analytics.html',
+        role=user_role,
+        is_technician=is_technician,
+        **dept_ctx,
+    )
+
+
 @app.route('/dashboard/employee/store-requisitions', methods=['GET', 'POST'])
 @login_required
 def store_requisitions():
     """Submit and view store item requisitions (store manager)."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -66389,7 +68158,7 @@ def _store_lpo_receive_impl(lpo_id, line_id):
     """Receive goods against a local purchase order (stock in)."""
     from decimal import Decimal, InvalidOperation
 
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -66543,7 +68312,7 @@ def _store_lpo_receive_bulk_impl(lpo_id):
     """Receive goods for multiple pending lines on one LPO in a single delivery."""
     from decimal import Decimal, InvalidOperation
 
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -66762,7 +68531,7 @@ def store_lpo_supplier_search():
 @login_required
 def store_lpo_json(lpo_id):
     """JSON detail for LPO view / receive modals."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
     connection = get_db_connection()
     if not connection:
@@ -66781,7 +68550,7 @@ def store_lpo_json(lpo_id):
 @login_required
 def store_lpo_print(lpo_id):
     """Printable local purchase order."""
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     connection = get_db_connection()
@@ -66817,7 +68586,7 @@ def store_lpo_receive_print(lpo_id):
     """Printable goods received note for LPO delivery (physical sign-off)."""
     from datetime import datetime
 
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -66844,62 +68613,31 @@ def store_lpo_receive_print(lpo_id):
         flash('LPO not found.', 'error')
         return redirect(employee_dash_url('store-lpo'))
 
-    all_lines = lpo.get('lines') or []
-    if line_ids:
-        line_id_set = set(line_ids)
-        receive_lines = [
-            ln for ln in all_lines if int(ln.get('id') or 0) in line_id_set
-        ]
-        receive_lines.sort(key=lambda ln: int(ln.get('line_no') or 0))
-        print_scope = 'lines' if len(receive_lines) > 1 else 'line'
-    elif line_id:
-        receive_lines = [ln for ln in all_lines if int(ln.get('id') or 0) == int(line_id)]
-        print_scope = 'line'
-    elif scope == 'all':
-        receive_lines = list(all_lines)
-        print_scope = 'all'
-    elif scope == 'received':
-        receive_lines = [ln for ln in all_lines if _store_lpo_line_received(ln)]
-        receive_lines.sort(key=lambda ln: int(ln.get('line_no') or 0))
-        print_scope = 'received'
-    else:
-        receive_lines = [ln for ln in all_lines if not _store_lpo_line_received(ln)]
-        print_scope = 'pending'
-
-    if not receive_lines and all_lines:
-        status, _, _ = _store_lpo_receipt_status(all_lines)
-        if scope == 'received' or status == 'received':
-            receive_lines = list(all_lines)
-            print_scope = 'received'
-        elif scope == 'pending' and status == 'partial':
-            receive_lines = [ln for ln in all_lines if not _store_lpo_line_received(ln)]
-            if not receive_lines:
-                receive_lines = list(all_lines)
-                print_scope = 'all'
-        elif scope in ('pending', 'all') and status == 'received':
-            receive_lines = list(all_lines)
-            print_scope = 'received'
+    receive_lines, print_scope = _resolve_lpo_receive_print_lines(
+        lpo, scope=scope, line_id=line_id, line_ids=line_ids or None,
+    )
 
     if not receive_lines:
         flash('No items available for a goods received note on this LPO.', 'error')
         return redirect(employee_dash_url('store-lpo'))
 
-    receive_total = sum(float(ln.get('line_total') or 0) for ln in receive_lines)
     store_manager_name = (
         session.get('full_name') or session.get('username') or ''
     ).strip()
     just_received = (request.args.get('received') or '').strip() in ('1', 'true', 'yes')
-
-    return render_template(
-        'dashboards/store_lpo_receive_print.html',
-        lpo=lpo,
-        receive_lines=receive_lines,
-        receive_total=receive_total,
-        print_scope=print_scope,
+    cert_ctx = _store_receive_cert_context_from_lpo(
+        lpo,
+        receive_lines,
+        print_scope,
+        just_received=just_received,
+        back_url=employee_dash_url('store-lpo'),
+        back_label='Back to LPO',
         store_manager_name=store_manager_name,
         printed_at=datetime.now(),
-        just_received=just_received,
+    )
+    return _render_store_goods_received_certificate(
         school_settings=get_school_settings(),
+        **cert_ctx,
     )
 
 
@@ -66910,7 +68648,7 @@ def store_lpo():
     from decimal import Decimal, InvalidOperation
     from datetime import date
 
-    if _store_inventory_effective_role() != 'store manager':
+    if not _can_access_store_manager_portal():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -67097,6 +68835,7 @@ def store_lpo():
         catalog_items=catalog_items,
         catalog_items_client=catalog_items,
         recent_lpos=recent_lpos,
+        store_suppliers=store_suppliers,
         today=today,
         next_serial=next_serial,
         generated_by_name=generated_by_name,
@@ -77191,6 +78930,10 @@ def _finance_report_data_helpers():
         'fetch_audit_rows': _finance_report_audit_rows,
         'fetch_periodic_rows': _finance_report_periodic_rows,
         'fetch_financial_year_context': _financial_year_report_context,
+        'account_report_helpers': _finance_account_report_helpers(),
+        'load_filter_options': lambda cursor: finance_reports_mod.load_filter_options(
+            cursor, _reports_current_year_term_ids,
+        ),
     }
 
 
@@ -77203,6 +78946,32 @@ def _finance_overview_has_access():
     has_view = check_permission_or_role('view_student_fees', ['accountant', 'head of institution', 'deputy head of institution'])
     has_manage = check_permission_or_role('manage_fees', ['accountant', 'head of institution', 'deputy head of institution'])
     return is_technician or has_view or has_manage or is_secretary or is_deputy
+
+
+def _load_finance_overview_filter_options(cursor):
+    """Academic/financial-year defaults and finance accounts for overview sidebars."""
+    filter_options = finance_reports_mod.load_filter_options(
+        cursor, _reports_current_year_term_ids,
+    )
+    financial_years = _fetch_financial_years_for_report_picker(cursor)
+    filter_options['financial_years'] = financial_years
+    default_fy_id = None
+    fy = _fetch_current_financial_year(cursor)
+    if fy.get('is_configured'):
+        filter_options['default_date_from'] = fy.get('financial_year_start') or ''
+        filter_options['default_date_to'] = _financial_year_report_default_end(fy)
+        filter_options['financial_year_label'] = fy.get('year_label') or ''
+        filter_options['financial_year_configured'] = True
+        default_fy_id = fy.get('id')
+    elif financial_years:
+        first = financial_years[0]
+        filter_options['default_date_from'] = first.get('start') or ''
+        filter_options['default_date_to'] = _financial_year_report_default_end(first)
+        filter_options['financial_year_label'] = first.get('label') or ''
+        filter_options['financial_year_configured'] = True
+        default_fy_id = first.get('id')
+    filter_options['default_financial_year_id'] = default_fy_id
+    return filter_options
 
 
 def _finance_overview_class_filter_options(cursor):
@@ -77788,7 +79557,7 @@ def _academic_report_export_body_sections(bundle, report_type):
         return None
 
     preset = meta.get('class_sections')
-    if preset and report_type in ('class_list_attendance', 'class_list_exam'):
+    if preset and report_type in ('class_list_attendance', 'class_list_exam', 'attendance_class_register'):
         return preset
 
     if report_type == 'exam_all_students_performance':
@@ -78005,6 +79774,8 @@ def _exam_all_students_performance_fixed_col_keys():
 def _trim_academic_report_json_bundle(bundle, report_type):
     """Smaller on-screen JSON: drop fields the browser recomputes or does not use."""
     if not isinstance(bundle, dict):
+        return bundle
+    if report_type in ('class_list_attendance', 'attendance_class_register'):
         return bundle
     rows = bundle.get('rows')
     if not isinstance(rows, list) or not rows:
@@ -78623,6 +80394,88 @@ def _build_exam_timetable_grid(rows):
     return {'dates': dates, 'date_headers': date_headers, 'time_labels': time_labels, 'cells': cells}
 
 
+def _attendance_calendar_days(date_from, date_to, max_days=31):
+    """Return sorted YYYY-MM-DD strings for Mon–Sat within an inclusive date range."""
+    from datetime import datetime, timedelta
+    if not date_from or not date_to:
+        return []
+    try:
+        if hasattr(date_from, 'strftime'):
+            start = date_from
+        else:
+            start = datetime.strptime(str(date_from)[:10], '%Y-%m-%d').date()
+        if hasattr(date_to, 'strftime'):
+            end = date_to
+        else:
+            end = datetime.strptime(str(date_to)[:10], '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return []
+    if end < start:
+        start, end = end, start
+    out = []
+    cur = start
+    while cur <= end and len(out) < max_days:
+        if cur.weekday() < 6:
+            out.append(cur.strftime('%Y-%m-%d'))
+        cur += timedelta(days=1)
+    return out
+
+
+def _attach_class_attendance_matrix(cursor, rows, level_ids, date_from, date_to, term_id=None):
+    """Attach per-day present/absent map on each student row; return day column keys."""
+    days = _attendance_calendar_days(date_from, date_to)
+    empty_att = {d: None for d in days}
+    if not rows:
+        return days
+    if not days:
+        for r in rows:
+            r['attendance'] = {}
+        return days
+    sids = []
+    for r in rows:
+        sid = str((r or {}).get('student_id') or '').strip()
+        if sid and sid not in sids:
+            sids.append(sid)
+    if not sids:
+        for r in rows:
+            r['attendance'] = dict(empty_att)
+        return days
+    placeholders = ','.join(['%s'] * len(sids))
+    aq = f"""
+        SELECT sar.student_id, sar.attendance_date, sar.present
+        FROM student_attendance_records sar
+        WHERE sar.attendance_date BETWEEN %s AND %s
+          AND sar.student_id IN ({placeholders})
+    """
+    ap = [days[0], days[-1]] + sids
+    if term_id:
+        aq += " AND sar.term_id = %s"
+        ap.append(term_id)
+    aq, ap = _sql_filter_academic_level_ids(aq, ap, 'sar.academic_level_id', level_ids)
+    cursor.execute(aq, ap)
+    by_sid = {}
+    for rec in cursor.fetchall() or []:
+        if isinstance(rec, dict):
+            sid = str(rec.get('student_id') or '').strip()
+            ad = rec.get('attendance_date')
+            pr = rec.get('present')
+        else:
+            sid = str(rec[0] or '').strip() if len(rec) > 0 else ''
+            ad = rec[1] if len(rec) > 1 else None
+            pr = rec[2] if len(rec) > 2 else None
+        if not sid:
+            continue
+        dkey = ad.strftime('%Y-%m-%d') if ad and hasattr(ad, 'strftime') else str(ad)[:10]
+        if sid not in by_sid:
+            by_sid[sid] = {}
+        by_sid[sid][dkey] = 'present' if pr else 'absent'
+    for r in rows:
+        sid = str((r or {}).get('student_id') or '').strip()
+        recs = by_sid.get(sid) or {}
+        r['attendance'] = {d: recs.get(d) for d in days}
+    return days
+
+
 def _build_attendance_by_student(rows):
     from collections import defaultdict
     by_sid = defaultdict(lambda: {'full_name': '', 'level_name': '', 'rows': []})
@@ -78771,6 +80624,12 @@ def _preview_display_context(report_type, bundle):
             ctx['class_sections'] = meta['class_sections']
         else:
             ctx['layout'] = 'plain'
+    elif report_type == 'attendance_class_register':
+        if meta.get('class_sections'):
+            ctx['layout'] = 'class_list_grouped'
+            ctx['class_sections'] = meta['class_sections']
+        else:
+            ctx['layout'] = 'plain'
     elif report_type == 'class_list_exam':
         if meta.get('class_sections'):
             ctx['layout'] = 'class_list_grouped'
@@ -78841,7 +80700,7 @@ def _build_academic_report_payload(cursor, report_type, f):
     date_to = _str_opt(f.get('date_to'))
 
     # Only auto-fill dates from term for attendance reports (optional dates elsewhere)
-    if report_type in ('attendance_class', 'attendance_individual', 'class_list_attendance') and tid and (not date_from or not date_to):
+    if report_type in ('attendance_class', 'attendance_individual', 'class_list_attendance', 'attendance_class_register') and tid and (not date_from or not date_to):
         df, dt = _term_date_bounds(cursor, tid)
         if df and dt:
             if hasattr(df, 'strftime'):
@@ -79099,7 +80958,12 @@ def _build_academic_report_payload(cursor, report_type, f):
             meta['all_classes'] = True
         return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
 
-    if report_type == 'class_list_attendance':
+    if report_type in ('class_list_attendance', 'attendance_class_register'):
+        title = (
+            'Class attendance register'
+            if report_type == 'attendance_class_register'
+            else 'Class list — attendance'
+        )
         cols = _academic_report_cols_with_home_class(['student_id', 'full_name'], is_combined_level)
         q = """
             SELECT s.student_id, s.full_name, s.current_grade
@@ -79123,13 +80987,21 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'current_grade': cur_grade,
                 'home_class': cur_grade,
             })
+        att_days = _attach_class_attendance_matrix(
+            cursor, rows, level_ids, date_from, date_to, term_id=tid,
+        )
+        meta['attendance_days'] = att_days
+        if date_from and date_to:
+            meta['date_range_label'] = f'{date_from} to {date_to}'
+        elif not att_days:
+            meta['hint'] = 'Set Date from / Date to (or select a term) to show day columns.'
         meta['class_sections'] = _group_class_list_rows(
             rows,
             is_combined_level=is_combined_level,
             combined_display_name=level_scope.get('display_name') if is_combined_level else None,
         )
         meta['row_limit'] = 5000
-        return {'title': 'Class list — attendance', 'columns': cols, 'rows': rows, 'meta': meta}
+        return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'timetable_subject':
         if not tid:
@@ -80458,6 +82330,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                     'present': 'Yes' if pr else 'No',
                 })
         meta['row_limit'] = 5000
+        meta['attendance_days'] = _attendance_calendar_days(date_from, date_to)
         ind_att_title = 'Individual attendance'
         if is_combined_level:
             ind_att_title = f"{ind_att_title} (combined: {level_scope.get('display_name') or '—'})"
@@ -80697,6 +82570,7 @@ def academic_calendar_report():
     calendar_year_label = ''
     report_terms = []
     fee_payment_methods = []
+    fee_payment_method_groups = []
     fee_deadlines = []
     year_start_display = ''
     year_end_display = ''
@@ -80726,6 +82600,7 @@ def academic_calendar_report():
                         cursor, selected_year_id, selected_term_id,
                     )
                     fee_payment_methods = fee_sections.get('payment_methods') or []
+                    fee_payment_method_groups = fee_sections.get('payment_method_groups') or []
                     fee_deadlines = fee_sections.get('fee_deadlines') or []
                     activities = _fetch_academic_calendar_activities(
                         cursor, selected_year_id, selected_term_id,
@@ -80766,6 +82641,7 @@ def academic_calendar_report():
         year_start_display=year_start_display,
         year_end_display=year_end_display,
         fee_payment_methods=fee_payment_methods,
+        fee_payment_method_groups=fee_payment_method_groups,
         fee_deadlines=fee_deadlines,
         term_label=term_label,
         generated_at=generated_at,
@@ -82296,10 +84172,6 @@ def register_finance_account():
         if not petty_cash_vote_names:
             flash('Please select at least one expense vote for this petty cash account.', 'error')
             return redirect(redirect_url_open)
-    elif not level_ids:
-        flash('Select at least one academic level to link to this account.', 'error')
-        return redirect(redirect_url_open)
-
     connection = get_db_connection()
     if not connection:
         flash('Could not connect to the database.', 'error')
@@ -82336,13 +84208,15 @@ def register_finance_account():
             connection.commit()
             if is_petty_cash:
                 flash(f'Petty cash account "{name}" registered.', 'success')
-            else:
+            elif level_ids:
                 level_count = len(level_ids)
                 flash(
                     f'Account "{name}" ({category}) registered and linked to '
                     f'{level_count} class{"es" if level_count != 1 else ""}.',
                     'success',
                 )
+            else:
+                flash(f'Account "{name}" ({category}) registered.', 'success')
     except Exception as e:
         print(f"register_finance_account: {e}")
         flash('Could not save the account. Please try again.', 'error')
@@ -82406,9 +84280,6 @@ def edit_finance_account(account_id=None):
                 flash('Account not found.', 'error')
                 return redirect(redirect_url)
             level_ids = _filter_valid_academic_level_ids(cursor, level_ids_raw)
-            if not level_ids:
-                flash('Select at least one academic level to link to this account.', 'error')
-                return redirect(edit_url)
             cursor.execute(
                 """
                 UPDATE finance_accounts
@@ -87151,5 +89022,6 @@ def flask_update_db():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
+
 
 

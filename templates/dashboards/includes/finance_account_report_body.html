@@ -2,7 +2,7 @@
 {% set kpi_accents = ['acr-kpi--teal', 'acr-kpi--sky', 'acr-kpi--violet', 'acr-kpi--amber'] %}
 
 {% if p.summary %}
-<div class="acr-kpis {% if p.summary|length == 3 %}acr-kpis--3{% endif %}" aria-label="Report summary">
+<div class="acr-kpis acr-print-summary {% if p.summary|length == 3 %}acr-kpis--3{% endif %}{% if p.report_type == 'petty-cash-book' %} no-print{% endif %}" aria-label="Report summary">
     {% for card in p.summary %}
     <div class="acr-kpi {{ kpi_accents[loop.index0 % kpi_accents|length] }}">
         <p class="acr-kpi__label">{{ card.label }}</p>
@@ -13,21 +13,25 @@
 {% endif %}
 
 {% if p.report_type == 'trial-balance' and p.trial_lines %}
-<section class="acr-section" aria-labelledby="acr-tb-title">
+<section class="acr-section acr-report-section" aria-labelledby="acr-tb-title">
     <div class="acr-section__head">
         <div>
             <h2 id="acr-tb-title" class="acr-section__title">
                 <i class="fas fa-balance-scale acr-icon--default" aria-hidden="true"></i>
-                Trial balance detail
+                Trial balance by vote
             </h2>
-            <p class="acr-section__sub">Debit and credit totals for this account in the selected period</p>
+            <p class="acr-section__sub">Opening, period debits and credits, and closing balance per expense vote</p>
         </div>
+        <span class="acr-section__count">
+            {{ p.transaction_count|default(p.trial_lines|length - 1) }} vote{{ 's' if (p.transaction_count|default(p.trial_lines|length - 1)) != 1 else '' }}
+        </span>
     </div>
     <div class="acr-table-scroll acr-table-scroll--stack">
-        <table class="acr-table acr-table--stack min-w-[28rem]">
+        <table class="acr-table acr-table--stack min-w-[32rem]">
             <thead>
                 <tr>
-                    <th>Line</th>
+                    <th>Vote</th>
+                    <th class="acr-num">Opening (KES)</th>
                     <th class="acr-num">Debit (KES)</th>
                     <th class="acr-num">Credit (KES)</th>
                     <th class="acr-num">Balance (KES)</th>
@@ -35,8 +39,9 @@
             </thead>
             <tbody>
                 {% for line in p.trial_lines %}
-                <tr class="{% if loop.last %}acr-row-total{% endif %}">
-                    <td data-label="Line">{{ line.label }}</td>
+                <tr class="{% if line._ledger_row == 'total' %}acr-row-total{% endif %}">
+                    <td data-label="Vote" class="font-semibold">{{ line.vote_name|default(line.label) }}</td>
+                    <td class="acr-num" data-label="Opening">{{ line.opening or '—' }}</td>
                     <td class="acr-num" data-label="Debit">{{ line.debit or '—' }}</td>
                     <td class="acr-num" data-label="Credit">{{ line.credit or '—' }}</td>
                     <td class="acr-num" data-label="Balance">{{ line.balance or '—' }}</td>
@@ -49,7 +54,7 @@
 {% endif %}
 
 {% if p.report_type == 'balance-sheet' and p.balance_sheet_lines %}
-<section class="acr-section">
+<section class="acr-section acr-report-section">
     <div class="acr-section__head">
         <div>
             <h2 class="acr-section__title">
@@ -83,7 +88,7 @@
 {% endif %}
 
 {% if p.report_type == 'income-expenditure' %}
-<section class="acr-section">
+<section class="acr-section acr-report-section">
     <div class="acr-section__head">
         <div>
             <h2 class="acr-section__title">
@@ -101,6 +106,7 @@
                 <tr>
                     <th>Date</th>
                     <th>Reference</th>
+                    <th>Vote</th>
                     <th>Description</th>
                     <th class="acr-num">Amount (KES)</th>
                 </tr>
@@ -110,6 +116,7 @@
                 <tr>
                     <td data-label="Date">{{ row.date }}</td>
                     <td data-label="Reference" class="acr-mono">{{ row.reference }}</td>
+                    <td data-label="Vote">{{ row.vote_name|default('—') }}</td>
                     <td data-label="Description">{{ row.description }}</td>
                     <td class="acr-num" data-label="Amount" style="color:#047857">{{ row.credit_display }}</td>
                 </tr>
@@ -125,7 +132,7 @@
     </div>
     {% endif %}
 </section>
-<section class="acr-section">
+<section class="acr-section acr-report-section">
     <div class="acr-section__head">
         <div>
             <h2 class="acr-section__title">
@@ -143,6 +150,7 @@
                 <tr>
                     <th>Date</th>
                     <th>Reference</th>
+                    <th>Vote</th>
                     <th>Description</th>
                     <th class="acr-num">Amount (KES)</th>
                 </tr>
@@ -152,6 +160,7 @@
                 <tr>
                     <td data-label="Date">{{ row.date }}</td>
                     <td data-label="Reference" class="acr-mono">{{ row.reference }}</td>
+                    <td data-label="Vote">{{ row.vote_name|default('—') }}</td>
                     <td data-label="Description">{{ row.description }}</td>
                     <td class="acr-num" data-label="Amount" style="color:#be123c">{{ row.debit_display }}</td>
                 </tr>
@@ -169,63 +178,168 @@
 </section>
 {% endif %}
 
-{% if p.columns and p.report_type not in ('income-expenditure', 'trial-balance', 'balance-sheet') %}
-<section class="acr-section">
+{% if p.report_type == 'general-ledger' and p.vote_ledgers %}
+{% for section in p.vote_ledgers %}
+<section class="acr-section acr-report-section" aria-labelledby="acr-gl-vote-{{ loop.index }}">
+    <div class="acr-section__head">
+        <div>
+            <h2 id="acr-gl-vote-{{ loop.index }}" class="acr-section__title">
+                <i class="fas fa-book acr-icon--default" aria-hidden="true"></i>
+                {{ section.vote_name }}
+            </h2>
+            <p class="acr-section__sub">Vote account — opening KES {{ section.opening_display }} · closing KES {{ section.closing_display }}</p>
+        </div>
+        <span class="acr-section__count">{{ section.transaction_count }} entr{{ 'ies' if section.transaction_count != 1 else 'y' }}</span>
+    </div>
+    {% if section.rows %}
+    <div class="acr-table-scroll acr-table-scroll--stack">
+        <table class="acr-table acr-table--stack">
+            <thead>
+                <tr>
+                    {% for col in section.columns %}
+                    <th class="{% if col.align == 'right' %}acr-num{% endif %}">{{ col.label }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in section.rows %}
+                <tr class="{% if row._ledger_row in ('opening', 'total', 'closing') %}acr-row-total{% endif %}">
+                    {% for col in section.columns %}
+                    <td class="{% if col.align == 'right' %}acr-num{% endif %} {% if col.key == 'reference' %}acr-mono{% endif %}"
+                        data-label="{{ col.label }}">{{ row[col.key]|default('—') }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="acr-empty">
+        <i class="fas fa-inbox" aria-hidden="true"></i>
+        <p class="acr-empty__title">No activity</p>
+        <p>No transactions for this vote in the selected period.</p>
+    </div>
+    {% endif %}
+</section>
+{% endfor %}
+{% elif p.report_type == 'general-ledger' %}
+<div class="acr-section">
+    <div class="acr-empty">
+        <i class="fas fa-book" aria-hidden="true"></i>
+        <p class="acr-empty__title">No vote ledgers</p>
+        <p>No vote activity was recorded for this account in the selected period.</p>
+    </div>
+</div>
+{% endif %}
+
+{% if p.columns and p.report_type not in ('income-expenditure', 'trial-balance', 'balance-sheet', 'general-ledger') %}
+<section class="acr-section acr-report-section{% if p.report_type == 'petty-cash-book' %} acr-pcb-section{% endif %}{% if p.report_type == 'cash-book' %} acr-cash-book-section{% endif %}"{% if p.report_type == 'petty-cash-book' %} id="acr-pcb-book-section"{% endif %}{% if p.report_type == 'cash-book' %} id="acr-cash-book-section"{% endif %}>
     <div class="acr-section__head">
         <div>
             <h2 class="acr-section__title">
                 <i class="fas fa-list acr-icon--default" aria-hidden="true"></i>
-                {% if p.report_type == 'general-ledger' %}Ledger entries{% elif p.report_type == 'petty-cash-book' %}Petty cash book entries{% elif p.report_type == 'student-ledger' %}Student payments{% elif p.report_type == 'cash-flow' %}Cash flow by period{% else %}Transaction detail{% endif %}
+                {% if p.report_type == 'general-ledger' %}Ledger entries{% elif p.report_type == 'petty-cash-book' %}Petty cash book{% elif p.report_type == 'cash-book' %}Cash book{% elif p.report_type == 'student-ledger' %}Student payments{% elif p.report_type == 'cash-flow' %}Cash flow by period{% else %}Transaction detail{% endif %}
             </h2>
+            {% if p.report_type == 'cash-book' %}
+            <p class="acr-section__sub">Cash and bank by payment method. Amounts are split across vote columns in priority order (first vote filled before the next).</p>
+            {% if p.vote_names and p.vote_names|length == 1 and p.vote_names[0] == '—' %}
+            <p class="acr-section__sub text-amber-700 dark:text-amber-400">No fee votes are linked to this account yet — link expense votes on the account or assign fee structure items to this account.</p>
+            {% elif p.vote_names %}
+            <p class="acr-section__sub">Votes: {{ p.vote_names|join(' → ') }}</p>
+            {% endif %}
+            {% endif %}
         </div>
-        <span class="acr-section__count">{{ p.transaction_count|default(p.rows|length) }} entr{{ 'ies' if (p.transaction_count|default(p.rows|length)) != 1 else 'y' }}</span>
+        <span class="acr-section__count">
+            {% set row_count = p.transaction_count|default(p.rows|length) %}
+            {% if p.report_type == 'general-ledger' %}
+            {{ row_count }} entr{{ 'ies' if row_count != 1 else 'y' }}
+            {% elif p.report_type == 'petty-cash-book' %}
+            {{ row_count }} transaction{{ 's' if row_count != 1 else '' }}
+            {% elif p.report_type == 'cash-book' %}
+            {{ row_count }} line{{ 's' if row_count != 1 else '' }}
+            {% else %}
+            {{ row_count }} line{{ 's' if row_count != 1 else '' }}
+            {% endif %}
+        </span>
     </div>
     {% if p.rows %}
-    {% if p.report_type == 'petty-cash-book' %}
-    <div class="acr-pcb-table">
-        <div class="acr-pcb-table__scroll acr-table-scroll acr-table-scroll--stack">
-            <table class="acr-table acr-table--stack">
-                <colgroup>
-                    <col class="acr-pcb-col-date"><col class="acr-pcb-col-ref"><col class="acr-pcb-col-part">
-                    <col class="acr-pcb-col-rcpt"><col class="acr-pcb-col-pay"><col class="acr-pcb-col-bal">
-                </colgroup>
+    {% if p.report_type == 'cash-book' %}
+    <div class="acr-cash-book-table">
+        <div class="acr-cash-book-table__scroll acr-table-scroll acr-table-scroll--stack">
+            <table class="acr-table acr-table--stack acr-cash-book-table__grid">
                 <thead>
                     <tr>
+                        <th colspan="3" class="acr-cash-book-group-head">Transaction</th>
+                        <th colspan="3" class="acr-cash-book-group-head acr-num">Amount (KES)</th>
+                        {% if p.vote_names and not (p.vote_names|length == 1 and p.vote_names[0] == '—') %}
+                        <th colspan="{{ p.vote_names|length }}" class="acr-cash-book-group-head acr-cash-book-group-head--votes acr-num">Votes (priority order)</th>
+                        {% elif p.columns|length > 6 %}
+                        <th colspan="{{ p.columns|length - 6 }}" class="acr-cash-book-group-head acr-cash-book-group-head--votes acr-num">Votes</th>
+                        {% endif %}
+                    </tr>
+                    <tr>
                         {% for col in p.columns %}
-                        <th class="{% if col.align == 'right' %}acr-num{% endif %}">{{ col.label }}</th>
+                        <th class="{% if col.align == 'right' %}acr-num{% endif %}{% if col.vote_name %} acr-cash-book-vote-col{% endif %}">
+                            {% if col.vote_name %}
+                            <span class="acr-cash-book-vote-head__name">{{ col.label }}</span>
+                            {% if col.description %}
+                            <span class="acr-cash-book-vote-head__desc">{{ col.description }}</span>
+                            {% endif %}
+                            {% else %}
+                            {{ col.label }}
+                            {% endif %}
+                        </th>
                         {% endfor %}
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in p.rows %}
-                    {% if not row._ledger_row %}
-                    <tr>
+                    <tr class="{% if row._ledger_row in ('opening', 'total', 'closing') %}acr-row-total{% endif %}">
                         {% for col in p.columns %}
-                        <td class="{% if col.align == 'right' %}acr-num{% endif %} {% if col.key == 'reference' %}acr-mono{% endif %}"
+                        <td class="{% if col.align == 'right' %}acr-num{% endif %} {% if col.key == 'reference' %}acr-mono{% endif %}{% if col.vote_name %} acr-cash-book-vote-col{% endif %}"
                             data-label="{{ col.label }}">{{ row[col.key]|default('—') }}</td>
                         {% endfor %}
                     </tr>
-                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        <div class="acr-pcb-table__foot" aria-label="Petty cash book summary">
+    </div>
+    {% elif p.report_type == 'petty-cash-book' %}
+    <div class="acr-pcb-table">
+        <div class="acr-pcb-table__scroll acr-table-scroll acr-table-scroll--stack">
             <table class="acr-table acr-table--stack">
                 <colgroup>
-                    <col class="acr-pcb-col-date"><col class="acr-pcb-col-ref"><col class="acr-pcb-col-part">
-                    <col class="acr-pcb-col-rcpt"><col class="acr-pcb-col-pay"><col class="acr-pcb-col-bal">
+                    <col class="acr-pcb-col-date"><col class="acr-pcb-col-vote"><col class="acr-pcb-col-desc"><col class="acr-pcb-col-company">
+                    <col class="acr-pcb-col-ref"><col class="acr-pcb-col-debit"><col class="acr-pcb-col-credit">
                 </colgroup>
+                <thead>
+                    <tr>
+                        {% set pcb_print_labels = {
+                            'date': 'Date',
+                            'expense_vote': 'Vote',
+                            'expense_description': 'Description',
+                            'company_display': 'Company',
+                            'reference': 'Ref',
+                            'debit_display': 'Debit',
+                            'credit_display': 'Credit'
+                        } %}
+                        {% for col in p.columns %}
+                        <th class="{% if col.align == 'right' %}acr-num{% endif %}">
+                            <span class="acr-th-screen">{{ col.label }}</span>
+                            <span class="acr-th-print" aria-hidden="true">{{ pcb_print_labels.get(col.key, col.label) }}</span>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
                 <tbody>
                     {% for row in p.rows %}
-                    {% if row._ledger_row in ('opening', 'total', 'closing') %}
-                    <tr class="acr-row-total">
+                    <tr class="{% if row._ledger_row in ('opening', 'closing') %}acr-row-total{% endif %}">
                         {% for col in p.columns %}
                         <td class="{% if col.align == 'right' %}acr-num{% endif %} {% if col.key == 'reference' %}acr-mono{% endif %}"
                             data-label="{{ col.label }}">{{ row[col.key]|default('—') }}</td>
                         {% endfor %}
                     </tr>
-                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
@@ -264,13 +378,13 @@
             <i class="fas fa-plus-circle" aria-hidden="true"></i> Register petty cash account
         </button>
         {% else %}
-        <p class="acr-empty__title">No transactions</p>
-        <p>Try widening the date range or check that activity was posted to this account.</p>
+        <p class="acr-empty__title">No expenses</p>
+        <p>No petty cash expenses were recorded in the selected period.</p>
         {% endif %}
     </div>
     {% endif %}
 </section>
-{% elif p.report_type not in ('trial-balance', 'balance-sheet', 'income-expenditure') %}
+{% elif p.report_type not in ('trial-balance', 'balance-sheet', 'income-expenditure', 'general-ledger') %}
 <div class="acr-section">
     <div class="acr-empty">
         <i class="fas fa-chart-line" aria-hidden="true"></i>

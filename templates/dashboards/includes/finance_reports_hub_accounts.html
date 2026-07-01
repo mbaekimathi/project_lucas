@@ -1,0 +1,171 @@
+{# Read-only finance accounts list — same grouping as accountant accounts dashboard #}
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+<style>
+.fa-table-wrap { max-height: min(55vh, 520px); overflow: auto; }
+.fa-category-row td {
+    padding: 0;
+    border-bottom: none;
+    background: linear-gradient(180deg, #f1f5f9 0%, #f8fafc 100%);
+}
+.dark .fa-category-row td {
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.5) 100%);
+}
+.fa-category-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #0f766e;
+    border-top: 1px solid var(--acc-line);
+    border-bottom: 1px solid var(--acc-line);
+}
+.dark .fa-category-head { color: #5eead4; }
+.fa-category-head i { opacity: 0.85; font-size: 0.625rem; }
+.fa-category-count {
+    margin-left: auto;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--acc-muted);
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    background: rgba(20, 184, 166, 0.1);
+}
+.dark .fa-category-count { background: rgba(20, 184, 166, 0.15); }
+.fa-account-row td:first-child { padding-left: 1.25rem; }
+.fa-row-suspended { opacity: 0.72; }
+.fr-hub-accounts { margin-top: 1.25rem; }
+.fr-hub-accounts-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #0d9488;
+    text-decoration: none;
+}
+.fr-hub-accounts-link:hover { text-decoration: underline; }
+</style>
+
+{% set _fo = filter_options|default({}) %}
+{% set _fy = _fo.default_financial_year_id|default('') %}
+{% set _df = _fo.default_date_from|default('') %}
+{% set _dt = _fo.default_date_to|default('') %}
+{% set _rc_base = employee_dash_url('finance-overview/reports/revenue-collection') %}
+
+{% macro fr_hub_account_href(fa_id='') %}
+{% set href = _rc_base %}
+{% if _fy %}{% set href = href ~ '?financial_year_id=' ~ _fy %}{% endif %}
+{% if _df %}{% set href = href ~ ('&' if _fy else '?') ~ 'date_from=' ~ _df %}{% endif %}
+{% if _dt %}{% set href = href ~ ('&' if _fy or _df else '?') ~ 'date_to=' ~ _dt %}{% endif %}
+{% if fa_id %}{% set href = href ~ ('&' if '?' in href else '?') ~ 'finance_account_id=' ~ fa_id %}{% endif %}
+{{ href }}
+{% endmacro %}
+
+<section class="fr-hub-accounts fr-report-panel" aria-labelledby="fr-hub-accounts-title">
+    <div class="fr-report-panel__head">
+        <div>
+            <h2 id="fr-hub-accounts-title" class="fr-report-panel__title" style="letter-spacing:0.04em;text-transform:none;font-size:0.875rem;color:var(--fr-ink,#0f172a);">
+                Finance accounts
+            </h2>
+            <p class="text-xs text-[var(--acc-muted)] mt-0.5">Grouped by category — open a report for any account</p>
+        </div>
+        <span class="text-xs font-semibold tabular-nums text-[var(--acc-muted)]">{{ record_count|default(0) }} registered</span>
+    </div>
+    <div class="fr-report-panel__body">
+        {% if accounts_by_category|default([]) %}
+        <div class="fa-table-wrap accounts-panel rounded-none border-0 shadow-none">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase tracking-wide text-[var(--acc-muted)] border-b border-[var(--acc-line)]">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold">Account name</th>
+                        <th class="px-4 py-3 font-semibold hidden lg:table-cell">Academic levels</th>
+                        <th class="px-4 py-3 font-semibold hidden md:table-cell">Description</th>
+                        <th class="px-4 py-3 font-semibold hidden lg:table-cell">Payment modes</th>
+                        <th class="px-4 py-3 font-semibold hidden sm:table-cell">Registered</th>
+                        <th class="px-4 py-3 font-semibold">Status</th>
+                        <th class="px-4 py-3 font-semibold text-right">Report</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-[var(--acc-line)]">
+                    {% for group in accounts_by_category %}
+                    <tr class="fa-category-row">
+                        <td colspan="7">
+                            <div class="fa-category-head">
+                                <i class="fas fa-folder-open" aria-hidden="true"></i>
+                                <span>{{ group.category }}</span>
+                                <span class="fa-category-count">{{ group.accounts|length }} account{% if group.accounts|length != 1 %}s{% endif %}</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% for row in group.accounts %}
+                    <tr class="fa-account-row hover:bg-slate-50/80 dark:hover:bg-slate-800/40 {% if row.account_status == 'suspended' %}fa-row-suspended{% endif %}">
+                        <td class="px-4 py-3 font-semibold text-[var(--acc-ink)]">{{ row.account_name }}</td>
+                        <td class="px-4 py-3 hidden lg:table-cell">
+                            {% if row.academic_levels %}
+                            <div class="flex flex-wrap gap-1 max-w-xs">
+                                {% for lv in row.academic_levels %}
+                                <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                      title="{{ lv.level_category }}">{{ lv.level_name }}</span>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <span class="text-[var(--acc-muted)]">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-[var(--acc-muted)] hidden md:table-cell max-w-xs truncate" title="{{ row.account_description or '' }}">
+                            {{ row.account_description or '—' }}
+                        </td>
+                        <td class="px-4 py-3 hidden lg:table-cell">
+                            {% if row.payment_mode_labels %}
+                            <div class="flex flex-wrap gap-1">
+                                {% for label in row.payment_mode_labels %}
+                                <span class="inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">{{ label }}</span>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <span class="text-[var(--acc-muted)]">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-xs text-[var(--acc-muted)] hidden sm:table-cell whitespace-nowrap">
+                            {% if row.created_at %}
+                            {{ row.created_at.strftime('%d %b %Y') if row.created_at.strftime is defined else row.created_at }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            {% if row.account_status == 'suspended' %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+                                <i class="fas fa-pause-circle text-[9px]" aria-hidden="true"></i> Suspended
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                                <i class="fas fa-check-circle text-[9px]" aria-hidden="true"></i> Active
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap">
+                            <a href="{{ fr_hub_account_href(row.id) }}" class="fr-hub-accounts-link" title="Revenue &amp; collection for {{ row.account_name }}">
+                                <i class="fas fa-chart-line" aria-hidden="true"></i>
+                                <span>View</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-6 py-10 text-center">
+            <i class="fas fa-book-open text-3xl text-[var(--acc-muted)] opacity-40 mb-3" aria-hidden="true"></i>
+            <p class="text-sm font-medium text-[var(--acc-ink)]">No finance accounts registered yet</p>
+            <p class="text-xs text-[var(--acc-muted)] mt-1">Accounts are managed under the accountant role.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>

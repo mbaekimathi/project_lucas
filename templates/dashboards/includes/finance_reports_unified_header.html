@@ -1,0 +1,75 @@
+{# Unified shell — Revenue, Expenditure & Financial Statements on one page #}
+{% set _slug = report_slug|default('') %}
+{% set _fo = filter_options|default({}) %}
+{% set _fy = request.args.get('financial_year_id') or _fo.default_financial_year_id|default('') %}
+{% set _df = request.args.get('date_from') or _fo.default_date_from|default('') %}
+{% set _dt = request.args.get('date_to') or _fo.default_date_to|default('') %}
+{% set _src = request.args.get('source', 'all') %}
+{% set _grade = request.args.get('grade', '') %}
+{% set _fa = request.args.get('finance_account_id', '') %}
+{% set _ledger = expenditure_ledger|default(request.args.get('ledger', '')|lower) %}
+{% set _statement = financial_statement|default(request.args.get('statement', '')|lower) %}
+{% set _vote = expenditure_vote|default('') %}
+{% set _book = revenue_book|default(request.args.get('book', 'general-ledger')|lower) %}
+{% set _core_nav = finance_core_report_nav|default([]) %}
+
+{% macro fr_tab_href(tab_slug) -%}
+{%- set href = employee_dash_url('finance-overview/reports/' ~ tab_slug) -%}
+{%- if tab_slug == 'expenditure' and _ledger and not _vote -%}
+{%- set href = href ~ '?ledger=' ~ _ledger -%}
+{%- elif tab_slug == 'financial-statements' and _statement -%}
+{%- set href = href ~ '?statement=' ~ _statement -%}
+{%- elif _fy -%}
+{%- set href = href ~ '?financial_year_id=' ~ _fy -%}
+{%- endif -%}
+{%- if _fy and (tab_slug == 'expenditure' and _ledger and not _vote) or (tab_slug == 'financial-statements' and _statement) -%}
+{%- set href = href ~ '&financial_year_id=' ~ _fy -%}
+{%- endif -%}
+{%- if _df -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'date_from=' ~ _df -%}
+{%- endif -%}
+{%- if _dt -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'date_to=' ~ _dt -%}
+{%- endif -%}
+{%- if tab_slug == 'revenue-collection' -%}
+{%- if _book -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'book=' ~ _book -%}
+{%- endif -%}
+{%- if _fa -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'finance_account_id=' ~ _fa -%}
+{%- endif -%}
+{%- endif -%}
+{{- href -}}
+{%- endmacro %}
+
+<header class="fr-unified no-print" aria-label="Accounts report">
+    <div class="fr-unified__bar">
+        <div class="fr-unified__brand min-w-0">
+            <p class="fr-unified__school">{{ school_settings.school_name or 'School' }}</p>
+            <p class="fr-unified__period">
+                <span id="fr-masthead-period">{{ report_period_label|default('Set dates below') }}</span>
+                <span class="fr-unified__dot" aria-hidden="true">·</span>
+                <span class="fr-unified__generated" id="fr-masthead-generated">{{ report_generated_at|default('—') }}</span>
+            </p>
+        </div>
+        <button type="button" id="fr-print-top" class="fr-btn fr-btn--ghost">
+            <i class="fas fa-print" aria-hidden="true"></i>
+            <span>Print</span>
+        </button>
+    </div>
+
+    <nav class="fr-unified-tabs" aria-label="Report type">
+        {% for item in _core_nav %}
+        <a href="{{ fr_tab_href(item.slug) }}"
+           class="fr-unified-tabs__tab {% if _slug == item.slug %}is-active{% endif %}"
+           {% if _slug == item.slug %}aria-current="page"{% endif %}>
+            <i class="fas {{ item.icon }}" aria-hidden="true"></i>
+            <span>{{ item.title }}</span>
+        </a>
+        {% endfor %}
+    </nav>
+
+    {% with unified_mode=true %}
+    {% include 'dashboards/includes/finance_reports_filters.html' %}
+    {% endwith %}
+</header>

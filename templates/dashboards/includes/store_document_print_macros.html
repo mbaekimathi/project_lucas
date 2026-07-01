@@ -11,6 +11,21 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/store-document-print.css') }}">
 {% endmacro %}
 
+{% macro sd_print_scripts(footer_title) %}
+<script>
+    function syncStorePrintFooter() {
+        var footerTitle = document.getElementById('sd-print-footer-title');
+        if (footerTitle) footerTitle.textContent = {{ footer_title|tojson }};
+    }
+    window.syncStorePrintFooter = syncStorePrintFooter;
+    syncStorePrintFooter();
+{% include 'dashboards/includes/store_document_print_frame.js' %}
+    if (window.location.search.indexOf('auto=1') !== -1) {
+        window.addEventListener('load', function () { printStoreDocument(); });
+    }
+</script>
+{% endmacro %}
+
 {% macro sd_school_contact() %}
 {%- set addr = school_settings.school_address or school_settings.address or school_settings.school_location or '' -%}
 {%- set phone = school_settings.phone or school_settings.phone_number or school_settings.school_phone or '' -%}
@@ -20,15 +35,23 @@
 {%- if email -%}{% if addr or phone %} · {% endif %}{{ email }}{% endif -%}
 {% endmacro %}
 
-{% macro sd_actions(print_label, back_url, back_label='Back') %}
+{% macro sd_actions(print_label, back_url, back_label='Back', print_onclick='printStoreDocument()') %}
 <div class="sd-doc-actions no-print">
-    <button type="button" class="sd-doc-btn-print" onclick="window.print()">
+    <button type="button" class="sd-doc-btn-print" onclick="{{ print_onclick }}">
         <i class="fas fa-print"></i> {{ print_label }}
     </button>
     <a href="{{ back_url }}" class="sd-doc-btn-back">
         <i class="fas fa-arrow-left"></i> {{ back_label }}
     </a>
 </div>
+{% endmacro %}
+
+{% macro sd_doc_open() %}
+<article class="sd-doc sd-doc-body">
+{% endmacro %}
+
+{% macro sd_doc_close() %}
+</article>
 {% endmacro %}
 
 {% macro sd_header(kicker, doc_title, doc_ref='', badge_label='', badge_value='') %}

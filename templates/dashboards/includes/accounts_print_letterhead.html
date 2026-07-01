@@ -1,0 +1,171 @@
+{# Shared accounts print letterhead — logo, school details, report title, meta.
+   Expects: report_title, school_settings
+   Optional: account, print_meta_primary, report_period_label, report_generated_at,
+             letterhead_id, print_title_id, print_period_id, print_generated_id, print_primary_id,
+             letterhead_always_visible, letterhead_sync_mode ('acr'|'fr'|'fr-unified'|false) #}
+{% set _lh_id = letterhead_id|default('acr-print-letterhead') %}
+{% set _title_id = print_title_id|default('acr-print-title') %}
+{% set _period_id = print_period_id|default('acr-print-period') %}
+{% set _generated_id = print_generated_id|default('acr-print-generated') %}
+{% set _primary_id = print_primary_id|default('acr-print-account') %}
+{% set _addr = school_settings.school_address or school_settings.address or school_settings.school_location or '' %}
+{% set _phone = school_settings.phone or school_settings.phone_number or school_settings.school_phone or '' %}
+{% set _email = school_settings.email or school_settings.school_email or '' %}
+{% set _visible = letterhead_always_visible|default(false) %}
+{% set _sync = letterhead_sync_mode|default('acr') %}
+{% set _primary = print_meta_primary|default(account.account_name if account is defined and account else '') %}
+{% set _website_qr = school_website_qr_data_url|default('') %}
+<div id="{{ _lh_id }}" class="acr-print-letterhead{% if not _visible %} acr-print-only{% endif %}" aria-hidden="{{ 'false' if _visible else 'true' }}">
+    <div class="acr-print-letterhead__brand">
+        <div class="acr-print-letterhead__brand-left">
+            {% if school_settings.school_logo %}
+            <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
+                 alt="{{ school_settings.school_name or 'School logo' }}"
+                 class="acr-print-letterhead__logo">
+            {% endif %}
+        </div>
+        <div class="acr-print-letterhead__school-block">
+            <h1 class="acr-print-letterhead__school">{{ school_settings.school_name or 'School' }}</h1>
+            {% if _addr %}
+            <p class="acr-print-letterhead__location">{{ _addr }}</p>
+            {% endif %}
+            {% if _email or _phone %}
+            <dl class="acr-print-letterhead__school-contacts">
+                {% if _email %}
+                <div class="acr-print-letterhead__school-contact">
+                    <dt class="acr-print-letterhead__detail-label">Email</dt>
+                    <dd class="acr-print-letterhead__detail-value">{{ _email }}</dd>
+                </div>
+                {% endif %}
+                {% if _phone %}
+                <div class="acr-print-letterhead__school-contact">
+                    <dt class="acr-print-letterhead__detail-label">Tel</dt>
+                    <dd class="acr-print-letterhead__detail-value">{{ _phone }}</dd>
+                </div>
+                {% endif %}
+            </dl>
+            {% endif %}
+        </div>
+        <div class="acr-print-letterhead__brand-right{% if not _website_qr %} acr-print-letterhead__brand-right--empty{% endif %}">
+            {% if _website_qr %}
+            <div class="acr-print-letterhead__qr">
+                <img src="{{ _website_qr }}"
+                     alt="QR code — scan to visit {{ school_settings.school_name or 'school' }} website"
+                     class="acr-print-letterhead__qr-img"
+                     width="96"
+                     height="96">
+                <p class="acr-print-letterhead__qr-label">School website</p>
+                <p class="acr-print-letterhead__qr-hint">Scan to visit</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="acr-print-letterhead__doc">
+        <h2 class="acr-print-letterhead__title" id="{{ _title_id }}">{{ report_title }}</h2>
+        <dl class="acr-print-letterhead__meta-grid">
+            {% if _primary and not hide_print_meta_primary|default(false) %}
+            <div class="acr-print-letterhead__meta-item">
+                <dt>Account</dt>
+                <dd id="{{ _primary_id }}">{{ _primary }}</dd>
+            </div>
+            {% endif %}
+            <div class="acr-print-letterhead__meta-item">
+                <dt>Period</dt>
+                <dd id="{{ _period_id }}">{{ report_period_label|default('All dates') }}</dd>
+            </div>
+            <div class="acr-print-letterhead__meta-item">
+                <dt>Generated</dt>
+                <dd id="{{ _generated_id }}">{{ report_generated_at|default('—') }}</dd>
+            </div>
+        </dl>
+        {% if print_meta_extra %}
+        <p class="acr-print-letterhead__meta-extra">{{ print_meta_extra }}</p>
+        {% endif %}
+    </div>
+</div>
+{% if with_print_footer|default(true) %}
+{% with print_footer_id=print_footer_id|default('acr-print-footer'), print_footer_title_id=print_footer_title_id|default('acr-print-footer-title'), footer_always_visible=letterhead_always_visible|default(false) %}
+{% include 'dashboards/includes/accounts_print_footer.html' %}
+{% endwith %}
+{% endif %}
+{% if _sync or with_print_footer|default(true) %}
+<script>
+(function () {
+  var mode = {{ _sync|tojson }};
+  var titleId = {{ _title_id|tojson }};
+  var periodId = {{ _period_id|tojson }};
+  var generatedId = {{ _generated_id|tojson }};
+  var primaryId = {{ _primary_id|tojson }};
+  var footerTitleId = {{ (print_footer_title_id|default('acr-print-footer-title'))|tojson }};
+  var fallbackTitle = {{ report_title|tojson }};
+  function syncAccountsPrintFooter() {
+    var titleEl = document.getElementById(titleId);
+    var title = titleEl && titleEl.textContent.trim()
+      ? titleEl.textContent.trim()
+      : (fallbackTitle || 'Accounts report');
+    var footerTitle = document.getElementById(footerTitleId);
+    if (footerTitle) footerTitle.textContent = title;
+  }
+  function syncAccountsPrintLetterhead() {
+    var printTitle = document.getElementById(titleId);
+    if (printTitle) {
+      if (mode === 'acr') {
+        var title = document.querySelector('.acr-masthead__title');
+        if (title) printTitle.textContent = title.textContent;
+        [
+          ['acr-masthead-account', primaryId],
+          ['acr-masthead-period', periodId],
+          ['acr-masthead-generated', generatedId],
+        ].forEach(function (pair) {
+          var src = document.getElementById(pair[0]);
+          var dst = document.getElementById(pair[1]);
+          if (src && dst) dst.textContent = src.textContent;
+        });
+      } else if (mode === 'fr') {
+        var frTitle = document.querySelector('.fr-masthead__title');
+        if (frTitle) printTitle.textContent = frTitle.textContent;
+        var frPeriod = document.getElementById('fr-masthead-period');
+        var frGen = document.getElementById('fr-masthead-generated');
+        var pDst = document.getElementById(periodId);
+        var gDst = document.getElementById(generatedId);
+        if (frPeriod && pDst) pDst.textContent = frPeriod.textContent;
+        if (frGen && gDst) gDst.textContent = frGen.textContent;
+      } else if (mode === 'fr-unified') {
+        var tableTitle = document.getElementById('fr-table-title');
+        var activeTab = document.querySelector('.fr-unified-tabs__tab.is-active span:last-child');
+        if (tableTitle && tableTitle.textContent.trim()) {
+          printTitle.textContent = tableTitle.textContent.trim();
+        } else if (activeTab) {
+          printTitle.textContent = activeTab.textContent.trim();
+        }
+        var uPeriod = document.getElementById('fr-masthead-period');
+        var uGen = document.getElementById('fr-masthead-generated');
+        var upDst = document.getElementById(periodId);
+        var ugDst = document.getElementById(generatedId);
+        if (uPeriod && upDst) upDst.textContent = uPeriod.textContent;
+        if (uGen && ugDst) ugDst.textContent = uGen.textContent;
+      }
+    }
+    syncAccountsPrintFooter();
+  }
+  window.syncAccountsPrintLetterhead = syncAccountsPrintLetterhead;
+  window.syncAccountsPrintFooter = syncAccountsPrintFooter;
+  if (mode === 'acr') window.syncAcrPrintLetterhead = syncAccountsPrintLetterhead;
+  function onBeforePrint() {
+    if (window.__acrIframePrintActive) return;
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
+    if (mode) syncAccountsPrintLetterhead();
+    else syncAccountsPrintFooter();
+  }
+  window.addEventListener('beforeprint', onBeforePrint);
+  window.addEventListener('afterprint', function () {
+    if (typeof window.unpinAccountsPrintFooters === 'function') {
+      window.unpinAccountsPrintFooters();
+    }
+  });
+  syncAccountsPrintFooter();
+})();
+</script>
+{% endif %}

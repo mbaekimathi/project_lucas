@@ -21,7 +21,7 @@
     'skipInitialFetch': true
 }|tojson }}</script>
 
-<div class="acr-page page-content">
+<div class="acr-page page-content acr-report-page">
     <div class="acr-inner">
         <div class="acr-toolbar no-print">
             <nav class="acr-breadcrumb" aria-label="Breadcrumb">
@@ -32,7 +32,7 @@
                 <span class="acr-breadcrumb__current">{{ account_report_meta.title }}</span>
             </nav>
             <div class="acr-toolbar__actions">
-                <button type="button" class="acr-btn" onclick="window.print()">
+                <button type="button" class="acr-btn" onclick="printAccountReport()">
                     <i class="fas fa-print" aria-hidden="true"></i> Print
                 </button>
                 <a href="{{ employee_dash_url('accounts/' ~ account_id) }}" class="acr-btn">

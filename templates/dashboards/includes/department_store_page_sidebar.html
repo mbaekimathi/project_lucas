@@ -1,0 +1,15 @@
+{% set _ds_role = department_store_role|default(dashboard_content_role|default('')) %}
+{% if _ds_role == 'secretary' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif _ds_role == 'librarian' %}
+{% include 'dashboards/includes/librarian_page_sidebar.html' %}
+{% elif _ds_role == 'warden' %}
+{% include 'dashboards/includes/warden_page_sidebar.html' %}
+{% elif _ds_role == 'cateress' %}
+{% include 'dashboards/includes/cateress_page_sidebar.html' %}
+{% else %}
+<a href="{{ dashboard_home_url() }}" class="sidebar-item mb-2 pb-2 border-b border-slate-700/60">
+    <i class="fas fa-gauge w-5"></i><span>Dashboard</span>
+</a>
+{% include 'dashboards/includes/department_store_sidebar.html' %}
+{% endif %}

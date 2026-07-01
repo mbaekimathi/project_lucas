@@ -41,6 +41,8 @@
 {% set portal_theme_class = 'role-theme-admin' %}{% set portal_page_variant = 'admin' %}
 {% elif _portal_raw == 'warden' %}
 {% set portal_theme_class = 'role-theme-warden' %}{% set portal_page_variant = 'warden' %}
+{% elif _portal_raw == 'cateress' %}
+{% set portal_theme_class = 'role-theme-cateress' %}{% set portal_page_variant = 'cateress' %}
 {% elif _portal_raw in ('transport manager', 'transport') %}
 {% set portal_theme_class = 'role-theme-transport' %}{% set portal_page_variant = 'transport' %}
 {% endif %}

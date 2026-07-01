@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}{{ hub_title }} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set leadership_nav_scope = 'all' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}">
+    {% set role_theme = portal_page_variant|default('default') %}
+    {% set role_hero_eyebrow = hub_eyebrow %}
+    {% set role_hero_title = hub_title %}
+    {% set role_hero_subtitle = hub_subtitle %}
+    {% set role_hero_icon_class = hub_icon %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {% if operations_hub == 'store' %}
+        <a href="{{ employee_dash_url('store-requisitions') }}" class="role-quick-card">
+            <i class="fas fa-clipboard-list text-orange-600 dark:text-orange-400"></i>
+            <span>Requisitions</span>
+            <small>Review and fulfil staff requests</small>
+        </a>
+        <a href="{{ employee_dash_url('store-lpo') }}" class="role-quick-card">
+            <i class="fas fa-file-invoice text-amber-600 dark:text-amber-400"></i>
+            <span>LPO</span>
+            <small>Local purchase orders</small>
+        </a>
+        <a href="{{ employee_dash_url('store-inventory') }}" class="role-quick-card">
+            <i class="fas fa-boxes-stacked text-blue-600 dark:text-blue-400"></i>
+            <span>Register item</span>
+            <small>Add items to the store catalog</small>
+        </a>
+        <a href="{{ employee_dash_url('store-stock') }}" class="role-quick-card">
+            <i class="fas fa-arrow-right-arrow-left text-teal-600 dark:text-teal-400"></i>
+            <span>Stock in &amp; out</span>
+            <small>Record stock movements</small>
+        </a>
+        <a href="{{ employee_dash_url('store-stock/analytics') }}" class="role-quick-card">
+            <i class="fas fa-chart-line text-violet-600 dark:text-violet-400"></i>
+            <span>Stock analysis</span>
+            <small>Trends and movement history</small>
+        </a>
+        <a href="{{ employee_dash_url('store-current-stock') }}" class="role-quick-card">
+            <i class="fas fa-warehouse text-indigo-600 dark:text-indigo-400"></i>
+            <span>Current stock</span>
+            <small>On-hand quantities by item</small>
+        </a>
+        <a href="{{ employee_dash_url('store-suppliers') }}" class="role-quick-card">
+            <i class="fas fa-truck-field text-slate-600 dark:text-slate-400"></i>
+            <span>Suppliers</span>
+            <small>Supplier directory and records</small>
+        </a>
+        <a href="{{ employee_dash_url('store-stock/audits') }}" class="role-quick-card">
+            <i class="fas fa-clipboard-check text-emerald-600 dark:text-emerald-400"></i>
+            <span>Stock audit</span>
+            <small>Physical stock checks</small>
+        </a>
+        {% elif operations_hub == 'kitchen' %}
+        <a href="{{ employee_dash_url('department-store/requisitions') }}?dept_role=cateress" class="role-quick-card">
+            <i class="fas fa-clipboard-list text-orange-600 dark:text-orange-400"></i>
+            <span>Kitchen requisitions</span>
+            <small>Request supplies from the school store</small>
+        </a>
+        <a href="{{ employee_dash_url('department-store/items') }}?dept_role=cateress" class="role-quick-card">
+            <i class="fas fa-boxes-stacked text-blue-600 dark:text-blue-400"></i>
+            <span>Kitchen store items</span>
+            <small>Items linked to the kitchen department</small>
+        </a>
+        <a href="{{ employee_dash_url('department-store/analytics') }}?dept_role=cateress" class="role-quick-card">
+            <i class="fas fa-chart-line text-violet-600 dark:text-violet-400"></i>
+            <span>Kitchen analytics</span>
+            <small>Usage and requisition trends</small>
+        </a>
+        {% elif operations_hub == 'library' %}
+        <a href="{{ employee_dash_url('books-inventory') }}" class="role-quick-card">
+            <i class="fas fa-book text-teal-600 dark:text-teal-400"></i>
+            <span>Books inventory</span>
+            <small>Catalog of titles and copies</small>
+        </a>
+        <a href="{{ employee_dash_url('books-inventory/stock') }}" class="role-quick-card">
+            <i class="fas fa-warehouse text-cyan-600 dark:text-cyan-400"></i>
+            <span>Allocate books</span>
+            <small>Class and teacher allocation</small>
+        </a>
+        <a href="{{ employee_dash_url('issue-return-records') }}" class="role-quick-card">
+            <i class="fas fa-exchange-alt text-indigo-600 dark:text-indigo-400"></i>
+            <span>Issue / return</span>
+            <small>Lending records by class level</small>
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -161,6 +161,7 @@ document.addEventListener('alpine:init', function () {
                 if (periodEl && data.report_period_label) periodEl.textContent = data.report_period_label;
                 if (genEl && data.report_generated_at) genEl.textContent = data.report_generated_at;
                 if (acctEl && data.account_name) acctEl.textContent = data.account_name;
+                if (window.syncAcrPrintLetterhead) window.syncAcrPrintLetterhead();
               }
               self.showFlash(data.message, 'success');
               if (opts.onSuccess) opts.onSuccess();
@@ -700,7 +701,7 @@ document.addEventListener('alpine:init', function () {
 {% set filter_data_url = employee_dash_url('accounts/petty-cash-book/data') %}
 
 <div x-data="pettyCashBookPage" x-init="init()">
-<div class="acr-page page-content">
+<div class="acr-page page-content acr-pcb-page">
     <div class="acr-inner">
         {% include 'dashboards/includes/portal_page_flash.html' %}
 
@@ -728,7 +729,7 @@ document.addEventListener('alpine:init', function () {
                 <button type="button" class="acr-btn acr-btn--primary" @click="openExpenseModal()">
                     <i class="fas fa-receipt" aria-hidden="true"></i> Record expense
                 </button>
-                <button type="button" class="acr-btn" onclick="window.print()">
+                <button type="button" class="acr-btn" onclick="printPettyCashBook()">
                     <i class="fas fa-print" aria-hidden="true"></i> Print
                 </button>
                 <a href="{{ employee_dash_url('accounts/' ~ account_id) }}" class="acr-btn">

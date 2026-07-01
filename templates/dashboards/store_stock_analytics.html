@@ -9,7 +9,11 @@
 {% endblock %}
 
 {% block sidebar_content %}
+{% if department_store_mode|default(false) %}
+{% include 'dashboards/includes/department_store_page_sidebar.html' %}
+{% else %}
 {% include 'dashboards/includes/store_manager_page_sidebar.html' %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -18,8 +22,9 @@
 document.addEventListener('alpine:init', function () {
   Alpine.data('storeStockAnalyticsPage', function () {
     return Object.assign({}, storeAnalyticsPeriodFilterMixin(), {
-      analyticsApiUrl: {{ employee_dash_url('store-stock/analytics/data')|tojson }},
+      analyticsApiUrl: {{ (employee_dash_url('department-store/analytics/data') if department_store_mode|default(false) else employee_dash_url('store-stock/analytics/data'))|tojson }},
       itemAnalyticsBase: {{ employee_dash_url('store-inventory')|tojson }},
+      showItemAnalyticsLinks: {{ (not department_store_mode|default(false))|tojson }},
       printUrlBase: {{ employee_dash_url('store-stock/print')|tojson }},
       grnPrintUrlBase: {{ employee_dash_url('store-stock/grn-print')|tojson }},
       loading: true,
@@ -344,8 +349,14 @@ document.addEventListener('alpine:init', function () {
                     <div class="min-w-0 flex gap-3.5">
                         <div class="sinv-hero__icon" aria-hidden="true"><i class="fas fa-chart-line"></i></div>
                         <div class="min-w-0">
-                            <h1 class="sinv-hero__title">Stock analytics</h1>
-                            <p class="sinv-hero__sub si-normal">Usage trends and movement records across all catalog items.</p>
+                            <h1 class="sinv-hero__title">{% if department_store_mode|default(false) %}Store item analytics{% else %}Stock analytics{% endif %}</h1>
+                            <p class="sinv-hero__sub si-normal">
+                                {% if department_store_mode|default(false) %}
+                                Usage trends and movement records for {{ department_store_label|default('your department')|lower }} items only ({{ department_store_station|default('') }}).
+                                {% else %}
+                                Usage trends and movement records across all catalog items.
+                                {% endif %}
+                            </p>
                             <div class="flex flex-wrap gap-2 mt-2">
                                 <span class="sinv-results-badge">
                                     <i class="fas fa-boxes-stacked"></i>
@@ -481,7 +492,7 @@ document.addEventListener('alpine:init', function () {
                                                 <td class="text-right tabular-nums font-semibold text-orange-700 dark:text-orange-400" x-text="it.stock_out_qty + ' ' + it.measure"></td>
                                                 <td class="text-right tabular-nums" x-text="it.quantity_on_hand + ' ' + it.measure"></td>
                                                 <td class="text-right">
-                                                    <a :href="itemAnalyticsUrl(it.id)" class="si-btn si-btn--sm si-btn--ghost text-xs">View</a>
+                                                    <a x-show="showItemAnalyticsLinks" :href="itemAnalyticsUrl(it.id)" class="si-btn si-btn--sm si-btn--ghost text-xs">View</a>
                                                 </td>
                                             </tr>
                                         </template>
@@ -586,7 +597,8 @@ document.addEventListener('alpine:init', function () {
                                             <span class="si-ref block mt-1" x-text="m.reference_number"></span>
                                         </td>
                                         <td>
-                                            <a :href="itemAnalyticsUrl(m.store_item_id)" class="font-semibold block hover:text-[var(--sinv-accent)]" x-text="m.item_name"></a>
+                                            <a x-show="showItemAnalyticsLinks" :href="itemAnalyticsUrl(m.store_item_id)" class="font-semibold block hover:text-[var(--sinv-accent)]" x-text="m.item_name"></a>
+                                            <span x-show="!showItemAnalyticsLinks" class="font-semibold block" x-text="m.item_name"></span>
                                             <span class="text-[0.625rem] text-[var(--si-muted)]" x-text="m.item_ref"></span>
                                         </td>
                                         <td class="max-w-[9rem] truncate" x-text="m.item_category || '—'"></td>

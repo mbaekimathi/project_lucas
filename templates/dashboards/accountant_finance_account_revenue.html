@@ -21,7 +21,7 @@
                 <span class="acr-breadcrumb__current">{{ account.account_name }}</span>
             </nav>
             <div class="acr-toolbar__actions">
-                <button type="button" class="acr-btn" onclick="window.print()">
+                <button type="button" class="acr-btn" onclick="typeof printAccountsPage==='function'?printAccountsPage():window.print()">
                     <i class="fas fa-print" aria-hidden="true"></i> Print
                 </button>
                 <a href="{{ employee_dash_url('revenue') }}" class="acr-btn">

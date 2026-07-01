@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Students Discipline - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set user_role = session.get('role', '')|lower %}
+{% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
+{% set nav_role = (dashboard_content_role or viewing_as_role or user_role)|lower %}
+{% if nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'students' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'students' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'students' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% else %}
+<a href="{{ employee_dash_url('student-management') }}"
+   class="sidebar-item">
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Student management</span>
+</a>
+<a href="{{ employee_dash_url('student-management/students-discipline') }}"
+   class="sidebar-item sidebar-item-active">
+    <i class="fas fa-gavel w-5"></i>
+    <span>Students discipline</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="page-hero mb-6 sm:mb-8">
+        <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+            <div class="flex items-center gap-4">
+                <div class="page-hero-icon flex-shrink-0">
+                    <i class="fas fa-gavel text-white text-xl sm:text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">Students discipline</h1>
+                    <p class="text-white/90 text-sm sm:text-base">Record and review student behaviour incidents, sanctions, and follow-up actions.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modern-card p-8 sm:p-12 text-center">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 mb-4">
+            <i class="fas fa-gavel text-2xl"></i>
+        </div>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Discipline module</h2>
+        <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto text-sm sm:text-base">
+            This section will let you log incidents, assign sanctions, and track student conduct records across the school.
+        </p>
+    </div>
+</div>
+{% endblock %}

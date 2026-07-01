@@ -8,7 +8,7 @@
 {% include 'dashboards/includes/secretary_page_sidebar.html' %}
 {% else %}
 {% set finance_report_slug = report_slug %}
-{% include 'dashboards/includes/finance_reports_page_sidebar.html' %}
+{% include 'dashboards/includes/finance_reports_full_sidebar.html' %}
 {% endif %}
 {% endblock %}
 
@@ -33,7 +33,7 @@
             </nav>
             {% endif %}
             <div class="fr-toolbar__actions{% if is_secretary_finance|default(false) %} ml-auto{% endif %}">
-                <button type="button" class="fr-btn fr-btn--ghost" onclick="window.print()">
+                <button type="button" class="fr-btn fr-btn--ghost" onclick="typeof printFrReportShell==='function'?printFrReportShell():window.print()">
                     <i class="fas fa-print" aria-hidden="true"></i> Print
                 </button>
             </div>

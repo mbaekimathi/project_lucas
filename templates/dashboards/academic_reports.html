@@ -17,12 +17,123 @@
 {% endblock %}
 
 {% block content %}
+{% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
 <style>
+/* Academic preview — shared letterhead in report cards */
+#ar-preview-wrap .ar-rc-header .acr-print-letterhead {
+    padding: 1rem 1.35rem 0;
+}
+#ar-preview-wrap .ar-rc-class-banner .acr-print-letterhead {
+    padding: 0.75rem 1rem 0;
+}
+/* Class performance — title, period, generated on one horizontal strip */
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__doc {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem 1rem;
+    margin-bottom: 0.5rem;
+}
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__title {
+    margin: 0;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem 1rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+}
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.3rem;
+    white-space: nowrap;
+}
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item dt::after {
+    content: ':';
+}
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item dt,
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item dd {
+    display: inline;
+    margin: 0;
+}
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-subtitle {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: #64748b;
+    line-height: 1.35;
+}
+.dark #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-subtitle {
+    color: #94a3b8;
+}
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__school-contacts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.25rem 0.85rem;
+    width: auto;
+    max-width: 100%;
+}
+#ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__school-contact {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: 0.3rem;
+    margin: 0;
+}
+#ar-preview-wrap .ar-class-performance-sheet {
+    margin-bottom: 1rem;
+}
+#ar-preview-wrap .ar-class-performance-sheet:last-child {
+    margin-bottom: 0;
+}
+#ar-preview-wrap .ar-register-letterhead .acr-print-letterhead,
+#ar-preview-wrap .ar-data-table-letterhead .acr-print-letterhead {
+    padding: 0.65rem 0.85rem 0;
+    margin-bottom: 0.35rem;
+}
+@media print {
+    #ar-preview-wrap.ar-print-register-batch .ar-register-letterhead,
+    #ar-preview-wrap.ar-print-data-table .ar-data-table-letterhead {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    #ar-preview-wrap.ar-print-register-batch .ar-register-letterhead .acr-print-letterhead,
+    #ar-preview-wrap.ar-print-data-table .ar-data-table-letterhead .acr-print-letterhead {
+        display: block !important;
+        visibility: visible !important;
+    }
+}
+
 /* Class registers & exam entry: stable columns on screen and in print */
 #ar-details-list table.ar-register-table {
     table-layout: fixed;
     width: 100%;
 }
+#ar-details-list table.ar-register-table col.ar-col-day { width: 5%; }
+#ar-details-list table.ar-register-table--attendance.ar-register-table--many-days {
+    font-size: 0.75rem;
+}
+#ar-details-list table.ar-register-table .ar-att-mark {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+}
+#ar-details-list table.ar-register-table .ar-att-cell--present .ar-att-mark { color: #15803d; }
+#ar-details-list table.ar-register-table .ar-att-cell--absent .ar-att-mark { color: #b91c1c; }
+.dark #ar-details-list table.ar-register-table .ar-att-cell--present .ar-att-mark { color: #4ade80; }
+.dark #ar-details-list table.ar-register-table .ar-att-cell--absent .ar-att-mark { color: #f87171; }
 
 /* Print letterhead & footer — hidden on screen */
 .ar-print-only-hidden {
@@ -336,21 +447,24 @@
         vertical-align: middle !important;
     }
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-mark {
-        white-space: normal !important;
+        white-space: nowrap !important;
         overflow: visible !important;
         text-overflow: clip !important;
+        text-align: center !important;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade {
-        display: inline-flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: center;
-        gap: 2px 4px;
-        line-height: 1.2;
+        display: inline-flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 1px 3px !important;
+        line-height: 1.1 !important;
         min-width: 0;
+        white-space: nowrap !important;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-sep {
+        display: inline !important;
         opacity: 0.55;
         font-weight: 600;
         font-size: 0.75em;
@@ -358,12 +472,62 @@
     #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-pct {
         font-weight: 600;
         font-variant-numeric: tabular-nums;
+        white-space: nowrap !important;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-grd {
+        display: inline !important;
         font-size: 0.82em;
         font-weight: 700;
         letter-spacing: -0.02em;
         line-height: 1.1;
+        white-space: nowrap !important;
+    }
+    /* Class performance letterhead — horizontal meta in all print paths (iframe + window.print) */
+    #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__doc {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1mm 3mm !important;
+        margin-bottom: 1.5mm !important;
+    }
+    #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__title {
+        margin: 0 !important;
+        flex: 0 1 auto !important;
+    }
+    #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-grid {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 0.5mm 3mm !important;
+        margin: 0 !important;
+        grid-template-columns: none !important;
+    }
+    #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: baseline !important;
+        gap: 0.5mm !important;
+        white-space: nowrap !important;
+    }
+    #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item dt,
+    #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item dd {
+        display: inline !important;
+        margin: 0 !important;
+    }
+    #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item dt::after {
+        content: ':' !important;
+    }
+    #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__school-contacts {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        gap: 0.5mm 2.5mm !important;
+    }
+    #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__school-contact {
+        display: inline-flex !important;
+        margin: 0 !important;
     }
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-sum,
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-grade {
@@ -388,6 +552,14 @@
     #ar-preview-wrap table.ar-marks-matrix--xxdense td {
         padding: 0 0.5px !important;
         letter-spacing: -0.02em;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--xxxdense {
+        font-size: 6.5pt !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--xxxdense th,
+    #ar-preview-wrap table.ar-marks-matrix--xxxdense td {
+        padding: 0 !important;
+        letter-spacing: -0.03em;
     }
     #ar-preview-wrap table.ar-marks-matrix col.ar-col-sum {
         width: 5% !important;
@@ -504,17 +676,24 @@
         gap: 0.35rem !important;
         font-size: 8pt !important;
     }
-    #ar-preview-wrap table.ar-register-table col.ar-col-num {
-        width: 2.5% !important;
-    }
     #ar-preview-wrap table.ar-register-table col.ar-col-class {
         width: 7% !important;
+    }
+    #ar-preview-wrap table.ar-register-table col.ar-col-name {
+        width: auto !important;
     }
     #ar-preview-wrap table.ar-register-table col.ar-col-mark {
         width: 7% !important;
     }
+    #ar-preview-wrap table.ar-register-table col.ar-col-day {
+        width: 5% !important;
+        min-width: 0 !important;
+    }
     #ar-preview-wrap table.ar-register-table col.ar-col-entry {
         width: 6% !important;
+    }
+    #ar-preview-wrap table.ar-register-table tbody tr.ar-register-row--blank td {
+        background: #fff !important;
     }
     /* Plain handwriting cells — compact row height */
     #ar-preview-wrap table.ar-register-table td.ar-cell-blank {
@@ -540,6 +719,7 @@
     }
     #ar-preview-wrap .ar-print-page-sheet,
     #ar-preview-wrap .ar-class-print-sheet,
+    #ar-preview-wrap .ar-class-performance-sheet,
     #ar-preview-wrap .ar-register-class-wrap {
         width: 100% !important;
         max-width: none !important;
@@ -1194,46 +1374,207 @@
     #ar-preview-wrap .ar-register-sheet,
     #ar-preview-wrap .ar-register-class-wrap,
     #ar-preview-wrap .ar-class-print-sheet,
+    #ar-preview-wrap .ar-class-performance-sheet,
     #ar-preview-wrap .ar-rc-class-banner,
     #ar-preview-wrap article.ar-rc {
         width: 100% !important;
         max-width: none !important;
         box-sizing: border-box !important;
     }
-  /* Class marks matrix — full sheet width */
+  /* Class marks matrix — normal document flow (fixed traps multi-page tables on one sheet) */
+    html.ar-print-marks-matrix #ar-preview-wrap {
+        position: static !important;
+        left: auto !important;
+        top: auto !important;
+        right: auto !important;
+        z-index: auto !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap > div.rounded-xl,
+    html.ar-print-marks-matrix #ar-preview-wrap #ar-details-list,
+    html.ar-print-marks-matrix #ar-preview-wrap details,
+    html.ar-print-marks-matrix #ar-preview-wrap details > div,
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-fit-sheet,
+    html.ar-print-marks-matrix #ar-preview-wrap article.ar-rc {
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap details > div {
+        padding: 0 !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner {
+        margin-bottom: 1mm !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner .ar-rc-header-band {
+        padding: 1px 3px !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__doc {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1mm 3mm !important;
+        margin-bottom: 1.5mm !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__title {
+        margin: 0 !important;
+        flex: 0 1 auto !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-grid {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 0.5mm 3mm !important;
+        margin: 0 !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item {
+        flex-direction: row !important;
+        align-items: baseline !important;
+        gap: 0.5mm !important;
+        white-space: nowrap !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item dt,
+    html.ar-print-marks-matrix #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item dd {
+        display: inline !important;
+        margin: 0 !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__meta-item dt::after {
+        content: ':' !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__school-contacts {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        gap: 0.5mm 2.5mm !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .acr-print-letterhead--class-performance .acr-print-letterhead__school-contact {
+        display: inline-flex !important;
+        margin: 0 !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-class-performance-sheet {
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        margin: 0 0 2mm !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix {
-        font-size: 9pt !important;
+        font-size: 8pt !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--dense {
+        font-size: 7.25pt !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--xdense {
+        font-size: 6.75pt !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--xxdense,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--xxxdense {
+        font-size: 6.25pt !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix th,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix td {
+        padding: 0.5px 1px !important;
+        line-height: 1.1 !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
-        width: 20% !important;
-        min-width: 0 !important;
-    }
-    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
-        max-width: none !important;
         width: auto !important;
-        white-space: normal !important;
+        min-width: 0 !important;
+        max-width: 24% !important;
+        font-size: 0.95em !important;
     }
-    html.ar-print-marks-matrix #ar-preview-wrap .ar-subj-mark-grade .ar-subj-grd {
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-class {
+        max-width: 9% !important;
+        font-size: 0.92em !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-mark,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-subj {
+        max-width: none !important;
+        min-width: 0 !important;
+        width: auto !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-mark {
+        white-space: nowrap !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        text-align: center !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade {
+        display: inline-flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 1px 2px !important;
+        line-height: 1.1 !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        white-space: nowrap !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-subj-sep {
+        display: inline !important;
+        opacity: 0.55 !important;
+        font-weight: 600 !important;
+        font-size: 0.72em !important;
+        line-height: 1 !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-subj-pct {
+        font-weight: 600 !important;
+        font-variant-numeric: tabular-nums !important;
+        white-space: nowrap !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-subj-grd {
+        display: inline !important;
+        font-size: 0.78em !important;
+        line-height: 1 !important;
+        padding: 0 !important;
+        white-space: nowrap !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-grade,
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-grade {
         max-width: none !important;
-        min-width: 14mm !important;
-        width: 7% !important;
+        min-width: 0 !important;
+        width: 5.5% !important;
         overflow: visible !important;
         text-overflow: clip !important;
     }
-    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-sum {
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-sum,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-sum {
         max-width: none !important;
-        min-width: 10mm !important;
+        min-width: 0 !important;
+        width: 4.5% !important;
         overflow: visible !important;
         text-overflow: clip !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix th.ar-col-subj {
+        font-size: 0.88em !important;
+        line-height: 1.02 !important;
+        letter-spacing: -0.03em !important;
+        hyphens: auto !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .inline-flex {
+        display: inline !important;
+        padding: 0 !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner,
     html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner + article.ar-rc {
         width: 100% !important;
+    }
+    html.ar-print-marks-matrix #ar-print-page-footer,
+    html.ar-print-marks-matrix .acr-print-footer {
+        display: none !important;
     }
   /* Attendance / exam entry registers (sheet banner has school name) */
     #ar-preview-wrap.ar-print-register-batch #ar-print-letterhead {
@@ -1251,15 +1592,30 @@
     #ar-preview-wrap.ar-print-register-batch table.ar-register-table {
         font-size: 9.5pt !important;
     }
-    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-num {
-        width: 3% !important;
-    }
     #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-class {
         width: 8% !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-name,
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table colgroup > col.ar-col-name {
+        width: auto !important;
     }
     #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-mark,
     #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-entry {
         width: 6% !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-day {
+        width: 4.5% !important;
+        min-width: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table .ar-att-cell--present .ar-att-mark {
+        color: #15803d !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table .ar-att-cell--absent .ar-att-mark {
+        color: #b91c1c !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
     #ar-preview-wrap.ar-print-register-batch table.ar-register-table colgroup > col:not([class]) {
         width: auto !important;
@@ -2796,6 +3152,19 @@
                         <label for="gf-register-date" class="ar-filter-label">Attendance date</label>
                         <input type="date" id="gf-register-date" class="ar-filter-control">
                     </div>
+                    <div id="ar-wrap-register-rows" class="hidden ar-filter-field">
+                        <label for="gf-register-rows-per-page" class="ar-filter-label">Rows per printed page</label>
+                        <select id="gf-register-rows-per-page" class="ar-filter-control">
+                            <option value="20">20 rows</option>
+                            <option value="25">25 rows</option>
+                            <option value="30">30 rows</option>
+                            <option value="35" selected>35 rows</option>
+                            <option value="40">40 rows</option>
+                            <option value="45">45 rows</option>
+                            <option value="50">50 rows</option>
+                        </select>
+                        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">Each printed page shows this many learner rows; shorter pages are padded with blank lines.</p>
+                    </div>
                     <div id="ar-wrap-dates" class="hidden ar-filter-field sm:col-span-2">
                         <label class="ar-filter-label">Date range</label>
                         <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-2 items-center">
@@ -2856,24 +3225,17 @@
                 </div>
             </div>
 
-            <div id="ar-print-letterhead" class="ar-print-letterhead ar-print-only-hidden px-3 sm:px-5 pt-3 sm:pt-4" aria-hidden="true">
-                <div class="ar-print-letterhead-grid">
-                    {% if school_settings.school_logo %}
-                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="ar-print-letterhead-logo">
-                    {% endif %}
-                    <div class="ar-print-letterhead-text min-w-0">
-                        <p class="ar-print-letterhead-kicker">Official academic report</p>
-                        <h1 class="ar-print-letterhead-school">{{ school_settings.school_name or 'School' }}</h1>
-                        <p id="ar-print-school-contact" class="ar-print-letterhead-contact"></p>
-                    </div>
-                </div>
-            </div>
-            <div id="ar-print-page-footer" class="ar-print-only-hidden" aria-hidden="true"></div>
             <div id="ar-details-list" class="ar-preview-scroll p-3 sm:p-5 lg:p-6 bg-slate-50/40 dark:bg-slate-950/30">
                 <p class="text-sm text-slate-500 dark:text-slate-400">Loading report details...</p>
             </div>
         </div>
     </div>
+</div>
+
+<div id="ar-academic-print-footer-wrap">
+    {% with report_title='Academic report', print_footer_id='ar-academic-print-footer', print_footer_title_id='ar-academic-print-footer-title' %}
+    {% include 'dashboards/includes/accounts_print_footer.html' %}
+    {% endwith %}
 </div>
 
 <div id="ar-print-pdf-toast" class="no-print hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md px-4 py-3 rounded-xl border border-brand-primary/30 bg-white dark:bg-slate-800 shadow-xl text-sm text-slate-700 dark:text-slate-200" role="status">
@@ -2882,6 +3244,7 @@
 </div>
 
 <script>
+{% include 'dashboards/includes/academic_print_letterhead_builder.js' %}
 (function() {
   const API = {{ employee_dash_url('api/employee/academic-reports/generate')|tojson }};
   const STUDENT_SEARCH_API = {{ employee_dash_url('api/employee/academic-reports/search-students')|tojson }};
@@ -2889,10 +3252,12 @@
   const LEVEL_COMBINATIONS = {{ level_combinations|default([])|tojson }};
   const SCHOOL_INFO = {
     name: {{ (school_settings.school_name or 'School')|tojson }},
+    location: {{ (school_settings.school_location or school_settings.school_address or school_settings.address or '')|tojson }},
     address: {{ (school_settings.school_address or school_settings.address or '')|tojson }},
     phone: {{ (school_settings.phone or school_settings.phone_number or '')|tojson }},
     email: {{ (school_settings.email or school_settings.school_email or '')|tojson }},
-    logo: {% if school_settings.school_logo %}{{ url_for('static', filename=school_settings.school_logo)|tojson }}{% else %}''{% endif %}
+    logo: {% if school_settings.school_logo %}{{ url_for('static', filename=school_settings.school_logo)|tojson }}{% else %}''{% endif %},
+    websiteQrDataUrl: {{ school_website_qr_data_url|default('')|tojson }}
   };
   const PARENT_LOGIN_QR_DATA_URL = {{ parent_login_qr_data_url|default('')|tojson }};
   const AR_HUB_SECTION = {{ ar_hub_section|default('')|tojson }};
@@ -2900,18 +3265,19 @@
   const CATALOG = {
     class_list: {
       label: 'Class lists',
-      hint: 'Attendance register supports a specific date and attendance slots.',
+      hint: 'Set a date range (or term) for day columns; ✓ present and ✗ absent from attendance records.',
       reports: [
-        { id: 'class_list_attendance', label: 'Attendance register', desc: 'Class attendance register with Morning, Afternoon, and Evening check slots.' },
+        { id: 'class_list_attendance', label: 'Attendance register', desc: 'Students listed by row with a column per school day — ✓ present, ✗ absent.' },
         { id: 'class_list_exam', label: 'Exam entry list', desc: 'Class list prepared for exam entry.' },
       ],
     },
     attendance: {
       label: 'Attendance',
-      hint: 'Term sets default dates; optionally narrow by class or set a custom date range.',
+      hint: 'Set a date range or term. Class register shows ✓ present and ✗ absent per school day.',
       reports: [
+        { id: 'attendance_class_register', label: 'Class attendance register', desc: 'All students in the class — one column per school day with ✓ present and ✗ absent.' },
         { id: 'attendance_class', label: 'Summary by class', desc: 'Present/absent totals and unique students per class for the date range.' },
-        { id: 'attendance_individual', label: 'Individual student', desc: 'Daily present/absent rows for one student — use Find student.' },
+        { id: 'attendance_individual', label: 'Individual student', desc: 'One student — daily attendance across the date range (✓ / ✗).' },
       ],
     },
     exams: {
@@ -2959,6 +3325,7 @@
   let classRosterLoadToken = 0;
   const wrapExamName = document.getElementById('ar-wrap-exam-name');
   const wrapRegisterDate = document.getElementById('ar-wrap-register-date');
+  const wrapRegisterRows = document.getElementById('ar-wrap-register-rows');
   const wrapDates = document.getElementById('ar-wrap-dates');
   const wrapTimetableView = document.getElementById('ar-wrap-timetable-view');
   const examNameEl = document.getElementById('gf-exam-name');
@@ -3128,7 +3495,7 @@
     if (!generatedAtEl) return;
     const now = new Date();
     generatedAtEl.textContent = 'Generated: ' + now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
-    updatePrintLetterhead();
+    updateAcademicPrintFooter();
   }
 
   function currentReportId() {
@@ -3222,6 +3589,24 @@
       const b = String(row.student_id != null ? row.student_id : '').trim().toLowerCase();
       return a === want || b === want;
     });
+  }
+
+  /** Class attendance register sheets (class-list hub + attendance hub). */
+  function isAttendanceRegisterReport(reportType) {
+    var rt = String(reportType || '').trim();
+    return rt === 'class_list_attendance' || rt === 'attendance_class_register';
+  }
+
+  function attendanceRegisterFilterNeeds() {
+    return { level: true, term: true, dates: true, registerRows: true };
+  }
+
+  function emptyReportMessage(meta, fallback) {
+    var mh = (meta && meta.hint) ? String(meta.hint).trim() : '';
+    return '<div class="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">' +
+      '<p class="text-sm text-slate-500 dark:text-slate-400">' + escapeHtml(fallback || 'No data found for this report and filters.') + '</p>' +
+      (mh ? '<p class="text-sm text-slate-600 dark:text-slate-300 mt-3 max-w-xl mx-auto leading-relaxed">' + escapeHtml(mh) + '</p>' : '') +
+      '</div>';
   }
 
   /** Student required before generating (attendance individual only). */
@@ -3357,17 +3742,19 @@
     const none = {
       year: false, term: false, exam: false, level: false,
       student: false, teacher: false, timetableView: false,
-      registerDate: false, dates: false, examScope: false
+      registerDate: false, registerRows: false, dates: false, examScope: false
     };
     if (!rid) return none;
     switch (rid) {
       case 'class_list_attendance':
+      case 'attendance_class_register':
+        return Object.assign({}, none, attendanceRegisterFilterNeeds());
       case 'class_list_exam':
-        return Object.assign({}, none, { level: true });
+        return Object.assign({}, none, { level: true, registerRows: true });
       case 'attendance_class':
-        return Object.assign({}, none, { level: true, dates: true });
+        return Object.assign({}, none, { level: true, term: true, dates: true });
       case 'attendance_individual':
-        return Object.assign({}, none, { level: true, dates: true, student: true, studentSearch: true });
+        return Object.assign({}, none, { level: true, term: true, dates: true, student: true, studentSearch: true });
       case 'exam_individual_performance':
         return Object.assign({}, none, {
           examScope: true,
@@ -3412,6 +3799,7 @@
     if (needs.teacher) labels.push('Teacher');
     if (needs.timetableView) labels.push('Timetable view');
     if (needs.registerDate) labels.push('Attendance date');
+    if (needs.registerRows) labels.push('Rows per page');
     if (needs.dates) labels.push('Date range');
     return labels;
   }
@@ -3454,10 +3842,11 @@
     setFilterBlockVisible(wrapTeacher, needs.teacher);
     setFilterBlockVisible(wrapTimetableView, needs.timetableView);
     setFilterBlockVisible(wrapRegisterDate, needs.registerDate);
+    setFilterBlockVisible(wrapRegisterRows, needs.registerRows);
     setFilterBlockVisible(wrapDates, needs.dates);
     if (wrapExamName) wrapExamName.classList.add('hidden');
 
-    const extraCount = [needs.teacher, needs.timetableView, needs.registerDate, needs.dates].filter(Boolean).length;
+    const extraCount = [needs.teacher, needs.timetableView, needs.registerDate, needs.registerRows, needs.dates].filter(Boolean).length;
     if (extraWrap) {
       setFilterBlockVisible(extraWrap, extraCount > 0);
       extraWrap.classList.toggle('ar-filters-grid--dynamic', extraCount > 0 && extraCount < 4);
@@ -3692,9 +4081,27 @@
     scheduleLoadDetails(true);
   });
 
+  function initDefaultAttendanceWeekRange() {
+    var dfrom = document.getElementById('gf-dfrom');
+    var dto = document.getElementById('gf-dto');
+    if (!dfrom || !dto || (dfrom.value && dto.value)) return;
+    var today = new Date();
+    var dow = today.getDay();
+    var monday = new Date(today);
+    monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+    var friday = new Date(monday);
+    friday.setDate(monday.getDate() + 4);
+    function isoLocal(d) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    dfrom.value = isoLocal(monday);
+    dto.value = isoLocal(friday);
+  }
+
   if (AR_HUB_SECTION && CATALOG[AR_HUB_SECTION]) {
     sectionEl.value = AR_HUB_SECTION;
   }
+  initDefaultAttendanceWeekRange();
   renderSectionTabs();
   fillReportOptions(sectionEl.value);
 
@@ -3742,10 +4149,9 @@
       out.exam_type = null;
       out.exam_names = null;
     }
-    if (reportType === 'class_list_attendance') {
-      const registerDate = val('gf-register-date');
-      out.date_from = registerDate || null;
-      out.date_to = registerDate || null;
+    if (reportType === 'class_list_attendance' || reportType === 'attendance_class_register') {
+      out.date_from = val('gf-dfrom') || null;
+      out.date_to = val('gf-dto') || null;
     } else if (reportType === 'attendance_class' || reportType === 'attendance_individual') {
       out.date_from = val('gf-dfrom') || null;
       out.date_to = val('gf-dto') || null;
@@ -3794,6 +4200,7 @@
 
   function buildPrintFilterSummary() {
     var parts = [];
+    if (!sectionEl) return '';
     var needs = filtersForReport(currentReportId());
     var secLabel = (CATALOG[sectionEl.value] || {}).label;
     if (secLabel) parts.push(secLabel);
@@ -3834,6 +4241,9 @@
       var rd = val('gf-register-date');
       if (rd) parts.push('Date: ' + rd);
     }
+    if (needs.registerRows) {
+      parts.push('Rows/page: ' + registerRowsPerPage());
+    }
     if (needs.teacher) {
       var te = filterSelectText('gf-teacher');
       if (te && te.indexOf('Select teacher') === -1) parts.push('Teacher: ' + te);
@@ -3857,14 +4267,17 @@
     return parts.join(' · ');
   }
 
-  function updatePrintLetterhead() {
-    var footerEl = document.getElementById('ar-print-page-footer');
-    var now = new Date();
-    var nowStr = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
-    if (footerEl) {
-      footerEl.textContent =
-        (SCHOOL_INFO.name || 'School') + ' — ' + reportDisplayTitle() + ' — ' + nowStr;
-    }
+  function updateAcademicPrintFooter() {
+    var footerTitle = document.getElementById('ar-academic-print-footer-title');
+    if (footerTitle) footerTitle.textContent = reportDisplayTitle();
+  }
+
+  function academicReportGeneratedLabel() {
+    var el = document.getElementById('ar-generated-at');
+    if (!el) return new Date().toLocaleString();
+    var t = String(el.textContent || '').trim();
+    if (t.indexOf('Generated:') === 0) return t.replace(/^Generated:\s*/, '') || new Date().toLocaleString();
+    return t || new Date().toLocaleString();
   }
 
   var detailsOpenState = [];
@@ -3929,12 +4342,60 @@
   }
 
   function prepareAcademicReportPrint() {
-    updatePrintLetterhead();
+    updateAcademicPrintFooter();
     expandDetailsForPrint();
     syncPrintPageMode();
     normalizeIndividualReportPrintPages();
     detachPreviewForBatchPrint();
+    syncMarksMatrixPrintPageRule();
     scrollAcademicReportPaneToTop();
+  }
+
+  function getAcademicPrintHtmlClass() {
+    var parts = ['acr-accounts-print', 'ar-print-academic-report'];
+    if (document.documentElement.classList.contains('ar-print-marks-matrix')) {
+      parts.push('ar-print-marks-matrix');
+    }
+    if (document.documentElement.classList.contains('ar-print-marks-landscape')) {
+      parts.push('ar-print-marks-landscape');
+    }
+    return parts.join(' ');
+  }
+
+  function marksMatrixSubjectColumnCount() {
+    var table = document.querySelector('#ar-details-list table.ar-marks-matrix');
+    if (!table) return 0;
+    var fromCol = table.querySelectorAll('colgroup col.ar-col-subj').length;
+    if (fromCol) return fromCol;
+    return table.querySelectorAll('thead th.ar-col-subj').length;
+  }
+
+  function syncMarksMatrixPrintOrientation() {
+    document.documentElement.classList.remove('ar-print-marks-landscape');
+    if (!document.documentElement.classList.contains('ar-print-marks-matrix')) return;
+    var subjCols = marksMatrixSubjectColumnCount();
+    var includeHome = !!document.querySelector('#ar-details-list table.ar-marks-matrix col.ar-col-class');
+    var totalCols = subjCols + 3 + (includeHome ? 2 : 1);
+    if (subjCols > 9 || totalCols > 13) {
+      document.documentElement.classList.add('ar-print-marks-landscape');
+    }
+  }
+
+  function syncMarksMatrixPrintPageRule() {
+    var id = 'ar-marks-matrix-print-page';
+    var existing = document.getElementById(id);
+    if (existing) existing.parentNode.removeChild(existing);
+    if (!document.documentElement.classList.contains('ar-print-marks-landscape')) return;
+    var style = document.createElement('style');
+    style.id = id;
+    style.textContent = '@media print{@page{size:A4 landscape;margin:5mm 6mm;}}';
+    document.head.appendChild(style);
+  }
+
+  function clearMarksMatrixPrintPageRule() {
+    var existing = document.getElementById('ar-marks-matrix-print-page');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+    document.documentElement.classList.remove('ar-print-marks-landscape');
   }
 
   function suggestPrintFilename() {
@@ -3966,6 +4427,21 @@
       return;
     }
     prepareAcademicReportPrint();
+    if (typeof window.printAccountsInFrame === 'function') {
+      if (opts.pdfHint) showPrintPdfHint();
+      var printClass = getAcademicPrintHtmlClass();
+      window.printAccountsInFrame({
+        title: (SCHOOL_INFO.name || 'School') + ' — ' + reportDisplayTitle(),
+        htmlClass: printClass,
+        bodyClass: printClass,
+        collect: window.collectFeesReportPrintHtml,
+      });
+      window.setTimeout(function() {
+        restoreDetailsAfterPrint();
+        clearMarksMatrixPrintPageRule();
+      }, 400);
+      return;
+    }
     if (opts.pdfHint) showPrintPdfHint();
     var prevTitle = document.title;
     document.title = suggestPrintFilename();
@@ -4421,46 +4897,38 @@
       '</div>';
   }
 
+  function renderAcademicSheetLetterhead(reportTitle, opts) {
+    opts = opts || {};
+    if (!window.AcademicPrintLetterhead || typeof window.AcademicPrintLetterhead.build !== 'function') {
+      return '<header class="ar-rc-header"><h2 class="ar-rc-title">' + escapeHtml(reportTitle || 'Report') + '</h2></header>';
+    }
+    return window.AcademicPrintLetterhead.build({
+      school: SCHOOL_INFO,
+      reportTitle: reportTitle || reportDisplayTitle() || 'Report',
+      periodLabel: opts.periodLabel != null ? opts.periodLabel : (buildPrintFilterSummary() || '—'),
+      generatedAt: opts.generatedAt != null ? opts.generatedAt : academicReportGeneratedLabel(),
+      metaExtra: opts.metaExtra || '',
+      variant: opts.variant || '',
+      subtitle: opts.subtitle || '',
+      showPeriod: opts.showPeriod,
+      showGenerated: opts.showGenerated,
+      metaPrimary: opts.metaPrimary,
+      metaPrimaryLabel: opts.metaPrimaryLabel,
+    });
+  }
+
   function renderReportCardHeader(reportTitle, badge, opts) {
     opts = opts || {};
     badge = badge || null;
-    var logoInner = SCHOOL_INFO.logo
-      ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="ar-rc-logo">'
-      : '<span class="text-[10px] font-semibold text-slate-400 tracking-wide">LOGO</span>';
-    var badgeHtml = '';
+    var metaExtra = '';
     if (badge && (badge.label || badge.value != null)) {
-      badgeHtml =
-        '<div class="ar-rc-badge">' +
-          '<p class="ar-rc-badge-label">' + escapeHtml(badge.label || 'Rank') + '</p>' +
-          '<p class="ar-rc-badge-value">' + escapeHtml(badge.value != null ? badge.value : '—') + '</p>' +
-        '</div>';
+      metaExtra = (badge.label || 'Rank') + ': ' + (badge.value != null ? badge.value : '—');
     }
-    var qrHtml = opts.showParentQr ? renderParentPortalQrHtml() : '';
-    var asideParts = (badgeHtml || '') + qrHtml;
-    var asideHtml = asideParts
-      ? '<div class="ar-rc-header-aside">' + asideParts + '</div>'
-      : '';
-    return '' +
-      '<header class="ar-rc-header">' +
-        '<div class="ar-rc-header-band">' +
-          '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
-          '<div class="ar-rc-header-band-inner">' +
-            '<div class="ar-rc-header-main">' +
-              '<div class="ar-rc-logo-wrap">' + logoInner + '</div>' +
-              '<div class="ar-rc-title-block">' +
-                '<p class="ar-rc-kicker">Official academic report</p>' +
-                '<h1 class="ar-rc-school-name">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</h1>' +
-                '<p class="ar-rc-school-contact">' + schoolContactLineHtml() + '</p>' +
-              '</div>' +
-            '</div>' +
-            asideHtml +
-          '</div>' +
-        '</div>' +
-        '<div class="ar-rc-doc-title-row">' +
-          '<div class="ar-rc-doc-title-accent" aria-hidden="true"></div>' +
-          '<h2 class="ar-rc-title">' + escapeHtml(reportTitle || 'REPORT CARD') + '</h2>' +
-        '</div>' +
-      '</header>';
+    var header = renderAcademicSheetLetterhead(reportTitle || 'REPORT CARD', { metaExtra: metaExtra });
+    if (opts.showParentQr && PARENT_LOGIN_QR_DATA_URL) {
+      header += '<div class="no-print flex justify-end -mt-2 mb-2 pr-2">' + renderParentPortalQrHtml() + '</div>';
+    }
+    return header;
   }
 
   function renderReportCardMetaGrid(pairs) {
@@ -4554,7 +5022,7 @@
       '<span class="ar-subj-mark-grade">' +
         '<span class="ar-subj-pct">' + escapeHtml(markStr) + '</span>' +
         '<span class="ar-subj-sep" aria-hidden="true">·</span>' +
-        '<span class="ar-subj-grd inline-flex items-center px-0.5 rounded ' + pill + '">' + escapeHtml(code) + '</span>' +
+        '<span class="ar-subj-grd ' + pill + '">' + escapeHtml(code) + '</span>' +
       '</span>';
   }
 
@@ -4613,17 +5081,18 @@
 
   function renderReportCardClassBanner(className, subtitle, docTitle) {
     var title = docTitle || ('Class performance · ' + (className || '—'));
-    var sub = subtitle
-      ? '<p class="text-xs text-gray-600 mt-1 mb-0">' + escapeHtml(subtitle) + '</p>'
-      : '';
+    var header = renderAcademicSheetLetterhead(title, {
+      variant: 'class-performance',
+      periodLabel: subtitle || buildPrintFilterSummary() || '—',
+      showGenerated: true,
+    });
     return '' +
       '<div class="ar-rc-class-banner">' +
         '<article class="ar-rc">' +
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
           '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
           '<div class="ar-rc-inner">' +
-            renderReportCardHeader(title, null) +
-            sub +
+            header +
           '</div>' +
         '</article>' +
       '</div>';
@@ -4814,6 +5283,7 @@
     if (n > 7) cls += ' ar-marks-matrix--dense';
     if (n > 10) cls += ' ar-marks-matrix--xdense';
     if (n > 13) cls += ' ar-marks-matrix--xxdense';
+    if (n > 16) cls += ' ar-marks-matrix--xxxdense';
     return cls;
   }
 
@@ -4822,20 +5292,20 @@
     var s = String(name || '').trim();
     if (!s) return '—';
     var n = subjectCount || 0;
-    var maxLen = n > 10 ? 5 : (n > 7 ? 6 : (n > 4 ? 8 : 24));
+    var maxLen = n > 14 ? 4 : (n > 10 ? 5 : (n > 7 ? 6 : (n > 4 ? 8 : 24)));
     if (s.length <= maxLen) return s;
     return s.slice(0, Math.max(1, maxLen - 1)) + '…';
   }
 
   function buildMarksMatrixColgroup(subjectCount, includeHomeClassCol) {
     var n = Math.max(0, subjectCount | 0);
-    var totPct = 5;
-    var ptsPct = 4.5;
-    var grdPct = 7;
-    var homePct = includeHomeClassCol ? 10 : 0;
-    var studentPct = Math.min(32, Math.max(18, 34 - n * 0.85 - homePct * 0.25));
+    var totPct = n > 12 ? 4 : 5;
+    var ptsPct = n > 12 ? 3.5 : 4.5;
+    var grdPct = n > 12 ? 5.5 : 7;
+    var homePct = includeHomeClassCol ? (n > 12 ? 7 : 10) : 0;
+    var studentPct = Math.min(28, Math.max(14, 30 - n * 0.9 - homePct * 0.2));
     var fixed = studentPct + homePct + totPct + ptsPct + grdPct;
-    var subjPct = n > 0 ? Math.max(1.4, (100 - fixed) / n) : 0;
+    var subjPct = n > 0 ? Math.max(1.1, (100 - fixed) / n) : 0;
     var html = '<colgroup>' +
       '<col class="ar-col-student" style="width:' + studentPct.toFixed(2) + '%">';
     if (includeHomeClassCol) {
@@ -4872,7 +5342,14 @@
       columns.splice(insertAt + 1, 0, 'home_class');
     }
     if (!rows.length || !columns.length) {
-      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">No data found for this report and filters.</p>';
+      var mhTable = (meta && meta.hint) ? String(meta.hint).trim() : '';
+      var hintTable = mhTable
+        ? '<p class="text-sm text-slate-600 dark:text-slate-300 mt-3 max-w-xl mx-auto leading-relaxed">' + escapeHtml(mhTable) + '</p>'
+        : '';
+      return '<div class="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">' +
+        '<p class="text-sm text-slate-500 dark:text-slate-400">No data found for this report and filters.</p>' +
+        hintTable +
+        '</div>';
     }
     const head = columns.map(function(c) {
       return '<th scope="col" class="text-left py-2 px-2 text-[11px] font-bold uppercase tracking-wider text-white/95 bg-slate-800 dark:bg-slate-950 border-b border-slate-700 dark:border-slate-800">' + escapeHtml(columnHeaderLabel(c)) + '</th>';
@@ -4888,12 +5365,90 @@
       return '<tr class="' + zebra + '">' + cells + '</tr>';
     }).join('');
     return '' +
+      '<div class="ar-data-table-sheet">' +
+      '<div class="ar-data-table-letterhead">' + renderAcademicSheetLetterhead(reportDisplayTitle()) + '</div>' +
       '<div class="ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
         '<table class="ar-fit-table ar-simple-table w-full border-collapse">' +
           '<thead><tr>' + head + '</tr></thead>' +
           '<tbody>' + body + '</tbody>' +
         '</table>' +
+      '</div>' +
       '</div>';
+  }
+
+  function renderAttendanceClassSummary(bundle) {
+    var rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    var meta = bundle.meta || {};
+    if (!rows.length) {
+      return emptyReportMessage(meta, 'No attendance data for this date range.');
+    }
+    var cards = rows.map(function(row) {
+      var name = escapeHtml(row.level_name || 'Class');
+      return '' +
+        '<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm">' +
+          '<h3 class="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2 mb-4">' + name + '</h3>' +
+          '<div class="grid grid-cols-2 gap-3 text-sm">' +
+            '<div class="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3 text-center">' +
+              '<div class="text-2xl font-bold text-blue-700 dark:text-blue-300 tabular-nums">' + escapeHtml(row.records) + '</div>' +
+              '<div class="text-xs text-blue-600/80 dark:text-blue-400 uppercase tracking-wide">Records</div>' +
+            '</div>' +
+            '<div class="rounded-lg bg-green-50 dark:bg-green-900/20 p-3 text-center">' +
+              '<div class="text-2xl font-bold text-green-700 dark:text-green-300 tabular-nums">' + escapeHtml(row.present_count) + '</div>' +
+              '<div class="text-xs text-green-600/80 dark:text-green-400 uppercase tracking-wide">Present</div>' +
+            '</div>' +
+            '<div class="rounded-lg bg-red-50 dark:bg-red-900/20 p-3 text-center">' +
+              '<div class="text-2xl font-bold text-red-700 dark:text-red-300 tabular-nums">' + escapeHtml(row.absent_count) + '</div>' +
+              '<div class="text-xs text-red-600/80 dark:text-red-400 uppercase tracking-wide">Absent</div>' +
+            '</div>' +
+            '<div class="rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3 text-center">' +
+              '<div class="text-xl font-bold text-slate-800 dark:text-slate-200 tabular-nums">' + escapeHtml(row.unique_students) + '</div>' +
+              '<div class="text-xs text-slate-500 uppercase tracking-wide">Students</div>' +
+            '</div>' +
+          '</div>' +
+          '<p class="text-xs text-slate-500 dark:text-slate-400 mt-3 text-center">' + escapeHtml(row.unique_days) + ' day(s) in range</p>' +
+        '</div>';
+    }).join('');
+    return '' +
+      '<div class="ar-data-table-sheet">' +
+        '<div class="ar-data-table-letterhead">' + renderAcademicSheetLetterhead(reportDisplayTitle()) + '</div>' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">' + cards + '</div>' +
+      '</div>';
+  }
+
+  function renderAttendanceIndividualRegister(bundle) {
+    var rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    var meta = bundle.meta || {};
+    if (!rows.length) {
+      return emptyReportMessage(meta, 'No attendance records for this student and date range.');
+    }
+    var bySid = {};
+    rows.forEach(function(r) {
+      var sid = String(r.student_id != null ? r.student_id : (r.full_name || '')).trim() || '—';
+      if (!bySid[sid]) {
+        bySid[sid] = {
+          student_id: r.student_id,
+          full_name: r.full_name,
+          home_class: r.home_class || r.current_grade,
+          current_grade: r.current_grade,
+          level_name: r.level_name,
+          attendance: {},
+        };
+      }
+      var d = String(r.attendance_date || '').slice(0, 10);
+      if (d) {
+        bySid[sid].attendance[d] = (r.present === 'Yes' || r.present === true) ? 'present' : 'absent';
+      }
+    });
+    var studentRows = Object.keys(bySid).map(function(k) { return bySid[k]; });
+    var regBundle = {
+      title: bundle.title,
+      columns: bundle.columns,
+      rows: studentRows,
+      meta: Object.assign({}, meta, {
+        class_sections: [{ class_name: '', rows: studentRows }],
+      }),
+    };
+    return renderAttendanceRegister(regBundle);
   }
 
   function renderAllStudentsPerformance(bundle) {
@@ -5468,73 +6023,206 @@
     };
   }
 
+  function registerRowsPerPage() {
+    var el = document.getElementById('gf-register-rows-per-page');
+    var n = el ? parseInt(el.value, 10) : 35;
+    if (!isFinite(n) || n < 10) return 35;
+    if (n > 60) return 60;
+    return n;
+  }
+
+  function chunkRegisterRows(rows, pageSize) {
+    if (!Array.isArray(rows) || !rows.length) return [[]];
+    var chunks = [];
+    for (var i = 0; i < rows.length; i += pageSize) {
+      chunks.push(rows.slice(i, i + pageSize));
+    }
+    return chunks;
+  }
+
+  function padRegisterPageRows(rows, pageSize) {
+    var out = rows.slice();
+    while (out.length < pageSize) out.push(null);
+    return out;
+  }
+
+  function registerPageMetaBits(opts, baseBits) {
+    var bits = (baseBits || []).slice();
+    var pageTotal = opts.pageTotal || 1;
+    var pageNum = opts.pageNum || 1;
+    var totalRows = opts.totalRows || 0;
+    var rowStart = opts.rowStart != null ? opts.rowStart : 0;
+    var pageRows = opts.pageRows != null ? opts.pageRows : 0;
+    if (pageTotal > 1) bits.push('Page ' + pageNum + ' of ' + pageTotal);
+    if (totalRows > 0 && pageRows > 0) {
+      var from = rowStart + 1;
+      var to = Math.min(rowStart + pageRows, totalRows);
+      bits.push('Learners ' + from + '\u2013' + to + ' of ' + totalRows);
+    }
+    return bits;
+  }
+
+  function enumerateWeekdaysInRange(fromStr, toStr, maxDays) {
+    maxDays = maxDays || 31;
+    if (!fromStr || !toStr) return [];
+    var start = new Date(fromStr + 'T12:00:00');
+    var end = new Date(toStr + 'T12:00:00');
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+    if (end < start) { var t = start; start = end; end = t; }
+    var out = [];
+    var cur = new Date(start);
+    while (cur <= end && out.length < maxDays) {
+      var dow = cur.getDay();
+      if (dow !== 0) {
+        var y = cur.getFullYear();
+        var m = String(cur.getMonth() + 1).padStart(2, '0');
+        var d = String(cur.getDate()).padStart(2, '0');
+        out.push(y + '-' + m + '-' + d);
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    return out;
+  }
+
+  function attendanceDaysForBundle(bundle) {
+    var meta = (bundle && bundle.meta) || {};
+    if (Array.isArray(meta.attendance_days) && meta.attendance_days.length) {
+      return meta.attendance_days.slice();
+    }
+    return enumerateWeekdaysInRange(val('gf-dfrom'), val('gf-dto'));
+  }
+
+  function formatAttendanceDayHeader(isoDate) {
+    if (!isoDate) return '—';
+    var d = new Date(isoDate + 'T12:00:00');
+    if (isNaN(d.getTime())) return String(isoDate);
+    var names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return names[d.getDay()] + ' ' + d.getDate();
+  }
+
+  function attendanceMarkCell(status) {
+    var base = 'ar-att-cell border border-slate-300 dark:border-slate-600 align-middle text-center p-0 min-h-[2rem]';
+    if (status === 'present' || status === true || status === 'Yes') {
+      return '<td class="' + base + ' ar-att-cell--present"><span class="ar-att-mark" title="Present" aria-label="Present">✓</span></td>';
+    }
+    if (status === 'absent' || status === false || status === 'No') {
+      return '<td class="' + base + ' ar-att-cell--absent"><span class="ar-att-mark" title="Absent" aria-label="Absent">✗</span></td>';
+    }
+    return '<td class="' + base + ' ar-att-cell--blank ar-cell-blank bg-white dark:bg-slate-950">&nbsp;</td>';
+  }
+
+  function blankAttendanceDayCells(dayCount) {
+    var html = '';
+    for (var i = 0; i < dayCount; i++) {
+      html += '<td class="ar-att-cell ar-att-cell--blank ar-cell-blank border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 p-0 align-middle min-h-[2rem]">&nbsp;</td>';
+    }
+    return html;
+  }
+
   function renderAttendanceRegisterSection(bundle, sectionRows, opts) {
     opts = opts || {};
     const omitClassColumn = !!opts.omitClassColumn;
     const sectionTitleRaw = opts.sectionTitle != null ? String(opts.sectionTitle).trim() : '';
     const sectionIndex = opts.sectionIndex != null ? opts.sectionIndex : 0;
+    const rowStart = opts.rowStart != null ? opts.rowStart : 0;
+    const pageSize = opts.pageSize || sectionRows.length || registerRowsPerPage();
+    const pageNum = opts.pageNum || 1;
+    const pageTotal = opts.pageTotal || 1;
+    const totalRows = opts.totalRows != null ? opts.totalRows : sectionRows.length;
+    const showSignOff = opts.showSignOff !== false;
     const mergeCohort = isCombinedReportBundle(bundle.meta || {});
+    const dataRows = sectionRows.filter(function(r) { return r != null; });
+    const displayRows = padRegisterPageRows(sectionRows, pageSize);
 
-    const registerDate = (document.getElementById('gf-register-date') || {}).value
-      || ((bundle.meta || {}).applied_filters || {}).date_from
-      || '';
+    const attendanceDays = attendanceDaysForBundle(bundle);
+    const dayCount = attendanceDays.length;
+    const af = (bundle.meta || {}).applied_filters || {};
+    const dateFrom = val('gf-dfrom') || af.date_from || '';
+    const dateTo = val('gf-dto') || af.date_to || '';
     const hasClass = !omitClassColumn && (
-      mergeCohort || sectionRows.some(function(r) {
+      mergeCohort || dataRows.some(function(r) {
         return String(r.home_class || r.current_grade || '').trim() !== '';
       })
     );
-    const ctx = sheetMeta(bundle, sectionRows);
-    const bannerClassHtml = (omitClassColumn && sectionTitleRaw) ? escapeHtml(sectionTitleRaw) : ctx.classHtml;
-
-    const colCount = 2 + (hasClass ? 1 : 0) + 3;
+    const colCount = 1 + (hasClass ? 1 : 0) + Math.max(dayCount, 1);
+    let colgroupDays = '';
+    for (var di = 0; di < dayCount; di++) {
+      colgroupDays += '<col class="ar-col-day">';
+    }
+    if (!dayCount) colgroupDays = '<col class="ar-col-day">';
     const colgroup = '' +
       '<colgroup>' +
-        '<col class="ar-col-num">' +
-        '<col>' +
+        '<col class="ar-col-name">' +
         (hasClass ? '<col class="ar-col-class">' : '') +
-        '<col class="ar-col-mark">' +
-        '<col class="ar-col-mark">' +
-        '<col class="ar-col-mark">' +
+        colgroupDays +
       '</colgroup>';
-    const theadBanner =
-      '<tr>' +
-        '<th colspan="' + colCount + '" class="border border-slate-300 bg-white px-3 py-2 text-center align-middle">' +
-          '<div class="text-base font-bold text-slate-900 dark:text-white tracking-tight">' + ctx.schoolHtml + '</div>' +
-        '</th>' +
-      '</tr>' +
-      '<tr>' +
-        '<th colspan="' + colCount + '" class="border border-slate-300 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 align-middle">' +
-          '<div class="flex flex-wrap justify-between gap-2 text-[11px] text-slate-700 dark:text-slate-300">' +
-            '<span><span class="font-semibold">Attendance register</span>' +
-            (bannerClassHtml ? ' · Class: <span class="font-semibold">' + bannerClassHtml + '</span>' : '') +
-            '</span>' +
-            '<span class="text-slate-500 dark:text-slate-400">Session date: ' + escapeHtml(registerDate || 'Not set') + ' · Printed: ' + ctx.genHtml + '</span>' +
-          '</div>' +
-        '</th>' +
-      '</tr>';
+    const metaBits = [];
+    const classPlain = (omitClassColumn && sectionTitleRaw)
+      ? sectionTitleRaw
+      : String(((bundle.meta || {}).applied_filters || {}).class_level || '').trim();
+    if (classPlain) metaBits.push('Class: ' + classPlain);
+    if (dateFrom && dateTo) {
+      metaBits.push('Dates: ' + dateFrom + ' to ' + dateTo);
+    } else if (dayCount) {
+      metaBits.push('Days: ' + dayCount);
+    }
+    metaBits.push('✓ Present · ✗ Absent');
+    const letterhead = renderAcademicSheetLetterhead('Attendance register', {
+      metaExtra: registerPageMetaBits({
+        pageNum: pageNum,
+        pageTotal: pageTotal,
+        totalRows: totalRows,
+        rowStart: rowStart,
+        pageRows: dataRows.length,
+      }, metaBits).join(' · '),
+    });
+    var dayHeaderCells = '';
+    if (dayCount) {
+      attendanceDays.forEach(function(iso) {
+        dayHeaderCells += '<th scope="col" class="border border-slate-600 px-0.5 py-1 text-center text-[9px] font-semibold leading-tight whitespace-nowrap" title="' + escapeHtml(iso) + '">' +
+          escapeHtml(formatAttendanceDayHeader(iso)) + '</th>';
+      });
+    } else {
+      dayHeaderCells = '<th scope="col" class="border border-slate-600 px-2 py-1 text-center text-[9px] font-medium text-slate-300">Set date range</th>';
+    }
     const tableHead = '' +
       '<thead>' +
-        theadBanner +
         '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
-          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">#</th>' +
-          '<th scope="col" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Learner</th>' +
-          (hasClass ? '<th scope="col" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Class</th>' : '') +
-          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">M</th>' +
-          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">A</th>' +
-          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">E</th>' +
+          '<th scope="col" rowspan="2" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider align-middle">Learner</th>' +
+          (hasClass ? '<th scope="col" rowspan="2" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider align-middle">Class</th>' : '') +
+          '<th scope="colgroup" colspan="' + Math.max(dayCount, 1) + '" class="border border-slate-700 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider">Days</th>' +
+        '</tr>' +
+        '<tr class="ar-register-slot-hint bg-slate-700 text-slate-100 dark:bg-slate-900">' +
+          dayHeaderCells +
         '</tr>' +
       '</thead>';
-    const blankCell = '<td class="ar-cell-blank border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 p-0 align-middle min-h-[2rem]">&nbsp;</td>';
-    const body = sectionRows.map(function(row, idx) {
+    const body = displayRows.map(function(row, idx) {
       const zebra = idx % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : '';
+      var dayCells = '';
+      if (!dayCount) {
+        dayCells = blankAttendanceDayCells(1);
+      } else if (!row) {
+        dayCells = blankAttendanceDayCells(dayCount);
+      } else {
+        var attMap = (row.attendance && typeof row.attendance === 'object') ? row.attendance : {};
+        attendanceDays.forEach(function(iso) {
+          dayCells += attendanceMarkCell(attMap[iso]);
+        });
+      }
+      if (!row) {
+        return '<tr class="ar-register-row--blank' + zebra + '">' +
+          '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 align-middle">&nbsp;</td>' +
+          (hasClass ? '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 align-middle">&nbsp;</td>' : '') +
+          dayCells +
+        '</tr>';
+      }
       return '<tr class="' + zebra + '">' +
-        '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-center text-[10px] tabular-nums text-slate-600 dark:text-slate-400 align-middle">' + (idx + 1) + '</td>' +
         '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-[11px] font-medium text-slate-900 dark:text-white align-middle break-words">' + escapeHtml(row.full_name || '') + '</td>' +
         (hasClass ? '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-[11px] text-slate-700 dark:text-slate-300 whitespace-nowrap align-middle">' + escapeHtml(rowHomeClassLabel(row)) + '</td>' : '') +
-        blankCell + blankCell + blankCell +
+        dayCells +
       '</tr>';
     }).join('');
-    const tfoot = '' +
+    const tfoot = showSignOff ? ('' +
       '<tfoot>' +
         '<tr>' +
           '<td colspan="' + colCount + '" class="border border-slate-300 border-t-2 border-t-slate-500 bg-slate-50 dark:bg-slate-800/50 px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">' +
@@ -5544,12 +6232,13 @@
             '</div>' +
           '</td>' +
         '</tr>' +
-      '</tfoot>';
+      '</tfoot>') : '';
     const wrapCls = printPageWrapClass(sectionIndex) + ' ar-register-class-wrap ar-class-print-sheet' + (sectionIndex > 0 ? ' ar-register-follow' : '');
     return '' +
       '<div class="' + wrapCls + '">' +
+      '<div class="ar-register-letterhead">' + letterhead + '</div>' +
       '<div class="ar-register-sheet ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
-        '<table class="ar-register-table ar-fit-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
+        '<table class="ar-register-table ar-register-table--attendance' + (dayCount > 10 ? ' ar-register-table--many-days' : '') + ' ar-fit-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
       '</div>' +
       '</div>';
   }
@@ -5562,6 +6251,7 @@
     const meta = bundle.meta || {};
     const mergeCohort = isCombinedReportBundle(meta);
     const sections = registerSectionsFromBundle(bundle);
+    const pageSize = registerRowsPerPage();
     const blocks = [];
     let rendered = 0;
     for (let i = 0; i < sections.length; i++) {
@@ -5569,12 +6259,21 @@
       const title = String(sec.class_name || '').trim();
       const secRows = Array.isArray(sec.rows) ? sec.rows : [];
       if (!secRows.length) continue;
-      blocks.push(renderAttendanceRegisterSection(bundle, secRows, {
-        omitClassColumn: !mergeCohort && title.length > 0,
-        sectionTitle: title.length ? title : null,
-        sectionIndex: rendered,
-      }));
-      rendered++;
+      const chunks = chunkRegisterRows(secRows, pageSize);
+      for (let pi = 0; pi < chunks.length; pi++) {
+        blocks.push(renderAttendanceRegisterSection(bundle, chunks[pi], {
+          omitClassColumn: !mergeCohort && title.length > 0,
+          sectionTitle: title.length ? title : null,
+          sectionIndex: rendered,
+          rowStart: pi * pageSize,
+          pageNum: pi + 1,
+          pageTotal: chunks.length,
+          pageSize: pageSize,
+          totalRows: secRows.length,
+          showSignOff: pi === chunks.length - 1,
+        }));
+        rendered++;
+      }
     }
     if (!blocks.length) {
       return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
@@ -5587,26 +6286,30 @@
     const omitClassColumn = !!opts.omitClassColumn;
     const sectionTitleRaw = opts.sectionTitle != null ? String(opts.sectionTitle).trim() : '';
     const sectionIndex = opts.sectionIndex != null ? opts.sectionIndex : 0;
+    const rowStart = opts.rowStart != null ? opts.rowStart : 0;
+    const pageSize = opts.pageSize || sectionRows.length || registerRowsPerPage();
+    const pageNum = opts.pageNum || 1;
+    const pageTotal = opts.pageTotal || 1;
+    const totalRows = opts.totalRows != null ? opts.totalRows : sectionRows.length;
+    const showSignOff = opts.showSignOff !== false;
     const ENTRY_COLS = 5;
     const mergeCohort = isCombinedReportBundle(bundle.meta || {});
+    const dataRows = sectionRows.filter(function(r) { return r != null; });
+    const displayRows = padRegisterPageRows(sectionRows, pageSize);
 
     const hasClass = !omitClassColumn && (
-      mergeCohort || sectionRows.some(function(r) {
+      mergeCohort || dataRows.some(function(r) {
         return String(r.home_class || r.current_grade || '').trim() !== '';
       })
     );
-    const ctx = sheetMeta(bundle, sectionRows);
-    const bannerClassHtml = (omitClassColumn && sectionTitleRaw) ? escapeHtml(sectionTitleRaw) : ctx.classHtml;
-
-    const colCount = 2 + (hasClass ? 1 : 0) + ENTRY_COLS;
+    const colCount = 1 + (hasClass ? 1 : 0) + ENTRY_COLS;
     let colgroupInner = '';
     for (let ic = 0; ic < ENTRY_COLS; ic++) {
       colgroupInner += '<col class="ar-col-entry">';
     }
     const colgroup = '' +
       '<colgroup>' +
-        '<col class="ar-col-num">' +
-        '<col>' +
+        '<col class="ar-col-name">' +
         (hasClass ? '<col class="ar-col-class">' : '') +
         colgroupInner +
       '</colgroup>';
@@ -5614,29 +6317,28 @@
     for (let j = 1; j <= ENTRY_COLS; j++) {
       entryHeaderCells += '<th scope="col" class="border border-slate-700 px-1 py-2 text-center text-[10px] font-bold tabular-nums">' + j + '</th>';
     }
-    const theadBanner =
-      '<tr>' +
-        '<th colspan="' + colCount + '" class="border border-slate-300 bg-white px-3 py-2 text-center align-middle">' +
-          '<div class="text-base font-bold text-slate-900 dark:text-white tracking-tight">' + ctx.schoolHtml + '</div>' +
-        '</th>' +
-      '</tr>' +
-      '<tr>' +
-        '<th colspan="' + colCount + '" class="border border-slate-300 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 align-middle">' +
-          '<div class="flex flex-wrap justify-between gap-2 text-[11px] text-slate-700 dark:text-slate-300">' +
-            '<span><span class="font-semibold">Exam entry sheet</span>' +
-            (bannerClassHtml ? ' · Class: <span class="font-semibold">' + bannerClassHtml + '</span>' : '') +
-            '</span>' +
-            '<span class="text-slate-500 dark:text-slate-400">Printed: ' + ctx.genHtml + '</span>' +
-          '</div>' +
-        '</th>' +
-      '</tr>';
+    const examMetaBits = [];
+    const examClassPlain = (omitClassColumn && sectionTitleRaw)
+      ? sectionTitleRaw
+      : String(((bundle.meta || {}).applied_filters || {}).class_level || '').trim();
+    if (examClassPlain) examMetaBits.push('Class: ' + examClassPlain);
+    const letterhead = renderAcademicSheetLetterhead('Exam entry list', {
+      metaExtra: registerPageMetaBits({
+        pageNum: pageNum,
+        pageTotal: pageTotal,
+        totalRows: totalRows,
+        rowStart: rowStart,
+        pageRows: dataRows.length,
+      }, examMetaBits).join(' · '),
+    });
     const tableHead = '' +
       '<thead>' +
-        theadBanner +
         '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
-          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">#</th>' +
-          '<th scope="col" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Learner</th>' +
-          (hasClass ? '<th scope="col" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Class</th>' : '') +
+          '<th scope="col" rowspan="2" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider align-middle">Learner</th>' +
+          (hasClass ? '<th scope="col" rowspan="2" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider align-middle">Class</th>' : '') +
+          '<th scope="colgroup" colspan="' + ENTRY_COLS + '" class="border border-slate-700 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider">Exam entry columns</th>' +
+        '</tr>' +
+        '<tr class="ar-register-slot-hint bg-slate-700 text-slate-100 dark:bg-slate-900">' +
           entryHeaderCells +
         '</tr>' +
       '</thead>';
@@ -5644,16 +6346,22 @@
     for (let k = 0; k < ENTRY_COLS; k++) {
       entryCells += '<td class="ar-cell-blank border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 p-0 align-middle min-h-[1.75rem]">&nbsp;</td>';
     }
-    const body = sectionRows.map(function(row, idx) {
+    const body = displayRows.map(function(row, idx) {
       const zebra = idx % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : '';
+      if (!row) {
+        return '<tr class="ar-register-row--blank' + zebra + '">' +
+          '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 align-middle">&nbsp;</td>' +
+          (hasClass ? '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 align-middle">&nbsp;</td>' : '') +
+          entryCells +
+        '</tr>';
+      }
       return '<tr class="' + zebra + '">' +
-        '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-center text-[10px] tabular-nums text-slate-600 dark:text-slate-400 align-middle">' + (idx + 1) + '</td>' +
         '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-[11px] font-medium text-slate-900 dark:text-white align-middle break-words">' + escapeHtml(row.full_name || '') + '</td>' +
         (hasClass ? '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-[11px] text-slate-700 dark:text-slate-300 whitespace-nowrap align-middle">' + escapeHtml(rowHomeClassLabel(row)) + '</td>' : '') +
         entryCells +
       '</tr>';
     }).join('');
-    const tfoot = '' +
+    const tfoot = showSignOff ? ('' +
       '<tfoot>' +
         '<tr>' +
           '<td colspan="' + colCount + '" class="border border-slate-300 border-t-2 border-t-slate-500 bg-slate-50 dark:bg-slate-800/50 px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">' +
@@ -5667,12 +6375,13 @@
             '</div>' +
           '</td>' +
         '</tr>' +
-      '</tfoot>';
+      '</tfoot>') : '';
     const wrapCls = printPageWrapClass(sectionIndex) + ' ar-register-class-wrap ar-class-print-sheet' + (sectionIndex > 0 ? ' ar-register-follow' : '');
     return '' +
       '<div class="' + wrapCls + '">' +
+      '<div class="ar-register-letterhead">' + letterhead + '</div>' +
       '<div class="ar-register-sheet ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
-        '<table class="ar-register-table ar-fit-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
+        '<table class="ar-register-table ar-register-table--exam ar-fit-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
       '</div>' +
       '</div>';
   }
@@ -5685,6 +6394,7 @@
     const meta = bundle.meta || {};
     const mergeCohort = isCombinedReportBundle(meta);
     const sections = registerSectionsFromBundle(bundle);
+    const pageSize = registerRowsPerPage();
     const blocks = [];
     let rendered = 0;
     for (let i = 0; i < sections.length; i++) {
@@ -5692,12 +6402,21 @@
       const title = String(sec.class_name || '').trim();
       const secRows = Array.isArray(sec.rows) ? sec.rows : [];
       if (!secRows.length) continue;
-      blocks.push(renderExamEntryRegisterSection(bundle, secRows, {
-        omitClassColumn: !mergeCohort && title.length > 0,
-        sectionTitle: title.length ? title : null,
-        sectionIndex: rendered,
-      }));
-      rendered++;
+      const chunks = chunkRegisterRows(secRows, pageSize);
+      for (let pi = 0; pi < chunks.length; pi++) {
+        blocks.push(renderExamEntryRegisterSection(bundle, chunks[pi], {
+          omitClassColumn: !mergeCohort && title.length > 0,
+          sectionTitle: title.length ? title : null,
+          sectionIndex: rendered,
+          rowStart: pi * pageSize,
+          pageNum: pi + 1,
+          pageTotal: chunks.length,
+          pageSize: pageSize,
+          totalRows: secRows.length,
+          showSignOff: pi === chunks.length - 1,
+        }));
+        rendered++;
+      }
     }
     if (!blocks.length) {
       return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
@@ -6673,27 +7392,33 @@
   }
 
   function renderReportBundleHtml(bundle, reportType) {
-    return renderReportFilterSummaryCard(bundle) +
-      (reportType === 'exam_all_students_performance'
-        ? renderAllStudentsPerformance(bundle)
-        :
-      (reportType === 'class_list_attendance'
-        ? renderAttendanceRegister(bundle)
-        : (reportType === 'class_list_exam'
-            ? renderExamEntryRegister(bundle)
-        : (reportType === 'exam_individual_performance'
-            ? renderIndividualStudentPerformanceForm(bundle)
-        : (reportType === 'exam_subject_performance'
-            ? renderExamSubjectPerformance(bundle)
-        : (reportType === 'exam_teacher_performance'
-            ? renderExamTeacherPerformance(bundle)
-        : (reportType === 'timetable_exam'
-        ? renderExamTimetable(bundle)
-        : (reportType === 'timetable_subject'
-            ? renderSubjectClassTimetable(bundle)
-            : (reportType === 'timetable_teacher'
-                ? renderTeacherTimetable(bundle)
-                : renderTable(bundle))))))))));
+    var body;
+    if (reportType === 'exam_all_students_performance') {
+      body = renderAllStudentsPerformance(bundle);
+    } else if (isAttendanceRegisterReport(reportType)) {
+      body = renderAttendanceRegister(bundle);
+    } else if (reportType === 'attendance_individual') {
+      body = renderAttendanceIndividualRegister(bundle);
+    } else if (reportType === 'attendance_class') {
+      body = renderAttendanceClassSummary(bundle);
+    } else if (reportType === 'class_list_exam') {
+      body = renderExamEntryRegister(bundle);
+    } else if (reportType === 'exam_individual_performance') {
+      body = renderIndividualStudentPerformanceForm(bundle);
+    } else if (reportType === 'exam_subject_performance') {
+      body = renderExamSubjectPerformance(bundle);
+    } else if (reportType === 'exam_teacher_performance') {
+      body = renderExamTeacherPerformance(bundle);
+    } else if (reportType === 'timetable_exam') {
+      body = renderExamTimetable(bundle);
+    } else if (reportType === 'timetable_subject') {
+      body = renderSubjectClassTimetable(bundle);
+    } else if (reportType === 'timetable_teacher') {
+      body = renderTeacherTimetable(bundle);
+    } else {
+      body = renderTable(bundle);
+    }
+    return renderReportFilterSummaryCard(bundle) + body;
   }
 
   function scheduleLoadDetails(immediate) {
@@ -7004,7 +7729,7 @@
       }
     }
   });
-  ['gf-year', 'gf-level', 'gf-level-view', 'gf-term', 'gf-exam-name', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto', 'gf-register-date'].forEach(function(id) {
+  ['gf-year', 'gf-level', 'gf-level-view', 'gf-term', 'gf-exam-name', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto', 'gf-register-date', 'gf-register-rows-per-page'].forEach(function(id) {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', function() {
       if (id === 'gf-exam-name') {
@@ -7067,7 +7792,7 @@
     window.scrollTo(0, 0);
   }
   function syncPrintPageMode() {
-    document.documentElement.classList.remove('ar-print-marks-matrix');
+    document.documentElement.classList.remove('ar-print-marks-matrix', 'ar-print-marks-landscape');
     var wrap = document.getElementById('ar-preview-wrap');
     if (!wrap) return;
     var list = document.getElementById('ar-details-list');
@@ -7089,8 +7814,9 @@
 
     if (list && list.querySelector('table.ar-marks-matrix')) {
       document.documentElement.classList.add('ar-print-marks-matrix');
+      syncMarksMatrixPrintOrientation();
     } else if (
-      reportType === 'class_list_attendance'
+      isAttendanceRegisterReport(reportType)
       || reportType === 'class_list_exam'
       || (list && list.querySelector('.ar-register-class-wrap'))
     ) {
@@ -7103,14 +7829,23 @@
   }
 
   window.addEventListener('beforeprint', function() {
+    if (window.__acrIframePrintActive) return;
     if (!document.getElementById('ar-preview-wrap')) return;
-    document.documentElement.classList.add('ar-print-academic-report');
+    document.documentElement.classList.add('ar-print-academic-report', 'acr-accounts-print');
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
+    updateAcademicPrintFooter();
     prepareAcademicReportPrint();
   });
   window.addEventListener('afterprint', function() {
-    document.documentElement.classList.remove('ar-print-academic-report');
+    document.documentElement.classList.remove('ar-print-academic-report', 'acr-accounts-print');
+    if (typeof window.unpinAccountsPrintFooters === 'function') {
+      window.unpinAccountsPrintFooters();
+    }
     document.documentElement.classList.remove('ar-print-marks-matrix');
     document.documentElement.classList.remove('ar-print-individual-batch-doc');
+    clearMarksMatrixPrintPageRule();
     restorePreviewAfterPrint();
     var wrap = document.getElementById('ar-preview-wrap');
     if (wrap) {

@@ -1,3 +1,4 @@
+{% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
 <style>
 /* Finance account reports — professional, responsive */
 .acr-page {
@@ -7,9 +8,9 @@
     --acr-ink: #0f172a;
     --acr-muted: #64748b;
     --acr-line: #e2e8f0;
-    --acr-teal: #0f766e;
-    --acr-teal-bright: #14b8a6;
-    --acr-teal-soft: rgba(15, 118, 110, 0.08);
+    --acr-teal: var(--print-brand-primary, var(--brand-primary, #800020));
+    --acr-teal-bright: var(--print-brand-secondary, var(--brand-secondary, #A00030));
+    --acr-teal-soft: color-mix(in srgb, var(--print-brand-primary, #800020) 8%, transparent);
     --acr-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 12px 40px -12px rgba(15, 23, 42, 0.12);
     --acr-radius: 14px;
     --acr-radius-sm: 10px;
@@ -569,7 +570,7 @@
 }
 .acr-table tfoot .acr-num { color: var(--acr-teal); }
 
-/* Petty cash book — scroll entries; pin summary rows at bottom */
+/* Petty cash book — scrollable dated entries with opening/closing rows */
 .acr-pcb-table {
     display: flex;
     flex-direction: column;
@@ -593,34 +594,110 @@
     border-radius: 0;
     box-shadow: none;
 }
-.acr-pcb-table__foot {
-    flex: 0 0 auto;
-    border-top: 2px solid #94a3b8;
-    background: #f8fafc;
-}
-.dark .acr-pcb-table__foot {
-    border-top-color: #475569;
-    background: #0f172a;
-}
-.acr-pcb-table__foot .acr-table {
-    margin: 0;
-}
-.acr-pcb-table__foot .acr-row-total td {
-    border-top: none;
-}
-.acr-pcb-table__foot .acr-row-total:first-child td {
-    border-top: none;
-}
 .acr-pcb-table table {
     table-layout: fixed;
     width: 100%;
 }
 .acr-pcb-col-date { width: 11%; }
-.acr-pcb-col-ref { width: 13%; }
-.acr-pcb-col-part { width: 32%; }
-.acr-pcb-col-rcpt { width: 14%; }
-.acr-pcb-col-pay { width: 14%; }
-.acr-pcb-col-bal { width: 16%; }
+.acr-pcb-col-vote { width: 12%; }
+.acr-pcb-col-desc { width: 20%; }
+.acr-pcb-col-company { width: 20%; }
+.acr-pcb-col-ref { width: 12%; }
+.acr-pcb-col-debit { width: 12%; }
+.acr-pcb-col-credit { width: 13%; }
+.acr-pcb-table .acr-row-total td {
+    border-top: 2px solid #94a3b8;
+    background: #f8fafc;
+    font-weight: 600;
+}
+.acr-th-print { display: none; }
+.dark .acr-pcb-table .acr-row-total td {
+    border-top-color: #475569;
+    background: #0f172a;
+}
+
+/* Account cash book — wide table with vote columns */
+.acr-cash-book-table {
+    display: flex;
+    flex-direction: column;
+    max-height: min(62vh, 640px);
+    border: 1px solid #a8b4c0;
+    border-radius: var(--acr-radius-sm);
+    background: #fffef9;
+    overflow: hidden;
+}
+.dark .acr-cash-book-table {
+    background: var(--acr-surface);
+    border-color: #475569;
+}
+.acr-cash-book-table__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+.acr-cash-book-table__grid {
+    min-width: 48rem;
+    width: max-content;
+    max-width: none;
+}
+.acr-cash-book-group-head {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--acr-muted, #64748b);
+    background: #f1f5f9;
+    border-bottom: 1px solid #cbd5e1;
+    padding: 0.35rem 0.5rem;
+}
+.acr-cash-book-group-head--votes {
+    background: #ecfdf5;
+    color: #0f766e;
+}
+.dark .acr-cash-book-group-head {
+    background: #1e293b;
+    color: #94a3b8;
+    border-bottom-color: #475569;
+}
+.dark .acr-cash-book-group-head--votes {
+    background: rgba(20, 184, 166, 0.12);
+    color: #5eead4;
+}
+.acr-cash-book-vote-col {
+    min-width: 6.5rem;
+    font-size: 0.75rem;
+    white-space: normal;
+    vertical-align: bottom;
+}
+.acr-cash-book-vote-head__name {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.25;
+    text-transform: none;
+    letter-spacing: 0.01em;
+    color: var(--acr-ink, #0f172a);
+}
+.acr-cash-book-vote-head__desc {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.5625rem;
+    font-weight: 500;
+    line-height: 1.3;
+    text-transform: none;
+    color: var(--acr-muted, #64748b);
+}
+.dark .acr-cash-book-vote-head__name { color: #f1f5f9; }
+.dark .acr-cash-book-vote-head__desc { color: #94a3b8; }
+.acr-cash-book-table .acr-row-total td {
+    border-top: 2px solid #94a3b8;
+    background: #f8fafc;
+    font-weight: 600;
+}
+.dark .acr-cash-book-table .acr-row-total td {
+    border-top-color: #475569;
+    background: #0f172a;
+}
 
 /* Mobile stacked rows */
 @media (max-width: 767px) {
@@ -636,12 +713,6 @@
         border: 1px solid var(--acr-line);
         border-radius: var(--acr-radius-sm);
         background: var(--acr-surface);
-    }
-    .acr-pcb-table__foot {
-        margin-top: 0.75rem;
-        border: 1px solid var(--acr-line);
-        border-radius: var(--acr-radius-sm);
-        border-top: 1px solid var(--acr-line);
     }
     .acr-table-scroll--stack { max-height: none; overflow: visible; }
     .acr-table--stack thead { display: none; }
@@ -742,14 +813,13 @@
 /* Print */
 @media print {
     .no-print { display: none !important; }
+    .acc-fy-session-corner { display: none !important; }
     .acr-page {
         background: #fff;
         padding: 0;
     }
-    .acr-masthead__band {
-        background: #0f766e !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+    .acr-masthead {
+        display: none !important;
     }
     .acr-table-scroll { max-height: none; overflow: visible; border-color: #94a3b8; }
     .acr-pcb-table { max-height: none; overflow: visible; border-color: #94a3b8; }
@@ -761,10 +831,404 @@
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
-    .acr-section, .acr-kpi, .acr-masthead {
+    .acr-section, .acr-kpi {
         break-inside: avoid;
         box-shadow: none;
     }
     .sidebar-container, .app-sidebar, header { display: none !important; }
 }
+
+/* Account reports — print data only on A4 (not full-page UI capture) */
+@media print {
+    html.acr-report-print-doc,
+    html.acr-report-print-doc body {
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        background: #fff !important;
+        padding-bottom: 0 !important;
+    }
+    html.acr-report-print-doc main,
+    html.acr-report-print-doc main > div,
+    html.acr-report-print-doc .container,
+    html.acr-report-print-doc .container.mx-auto,
+    html.acr-report-print-doc .page-content,
+    html.acr-report-print-doc .acr-report-page,
+    html.acr-report-print-doc .acr-report-page .acr-inner {
+        height: auto !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        max-width: none !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+    }
+    html.acr-report-print-doc .acr-report-page .acr-masthead,
+    html.acr-report-print-doc .acr-report-page .acr-inner > *:not(#acr-print-letterhead):not(#acr-report-body) {
+        display: none !important;
+    }
+    html.acr-report-print-doc .acr-print-only {
+        display: block !important;
+    }
+    html.acr-report-print-doc .acr-print-summary {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 2mm;
+        margin: 0 0 3mm !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    html.acr-report-print-doc .acr-print-summary.acr-kpis--3 {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    html.acr-report-print-doc .acr-print-summary .acr-kpi {
+        padding: 1.5mm 2mm;
+        box-shadow: none;
+        border: 1px solid var(--print-brand-line, #94a3b8);
+        border-radius: 0;
+        background: var(--print-brand-kpi-bg, #f8fafc) !important;
+        break-inside: avoid;
+    }
+    html.acr-report-print-doc .acr-print-summary .acr-kpi::before {
+        display: none;
+    }
+    html.acr-report-print-doc .acr-print-summary .acr-kpi__label {
+        font-size: 6.5pt;
+        margin-bottom: 0.5mm;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    html.acr-report-print-doc .acr-print-summary .acr-kpi__value {
+        font-size: 8.5pt;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    html.acr-report-print-doc .acr-print-summary .acr-kpi__hint {
+        display: none;
+    }
+    html.acr-report-print-doc .acr-report-section {
+        break-inside: auto;
+        page-break-inside: auto;
+        box-shadow: none;
+        border: none;
+        margin: 0 0 4mm;
+        padding: 0;
+        background: transparent !important;
+    }
+    html.acr-report-print-doc .acr-report-section .acr-section__head {
+        border-bottom: 1px solid var(--print-brand-primary, var(--acr-teal, #800020));
+        margin-bottom: 1.5mm;
+        padding-bottom: 1mm;
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+    html.acr-report-print-doc .acr-report-section .acr-section__sub,
+    html.acr-report-print-doc .acr-report-section .acr-section__count,
+    html.acr-report-print-doc .acr-report-section .acr-section__title i {
+        display: none !important;
+    }
+    html.acr-report-print-doc .acr-report-section .acr-section__title {
+        font-size: 9.5pt;
+        font-weight: 700;
+        margin: 0;
+        color: #0f172a;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    html.acr-report-print-doc .acr-empty {
+        display: none !important;
+    }
+    html.acr-report-print-doc .acr-report-section:not(:has(.acr-table tbody tr)) {
+        display: none !important;
+    }
+    html.acr-report-print-doc .acr-table-scroll,
+    html.acr-report-print-doc .acr-pcb-table,
+    html.acr-report-print-doc .acr-pcb-table__scroll {
+        max-height: none !important;
+        overflow: visible !important;
+        border: 1px solid #94a3b8 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        border-radius: 0;
+    }
+    html.acr-report-print-doc .acr-table {
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed;
+        border-collapse: collapse;
+        font-size: 7.5pt;
+    }
+    html.acr-report-print-doc .acr-table--stack thead {
+        display: table-header-group !important;
+    }
+    html.acr-report-print-doc .acr-table--stack tbody {
+        display: table-row-group !important;
+    }
+    html.acr-report-print-doc .acr-table--stack tbody tr {
+        display: table-row !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+    html.acr-report-print-doc .acr-table--stack tbody td {
+        display: table-cell !important;
+        padding: 1mm 1.2mm !important;
+        border: 1px solid #94a3b8 !important;
+        background: transparent !important;
+        font-size: 7.5pt;
+        vertical-align: top;
+        word-break: break-word;
+        color: #0f172a !important;
+        white-space: normal !important;
+    }
+    html.acr-report-print-doc .acr-table--stack tbody td::before {
+        content: none !important;
+        display: none !important;
+    }
+    html.acr-report-print-doc .acr-table--stack thead th {
+        display: table-cell !important;
+        font-size: 7.5pt;
+        font-weight: 700;
+        padding: 1.5mm !important;
+        background: var(--print-brand-head-bg, #f1f5f9) !important;
+        color: #0f172a;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        border: 1px solid #94a3b8 !important;
+    }
+    html.acr-report-print-doc .acr-table--stack tfoot {
+        display: table-footer-group !important;
+    }
+    html.acr-report-print-doc .acr-table--stack tfoot tr {
+        display: table-row !important;
+        padding: 0 !important;
+        background: transparent !important;
+        border-radius: 0 !important;
+    }
+    html.acr-report-print-doc .acr-table--stack tfoot td {
+        display: table-cell !important;
+        border: 1px solid #94a3b8 !important;
+        padding: 1.2mm 1.5mm !important;
+        font-size: 8pt;
+        font-weight: 700;
+        background: var(--print-brand-kpi-bg, #f8fafc) !important;
+    }
+    html.acr-report-print-doc .acr-table--stack tfoot td[colspan] {
+        display: table-cell !important;
+    }
+    html.acr-report-print-doc .acr-row-total td {
+        background: var(--print-brand-kpi-bg, #f8fafc) !important;
+        font-weight: 700;
+    }
+    html.acr-report-print-doc .acr-num {
+        text-align: right !important;
+        white-space: normal !important;
+    }
+    html.acr-report-print-doc .acr-mono {
+        font-size: 7.5pt;
+    }
+}
+
+@page acr-report-sheet {
+    size: A4 portrait;
+    margin: 7mm 8mm 8mm;
+}
+@media print {
+    html.acr-report-print-doc {
+        page: acr-report-sheet;
+    }
+}
+
+/* Petty cash book — print only the book section as a proper table */
+@media print {
+    html.acr-pcb-print-doc,
+    html.acr-pcb-print-doc body {
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        padding-bottom: 0 !important;
+    }
+    html.acr-pcb-print-doc main,
+    html.acr-pcb-print-doc .page-content,
+    html.acr-pcb-print-doc .acr-page,
+    html.acr-pcb-print-doc .acr-inner {
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        max-width: none !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    html.acr-pcb-print-doc .acc-fy-session-corner,
+    html.acr-pcb-print-doc .setup-guide-chatbot,
+    html.acr-pcb-print-doc [data-pwa-install-root] {
+        display: none !important;
+    }
+    html.acr-pcb-print-doc .acr-print-only {
+        display: block !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-masthead {
+        display: none !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-inner > *:not(#acr-print-letterhead):not(#acr-report-body) {
+        display: none !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page #acr-report-body > *:not(.acr-pcb-section) {
+        display: none !important;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__brand {
+        gap: 3mm;
+        padding-bottom: 1.5mm;
+        margin-bottom: 2mm;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__logo {
+        width: 22mm;
+        height: 22mm;
+        max-width: 22mm;
+        max-height: 22mm;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__school {
+        font-size: 12pt;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__brand-right {
+        max-width: none;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__detail--contacts {
+        gap: 1mm 3mm;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__detail-label {
+        font-size: 6pt;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__detail-value {
+        font-size: 7pt;
+        line-height: 1.25;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__doc {
+        margin-bottom: 2mm;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__title {
+        font-size: 10pt;
+        margin-bottom: 0.5mm;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__meta-item dt {
+        font-size: 6pt;
+    }
+    html.acr-pcb-print-doc .acr-print-letterhead__meta-item dd {
+        font-size: 7.5pt;
+        line-height: 1.35;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-section {
+        break-inside: auto;
+        box-shadow: none;
+        border: none;
+        margin: 0;
+        padding: 0;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-section .acr-section__head {
+        display: none !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table,
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table__scroll {
+        max-height: none !important;
+        overflow: visible !important;
+        border: 1px solid #64748b !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        border-radius: 0;
+        width: 100% !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table table {
+        table-layout: fixed !important;
+        width: 100% !important;
+        border-collapse: collapse !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table col.acr-pcb-col-date { width: 9% !important; }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table col.acr-pcb-col-vote { width: 9% !important; }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table col.acr-pcb-col-desc { width: 26% !important; }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table col.acr-pcb-col-company { width: 11% !important; }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table col.acr-pcb-col-ref { width: 12% !important; }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table col.acr-pcb-col-debit { width: 11.5% !important; }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table col.acr-pcb-col-credit { width: 11.5% !important; }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-th-screen {
+        display: none !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-th-print {
+        display: inline !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table .acr-table--stack thead {
+        display: table-header-group !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table .acr-table--stack tbody tr {
+        display: table-row !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        page-break-inside: avoid;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table .acr-table--stack tbody td {
+        display: table-cell !important;
+        padding: 1.2mm 1.4mm !important;
+        border: 1px solid #94a3b8 !important;
+        background: transparent !important;
+        font-size: 6.5pt;
+        line-height: 1.25;
+        vertical-align: top;
+        word-break: normal;
+        overflow-wrap: anywhere;
+        hyphens: auto;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table .acr-table--stack tbody td::before {
+        content: none !important;
+        display: none !important;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table .acr-table--stack thead th {
+        font-size: 6pt;
+        padding: 1.2mm 1.4mm !important;
+        background: var(--print-brand-head-bg, #f1f5f9) !important;
+        line-height: 1.2;
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: anywhere;
+        vertical-align: bottom;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table .acr-table--stack tbody td.acr-num,
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table .acr-table--stack thead th.acr-num {
+        white-space: nowrap;
+        font-size: 6pt;
+        font-variant-numeric: tabular-nums;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table .acr-table--stack tbody td.acr-mono {
+        font-size: 5.5pt;
+        letter-spacing: -0.02em;
+        word-break: break-all;
+        white-space: normal;
+    }
+    html.acr-pcb-print-doc .acr-pcb-page .acr-pcb-table .acr-row-total td {
+        background: var(--print-brand-kpi-bg, #f8fafc) !important;
+        font-weight: 700;
+        font-size: 6.5pt;
+    }
+}
+@page acr-pcb-sheet {
+    size: A4 portrait;
+    margin: 7mm 7mm 8mm;
+}
+@media print {
+    html.acr-pcb-print-doc {
+        page: acr-pcb-sheet;
+    }
+}
 </style>
+{% include 'dashboards/includes/accounts_print_report_typography.html' %}

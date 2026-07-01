@@ -17,6 +17,7 @@
 {% endblock %}
 
 {% block content %}
+{% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/academic-report-shell.css') }}">
 
 {% set role_theme = portal_page_variant|default('secretary') %}
@@ -76,59 +77,27 @@
                 </div>
             </div>
 
-            <div id="ar-print-letterhead" class="ar-print-only-hidden px-3 sm:px-5 pt-3 sm:pt-4" aria-hidden="true">
-                <div class="ar-print-letterhead-grid">
-                    {% if school_settings.school_logo %}
-                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="ar-print-letterhead-logo">
-                    {% endif %}
-                    <div class="ar-print-letterhead-text min-w-0">
-                        <p class="ar-print-letterhead-kicker">Academic calendar report</p>
-                        <h1 class="ar-print-letterhead-school">{{ school_settings.school_name or 'School' }}</h1>
-                        <p id="ar-print-school-contact" class="ar-print-letterhead-contact">
-                            {{ school_settings.school_address or school_settings.address or '' }}
-                            {% if school_settings.phone or school_settings.phone_number %} · {{ school_settings.phone or school_settings.phone_number }}{% endif %}
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div id="ar-print-page-footer" class="ar-print-only-hidden" aria-hidden="true"></div>
-
             <div id="ar-details-list" class="ar-preview-scroll p-3 sm:p-5 lg:p-6 bg-slate-50/40 dark:bg-slate-950/30">
                 {% if not selected_year_id %}
                 <p class="text-sm text-slate-500 dark:text-slate-400 m-0 text-center py-8">No academic year configured yet.</p>
                 {% else %}
                 <div class="ar-cal-report-doc">
-                    <table class="ar-cal-banner-table ar-fit-table w-full border-collapse mb-3">
-                        <tbody>
-                            <tr>
-                                <td class="ar-cal-banner-logo align-middle w-[18%]">
-                                    {% if school_settings.school_logo %}
-                                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="ar-cal-banner-logo-img">
-                                    {% endif %}
-                                </td>
-                                <td class="ar-cal-banner-center align-middle text-center px-2">
-                                    <p class="ar-cal-banner-kicker m-0">Official report</p>
-                                    <p class="ar-cal-banner-school m-0">{{ school_settings.school_name or 'School' }}</p>
-                                    <p class="ar-cal-banner-title m-0">Academic calendar report</p>
-                                    <p class="ar-cal-banner-meta m-0">{{ calendar_year_label or '—' }} · {{ term_label }}</p>
-                                </td>
-                                <td class="ar-cal-banner-qr align-middle text-center w-[22%]">
-                                    {% if parent_login_qr_data_url %}
-                                    <div class="ar-cal-qr-block inline-flex flex-col items-center">
-                                        <img src="{{ parent_login_qr_data_url }}"
-                                             alt="QR code — scan to open parent login"
-                                             class="ar-cal-qr-img"
-                                             width="88"
-                                             height="88">
-                                        <p class="ar-cal-qr-label m-0">Parent portal</p>
-                                        <p class="ar-cal-qr-hint m-0">Scan to sign in</p>
-                                    </div>
-                                    {% endif %}
-                                    <p class="ar-cal-generated m-0 mt-1 text-[10px] text-slate-500 dark:text-slate-400">Generated {{ generated_at }}</p>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    {% with
+                        report_title='Academic calendar report',
+                        print_meta_extra=(calendar_year_label or '—') ~ (' · ' ~ term_label if term_label else ''),
+                        report_period_label=(calendar_year_label or '—') ~ (' · ' ~ term_label if term_label else ''),
+                        report_generated_at=generated_at or '—',
+                        letterhead_id='ar-cal-print-letterhead',
+                        print_title_id='ar-cal-print-title',
+                        print_period_id='ar-cal-print-period',
+                        print_generated_id='ar-cal-print-generated',
+                        letterhead_always_visible=true,
+                        letterhead_sync_mode=false,
+                        hide_print_meta_primary=true,
+                        with_print_footer=false
+                    %}
+                    {% include 'dashboards/includes/accounts_print_letterhead.html' %}
+                    {% endwith %}
 
                     <section class="ar-cal-block ar-cal-block-compact">
                         <h3 class="ar-cal-section-title">School calendar dates</h3>
@@ -166,25 +135,28 @@
 
                     <section class="ar-cal-block ar-cal-block-compact">
                         <h3 class="ar-cal-section-title">School fees — payment methods</h3>
-                        {% if fee_payment_methods %}
-                        <div class="ar-fit-sheet ar-cal-table-wrap">
-                            <table class="ar-fit-table ar-simple-table ar-cal-table w-full border-collapse">
-                                <colgroup><col class="ar-cal-col-mode"><col></colgroup>
-                                <thead>
-                                    <tr>
-                                        <th class="ar-cal-th">Payment mode</th>
-                                        <th class="ar-cal-th">Details</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for pm in fee_payment_methods %}
-                                    <tr>
-                                        <td class="ar-cal-td font-semibold">{{ pm.mode_label }}</td>
-                                        <td class="ar-cal-td">{{ pm.detail }}</td>
-                                    </tr>
+                        {% if fee_payment_method_groups %}
+                        <div class="ar-cal-pay-methods">
+                            {% for group in fee_payment_method_groups %}
+                            <div class="ar-cal-pay-group">
+                                <h4 class="ar-cal-pay-group-title">{{ group.category }}</h4>
+                                <div class="ar-cal-pay-group-grid">
+                                    {% for pm in group.methods %}
+                                    <article class="ar-cal-pay-card">
+                                        <p class="ar-cal-pay-mode">{{ pm.mode_label }}</p>
+                                        <dl class="ar-cal-pay-fields">
+                                            {% for field in pm.fields %}
+                                            <div class="ar-cal-pay-field">
+                                                <dt>{{ field.label }}</dt>
+                                                <dd>{{ field.value }}</dd>
+                                            </div>
+                                            {% endfor %}
+                                        </dl>
+                                    </article>
                                     {% endfor %}
-                                </tbody>
-                            </table>
+                                </div>
+                            </div>
+                            {% endfor %}
                         </div>
                         {% else %}
                         <p class="ar-cal-empty m-0">No fee payment methods configured for the selected period.</p>
@@ -198,17 +170,13 @@
                             <table class="ar-fit-table ar-simple-table ar-cal-table ar-cal-flow-table w-full border-collapse">
                                 <colgroup>
                                     <col class="ar-cal-col-fee-term">
-                                    <col class="ar-cal-col-fee">
                                     <col class="ar-cal-col-class">
-                                    <col class="ar-cal-col-deadline">
                                     <col class="ar-cal-col-amount">
                                 </colgroup>
                                 <thead>
                                     <tr>
                                         <th class="ar-cal-th">Term</th>
-                                        <th class="ar-cal-th">Fee</th>
                                         <th class="ar-cal-th">Class</th>
-                                        <th class="ar-cal-th">Deadline</th>
                                         <th class="ar-cal-th text-right">Amount</th>
                                     </tr>
                                 </thead>
@@ -216,10 +184,8 @@
                                     {% for row in fee_deadlines %}
                                     <tr>
                                         <td class="ar-cal-td">{{ row.term_name }}</td>
-                                        <td class="ar-cal-td font-medium">{{ row.fee_name }}</td>
                                         <td class="ar-cal-td">{{ row.level_name }}</td>
-                                        <td class="ar-cal-td font-semibold whitespace-nowrap">{{ row.payment_deadline_display }}</td>
-                                        <td class="ar-cal-td text-right tabular-nums">{{ row.total_amount_display }}</td>
+                                        <td class="ar-cal-td text-right tabular-nums font-semibold">{{ row.total_amount_display }}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -248,7 +214,6 @@
                         <div class="ar-fit-sheet ar-cal-table-wrap">
                             <table class="ar-fit-table ar-simple-table ar-cal-table ar-cal-flow-table ar-cal-activities-table w-full border-collapse">
                                 <colgroup>
-                                    <col class="ar-cal-col-num">
                                     <col class="ar-cal-col-activity">
                                     <col class="ar-cal-col-date">
                                     <col class="ar-cal-col-cat">
@@ -257,7 +222,6 @@
                                 </colgroup>
                                 <thead>
                                     <tr>
-                                        <th class="ar-cal-th">#</th>
                                         <th class="ar-cal-th">Activity</th>
                                         <th class="ar-cal-th">Date</th>
                                         <th class="ar-cal-th">Category</th>
@@ -268,7 +232,6 @@
                                 <tbody>
                                     {% for item in calendar_activities %}
                                     <tr>
-                                        <td class="ar-cal-td ar-cal-td-num tabular-nums">{{ item.ref }}</td>
                                         <td class="ar-cal-td font-semibold">{{ item.activity_title }}</td>
                                         <td class="ar-cal-td whitespace-nowrap">
                                             {{ item.activity_date_display }}
@@ -294,13 +257,17 @@
                         <p class="ar-cal-empty m-0">No activities{% if selected_term %} for {{ selected_term.term_name }}{% endif %} in this period.</p>
                         {% endif %}
                     </section>
-
-                    <p id="ar-cal-doc-footer" class="ar-cal-doc-footer m-0" aria-hidden="true"></p>
                 </div>
                 {% endif %}
             </div>
         </div>
     </div>
+</div>
+
+<div id="ar-cal-print-footer-wrap">
+    {% with report_title='Academic calendar report', print_footer_id='ar-cal-print-footer', print_footer_title_id='ar-cal-print-footer-title' %}
+    {% include 'dashboards/includes/accounts_print_footer.html' %}
+    {% endwith %}
 </div>
 
 <div id="ar-print-pdf-toast" class="no-print hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md px-4 py-3 rounded-xl border border-brand-primary/30 bg-white dark:bg-slate-800 shadow-xl text-sm text-slate-700 dark:text-slate-200" role="status">
@@ -314,6 +281,9 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+}
+.ar-cal-report-doc .acr-print-letterhead {
+    margin-bottom: 0.25rem;
 }
 .ar-cal-banner-table {
     border-bottom: 2px solid color-mix(in srgb, var(--brand-primary, #166534) 30%, #e2e8f0);
@@ -432,7 +402,6 @@
     color: #475569;
 }
 .dark .ar-cal-th { background: #1e293b; color: #94a3b8; }
-.ar-cal-td-num { text-align: center; color: #64748b; width: 2rem; }
 .ar-cal-year-row { background: #f8fafc; }
 .dark .ar-cal-year-row { background: #1e293b40; }
 .ar-cal-term-current { background: color-mix(in srgb, var(--brand-primary, #166534) 8%, transparent); }
@@ -441,13 +410,102 @@
     color: #64748b;
 }
 .ar-cal-col-mode { width: 22%; }
-.ar-cal-col-fee-term { width: 12%; }
-.ar-cal-col-fee { width: 22%; }
-.ar-cal-col-class { width: 14%; }
-.ar-cal-col-deadline { width: 18%; }
-.ar-cal-col-amount { width: 14%; }
-.ar-cal-col-num { width: 4%; }
-.ar-cal-col-activity { width: 18%; }
+.ar-cal-col-fee-term { width: 18%; }
+.ar-cal-col-class { width: 42%; }
+.ar-cal-col-amount { width: 20%; }
+.ar-cal-pay-methods {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.ar-cal-pay-group {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    background: #fff;
+    overflow: hidden;
+}
+.dark .ar-cal-pay-group {
+    border-color: #334155;
+    background: #0f172a;
+}
+.ar-cal-pay-group-title {
+    margin: 0;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand-primary, #166534);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 8%, #f8fafc);
+    border-bottom: 1px solid #e2e8f0;
+}
+.dark .ar-cal-pay-group-title {
+    color: var(--brand-secondary, #4ade80);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 22%, #0f172a);
+    border-bottom-color: #334155;
+}
+.ar-cal-pay-group-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 0.5rem;
+}
+@media (min-width: 640px) {
+    .ar-cal-pay-group-grid {
+        grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    }
+}
+.ar-cal-pay-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.6rem;
+    background: #f8fafc;
+}
+.dark .ar-cal-pay-card {
+    border-color: #334155;
+    background: #1e293b;
+}
+.ar-cal-pay-mode {
+    margin: 0 0 0.35rem;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #0f2744;
+}
+.dark .ar-cal-pay-mode { color: #e2e8f0; }
+.ar-cal-pay-fields {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.ar-cal-pay-field {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, 38%) 1fr;
+    gap: 0.35rem 0.5rem;
+    align-items: baseline;
+}
+.ar-cal-pay-field dt {
+    margin: 0;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
+}
+.dark .ar-cal-pay-field dt { color: #94a3b8; }
+.ar-cal-pay-field dd {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.35;
+    word-break: break-word;
+}
+.dark .ar-cal-pay-field dd { color: #f1f5f9; }
+.ar-cal-col-activity { width: 20%; }
 .ar-cal-col-date { width: 14%; }
 .ar-cal-col-cat { width: 12%; }
 .ar-cal-col-act-term { width: 10%; }
@@ -612,6 +670,59 @@
     page-break-inside: avoid;
     margin-bottom: 1.5mm !important;
   }
+  html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-pay-methods {
+    gap: 1.5mm !important;
+  }
+  html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-pay-group {
+    border: 0.5pt solid #94a3b8 !important;
+    border-radius: 1mm !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    background: #fff !important;
+  }
+  html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-pay-group-title {
+    font-size: 6.5pt !important;
+    padding: 0.8mm 1.2mm !important;
+    color: #166534 !important;
+    background: #f1f5f9 !important;
+    border-bottom: 0.5pt solid #94a3b8 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-pay-group-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 1mm !important;
+    padding: 1mm !important;
+  }
+  html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-pay-card {
+    border: 0.5pt solid #cbd5e1 !important;
+    border-radius: 0.75mm !important;
+    padding: 1mm 1.2mm !important;
+    background: #f8fafc !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-pay-mode {
+    font-size: 6.5pt !important;
+    margin-bottom: 0.8mm !important;
+    color: #0f2744 !important;
+  }
+  html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-pay-field {
+    grid-template-columns: 32% 1fr !important;
+    gap: 0.5mm 1mm !important;
+  }
+  html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-pay-field dt {
+    font-size: 6pt !important;
+    color: #64748b !important;
+  }
+  html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-pay-field dd {
+    font-size: 7pt !important;
+    font-weight: 600 !important;
+    color: #111 !important;
+  }
   html.ar-print-academic-report #ar-preview-wrap.ar-cal-print-flow .ar-cal-block {
     margin-bottom: 1.5mm !important;
   }
@@ -720,21 +831,14 @@
     }
   }
 
-  function updatePrintFooter() {
-    var meta = [yearLabel, termLabel].filter(Boolean).join(' · ');
-    var line =
-      schoolName + ' — Academic calendar report' +
-      (meta ? ' — ' + meta : '') +
-      ' — ' + new Date().toLocaleString();
-    var footerEl = document.getElementById('ar-print-page-footer');
-    if (footerEl) footerEl.textContent = line;
-    var docFooter = document.getElementById('ar-cal-doc-footer');
-    if (docFooter) docFooter.textContent = line;
+  function updateCalendarPrintFooter() {
+    var footerTitle = document.getElementById('ar-cal-print-footer-title');
+    if (footerTitle) footerTitle.textContent = 'Academic calendar report';
   }
 
   function prepareCalendarReportPrint() {
     syncPrintPageMode();
-    updatePrintFooter();
+    updateCalendarPrintFooter();
     detachPreviewForCalendarPrint();
     var inner = document.querySelector('main.overflow-hidden > div.overflow-y-auto');
     if (inner) inner.scrollTop = 0;
@@ -758,6 +862,19 @@
       window.alert('No report data to print. Select an academic year first.');
       return;
     }
+    updateCalendarPrintFooter();
+    syncPrintPageMode();
+    if (typeof window.printAccountsInFrame === 'function') {
+      if (opts.pdfHint) showPrintPdfHint();
+      var day = new Date().toISOString().slice(0, 10);
+      window.printAccountsInFrame({
+        title: schoolName + ' — academic_calendar_' + day,
+        htmlClass: 'acr-accounts-print ar-print-academic-report',
+        bodyClass: 'acr-accounts-print ar-print-academic-report',
+        collect: window.collectFeesReportPrintHtml,
+      });
+      return;
+    }
     prepareCalendarReportPrint();
     if (opts.pdfHint) showPrintPdfHint();
     var day = new Date().toISOString().slice(0, 10);
@@ -773,12 +890,20 @@
   }
 
   window.addEventListener('beforeprint', function() {
+    if (window.__acrIframePrintActive) return;
     if (!document.getElementById('ar-preview-wrap')) return;
-    document.documentElement.classList.add('ar-print-academic-report');
+    document.documentElement.classList.add('ar-print-academic-report', 'acr-accounts-print');
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
+    updateCalendarPrintFooter();
     prepareCalendarReportPrint();
   });
   window.addEventListener('afterprint', function() {
-    document.documentElement.classList.remove('ar-print-academic-report');
+    document.documentElement.classList.remove('ar-print-academic-report', 'acr-accounts-print');
+    if (typeof window.unpinAccountsPrintFooters === 'function') {
+      window.unpinAccountsPrintFooters();
+    }
     restorePreviewAfterPrint();
     var wrap = document.getElementById('ar-preview-wrap');
     if (wrap) {

@@ -1,0 +1,21 @@
+{# Role navigation + school-wide accounts report links #}
+{% set nav_role = (role|default('') or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
+{% if nav_role == 'accountant' %}
+{% set accountant_nav_scope = 'all' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
+{% elif is_secretary_finance|default(false) %}
+{% set secretary_nav_scope = 'reports' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role in ('head of institution', 'deputy head of institution') %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% set accountant_nav_scope = 'accounts' %}
+{% include 'dashboards/includes/accountant_sidebar.html' %}
+{% else %}
+<a href="{{ dashboard_home_url() }}" class="sidebar-item mb-2 pb-2 border-b border-slate-700/60">
+    <i class="fas fa-gauge w-5"></i><span>Dashboard</span>
+</a>
+{% endif %}
+
+{% set finance_report_slug = finance_report_slug|default(report_slug|default('')) %}
+{% include 'dashboards/includes/finance_reports_page_sidebar.html' %}

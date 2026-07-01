@@ -1,0 +1,108 @@
+{# Professional print typography for report & vote section titles #}
+<style>
+@media print {
+    html.acr-accounts-print {
+        --print-font-heading: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif;
+        --print-font-body: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    html.acr-accounts-print .acr-print-letterhead__title {
+        font-family: var(--print-font-heading);
+        font-size: 14pt;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--print-brand-primary, #800020);
+        margin: 0 0 2.5mm;
+        line-height: 1.15;
+    }
+
+    html.acr-accounts-print .acr-print-letterhead__meta-item dt {
+        font-family: var(--print-font-heading);
+        letter-spacing: 0.07em;
+    }
+
+    html.acr-accounts-print .acr-print-letterhead__meta-item dd {
+        font-family: var(--print-font-body);
+        font-weight: 600;
+    }
+
+    html.acr-accounts-print .acr-report-section .acr-section__head,
+    html.acr-accounts-print .fr-vote-ledger-section__head {
+        display: block !important;
+        padding: 0 0 1.25mm 2.5mm !important;
+        margin: 0 0 2.5mm !important;
+        background: transparent !important;
+        border: none !important;
+        border-bottom: 0.75pt solid var(--print-brand-primary, #800020) !important;
+        border-left: 2pt solid var(--print-brand-primary, #800020) !important;
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+
+    html.acr-accounts-print .acr-report-section .acr-section__title,
+    html.acr-accounts-print .fr-vote-ledger-section__title {
+        font-family: var(--print-font-heading) !important;
+        font-size: 11pt !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.025em !important;
+        text-transform: none !important;
+        color: var(--print-brand-ink, #0f172a) !important;
+        line-height: 1.25 !important;
+        margin: 0 !important;
+        display: block !important;
+        gap: 0 !important;
+    }
+
+    html.acr-accounts-print .acr-report-section .acr-section__title i,
+    html.acr-accounts-print .fr-vote-ledger-section__title i {
+        display: none !important;
+    }
+
+    html.acr-accounts-print .acr-report-section .acr-section__sub,
+    html.acr-accounts-print .acr-report-section .acr-section__count,
+    html.acr-accounts-print .fr-vote-ledger-section__sub,
+    html.acr-accounts-print .fr-vote-ledger-section__count {
+        display: none !important;
+    }
+
+    html.acr-accounts-print .acr-cash-book-vote-head__name {
+        font-family: var(--print-font-heading);
+        font-size: 6.75pt;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--print-brand-primary, #800020);
+        line-height: 1.2;
+        display: block;
+    }
+
+    html.acr-accounts-print .acr-cash-book-vote-head__desc {
+        font-family: var(--print-font-body);
+        font-size: 6pt;
+        font-weight: 500;
+        color: var(--print-brand-muted, #64748b);
+        line-height: 1.2;
+        margin-top: 0.25mm;
+        display: block;
+    }
+
+    html.acr-accounts-print .acr-table--stack thead th,
+    html.acr-accounts-print .fr-report-table th {
+        font-family: var(--print-font-heading);
+        font-size: 7.25pt;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    html.acr-accounts-print .acr-cash-book-group-head {
+        font-family: var(--print-font-heading);
+        font-size: 7pt;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--print-brand-primary, #800020);
+    }
+}
+</style>

@@ -1,0 +1,111 @@
+{# In-page sub-navigation for expenditure ledgers and financial statements #}
+{% set _slug = report_slug|default('') %}
+{% set _fo = filter_options|default({}) %}
+{% set _base_exp = employee_dash_url('finance-overview/reports/expenditure') %}
+{% set _base_stmt = employee_dash_url('finance-overview/reports/financial-statements') %}
+{% set _fy = request.args.get('financial_year_id') or _fo.default_financial_year_id|default('') %}
+{% set _df = request.args.get('date_from') or _fo.default_date_from|default('') %}
+{% set _dt = request.args.get('date_to') or _fo.default_date_to|default('') %}
+{% set _ledger = expenditure_ledger|default(request.args.get('ledger', '')|lower) %}
+{% set _statement = financial_statement|default(request.args.get('statement', '')|lower) %}
+{% set _vote = expenditure_vote|default('') %}
+{% set _fa = request.args.get('finance_account_id', '') %}
+
+{% macro sub_href(base, extra='') -%}
+{%- set href = base -%}
+{%- if extra -%}
+{%- set href = href ~ ('?' ~ extra if '?' not in extra else extra) -%}
+{%- elif _fy -%}
+{%- set href = href ~ '?financial_year_id=' ~ _fy -%}
+{%- endif -%}
+{%- if _fy and extra -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'financial_year_id=' ~ _fy -%}
+{%- endif -%}
+{%- if _df -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'date_from=' ~ _df -%}
+{%- endif -%}
+{%- if _dt -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'date_to=' ~ _dt -%}
+{%- endif -%}
+{%- if _fa -%}
+{%- set href = href ~ ('&' if '?' in href else '?') ~ 'finance_account_id=' ~ _fa -%}
+{%- endif -%}
+{{- href -}}
+{%- endmacro %}
+
+{% if _slug == 'revenue-collection' %}
+{% set _book = revenue_book|default(request.args.get('book', 'general-ledger')|lower) %}
+{% set _base_rc = employee_dash_url('finance-overview/reports/revenue-collection') %}
+<nav class="fr-subnav no-print" aria-label="Account book">
+    {% for item in revenue_book_nav|default([]) %}
+    <a href="{{ sub_href(_base_rc, 'book=' ~ item.slug) }}"
+       data-fr-revenue-book="{{ item.slug }}"
+       class="fr-subnav__item {% if _book == item.slug %}is-active{% endif %}"
+       {% if _book == item.slug %}aria-current="page"{% endif %}
+       title="{{ item.description|default(item.title) }}">
+        {{ item.title }}
+    </a>
+    {% endfor %}
+</nav>
+{% elif _slug == 'expenditure' and not _vote %}
+<nav class="fr-subnav no-print" aria-label="Expenditure view">
+    <a href="{{ sub_href(_base_exp) }}"
+       class="fr-subnav__item {% if not _ledger %}is-active{% endif %}"
+       {% if not _ledger %}aria-current="page"{% endif %}>
+        Vote summary
+    </a>
+    {% for item in expenditure_books_nav|default([]) %}
+    {% if item.external_path %}
+    <a href="{{ employee_dash_url(item.external_path) }}"
+       class="fr-subnav__item fr-subnav__item--external"
+       title="{{ item.description|default(item.title) }}">
+        {{ item.title }}
+        <i class="fas fa-external-link-alt text-[10px] opacity-60" aria-hidden="true"></i>
+    </a>
+    {% else %}
+    <a href="{{ sub_href(_base_exp, 'ledger=' ~ item.slug) }}"
+       data-fr-expenditure-ledger="{{ item.slug }}"
+       class="fr-subnav__item {% if _ledger == item.slug %}is-active{% endif %}"
+       {% if _ledger == item.slug %}aria-current="page"{% endif %}>
+        {{ item.title }}
+    </a>
+    {% endif %}
+    {% endfor %}
+</nav>
+{% elif _slug == 'financial-statements' %}
+<nav class="fr-subnav no-print" aria-label="Financial statement">
+    <a href="{{ sub_href(_base_stmt) }}"
+       class="fr-subnav__item {% if not _statement %}is-active{% endif %}"
+       {% if not _statement %}aria-current="page"{% endif %}>
+        Overview
+    </a>
+    {% for item in financial_statements_nav|default([]) %}
+    <a href="{{ sub_href(_base_stmt, 'statement=' ~ item.slug) }}"
+       data-fr-financial-statement="{{ item.slug }}"
+       class="fr-subnav__item {% if _statement == item.slug %}is-active{% endif %}"
+       {% if _statement == item.slug %}aria-current="page"{% endif %}>
+        {{ item.title }}
+    </a>
+    {% endfor %}
+</nav>
+{% elif _slug == 'expenditure' and _vote %}
+<nav class="fr-subnav no-print" aria-label="Vote navigation">
+    <a href="{{ sub_href(_base_exp) }}" class="fr-subnav__item">
+        <i class="fas fa-arrow-left text-xs" aria-hidden="true"></i>
+        All votes
+    </a>
+    <a href="{{ sub_href(_base_exp, 'vote=' ~ (_vote|urlencode)) }}"
+       class="fr-subnav__item {% if not _ledger %}is-active{% endif %}"
+       {% if not _ledger %}aria-current="page"{% endif %}>
+        Overview
+    </a>
+    {% for item in vote_ledger_nav|default([]) %}
+    <a href="{{ sub_href(_base_exp, 'vote=' ~ (_vote|urlencode) ~ '&ledger=' ~ item.slug) }}"
+       data-fr-vote-ledger="{{ item.slug }}"
+       class="fr-subnav__item {% if _ledger == item.slug %}is-active{% endif %}"
+       {% if _ledger == item.slug %}aria-current="page"{% endif %}>
+        {{ item.title }}
+    </a>
+    {% endfor %}
+</nav>
+{% endif %}

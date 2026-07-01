@@ -1,4 +1,92 @@
 {% set fo = filter_options|default({}) %}
+{% if unified_mode|default(false) %}
+<div class="fr-unified-filters" aria-label="Report filters">
+    <div id="fr-filter-grid" class="fr-unified-filters__grid">
+        <div class="fr-filter-group hidden" data-fr-group="financial_year" id="fr-financial-year-wrap">
+            <div class="fr-report-field">
+                <label for="fr-financial-year">Financial year</label>
+                <select id="fr-financial-year">
+                    {% for fy in fo.financial_years|default([]) %}
+                    <option value="{{ fy.id }}"
+                            data-start="{{ fy.start }}"
+                            data-end="{{ fy.end }}"
+                            data-is-current="{{ '1' if fy.is_current else '0' }}"
+                            {% if fo.default_financial_year_id|default(none) == fy.id %}selected{% endif %}>
+                        {{ fy.label }}{% if fy.is_current %} (current){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="fr-filter-group fr-filter-group--date" data-fr-group="date">
+            <div class="fr-report-field">
+                <label for="fr-date-from">From</label>
+                <input type="date" id="fr-date-from" value="{{ fo.default_date_from|default('') }}" />
+            </div>
+        </div>
+        <div class="fr-filter-group fr-filter-group--date" data-fr-group="date">
+            <div class="fr-report-field">
+                <label for="fr-date-to">To</label>
+                <input type="date" id="fr-date-to" value="{{ fo.default_date_to|default('') }}" />
+            </div>
+        </div>
+        <div class="fr-filter-group hidden" data-fr-group="period" id="fr-period-wrap">
+            <div class="fr-report-field">
+                <label for="fr-period">Roll up by</label>
+                <select id="fr-period">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly" selected>Monthly</option>
+                    <option value="term">By term</option>
+                </select>
+            </div>
+        </div>
+        <div class="fr-filter-group hidden" data-fr-group="source" id="fr-source-wrap">
+            <div class="fr-report-field">
+                <label for="fr-source" id="fr-source-group-label">Type</label>
+                <select id="fr-source">
+                    <option value="all">All</option>
+                </select>
+            </div>
+        </div>
+        <div class="fr-filter-group hidden" data-fr-group="account">
+            <div class="fr-report-field">
+                <label for="fr-finance-account">Account</label>
+                <select id="fr-finance-account">
+                    <option value="">All accounts</option>
+                    {% for a in fo.finance_accounts|default([]) %}
+                    <option value="{{ a.id }}">{{ a.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="fr-filter-group hidden" data-fr-group="class">
+            <div class="fr-report-field">
+                <label for="fr-grade">Class</label>
+                <select id="fr-grade">
+                    <option value="">All classes</option>
+                    {% for lv in fo.class_options|default([]) %}
+                    <option value="{{ lv|e }}">{{ lv }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="fr-filter-group hidden fr-filter-group--wide" data-fr-group="search">
+            <div class="fr-report-field">
+                <label for="fr-search">Search</label>
+                <input type="search" id="fr-search" placeholder="Search…" autocomplete="off" />
+            </div>
+        </div>
+        <div class="fr-unified-filters__actions">
+            <button type="button" id="fr-reset" class="fr-btn fr-btn--ghost">Reset</button>
+        </div>
+    </div>
+    <p id="fr-fy-range-hint" class="fr-filter-fy-hint hidden" aria-live="polite"></p>
+    <p id="fr-active-filters" class="fr-active-filters hidden" aria-live="polite"></p>
+    <p id="fr-filter-context" class="sr-only" role="note"></p>
+    <span id="fr-filter-title" class="sr-only">Filters</span>
+</div>
+{% else %}
 <section class="fr-report-panel no-print" aria-label="Report filters">
     <div class="fr-report-panel__head">
         <h2 class="fr-report-panel__title"><span id="fr-filter-title">Filters</span> <span class="fr-filters-live-hint">· updates automatically</span></h2>
@@ -99,3 +187,4 @@
         <p id="fr-active-filters" class="fr-active-filters hidden" aria-live="polite"></p>
     </div>
 </section>
+{% endif %}

@@ -5,12 +5,10 @@
   /** Which filter groups apply per report (keeps UI focused). */
   var FILTER_PROFILES = {
     'revenue-collection': {
-      panelTitle: 'Filter income',
-      context:
-        'Choose a financial year, then narrow the date range within that period. Income type and class filters apply inside the selected year.',
-      groups: ['financial_year', 'date', 'source', 'account', 'class', 'search'],
-      sourceLabel: 'Income type',
-      searchPlaceholder: 'Student name or reference…',
+      panelTitle: 'Report scope',
+      context: '',
+      groups: ['financial_year', 'date', 'account', 'search'],
+      searchPlaceholder: 'Reference or description…',
       needDates: true,
     },
     expenditure: {
@@ -116,6 +114,8 @@
   var spLedger = new URLSearchParams(window.location.search);
   if (spLedger.get('ledger')) cfg.expenditureLedger = spLedger.get('ledger');
   if (spLedger.get('statement')) cfg.financialStatement = spLedger.get('statement');
+  if (spLedger.get('book')) cfg.revenueBook = spLedger.get('book');
+  else if (cfg.reportSlug === 'revenue-collection') cfg.revenueBook = 'general-ledger';
 
   var slug = cfg.reportSlug || '';
   var sourceEl = qs('fr-source');
@@ -175,9 +175,15 @@
     if (!hint) return;
     if (!yr || !yr.start || !yr.end) {
       hint.textContent = '';
+      hint.classList.add('hidden');
       return;
     }
-    hint.textContent = 'Dates limited to ' + yr.start + ' – ' + yr.end;
+    if (cfg.unifiedMode) {
+      hint.textContent = yr.start + ' – ' + yr.end;
+    } else {
+      hint.textContent = 'Dates limited to ' + yr.start + ' – ' + yr.end;
+    }
+    hint.classList.remove('hidden');
   }
 
   function clampDateInputsToYear(yr) {
@@ -273,8 +279,8 @@
     var ctxEl = qs('fr-filter-context');
     var srcLabel = qs('fr-source-group-label');
 
-    if (titleEl) titleEl.textContent = activeProfile.panelTitle || 'Filters';
-    if (ctxEl) ctxEl.textContent = activeProfile.context || '';
+    if (titleEl && !cfg.unifiedMode) titleEl.textContent = activeProfile.panelTitle || 'Filters';
+    if (ctxEl && !cfg.unifiedMode) ctxEl.textContent = activeProfile.context || '';
 
     document.querySelectorAll('[data-fr-group]').forEach(function (node) {
       var g = node.getAttribute('data-fr-group');
@@ -392,6 +398,10 @@
     if (slug === 'financial-statements') {
       var statement = cfg.financialStatement || new URLSearchParams(window.location.search).get('statement') || '';
       if (statement) p.set('statement', statement);
+    }
+    if (slug === 'revenue-collection') {
+      var book = cfg.revenueBook || new URLSearchParams(window.location.search).get('book') || 'general-ledger';
+      if (book) p.set('book', book);
     }
     if (groupActive('financial_year') && fy && fy.value) {
       p.set('financial_year_id', fy.value);
@@ -532,6 +542,143 @@
     if (blank) blank.classList.add('hidden');
   }
 
+  function showRevenueBlank(message) {
+    var blank = qs('fr-revenue-blank');
+    var title = qs('fr-revenue-blank-title');
+    if (title) {
+      title.textContent =
+        message || 'Choose a finance account from the filters or sidebar to view its General Ledger and Cash Book.';
+    }
+    if (blank) blank.classList.remove('hidden');
+  }
+
+  function hideRevenueBlank() {
+    var blank = qs('fr-revenue-blank');
+    if (blank) blank.classList.add('hidden');
+  }
+
+  function hideVoteLedgers() {
+    var wrap = qs('fr-vote-ledgers-wrap');
+    if (wrap) {
+      wrap.classList.add('hidden');
+      wrap.innerHTML = '';
+    }
+  }
+
+  function renderVoteLedgers(sections, sectionTitle) {
+    var wrap = qs('fr-vote-ledgers-wrap');
+    var tableWrap = qs('fr-table-wrap');
+    if (!wrap) return;
+    hideRevenueBlank();
+    if (tableWrap) tableWrap.classList.add('hidden');
+    sections = sections || [];
+    if (!sections.length) {
+      wrap.innerHTML =
+        '<div class="fr-report-state"><i class="fas fa-book fr-report-state__icon" aria-hidden="true"></i>' +
+        '<p class="fr-report-state__title">No vote ledgers</p>' +
+        '<p class="text-sm text-slate-500 mt-1">No vote activity was recorded for this account in the selected period.</p></div>';
+      wrap.classList.remove('hidden');
+      return;
+    }
+    wrap.innerHTML = sections
+      .map(function (section, idx) {
+        var cols = section.columns || [];
+        var rows = section.rows || [];
+        var head =
+          '<section class="fr-vote-ledger-section" aria-labelledby="fr-gl-vote-' +
+          idx +
+          '">' +
+          '<div class="fr-vote-ledger-section__head">' +
+          '<div><h2 id="fr-gl-vote-' +
+          idx +
+          '" class="fr-vote-ledger-section__title"><i class="fas fa-book" aria-hidden="true"></i> ' +
+          esc(section.vote_name || 'Vote') +
+          '</h2>' +
+          '<p class="fr-vote-ledger-section__sub">Vote account — opening KES ' +
+          esc(section.opening_display || '0.00') +
+          ' · closing KES ' +
+          esc(section.closing_display || '0.00') +
+          '</p></div>' +
+          '<span class="fr-vote-ledger-section__count">' +
+          esc(String(section.transaction_count || 0)) +
+          ' entr' +
+          ((section.transaction_count || 0) === 1 ? 'y' : 'ies') +
+          '</span></div>';
+        if (!rows.length) {
+          return (
+            head +
+            '<div class="fr-report-state fr-report-state--compact"><p class="fr-report-state__title">No activity</p></div></section>'
+          );
+        }
+        var thead =
+          '<thead><tr>' +
+          cols
+            .map(function (c) {
+              var align = c.align === 'right' ? ' text-right' : '';
+              return '<th class="' + align.trim() + '">' + esc(c.label) + '</th>';
+            })
+            .join('') +
+          '</tr></thead>';
+        var tbody =
+          '<tbody>' +
+          rows
+            .map(function (row) {
+              var kind = row._ledger_row || '';
+              var trClass = kind ? ' fr-ledger-row fr-ledger-row--' + kind : '';
+              return (
+                '<tr class="' +
+                trClass.trim() +
+                '">' +
+                cols
+                  .map(function (c) {
+                    var align = c.align === 'right' ? ' text-right tabular-nums' : '';
+                    var mono = c.key === 'reference' ? ' fr-mono' : '';
+                    return (
+                      '<td class="' +
+                      (align + mono).trim() +
+                      '" data-label="' +
+                      esc(c.label) +
+                      '">' +
+                      esc(row[c.key] != null ? row[c.key] : '—') +
+                      '</td>'
+                    );
+                  })
+                  .join('') +
+                '</tr>'
+              );
+            })
+            .join('') +
+          '</tbody>';
+        return (
+          head +
+          '<div class="fr-report-panel"><div class="fr-report-panel__body"><div class="fr-report-table-scroll fr-report-table-scroll--stack">' +
+          '<table class="fr-report-table fr-report-table--stack">' +
+          thead +
+          tbody +
+          '</table></div></div></div></section>'
+        );
+      })
+      .join('');
+    wrap.classList.remove('hidden');
+    var titleEl = qs('fr-table-title');
+    if (titleEl && sectionTitle) titleEl.textContent = sectionTitle;
+  }
+
+  function syncRevenueBookSubnav() {
+    if (slug !== 'revenue-collection') return;
+    var book = cfg.revenueBook || new URLSearchParams(window.location.search).get('book') || 'general-ledger';
+    document.querySelectorAll('[data-fr-revenue-book]').forEach(function (link) {
+      var slugBook = link.getAttribute('data-fr-revenue-book') || '';
+      var on = slugBook === book;
+      link.classList.toggle('is-active', on);
+      if (on) {
+        link.setAttribute('aria-current', 'page');
+      } else {
+        link.removeAttribute('aria-current');
+      }
+    });
+  }
+
   function mastheadPeriodLabel() {
     if (!groupActive('date')) {
       return 'All dates (snapshot)';
@@ -549,6 +696,15 @@
   function updateMastheadPeriod() {
     var el = document.getElementById('fr-masthead-period');
     if (el) el.textContent = mastheadPeriodLabel();
+    if (typeof window.syncAccountsPrintLetterhead === 'function') {
+      window.syncAccountsPrintLetterhead();
+    }
+  }
+
+  function syncFrPrintLetterhead() {
+    if (typeof window.syncAccountsPrintLetterhead === 'function') {
+      window.syncAccountsPrintLetterhead();
+    }
   }
 
   function syncSidebarAccountHighlight() {
@@ -600,6 +756,7 @@
     if (!el) return;
     if (sectionTitle) {
       el.textContent = sectionTitle;
+      syncFrPrintLetterhead();
       return;
     }
     if (viewMode === 'votes') {
@@ -608,9 +765,14 @@
       el.textContent = 'Vote Transactions';
     } else if (viewMode === 'vote_ledger' || viewMode === 'expenditure_ledger' || viewMode === 'financial_statement') {
       el.textContent = sectionTitle || 'Ledger';
+    } else if (viewMode === 'revenue_cash_book') {
+      el.textContent = sectionTitle || 'The Cash Book';
+    } else if (viewMode === 'revenue_general_ledger') {
+      el.textContent = sectionTitle || 'The General Ledger';
     } else {
       el.textContent = 'Report detail';
     }
+    syncFrPrintLetterhead();
   }
 
   function renderTable(table, rowCount, viewMode, voteName) {
@@ -714,8 +876,12 @@
     }
     fetchAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
 
-    if (tableWrap && slug !== 'expenditure' && slug !== 'financial-statements') {
+    if (tableWrap && slug !== 'expenditure' && slug !== 'financial-statements' && slug !== 'revenue-collection') {
       tableWrap.classList.add('hidden');
+    }
+    if (slug === 'revenue-collection') {
+      hideVoteLedgers();
+      hideRevenueBlank();
     }
     if (summary) summary.classList.add('hidden');
     if (slug === 'financial-statements') {
@@ -738,6 +904,7 @@
     updateActiveFilterChips();
     updateMastheadPeriod();
     syncSidebarAccountHighlight();
+    syncRevenueBookSubnav();
     syncUrl();
     var url = cfg.dataApi + '?' + paramsFromForm().toString();
     var fetchOpts = { credentials: 'same-origin', headers: { Accept: 'application/json' } };
@@ -779,19 +946,47 @@
         } else if (res.body.view_mode === 'financial_statement') {
           hideVoteDetail();
           hideStatementsBlank();
+          hideVoteLedgers();
+          hideRevenueBlank();
           renderSummary(res.body.ledger_summary || res.body.summary);
+        } else if (res.body.view_mode === 'revenue_books_blank') {
+          hideVoteDetail();
+          hideStatementsBlank();
+          hideVoteLedgers();
+          if (summary) summary.classList.add('hidden');
+          if (tableWrap) tableWrap.classList.add('hidden');
+          showRevenueBlank(res.body.books_message || '');
+        } else if (res.body.view_mode === 'revenue_general_ledger') {
+          hideVoteDetail();
+          hideStatementsBlank();
+          hideRevenueBlank();
+          renderSummary(res.body.summary);
+          renderVoteLedgers(res.body.vote_ledgers, res.body.section_title);
+        } else if (res.body.view_mode === 'revenue_cash_book') {
+          hideVoteDetail();
+          hideStatementsBlank();
+          hideRevenueBlank();
+          hideVoteLedgers();
+          renderSummary(res.body.summary);
         } else {
           hideVoteDetail();
           hideStatementsBlank();
+          hideRevenueBlank();
+          hideVoteLedgers();
           renderSummary(res.body.summary);
         }
-        if (res.body.view_mode !== 'statements_blank') {
+        var sectionTitle = res.body.table_section_title || res.body.section_title;
+        if (
+          res.body.view_mode !== 'statements_blank' &&
+          res.body.view_mode !== 'revenue_books_blank' &&
+          res.body.view_mode !== 'revenue_general_ledger'
+        ) {
           renderTable(res.body.table, res.body.row_count, res.body.view_mode, res.body.vote_name);
         }
         updateTableTitle(
           res.body.view_mode,
           res.body.vote_name || cfg.expenditureVote,
-          res.body.table_section_title,
+          sectionTitle,
         );
         var mastTitle = document.querySelector('.fr-masthead__title');
         var mastDesc = document.querySelector('.fr-masthead__desc');
@@ -812,7 +1007,10 @@
           mastTitle.textContent = res.body.table_section_title || 'Financial statement';
         } else if (mastTitle && slug === 'financial-statements' && res.body.view_mode === 'statements_blank') {
           mastTitle.textContent = 'Financial Statements';
+        } else if (mastTitle && slug === 'revenue-collection' && res.body.section_title) {
+          mastTitle.textContent = res.body.account_name || 'Revenue & Collection';
         }
+        syncFrPrintLetterhead();
       })
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;
@@ -835,6 +1033,19 @@
   function scheduleSearchLoad() {
     clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(loadReport, SEARCH_DEBOUNCE_MS);
+  }
+
+  function bindRevenueBookLinks() {
+    if (slug !== 'revenue-collection') return;
+    document.querySelectorAll('[data-fr-revenue-book]').forEach(function (link) {
+      link.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var book = link.getAttribute('data-fr-revenue-book') || 'general-ledger';
+        cfg.revenueBook = book;
+        syncRevenueBookSubnav();
+        scheduleLoad(0);
+      });
+    });
   }
 
   function bindSidebarAccountLinks() {
@@ -901,6 +1112,9 @@
   applyFilterProfile();
   readUrlIntoForm();
   var sp = new URLSearchParams(window.location.search);
+  if (slug === 'revenue-collection') {
+    if (!cfg.revenueBook) cfg.revenueBook = sp.get('book') || 'general-ledger';
+  }
   var hasUrlFilters =
     sp.has('financial_year_id') ||
     sp.has('date_from') ||
@@ -911,7 +1125,8 @@
     sp.has('period') ||
     sp.has('q') ||
     sp.has('ledger') ||
-    sp.has('statement');
+    sp.has('statement') ||
+    sp.has('book');
 
   if (groupActive('financial_year')) {
     var urlFy = sp.get('financial_year_id');
@@ -931,17 +1146,47 @@
   }
   bindLiveFilters();
   bindSidebarAccountLinks();
+  bindRevenueBookLinks();
   updateActiveFilterChips();
 
   var resetBtn = qs('fr-reset');
   var printBtn = qs('fr-print');
   var printTop = qs('fr-print-top');
   function doPrint() {
+    syncFrPrintLetterhead();
+    if (typeof window.printAccountsInFrame === 'function' && document.querySelector('.fr-report-shell')) {
+      window.printAccountsInFrame({
+        title: document.title,
+        htmlClass: 'acr-accounts-print fr-print-doc',
+        bodyClass: 'acr-accounts-print fr-print-doc',
+        collect: window.collectFrReportShellPrintHtml,
+      });
+      return;
+    }
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
     window.print();
   }
   if (resetBtn) resetBtn.addEventListener('click', resetFilters);
   if (printBtn) printBtn.addEventListener('click', doPrint);
   if (printTop) printTop.addEventListener('click', doPrint);
+
+  window.addEventListener('beforeprint', function () {
+    if (window.__acrIframePrintActive) return;
+    if (!document.querySelector('.fr-report-shell')) return;
+    document.documentElement.classList.add('fr-print-doc', 'acr-accounts-print');
+    syncFrPrintLetterhead();
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
+  });
+  window.addEventListener('afterprint', function () {
+    document.documentElement.classList.remove('fr-print-doc', 'acr-accounts-print');
+    if (typeof window.unpinAccountsPrintFooters === 'function') {
+      window.unpinAccountsPrintFooters();
+    }
+  });
 
   updateMastheadPeriod();
   syncSidebarAccountHighlight();

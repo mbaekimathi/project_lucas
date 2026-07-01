@@ -8,12 +8,26 @@
 {% include 'dashboards/includes/secretary_page_sidebar.html' %}
 {% else %}
 {% set finance_report_slug = 'student-specific' %}
-{% include 'dashboards/includes/finance_reports_page_sidebar.html' %}
+{% include 'dashboards/includes/finance_reports_full_sidebar.html' %}
 {% endif %}
 {% endblock %}
 
 {% block content %}
+{% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/academic-report-shell.css') }}">
+<style>
+#ar-preview-wrap .ar-rc-header .acr-print-letterhead {
+    padding: 1rem 1.35rem 0;
+}
+@media print {
+    #ar-preview-wrap .ar-rc-header .acr-print-letterhead {
+        padding: 0;
+    }
+    html.ar-print-academic-report body {
+        padding-bottom: 0 !important;
+    }
+}
+</style>
 
 {% set role_theme = portal_page_variant|default('secretary') %}
 {% set role_hero_title = 'Fees reports' %}
@@ -31,7 +45,12 @@
         'location': school_settings.school_location or '',
         'phone': school_settings.school_phone or '',
         'email': school_settings.school_email or '',
-        'logo': (url_for('static', filename=school_settings.school_logo) if school_settings.school_logo else '')
+        'logo': (url_for('static', filename=school_settings.school_logo) if school_settings.school_logo else ''),
+        'financialYear': (financial_year_session.year_label if financial_year_session is defined and financial_year_session.year_label else ''),
+        'websiteQrDataUrl': school_website_qr_data_url|default(''),
+        'primaryColor': school_settings.primary_color|default('#800020'),
+        'secondaryColor': school_settings.secondary_color|default('#A00030'),
+        'accentColor': school_settings.accent_color|default('#5C0014')
     }
 }|tojson }}</script>
 
@@ -82,24 +101,17 @@
                 </div>
             </div>
 
-            <div id="ar-print-letterhead" class="ar-print-letterhead ar-print-only-hidden px-3 sm:px-5 pt-3 sm:pt-4" aria-hidden="true">
-                <div class="ar-print-letterhead-grid">
-                    {% if school_settings.school_logo %}
-                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="ar-print-letterhead-logo">
-                    {% endif %}
-                    <div class="ar-print-letterhead-text min-w-0">
-                        <p class="ar-print-letterhead-kicker" id="ar-print-letterhead-kicker">Official fee statement</p>
-                        <h1 class="ar-print-letterhead-school">{{ school_settings.school_name or 'School' }}</h1>
-                        <p id="ar-print-school-contact" class="ar-print-letterhead-contact"></p>
-                    </div>
-                </div>
-            </div>
-            <div id="ar-print-page-footer" class="ar-print-only-hidden" aria-hidden="true"></div>
             <div id="ar-details-list" class="ar-preview-scroll p-3 sm:p-5 lg:p-6 bg-slate-50/40 dark:bg-slate-950/30">
                 <p class="text-sm text-slate-500 dark:text-slate-400">Select a class to generate fee reports.</p>
             </div>
         </div>
     </div>
+</div>
+
+<div id="fr-fees-print-footer-wrap">
+    {% with report_title='Fees reports', print_footer_id='fr-fees-print-footer', print_footer_title_id='fr-fees-print-footer-title' %}
+    {% include 'dashboards/includes/accounts_print_footer.html' %}
+    {% endwith %}
 </div>
 
 <div id="ar-print-pdf-toast" class="no-print hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md px-4 py-3 rounded-xl border border-brand-primary/30 bg-white dark:bg-slate-800 shadow-xl text-sm text-slate-700 dark:text-slate-200" role="status">
@@ -108,6 +120,7 @@
 </div>
 
 <script>
+{% include 'dashboards/includes/academic_print_letterhead_builder.js' %}
 {% include 'dashboards/includes/fees_reports_loader.js' %}
 </script>
 {% endblock %}

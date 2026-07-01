@@ -17,6 +17,7 @@ document.addEventListener('alpine:init', function () {
   Alpine.data('storeLpoPage', function () {
     return Object.assign({}, storeAnalyticsPeriodFilterMixin(), {
       catalogItems: {{ catalog_items_client|tojson }},
+      storeSuppliers: {{ store_suppliers|default([])|tojson }},
       formOpen: false,
       lpoPostUrl: {{ employee_dash_url('store-lpo')|tojson }},
       supplierLookupUrl: {{ employee_dash_url('store-stock/supplier-lookup')|tojson }},
@@ -82,6 +83,36 @@ document.addEventListener('alpine:init', function () {
         this.$watch('viewModalOpen', function (open) {
           document.body.classList.toggle('overflow-hidden', !!(open || !!this.formOpen || this.receiveModalOpen));
         }.bind(this));
+      },
+      normalizeSupplierPhone: function (phone) {
+        var raw = String(phone || '').replace(/\D/g, '');
+        if (!raw) return '';
+        if (raw.charAt(0) === '0' && raw.length >= 10) raw = '254' + raw.slice(1);
+        else if (raw.length === 9 && /^[789]/.test(raw)) raw = '254' + raw;
+        if (raw.length < 9) return '';
+        return raw.slice(0, 20);
+      },
+      findSupplierByPhone: function (phone) {
+        var norm = this.normalizeSupplierPhone(phone);
+        if (!norm) return null;
+        var list = this.storeSuppliers || [];
+        for (var i = 0; i < list.length; i++) {
+          var s = list[i];
+          if (this.normalizeSupplierPhone(s.phone) === norm) return s;
+        }
+        return null;
+      },
+      filterSuppliersByName: function (query, limit) {
+        var q = String(query || '').trim().toUpperCase();
+        if (q.length < 2) return [];
+        var max = limit || 10;
+        var out = [];
+        (this.storeSuppliers || []).forEach(function (s) {
+          if (out.length >= max) return;
+          var name = String(s.company_name || '').toUpperCase();
+          if (name.indexOf(q) !== -1) out.push(s);
+        });
+        return out;
       },
       openViewModal: function (lpo) {
         if (!lpo) return;
@@ -537,7 +568,7 @@ document.addEventListener('alpine:init', function () {
         } else if (!this.receiveSelectedCount() && this.receiveLineRows.length) {
           this.receiveLineRows[0].selected = true;
         }
-        this.receiveSupplierPhone = full.supplier_phone || '';
+        this.receiveSupplierPhone = this.normalizeSupplierPhone(full.supplier_phone) || full.supplier_phone || '';
         this.receiveSupplierName = full.supplier_name || '';
         this.receiveInvoiceNumber = '';
         this.receiveDeliveryNote = '';
@@ -588,19 +619,28 @@ document.addEventListener('alpine:init', function () {
         this.receiveSupplierFound = false;
         this.receiveSupplierId = null;
         var phone = (this.receiveSupplierPhone || '').trim();
-        var digits = phone.replace(/\D/g, '');
-        if (!digits || digits.length < 9) {
-          this.receiveSupplierLookupStatus = digits ? 'typing' : '';
-          this.receiveSupplierLookupMessage = digits ? 'Keep typing phone number…' : '';
-          if (!digits) this.receiveSupplierName = '';
+        var raw = phone.replace(/\D/g, '');
+        if (!raw) {
+          this.receiveSupplierLookupStatus = '';
+          this.receiveSupplierLookupMessage = '';
+          this.receiveSupplierName = '';
           return;
         }
-        var local = this.findSupplierByPhone(phone);
+        var norm = this.normalizeSupplierPhone(phone);
+        if (norm) this.receiveSupplierPhone = norm;
+        var digits = norm || raw;
+        if (digits.length < 9) {
+          this.receiveSupplierLookupStatus = 'typing';
+          this.receiveSupplierLookupMessage = 'Keep typing phone number…';
+          if (!raw) this.receiveSupplierName = '';
+          return;
+        }
+        var local = this.findSupplierByPhone(norm || phone);
         if (local) {
           this.receiveSupplierFound = true;
           this.receiveSupplierId = local.id;
           this.receiveSupplierName = local.company_name || '';
-          this.receiveSupplierPhone = local.phone || phone;
+          this.receiveSupplierPhone = this.normalizeSupplierPhone(local.phone) || local.phone || norm;
           this.receiveSupplierLookupStatus = 'found';
           this.receiveSupplierLookupMessage = 'Supplier found in directory.';
           return;
@@ -612,7 +652,8 @@ document.addEventListener('alpine:init', function () {
         this.receiveSupplierLookupTimer = setTimeout(function () { self.lookupReceiveSupplier(); }, 450);
       },
       lookupReceiveSupplier: function () {
-        var phone = (this.receiveSupplierPhone || '').trim();
+        var phone = this.normalizeSupplierPhone(this.receiveSupplierPhone) || (this.receiveSupplierPhone || '').trim();
+        if (phone) this.receiveSupplierPhone = phone;
         var digits = phone.replace(/\D/g, '');
         if (!digits || digits.length < 9) return;
         var self = this;
@@ -631,11 +672,13 @@ document.addEventListener('alpine:init', function () {
               self.receiveSupplierFound = true;
               self.receiveSupplierId = data.supplier_id || null;
               self.receiveSupplierName = data.company_name || '';
+              if (data.phone) self.receiveSupplierPhone = self.normalizeSupplierPhone(data.phone) || data.phone;
               self.receiveSupplierLookupStatus = 'found';
               self.receiveSupplierLookupMessage = data.message || 'Supplier found.';
             } else if (data.ready) {
               self.receiveSupplierFound = false;
               self.receiveSupplierId = null;
+              if (data.phone) self.receiveSupplierPhone = self.normalizeSupplierPhone(data.phone) || data.phone;
               self.receiveSupplierLookupStatus = 'new';
               self.receiveSupplierLookupMessage = data.message || 'New supplier — enter name.';
             }
@@ -669,7 +712,8 @@ document.addEventListener('alpine:init', function () {
           window.alert(invalid);
           return;
         }
-        var digits = (this.receiveSupplierPhone || '').replace(/\D/g, '');
+        var digits = this.normalizeSupplierPhone(this.receiveSupplierPhone) || (this.receiveSupplierPhone || '').replace(/\D/g, '');
+        if (digits) this.receiveSupplierPhone = digits;
         if (!digits || digits.length < 9) {
           $event.preventDefault();
           window.alert('Enter the supplier contact (at least 9 digits).');
@@ -948,15 +992,18 @@ document.addEventListener('alpine:init', function () {
         this.supplierId = null;
         this.showNameDropdown = false;
         var phone = (this.supplierPhone || '').trim();
-        var digits = phone.replace(/\D/g, '');
-        if (!digits) {
+        var raw = phone.replace(/\D/g, '');
+        if (!raw) {
           this.supplierLookupStatus = '';
           this.supplierLookupMessage = '';
           this.supplierName = '';
           return;
         }
+        var norm = this.normalizeSupplierPhone(phone);
+        if (norm) this.supplierPhone = norm;
+        var digits = norm || raw;
         if (digits.length >= 9) {
-          var local = this.findSupplierByPhone(phone);
+          var local = this.findSupplierByPhone(norm || phone);
           if (local) {
             this.pickSupplier(local);
             this.supplierLookupStatus = 'found';
@@ -976,7 +1023,8 @@ document.addEventListener('alpine:init', function () {
         this.supplierLookupTimer = setTimeout(function () { self.lookupSupplier(); }, 400);
       },
       lookupSupplier: function () {
-        var phone = (this.supplierPhone || '').trim();
+        var phone = this.normalizeSupplierPhone(this.supplierPhone) || (this.supplierPhone || '').trim();
+        if (phone) this.supplierPhone = phone;
         var digits = phone.replace(/\D/g, '');
         if (!digits || digits.length < 9) return;
         var self = this;
@@ -995,7 +1043,7 @@ document.addEventListener('alpine:init', function () {
               self.supplierFound = true;
               self.supplierId = data.supplier_id || null;
               self.supplierName = data.company_name || '';
-              if (data.phone) self.supplierPhone = data.phone;
+              if (data.phone) self.supplierPhone = self.normalizeSupplierPhone(data.phone) || data.phone;
               self.supplierLookupStatus = 'found';
               self.supplierLookupMessage = data.message || 'Supplier registered — name filled in automatically.';
               self.showNameDropdown = false;
@@ -1003,7 +1051,7 @@ document.addEventListener('alpine:init', function () {
             } else if (data.ready) {
               self.supplierFound = false;
               self.supplierId = null;
-              if (data.phone) self.supplierPhone = data.phone;
+              if (data.phone) self.supplierPhone = self.normalizeSupplierPhone(data.phone) || data.phone;
               self.supplierLookupStatus = 'new';
               self.supplierLookupMessage = data.message || 'Not registered yet — enter the supplier name below.';
             }
@@ -1073,7 +1121,7 @@ document.addEventListener('alpine:init', function () {
         this.supplierFound = true;
         this.supplierId = s.id;
         this.supplierName = s.company_name || '';
-        this.supplierPhone = s.phone || '';
+        this.supplierPhone = this.normalizeSupplierPhone(s.phone) || s.phone || '';
         this.supplierLookupStatus = 'found';
         this.supplierLookupMessage = 'Supplier selected from directory.';
         this.showNameDropdown = false;
@@ -1114,7 +1162,8 @@ document.addEventListener('alpine:init', function () {
           window.alert('Select the delivery deadline (on or before).');
           return;
         }
-        var digits = (this.supplierPhone || '').replace(/\D/g, '');
+        var digits = this.normalizeSupplierPhone(this.supplierPhone) || (this.supplierPhone || '').replace(/\D/g, '');
+        if (digits) this.supplierPhone = digits;
         if (!digits || digits.length < 9) {
           $event.preventDefault();
           window.alert('Enter the supplier contact (at least 9 digits).');
@@ -1502,7 +1551,7 @@ document.addEventListener('alpine:init', function () {
                                                x-model="supplierPhone"
                                                @input="onSupplierPhoneInput()"
                                                @blur="if ((supplierPhone || '').replace(/\D/g, '').length >= 9 && supplierLookupStatus === 'typing') lookupSupplier()"
-                                               placeholder="0712 345 678"
+                                               placeholder="254712345678"
                                                class="ss-lpo-supplier-phone__input si-normal" />
                                     </div>
                                     <p class="ss-lpo-field-hint si-normal normal-case"
@@ -1939,7 +1988,7 @@ document.addEventListener('alpine:init', function () {
                                         <label for="receive_supplier_phone" class="si-label">Supplier contact</label>
                                         <input type="tel" name="supplier_phone" id="receive_supplier_phone" required
                                                x-model="receiveSupplierPhone" @input="onReceiveSupplierPhoneInput()"
-                                               placeholder="e.g. 0712 345 678" class="si-input" />
+                                               placeholder="254712345678" class="si-input" />
                                         <p class="mt-1.5 text-xs"
                                            :class="receiveSupplierLookupStatus === 'found' ? 'text-emerald-700 dark:text-emerald-400' : (receiveSupplierLookupStatus === 'new' ? 'text-amber-700 dark:text-amber-400' : 'text-[var(--si-muted)]')"
                                            x-show="receiveSupplierLookupMessage" x-text="receiveSupplierLookupMessage"></p>

@@ -153,6 +153,7 @@ document.addEventListener('alpine:init', function () {
                         <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Category</th>
                         <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Department</th>
                         <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Description</th>
+                        <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Linked role</th>
                         <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Items</th>
                         <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide">Status</th>
                         <th class="px-4 py-2.5 font-semibold text-[0.6875rem] uppercase tracking-wide text-center">Actions</th>
@@ -164,6 +165,12 @@ document.addEventListener('alpine:init', function () {
                         <td class="px-4 py-3 whitespace-nowrap font-medium text-[var(--si-ink)]">{{ dept.department_category }}</td>
                         <td class="px-4 py-3 font-semibold text-[var(--si-ink)]">{{ dept.department_name }}</td>
                         <td class="px-4 py-3 text-[var(--si-muted)] max-w-[14rem] truncate" title="{{ dept.description or '' }}">{{ dept.description or '—' }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-[var(--si-muted)]">
+                            {% if dept.linked_role %}
+                            {{ (store_department_role_labels|default({})).get(dept.linked_role, dept.linked_role|replace('_', ' ')|title) }}
+                            {% if dept.is_core %}<span class="ml-1 si-badge si-badge--brand text-[0.625rem]">Core</span>{% endif %}
+                            {% else %}—{% endif %}
+                        </td>
                         <td class="px-4 py-3 tabular-nums whitespace-nowrap">{{ dept.item_count|default(0) }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">
                             <span class="si-badge {% if dept.status == 'suspended' %}si-badge--warn{% else %}si-badge--brand{% endif %}">
@@ -184,6 +191,7 @@ document.addEventListener('alpine:init', function () {
                                         class="si-btn si-btn--icon is-edit" title="Edit department">
                                     <i class="fas fa-pen-to-square"></i>
                                 </button>
+                                {% if not dept.is_core %}
                                 <form method="post" action="{{ employee_dash_url('store-departments') }}/{{ dept.id }}/toggle-suspend" class="inline">
                                     <button type="submit" class="si-btn si-btn--icon is-warn"
                                             title="{{ 'Reactivate' if dept.status == 'suspended' else 'Suspend' }} department">
@@ -196,6 +204,7 @@ document.addEventListener('alpine:init', function () {
                                         <i class="fas fa-trash-can"></i>
                                     </button>
                                 </form>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>
@@ -282,6 +291,10 @@ document.addEventListener('alpine:init', function () {
                 <div>
                     <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Description</p>
                     <p class="mt-1 text-[var(--si-muted)]" x-text="viewDept.description || '—'"></p>
+                </div>
+                <div>
+                    <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--si-muted)]">Linked role</p>
+                    <p class="mt-1 text-[var(--si-muted)]" x-text="viewDept.linked_role ? (viewDept.linked_role.replace(/_/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); })) : '—'"></p>
                 </div>
                 <div class="flex flex-wrap gap-6">
                     <div>

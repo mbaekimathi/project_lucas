@@ -485,9 +485,6 @@
         gap: 0.35rem !important;
         font-size: 8pt !important;
     }
-    #ar-preview-wrap table.ar-register-table col.ar-col-num {
-        width: 2.5% !important;
-    }
     #ar-preview-wrap table.ar-register-table col.ar-col-class {
         width: 7% !important;
     }
@@ -1225,9 +1222,6 @@
     }
     #ar-preview-wrap.ar-print-register-batch table.ar-register-table {
         font-size: 9.5pt !important;
-    }
-    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-num {
-        width: 3% !important;
     }
     #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-class {
         width: 8% !important;

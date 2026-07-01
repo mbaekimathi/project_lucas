@@ -1,3 +1,4 @@
+{% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
 <style>
 /* Accounts reports — modern, responsive UI */
 .fr-report-shell {
@@ -1004,16 +1005,214 @@
 }
 .fr-report-section-title i { color: var(--fr-teal); font-size: 0.875rem; }
 
+/* Unified accounts report — Revenue, Expenditure & Financial Statements */
+.fr-report-shell--unified {
+    --fr-bg: #f4f6f8;
+}
+.fr-report-shell--unified .fr-inner {
+    max-width: 80rem;
+}
+.fr-unified {
+    background: var(--fr-surface);
+    border: 1px solid var(--fr-line);
+    border-radius: var(--fr-radius);
+    box-shadow: var(--fr-shadow);
+    margin-bottom: 0.875rem;
+    overflow: hidden;
+}
+.fr-unified__bar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem 0.625rem;
+    border-bottom: 1px solid var(--fr-line);
+}
+.fr-unified__school {
+    margin: 0;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fr-muted);
+}
+.fr-unified__period {
+    margin: 0.2rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--fr-ink);
+    font-weight: 500;
+}
+.fr-unified__dot {
+    margin: 0 0.25rem;
+    color: var(--fr-muted);
+}
+.fr-unified__generated {
+    color: var(--fr-muted);
+    font-weight: 400;
+    font-size: 0.75rem;
+}
+.fr-unified-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.fr-unified-tabs::-webkit-scrollbar { display: none; }
+.fr-unified-tabs__tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--fr-muted);
+    text-decoration: none;
+    border-radius: var(--fr-radius-sm) var(--fr-radius-sm) 0 0;
+    border: 1px solid transparent;
+    border-bottom: none;
+    white-space: nowrap;
+    transition: color 0.15s, background 0.15s;
+}
+.fr-unified-tabs__tab i {
+    font-size: 0.75rem;
+    opacity: 0.85;
+}
+.fr-unified-tabs__tab:hover {
+    color: var(--fr-ink);
+    background: var(--fr-surface-2);
+}
+.fr-unified-tabs__tab.is-active {
+    color: var(--fr-teal);
+    background: var(--fr-surface);
+    border-color: var(--fr-line);
+    box-shadow: 0 -1px 0 var(--fr-surface);
+    position: relative;
+    z-index: 1;
+}
+.fr-unified-filters {
+    padding: 0.75rem 1rem 0.875rem;
+    border-top: 1px solid var(--fr-line);
+    background: var(--fr-surface-2);
+}
+.fr-unified-filters__grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.5rem 0.65rem;
+}
+.fr-unified-filters__grid .fr-filter-group {
+    flex: 1 1 8rem;
+    min-width: 0;
+    padding: 0;
+    border: none;
+}
+.fr-unified-filters__grid .fr-filter-group--wide {
+    flex: 2 1 14rem;
+}
+.fr-unified-filters__actions {
+    flex: 0 0 auto;
+    align-self: flex-end;
+}
+.fr-unified-filters .fr-filter-fy-hint {
+    margin: 0.5rem 0 0;
+}
+.fr-subnav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.875rem;
+    padding: 0.125rem 0;
+}
+.fr-subnav__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--fr-muted);
+    text-decoration: none;
+    background: var(--fr-surface);
+    border: 1px solid var(--fr-line);
+    border-radius: 999px;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.fr-subnav__item:hover {
+    color: var(--fr-teal);
+    border-color: rgba(13, 148, 136, 0.45);
+    background: var(--fr-teal-soft);
+}
+.fr-subnav__item.is-active {
+    color: #fff;
+    background: linear-gradient(135deg, #0f766e, #0d9488);
+    border-color: transparent;
+}
+.fr-subnav__item--external {
+    font-weight: 500;
+}
+
+/* Revenue collection — per-vote general ledger sections */
+.fr-vote-ledgers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    margin-bottom: 1rem;
+}
+.fr-vote-ledgers.hidden {
+    display: none !important;
+}
+.fr-vote-ledger-section__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.fr-vote-ledger-section__title {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--fr-ink);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.fr-vote-ledger-section__title i {
+    color: var(--fr-teal);
+    font-size: 0.875rem;
+}
+.fr-vote-ledger-section__sub {
+    margin: 0.2rem 0 0;
+    font-size: 0.75rem;
+    color: var(--fr-muted);
+}
+.fr-vote-ledger-section__count {
+    font-size: 0.75rem;
+    color: var(--fr-muted);
+    white-space: nowrap;
+}
+.fr-report-state--compact {
+    padding: 1rem;
+    margin-bottom: 0;
+}
+
 @media print {
     .fr-report-shell { background: #fff; padding: 0; }
-    .fr-report-filters, .fr-btn, .no-print, .fr-report-scroll-hint, .fr-toolbar { display: none !important; }
-    .fr-report-panel, .fr-masthead { box-shadow: none; break-inside: avoid; }
-    .fr-masthead__band {
-        background: #0f766e !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+    .fr-report-filters, .fr-unified-tabs, .fr-unified-filters, .fr-subnav,
+    .fr-unified, .fr-unified__bar, .fr-btn, .no-print, .fr-report-scroll-hint, .fr-toolbar { display: none !important; }
+    .fr-masthead { display: none !important; }
+    .fr-report-panel { box-shadow: none; break-inside: avoid; }
+    html.fr-print-doc body,
+    .fr-report-shell {
+        padding-bottom: 0 !important;
     }
-    .fr-report-table-scroll { max-height: none; overflow: visible; border-color: #94a3b8; }
+    .fr-report-table-scroll { max-height: none; overflow: visible; border-color: var(--print-brand-line, #94a3b8); }
+    .fr-report-table th {
+        background: var(--print-brand-head-bg, #f1f5f9) !important;
+    }
     .fr-report-table th,
     .fr-report-table td {
         border: 1px solid #94a3b8 !important;
@@ -1023,3 +1222,4 @@
     .sidebar-container, .app-sidebar, header { display: none !important; }
 }
 </style>
+{% include 'dashboards/includes/accounts_print_report_typography.html' %}

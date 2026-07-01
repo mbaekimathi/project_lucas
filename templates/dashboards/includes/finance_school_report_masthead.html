@@ -1,4 +1,7 @@
 {# report_title, report_description, report_period_label, report_generated_at, report_icon (optional) #}
+{% with letterhead_id='fr-print-letterhead', print_title_id='fr-print-title', print_period_id='fr-print-period', print_generated_id='fr-print-generated', print_primary_id='fr-print-primary', print_footer_id='fr-print-footer', print_footer_title_id='fr-print-footer-title', hide_print_meta_primary=true, letterhead_sync_mode='fr', financial_year_label=((filter_options|default({})).financial_year_label)|default('') %}
+{% include 'dashboards/includes/accounts_print_letterhead.html' %}
+{% endwith %}
 <div class="fr-masthead">
     <div class="fr-masthead__band">
         <div class="fr-masthead__inner">
@@ -11,7 +14,7 @@
             </div>
             <div class="fr-masthead__meta">
                 <div><strong>Period:</strong> <span id="fr-masthead-period">{{ report_period_label|default('—') }}</span></div>
-                <div><strong>Generated:</strong> {{ report_generated_at|default('—') }}</div>
+                <div><strong>Generated:</strong> <span id="fr-masthead-generated">{{ report_generated_at|default('—') }}</span></div>
                 <div class="fr-masthead__doc-type">Official accounts report</div>
             </div>
         </div>

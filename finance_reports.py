@@ -3,6 +3,8 @@
 from collections import defaultdict
 from datetime import datetime
 
+import finance_account_reports as finance_account_reports_mod
+
 FINANCE_REPORT_NAV = (
     {
         'slug': 'revenue-collection',
@@ -43,6 +45,27 @@ FINANCE_REPORT_NAV = (
 )
 
 FINANCE_REPORT_SLUGS = frozenset(item['slug'] for item in FINANCE_REPORT_NAV)
+
+# Core trio shown on the unified accounts report page (tabs, not separate hubs).
+FINANCE_CORE_REPORT_NAV = FINANCE_REPORT_NAV[:3]
+FINANCE_CORE_REPORT_SLUGS = frozenset(item['slug'] for item in FINANCE_CORE_REPORT_NAV)
+
+# Revenue & Collection — account book views (General Ledger / Cash Book).
+REVENUE_BOOK_NAV = (
+    {
+        'slug': 'general-ledger',
+        'title': 'The General Ledger',
+        'icon': 'fa-book',
+        'description': 'Debits, credits, and running balance by vote for the selected account.',
+    },
+    {
+        'slug': 'cash-book',
+        'title': 'The Cash Book',
+        'icon': 'fa-money-check',
+        'description': 'Receipts, payments, and running cash balance for the selected account.',
+    },
+)
+REVENUE_BOOK_SLUGS = frozenset(item['slug'] for item in REVENUE_BOOK_NAV)
 
 VOTE_LEDGER_NAV = (
     {
@@ -181,6 +204,9 @@ def parse_filters(request):
     statement = (request.args.get('statement') or '').strip().lower()
     if statement and statement not in FINANCIAL_STATEMENT_SLUGS:
         statement = ''
+    book = (request.args.get('book') or 'general-ledger').strip().lower()
+    if book not in REVENUE_BOOK_SLUGS:
+        book = 'general-ledger'
     return {
         'date_from': date_from,
         'date_to': date_to,
@@ -197,6 +223,7 @@ def parse_filters(request):
         'vote': vote,
         'ledger': ledger,
         'statement': statement,
+        'book': book,
     }
 
 
@@ -1187,57 +1214,135 @@ def fetch_report_payload(cursor, slug, filters, helpers):
     return {'error': 'Unknown report'}
 
 
-def _report_revenue_collection(cursor, filters, helpers):
-    fetch_summary = helpers.get('fetch_revenue_summary')
-    fetch_revenue = helpers.get('fetch_revenue_rows')
-    fee_totals = helpers.get('fetch_fee_payment_totals')
-    fy_fn = helpers.get('fetch_financial_year_context')
-    fy_ctx = fy_fn(cursor, filters) if fy_fn else {}
+def _report_revenue_collection_blank(message):
+    return {
+        'view_mode': 'revenue_books_blank',
+        'books_message': message,
+        'summary': [],
+        'table': _table([], []),
+        'row_count': 0,
+    }
 
-    summary_src = fetch_summary(cursor, filters) if fetch_summary else {}
-    fees = fee_totals(cursor, filters) if fee_totals else {'count': 0, 'total': 0.0}
 
-    total_rev = float(summary_src.get('total_amount') or 0) + float(fees.get('total') or 0)
-    summary = _fy_balance_summary_cards(fy_ctx) + _summary_cards([
-        {'label': 'Total revenue (registered + fees)', 'value': f'KES {_fmt_kes(total_rev)}'},
-        {'label': 'Student fee collections', 'value': f'KES {_fmt_kes(fees.get("total", 0))}', 'hint': f'{fees.get("count", 0)} payments'},
-        {'label': 'Registered revenue', 'value': f'KES {summary_src.get("total_display", "0.00")}'},
-        {'label': 'Government grants', 'value': f'KES {summary_src.get("government_display", "0.00")}'},
-        {'label': 'Private / other income', 'value': f'KES {summary_src.get("private_display", "0.00")}'},
-    ])
+def _report_revenue_collection_for_account(cursor, filters, helpers, account_id, book):
+    """General Ledger or Cash Book for one finance account."""
+    acct_helpers = helpers.get('account_report_helpers') or {}
+    load_account = acct_helpers.get('load_account')
+    account = load_account(cursor, account_id) if load_account else None
+    if not account:
+        return _report_revenue_collection_blank('Finance account not found.')
 
-    rows = []
-    src = filters.get('source') or 'all'
-    if helpers.get('fetch_fee_payments') and src in ('all', 'fees'):
-        rows.extend(helpers['fetch_fee_payments'](cursor, filters))
-    if fetch_revenue and src not in ('fees', 'store', 'payment', 'misc', 'salary'):
-        sf = None if src in ('all',) else src
-        rows.extend(
-            fetch_revenue(
-                cursor,
-                limit=500,
-                source_filter=sf,
-                finance_account_id=filters.get('finance_account_id'),
-                filters=filters,
-            )
-        )
-    rows.sort(key=lambda r: r.get('_sort_ts', 0), reverse=True)
-    if filters.get('grade'):
-        rows = [r for r in rows if (r.get('class_name') or r.get('grade') or '') == filters['grade']]
+    refresh = acct_helpers.get('refresh_balances')
+    if refresh:
+        try:
+            refresh(cursor, account_id)
+        except TypeError:
+            try:
+                refresh(cursor)
+            except Exception as e:
+                print(f'_report_revenue_collection_for_account refresh: {e}')
+        except Exception as e:
+            print(f'_report_revenue_collection_for_account refresh: {e}')
+
+    date_from = filters.get('date_from') or ''
+    date_to = filters.get('date_to') or ''
+    period = finance_account_reports_mod._resolve_account_period(
+        cursor, account_id, date_from, date_to, account, acct_helpers,
+    )
+    prior_rows = finance_account_reports_mod._fetch_prior_ledger_rows(
+        cursor, account_id, date_from, acct_helpers,
+    )
+    period_rows = period.get('ledger') or []
+
     if filters.get('q'):
         ql = filters['q'].lower()
-        rows = [r for r in rows if ql in (r.get('description') or '').lower() or ql in (r.get('reference') or '').lower()]
+        period_rows = [
+            r for r in period_rows
+            if ql in (r.get('description') or '').lower()
+            or ql in (r.get('reference') or '').lower()
+        ]
 
-    columns = [
-        {'key': 'date', 'label': 'Date'},
-        {'key': 'reference', 'label': 'Reference'},
-        {'key': 'source_label', 'label': 'Source'},
-        {'key': 'description', 'label': 'Description'},
-        {'key': 'amount_display', 'label': 'Amount (KES)', 'align': 'right'},
-        {'key': 'account', 'label': 'Account'},
-    ]
-    display_rows = [{k: r.get(k, '—') for k in ('date', 'reference', 'source_label', 'description', 'amount_display', 'account')} for r in rows[:500]]
-    return {'summary': summary, 'table': _table(columns, display_rows), 'row_count': len(rows)}
+    linked_votes = []
+    load_votes = acct_helpers.get('load_account_expense_votes')
+    if load_votes:
+        try:
+            linked_votes = load_votes(cursor, account_id) or []
+        except Exception as e:
+            print(f'_report_revenue_collection_for_account votes: {e}')
+
+    account_name = (account.get('account_name') or 'Account').strip()
+    opening = period.get('opening', 0.0)
+    closing = period.get('closing', 0.0)
+    total_debit = period.get('total_debit', 0.0)
+    total_credit = period.get('total_credit', 0.0)
+    summary = finance_account_reports_mod._period_ledger_summary(
+        opening, total_debit, total_credit, closing,
+    )
+
+    if book == 'cash-book':
+        cash_lines = [
+            {
+                'date': r.get('date', '—'),
+                'reference': r.get('reference', '—'),
+                'particulars': r.get('description', '—'),
+                'receipt': float(r.get('credit') or 0),
+                'payment': float(r.get('debit') or 0),
+            }
+            for r in period_rows
+        ]
+        pack = {'opening_fund': opening}
+        rows, cb_summary, columns, _keys = _build_cash_book_rows(pack, cash_lines)
+        return {
+            'view_mode': 'revenue_cash_book',
+            'account_name': account_name,
+            'section_title': f'{account_name} — The Cash Book',
+            'summary': cb_summary,
+            'table': _table(columns, rows),
+            'row_count': len([r for r in rows if not r.get('_ledger_row')]),
+        }
+
+    vote_ledgers = finance_account_reports_mod._build_per_vote_general_ledgers(
+        prior_rows, period_rows, linked_votes,
+    )
+    return {
+        'view_mode': 'revenue_general_ledger',
+        'account_name': account_name,
+        'section_title': f'{account_name} — The General Ledger',
+        'summary': summary,
+        'vote_ledgers': vote_ledgers,
+        'row_count': sum(int(s.get('transaction_count') or 0) for s in vote_ledgers),
+    }
+
+
+def _report_revenue_collection(cursor, filters, helpers):
+    book = (filters.get('book') or 'general-ledger').strip().lower()
+    if book not in REVENUE_BOOK_SLUGS:
+        book = 'general-ledger'
+
+    account_id = filters.get('finance_account_id')
+    if not account_id:
+        accounts = helpers.get('finance_accounts') or []
+        if not accounts:
+            load_opts = helpers.get('load_filter_options')
+            if load_opts:
+                try:
+                    accounts = (load_opts(cursor) or {}).get('finance_accounts') or []
+                except Exception as e:
+                    print(f'_report_revenue_collection accounts: {e}')
+        if len(accounts) == 1:
+            account_id = accounts[0].get('id')
+        elif accounts:
+            return _report_revenue_collection_blank(
+                'Choose a finance account from the filters or sidebar to view its General Ledger and Cash Book.',
+            )
+        else:
+            return _report_revenue_collection_blank(
+                'Register a finance account first, then return here to view its books.',
+            )
+
+    return _report_revenue_collection_for_account(
+        cursor, filters, helpers, int(account_id), book,
+    )
 
 
 def _vote_position_summary(position):

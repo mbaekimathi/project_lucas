@@ -182,6 +182,12 @@
     applyBounds(true);
   }
 
+  function syncPrintLetterhead() {
+    if (typeof window.syncAcrPrintLetterhead === 'function') {
+      window.syncAcrPrintLetterhead();
+    }
+  }
+
   function updateMastheadMeta(periodLabel, generatedAt, accountName) {
     var periodEl = qs('acr-masthead-period');
     var genEl = qs('acr-masthead-generated');
@@ -189,6 +195,7 @@
     if (periodEl) periodEl.textContent = periodLabel || mastheadPeriodLabel();
     if (genEl && generatedAt) genEl.textContent = generatedAt;
     if (acctEl && accountName) acctEl.textContent = accountName;
+    syncPrintLetterhead();
   }
 
   function loadReport() {
@@ -276,4 +283,62 @@
   if (!cfg.skipInitialFetch) {
     scheduleLoad();
   }
+
+  function printPettyCashBook() {
+    var section = document.getElementById('acr-pcb-book-section');
+    var table = section && section.querySelector('.acr-pcb-table table tbody tr');
+    if (!section || !table) {
+      window.alert('No petty cash book data to print for the selected period.');
+      return;
+    }
+    var acct = document.getElementById('acr-masthead-account');
+    var period = document.getElementById('acr-masthead-period');
+    var prevTitle = document.title;
+    var bits = ['Petty cash book'];
+    if (acct && acct.textContent) bits.push(acct.textContent.trim());
+    if (period && period.textContent) bits.push(period.textContent.trim());
+    var printTitle = bits.join(' — ');
+    if (typeof window.printAccountsInFrame === 'function') {
+      window.printAccountsInFrame({
+        title: printTitle,
+        htmlClass: 'acr-accounts-print acr-pcb-print-doc',
+        bodyClass: 'acr-accounts-print acr-pcb-print-doc',
+        collect: window.collectPcbPrintHtml,
+      });
+      return;
+    }
+    document.title = printTitle;
+    syncPrintLetterhead();
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
+    document.documentElement.classList.add('acr-pcb-print-doc', 'acr-accounts-print');
+    window.print();
+    window.setTimeout(function () {
+      document.documentElement.classList.remove('acr-pcb-print-doc', 'acr-accounts-print');
+      if (typeof window.unpinAccountsPrintFooters === 'function') {
+        window.unpinAccountsPrintFooters();
+      }
+      document.title = prevTitle;
+    }, 500);
+  }
+
+  window.printPettyCashBook = printPettyCashBook;
+
+  window.addEventListener('beforeprint', function () {
+    if (window.__acrIframePrintActive) return;
+    if (!document.querySelector('.acr-pcb-page')) return;
+    if (!document.getElementById('acr-pcb-book-section')) return;
+    syncPrintLetterhead();
+    document.documentElement.classList.add('acr-pcb-print-doc', 'acr-accounts-print');
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
+  });
+  window.addEventListener('afterprint', function () {
+    document.documentElement.classList.remove('acr-pcb-print-doc', 'acr-accounts-print');
+    if (typeof window.unpinAccountsPrintFooters === 'function') {
+      window.unpinAccountsPrintFooters();
+    }
+  });
 })();

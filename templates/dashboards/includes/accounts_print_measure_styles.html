@@ -1,0 +1,156 @@
+{# Screen-layout emulation of @media print rules for footer spacer measurement #}
+<style>
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-summary {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2mm;
+    margin: 0 0 3mm !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-summary.acr-kpis--3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-summary .acr-kpi {
+    padding: 1.5mm 2mm;
+    box-shadow: none;
+    border: 1px solid var(--print-brand-line, #94a3b8);
+    border-radius: 0;
+    background: var(--print-brand-kpi-bg, #f8fafc) !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-summary .acr-kpi__label {
+    font-size: 6.5pt;
+    margin-bottom: 0.5mm;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-summary .acr-kpi__value {
+    font-size: 8.5pt;
+    font-weight: 700;
+    line-height: 1.2;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-report-section {
+    margin: 0 0 4mm;
+    padding: 0;
+    box-shadow: none;
+    border: none;
+    background: transparent !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-report-section .acr-section__head {
+    border-bottom: 1px solid var(--print-brand-primary, #800020);
+    border-left: 2pt solid var(--print-brand-primary, #800020);
+    margin-bottom: 1.5mm;
+    padding: 0 0 1mm 2.5mm;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-report-section .acr-section__title {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 11pt;
+    font-weight: 700;
+    letter-spacing: 0.025em;
+    text-transform: none;
+    color: var(--print-brand-ink, #0f172a);
+    margin: 0;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table-scroll,
+html.acr-accounts-print-measure.acr-report-print-doc .acr-pcb-table__scroll {
+    max-height: none !important;
+    overflow: visible !important;
+    border: 1px solid #94a3b8 !important;
+    box-shadow: none !important;
+    border-radius: 0;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 7.5pt;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table--stack thead {
+    display: table-header-group !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table--stack tbody {
+    display: table-row-group !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table--stack tbody tr {
+    display: table-row !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table--stack tbody td {
+    display: table-cell !important;
+    padding: 1mm 1.2mm !important;
+    border: 1px solid #94a3b8 !important;
+    background: transparent !important;
+    font-size: 7.5pt;
+    vertical-align: top;
+    word-break: break-word;
+    color: #0f172a !important;
+    white-space: normal !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table--stack tbody td::before {
+    content: none !important;
+    display: none !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table--stack thead th {
+    display: table-cell !important;
+    font-size: 7.5pt;
+    font-weight: 700;
+    padding: 1.5mm !important;
+    background: var(--print-brand-head-bg, #f1f5f9) !important;
+    border: 1px solid #94a3b8 !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table--stack tfoot {
+    display: table-footer-group !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table--stack tfoot tr {
+    display: table-row !important;
+    background: transparent !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-table--stack tfoot td {
+    display: table-cell !important;
+    border: 1px solid #94a3b8 !important;
+    padding: 1.2mm 1.5mm !important;
+    font-size: 8pt;
+    font-weight: 700;
+    background: var(--print-brand-kpi-bg, #f8fafc) !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-letterhead__school {
+    font-size: 13pt;
+    text-align: right;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-letterhead__brand {
+    display: grid !important;
+    grid-template-columns: auto 1fr auto !important;
+    align-items: center !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-letterhead__school-block {
+    grid-column: 2;
+    justify-self: center;
+    text-align: center;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-letterhead__brand-right {
+    grid-column: 3;
+    justify-self: end;
+    padding-left: 0;
+    border-left: 0;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-letterhead__qr-img {
+    width: 22mm !important;
+    height: 22mm !important;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-letterhead__logo {
+    width: 26mm;
+    height: 26mm;
+    max-width: 26mm;
+    max-height: 26mm;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-letterhead__title {
+    font-size: 12pt;
+}
+html.acr-accounts-print-measure.acr-report-print-doc .acr-print-footer {
+    margin: 0 !important;
+    padding: 1.75mm 0 0;
+    border-top: 1.5px solid var(--print-brand-primary, #800020);
+}
+</style>

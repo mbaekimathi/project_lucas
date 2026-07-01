@@ -87,10 +87,8 @@
     </a>
 
 {% elif current_role in ('head of institution', 'deputy head of institution') %}
+    {% set leadership_sidebar_show_hub_nav = true %}
     {% include 'dashboards/includes/institution_leadership_sidebar.html' %}
-    {% if current_role == 'deputy head of institution' %}
-    {% include 'dashboards/includes/deputy_head_dashboard_tpad_link.html' %}
-    {% endif %}
 {% elif current_role == 'curriculum coordinator' %}
     {% include 'dashboards/includes/curriculum_coordinator_sidebar.html' %}
 {% elif current_role in ('teacher', 'teachers') %}
@@ -108,6 +106,12 @@
 {% elif current_role == 'secretary' %}
     {% include 'dashboards/includes/secretary_sidebar.html' %}
 
+{% elif current_role == 'warden' %}
+    {% include 'dashboards/includes/warden_sidebar.html' %}
+
+{% elif current_role == 'cateress' %}
+    {% include 'dashboards/includes/cateress_sidebar.html' %}
+
 {% elif current_role == 'technician' %}
     {% include 'dashboards/includes/technician_sidebar.html' %}
 
@@ -121,7 +125,7 @@
 {% set _roles_with_dedicated_home = [
     'teacher', 'teachers', 'curriculum coordinator', 'accountant',
     'head of institution', 'deputy head of institution', 'secretary',
-    'store manager', 'librarian', 'technician'
+    'store manager', 'librarian', 'warden', 'cateress', 'technician'
 ] %}
 {% if current_role not in _roles_with_dedicated_home %}
 {% set role_theme = portal_page_variant|default('default') %}
@@ -166,6 +170,28 @@
 <div class="p-4 sm:p-6 lg:p-8 role-page role-page--librarian">
     <div class="max-w-7xl mx-auto space-y-6">
         {% include 'dashboards/includes/librarian_role_home.html' %}
+    </div>
+</div>
+{% elif current_role == 'warden' %}
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--warden">
+    <div class="max-w-7xl mx-auto space-y-6">
+        {% set role_theme = 'warden' %}
+        {% set role_hero_eyebrow = 'Warden' %}
+        {% set role_hero_title = 'Boarding & hostel' %}
+        {% set role_hero_subtitle = 'Manage hostel operations and request supplies from the school store.' %}
+        {% set role_hero_icon_class = 'fa-bed' %}
+        {% include 'dashboards/includes/role_hero.html' %}
+    </div>
+</div>
+{% elif current_role == 'cateress' %}
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--cateress">
+    <div class="max-w-7xl mx-auto space-y-6">
+        {% set role_theme = 'cateress' %}
+        {% set role_hero_eyebrow = 'Cateress' %}
+        {% set role_hero_title = 'Kitchen & catering' %}
+        {% set role_hero_subtitle = 'Manage kitchen supplies and requisitions from the school store.' %}
+        {% set role_hero_icon_class = 'fa-utensils' %}
+        {% include 'dashboards/includes/role_hero.html' %}
     </div>
 </div>
 {% elif current_role == 'technician' %}

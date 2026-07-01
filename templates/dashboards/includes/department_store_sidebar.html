@@ -1,0 +1,19 @@
+<p class="px-3 {% if department_store_sidebar_pad_top|default(true) %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Store</p>
+<a href="{{ employee_dash_url('department-store/requisitions') }}"
+   class="sidebar-item {% if request.endpoint == 'department_store_requisitions' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Requisition</span>
+    {% if request.endpoint == 'department_store_requisitions' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('department-store/items') }}"
+   class="sidebar-item {% if request.endpoint == 'department_store_items' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-boxes-stacked w-5"></i>
+    <span>My store items</span>
+    {% if request.endpoint == 'department_store_items' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('department-store/analytics') }}"
+   class="sidebar-item {% if request.endpoint in ('department_store_analytics', 'department_store_analytics_data') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Store item analytics</span>
+    {% if request.endpoint in ('department_store_analytics', 'department_store_analytics_data') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

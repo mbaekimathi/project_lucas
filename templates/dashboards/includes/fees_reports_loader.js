@@ -45,12 +45,50 @@
     return 'KES ' + Number(n).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  function schoolContactLineHtml() {
+  function schoolContactsLeftHtml() {
     var parts = [];
-    if (SCHOOL_INFO.location) parts.push(escapeHtml(SCHOOL_INFO.location));
-    if (SCHOOL_INFO.phone) parts.push('Tel: ' + escapeHtml(SCHOOL_INFO.phone));
-    if (SCHOOL_INFO.email) parts.push(escapeHtml(SCHOOL_INFO.email));
-    return parts.join(' · ') || '—';
+    if (SCHOOL_INFO.email) {
+      parts.push(
+        '<div class="acr-print-letterhead__school-contact">' +
+          '<dt class="acr-print-letterhead__detail-label">Email</dt>' +
+          '<dd class="acr-print-letterhead__detail-value">' + escapeHtml(SCHOOL_INFO.email) + '</dd>' +
+        '</div>'
+      );
+    }
+    if (SCHOOL_INFO.phone) {
+      parts.push(
+        '<div class="acr-print-letterhead__school-contact">' +
+          '<dt class="acr-print-letterhead__detail-label">Tel</dt>' +
+          '<dd class="acr-print-letterhead__detail-value">' + escapeHtml(SCHOOL_INFO.phone) + '</dd>' +
+        '</div>'
+      );
+    }
+    if (!parts.length) return '';
+    return '<dl class="acr-print-letterhead__school-contacts">' + parts.join('') + '</dl>';
+  }
+
+  function schoolWebsiteQrHtml() {
+    if (!SCHOOL_INFO.websiteQrDataUrl) return '';
+    return '<div class="acr-print-letterhead__qr">' +
+      '<img src="' + escapeHtml(SCHOOL_INFO.websiteQrDataUrl) + '" alt="QR code — scan to visit school website" class="acr-print-letterhead__qr-img" width="96" height="96">' +
+      '<p class="acr-print-letterhead__qr-label">School website</p>' +
+      '<p class="acr-print-letterhead__qr-hint">Scan to visit</p>' +
+    '</div>';
+  }
+
+  function schoolBrandRightHtml() {
+    var qr = schoolWebsiteQrHtml();
+    if (!qr) return '';
+    return '<div class="acr-print-letterhead__brand-right">' + qr + '</div>';
+  }
+
+  function schoolContactDetailsHtml() {
+    return schoolBrandRightHtml();
+  }
+
+  function schoolLocationHtml() {
+    if (!SCHOOL_INFO.location) return '';
+    return '<p class="acr-print-letterhead__location">' + escapeHtml(SCHOOL_INFO.location) + '</p>';
   }
 
   function setGeneratedNow() {
@@ -75,34 +113,28 @@
       '</div>';
   }
 
-  function renderReportCardHeader(reportTitle, kicker) {
-    var logoInner = SCHOOL_INFO.logo
-      ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="ar-rc-logo">'
-      : '<span class="text-[10px] font-semibold text-slate-400 tracking-wide">LOGO</span>';
-    return '' +
-      '<header class="ar-rc-header">' +
-        '<div class="ar-rc-header-band">' +
-          '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
-          '<div class="ar-rc-header-band-inner">' +
-            '<div class="ar-rc-header-main">' +
-              '<div class="ar-rc-logo-wrap">' + logoInner + '</div>' +
-              '<div class="ar-rc-title-block">' +
-                '<p class="ar-rc-kicker">' + escapeHtml(kicker || 'Official fee statement') + '</p>' +
-                '<h1 class="ar-rc-school-name">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</h1>' +
-                '<p class="ar-rc-school-contact">' + schoolContactLineHtml() + '</p>' +
-              '</div>' +
-            '</div>' +
-            (function () {
-              var qr = renderParentPortalQrHtml();
-              return qr ? '<div class="ar-rc-header-aside">' + qr + '</div>' : '';
-            })() +
-          '</div>' +
-        '</div>' +
-        '<div class="ar-rc-doc-title-row">' +
-          '<div class="ar-rc-doc-title-accent" aria-hidden="true"></div>' +
-          '<h2 class="ar-rc-title">' + escapeHtml(reportTitle || 'FEE REPORT') + '</h2>' +
-        '</div>' +
-      '</header>';
+  function feesReportGeneratedLabel() {
+    if (!generatedAtEl) return new Date().toLocaleString();
+    var t = String(generatedAtEl.textContent || '').trim();
+    if (t.indexOf('Generated:') === 0) return t.replace(/^Generated:\s*/, '') || new Date().toLocaleString();
+    return t || new Date().toLocaleString();
+  }
+
+  function feesReportPeriodLabel() {
+    var lv = levelEl && levelEl.selectedIndex >= 0 ? String(levelEl.options[levelEl.selectedIndex].text || '').trim() : '';
+    return lv && lv.indexOf('Select class') === -1 ? lv : 'All classes';
+  }
+
+  function renderReportCardHeader(reportTitle) {
+    if (!window.AcademicPrintLetterhead || typeof window.AcademicPrintLetterhead.build !== 'function') {
+      return '<header class="ar-rc-header"><h2 class="ar-rc-title">' + escapeHtml(reportTitle || 'FEE REPORT') + '</h2></header>';
+    }
+    return window.AcademicPrintLetterhead.build({
+      school: SCHOOL_INFO,
+      reportTitle: reportTitle || 'FEE REPORT',
+      periodLabel: feesReportPeriodLabel(),
+      generatedAt: feesReportGeneratedLabel(),
+    });
   }
 
   function renderMetaWithPhoto(pairs) {
@@ -237,7 +269,7 @@
       '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex) + '">' +
         '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
         '<div class="ar-rc-inner">' +
-          renderReportCardHeader('FEE PAYMENT REPORT', 'Official fee statement') +
+          renderReportCardHeader('FEE PAYMENT REPORT') +
           renderMetaWithPhoto(metaPairs) +
           '<div class="ar-rc-main-body">' +
             renderFeeVotesTable(student.fee_votes) +
@@ -318,7 +350,7 @@
       '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex) + '">' +
         '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
         '<div class="ar-rc-inner">' +
-          renderReportCardHeader('FEE TRANSACTION REPORT', 'Official fee transaction history') +
+          renderReportCardHeader('FEE TRANSACTION REPORT') +
           renderMetaWithPhoto(metaPairs) +
           '<div class="ar-rc-main-body">' +
             renderAllTransactionsTable(student.transactions) +
@@ -337,14 +369,6 @@
 
   function reportTypeLabel() {
     return currentReportType === 'transactions' ? 'fee transaction reports' : 'fee reports';
-  }
-
-  function updatePrintLetterheadKicker() {
-    var kickerEl = document.getElementById('ar-print-letterhead-kicker');
-    if (!kickerEl) return;
-    kickerEl.textContent = currentReportType === 'transactions'
-      ? 'Official fee transaction history'
-      : 'Official fee statement';
   }
 
   function renderFilterSummary() {
@@ -417,7 +441,6 @@
     if (sid) filters.student_id = sid;
     filters.report_type = val('fr-report-type') || 'payment';
     currentReportType = filters.report_type;
-    updatePrintLetterheadKicker();
 
     try {
       var fetchOpts = {
@@ -437,7 +460,7 @@
         return;
       }
       if (data.report_type) currentReportType = data.report_type;
-      updatePrintLetterheadKicker();
+      updateFeesPrintFooter();
       setGeneratedNow();
       paintCardsChunked(renderFilterSummary(), data.students || [], token);
     } catch (e) {
@@ -558,6 +581,13 @@
     printPreviewRestore = null;
   }
 
+  function updateFeesPrintFooter() {
+    var footerTitle = document.getElementById('fr-fees-print-footer-title');
+    if (!footerTitle) return;
+    var title = currentReportType === 'transactions' ? 'Fee transaction report' : 'Fee payment report';
+    footerTitle.textContent = title;
+  }
+
   function prepareFeeReportPrint() {
     syncPrintPageMode();
     normalizeIndividualReportPrintPages();
@@ -573,6 +603,27 @@
       window.alert('Generate the reports first, then print or download.');
       return;
     }
+    syncPrintPageMode();
+    normalizeIndividualReportPrintPages();
+    updateFeesPrintFooter();
+    if (typeof window.printAccountsInFrame === 'function') {
+      if (opts.pdfHint) {
+        var toast = document.getElementById('ar-print-pdf-toast');
+        if (toast) {
+          toast.classList.remove('hidden');
+          window.clearTimeout(runFeeReportPrint._t);
+          runFeeReportPrint._t = window.setTimeout(function () { toast.classList.add('hidden'); }, 6000);
+        }
+      }
+      var feeTitle = currentReportType === 'transactions' ? 'Fee transaction report' : 'Fee payment report';
+      window.printAccountsInFrame({
+        title: (SCHOOL_INFO.name || 'School') + ' — ' + feeTitle,
+        htmlClass: 'acr-accounts-print ar-print-academic-report',
+        bodyClass: 'acr-accounts-print ar-print-academic-report',
+        collect: window.collectFeesReportPrintHtml,
+      });
+      return;
+    }
     prepareFeeReportPrint();
     if (opts.pdfHint) {
       var toast = document.getElementById('ar-print-pdf-toast');
@@ -584,6 +635,8 @@
     }
     window.print();
   }
+
+  window.runFeeReportPrint = runFeeReportPrint;
 
   if (levelEl) {
     levelEl.addEventListener('change', function () {
@@ -607,12 +660,20 @@
   if (pdfBtn) pdfBtn.addEventListener('click', function () { runFeeReportPrint({ pdfHint: true }); });
 
   window.addEventListener('beforeprint', function () {
+    if (window.__acrIframePrintActive) return;
     if (!document.getElementById('ar-preview-wrap')) return;
-    document.documentElement.classList.add('ar-print-academic-report');
+    document.documentElement.classList.add('ar-print-academic-report', 'acr-accounts-print');
+    if (typeof window.pinAccountsPrintFooters === 'function') {
+      window.pinAccountsPrintFooters();
+    }
+    updateFeesPrintFooter();
     prepareFeeReportPrint();
   });
   window.addEventListener('afterprint', function () {
-    document.documentElement.classList.remove('ar-print-academic-report');
+    document.documentElement.classList.remove('ar-print-academic-report', 'acr-accounts-print');
+    if (typeof window.unpinAccountsPrintFooters === 'function') {
+      window.unpinAccountsPrintFooters();
+    }
     restorePreviewAfterPrint();
     var wrap = document.getElementById('ar-preview-wrap');
     if (wrap) wrap.classList.remove('ar-print-single-sheet', 'ar-print-individual-batch');

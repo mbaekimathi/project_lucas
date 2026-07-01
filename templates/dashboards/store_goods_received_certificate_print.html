@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% from 'dashboards/includes/store_document_print_macros.html' import sd_page_head, sd_actions, sd_doc_open, sd_doc_close, sd_compact_receive_items_start, sd_compact_receive_items_row, sd_compact_receive_items_end, sd_compact_sig_block_start, sd_compact_sig_block_end, sd_compact_sig_section_start, sd_compact_sig_section_end, sd_compact_sig_row, sd_compact_witness_table, sd_print_scripts with context %}
+    {{ sd_page_head('Goods/Service Received Certificate — ' ~ cert_doc_ref) }}
+    {% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
+</head>
+<body class="sd-doc-page sd-doc-page--compact">
+    <div class="sd-doc-wrap sd-doc-print-root">
+        {% if just_received %}
+        <div class="sd-doc-banner no-print">
+            <i class="fas fa-circle-check"></i>
+            Stock recorded successfully. Print this certificate for physical sign-off.
+        </div>
+        {% endif %}
+
+        {{ sd_actions('Print certificate', back_url, back_label) }}
+
+        {% set printed_display -%}
+            {%- if printed_at and printed_at.strftime -%}
+                {{- printed_at.strftime('%d %b %Y, %H:%M') -}}
+            {%- else -%}
+                —
+            {%- endif -%}
+        {%- endset %}
+
+        {{ sd_doc_open() }}
+        {% with
+            report_title='Goods/Service Received Certificate',
+            print_meta_extra=cert_doc_ref_label ~ ' ' ~ cert_doc_ref ~ ' · ' ~ cert_scope_label,
+            report_period_label=cert_order_date_display or '—',
+            report_generated_at=printed_display,
+            letterhead_id='sd-grn-print-letterhead',
+            print_title_id='sd-grn-print-title',
+            print_period_id='sd-grn-print-period',
+            print_generated_id='sd-grn-print-generated',
+            letterhead_always_visible=true,
+            letterhead_sync_mode=false,
+            hide_print_meta_primary=true,
+            with_print_footer=false
+        %}
+        {% include 'dashboards/includes/accounts_print_letterhead.html' %}
+        {% endwith %}
+
+        <p class="sd-doc-lead">
+            This is to certify that the <strong>goods/services indicated below</strong> were received from the supplier,
+            inspected, and found to be <strong>satisfactory in reference to the requisition{% if cert_source == 'lpo' %} and LPO issued{% else %} and store receipt issued{% endif %}</strong>.
+            Goods/services as indicated in <strong>{{ cert_doc_ref_label }} {{ cert_doc_ref }}</strong>
+            dated <strong>{{ cert_order_date_display or '—' }}</strong>.
+            {% if cert_print_scope == 'pending' %}
+            This certificate covers <strong>items pending receipt</strong> on this order.
+            {% elif cert_print_scope == 'line' %}
+            This certificate covers <strong>one line item</strong> on this order.
+            {% elif cert_print_scope == 'lines' %}
+            This certificate covers <strong>multiple line items</strong> received in one delivery.
+            {% elif cert_print_scope == 'received' %}
+            This certificate confirms <strong>goods already received and recorded</strong> against this order.
+            {% else %}
+            This certificate lists <strong>all line items</strong> on this order.
+            {% endif %}
+        </p>
+
+        <table class="ar-rc-meta-table">
+            <tbody>
+                <tr>
+                    <th>Date of receipt</th>
+                    <td class="sd-meta-blank">&nbsp;</td>
+                    <th>{% if cert_source == 'lpo' %}LPO date{% else %}Recorded date{% endif %}</th>
+                    <td>{{ cert_order_date_display or '—' }}</td>
+                </tr>
+                <tr>
+                    <th>Supplier</th>
+                    <td colspan="3">{{ cert_supplier_name or '—' }}{% if cert_supplier_phone %} · {{ cert_supplier_phone }}{% endif %}</td>
+                </tr>
+                <tr>
+                    <th>Delivery to</th>
+                    <td>{{ cert_delivery_to or '—' }}</td>
+                    <th>Vehicle / driver</th>
+                    <td class="sd-meta-blank">&nbsp;</td>
+                </tr>
+                <tr>
+                    <th>Invoice / tax no.</th>
+                    <td>{% if cert_invoice_tax_no %}{{ cert_invoice_tax_no }}{% else %}<span class="sd-meta-blank">&nbsp;</span>{% endif %}</td>
+                    <th>Delivery note ref.</th>
+                    <td>{% if cert_delivery_note_ref %}{{ cert_delivery_note_ref }}{% else %}<span class="sd-meta-blank">&nbsp;</span>{% endif %}</td>
+                </tr>
+                {% if cert_recorded_by %}
+                <tr>
+                    <th>Recorded by</th>
+                    <td colspan="3">{{ cert_recorded_by }}</td>
+                </tr>
+                {% endif %}
+                {% if cert_notes %}
+                <tr>
+                    <th>Notes</th>
+                    <td colspan="3">{{ cert_notes }}</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+
+        {{ sd_compact_receive_items_start(
+            'Items received',
+            'Tick each line when verified; write actual quantities delivered in the Qty delivered column.'
+        ) }}
+        {% for ln in cert_lines %}
+        {{ sd_compact_receive_items_row(
+            ln.line_no or loop.index,
+            ln.item_name,
+            ln.item_ref,
+            ln.measure,
+            ln.quantity,
+            ln.unit_price_display
+        ) }}
+        {% else %}
+        <tr>
+            <td colspan="7" class="sd-receive-items__empty">No items on this note.</td>
+        </tr>
+        {% endfor %}
+        {{ sd_compact_receive_items_end(remarks=true) }}
+
+        {{ sd_compact_sig_block_start(
+            'Certified by (employees)',
+            'We certify that the quantities and condition of goods received match this certificate.'
+        ) }}
+            {{ sd_compact_witness_table(3, 'Certified by') }}
+        {{ sd_compact_sig_block_end() }}
+
+        {{ sd_compact_sig_section_start('Delivery & receiving officers') }}
+            {{ sd_compact_sig_row('Supplier representative', 'Delivery confirmation') }}
+            {{ sd_compact_sig_row('Store manager', 'Receiving officer') }}
+        {{ sd_compact_sig_section_end() }}
+        {{ sd_doc_close() }}
+    </div>
+
+    {% with
+        report_title='Goods/Service Received Certificate',
+        print_footer_id='sd-print-footer',
+        print_footer_title_id='sd-print-footer-title',
+        footer_always_visible=false
+    %}
+    {% include 'dashboards/includes/accounts_print_footer.html' %}
+    {% endwith %}
+    {{ sd_print_scripts('Goods/Service Received Certificate') }}
+</body>
+</html>

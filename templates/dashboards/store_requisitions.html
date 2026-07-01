@@ -3,7 +3,11 @@
 {% block title %}REQUISITIONS — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
 
 {% block sidebar_content %}
+{% if department_store_mode|default(false) %}
+{% include 'dashboards/includes/department_store_page_sidebar.html' %}
+{% else %}
 {% include 'dashboards/includes/store_manager_page_sidebar.html' %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -16,7 +20,7 @@ document.addEventListener('alpine:init', function () {
       quantityRequested: '1',
       notes: '',
       formOpen: false,
-      requisitionPostUrl: {{ employee_dash_url('store-requisitions')|tojson }},
+      requisitionPostUrl: {{ (employee_dash_url('department-store/requisitions') if department_store_mode|default(false) else employee_dash_url('store-requisitions'))|tojson }},
       init: function () {
         var el = document.getElementById('store-requisition-items-json');
         try {
@@ -76,16 +80,24 @@ document.addEventListener('alpine:init', function () {
 
         <header class="mb-8 rounded-2xl border border-gray-200/90 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl">
             <div class="p-6 sm:p-8">
-                <p class="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">School store</p>
+                <p class="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+                    {% if department_store_mode|default(false) %}{{ department_store_label|default('Department') }} store{% else %}School store{% endif %}
+                </p>
                 <h1 class="mt-2 text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">Requisitions</h1>
                 <p class="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-2xl">
+                    {% if department_store_mode|default(false) %}
+                    Request items assigned to the {{ department_store_label|default('your department')|lower }} store ({{ department_store_station|default('') }}).
+                    {% else %}
                     Request items from the store catalog. Select an item, enter the amount needed, and submit.
+                    {% endif %}
                     Each request receives a reference number and starts as <strong>pending</strong>.
                 </p>
                 {% if not catalog_items %}
                 <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
                     No active items in the catalog.
+                    {% if not department_store_mode|default(false) %}
                     <a href="{{ employee_dash_url('store-inventory') }}" class="font-semibold underline">Register items</a> first.
+                    {% endif %}
                 </p>
                 {% endif %}
             </div>
@@ -170,7 +182,13 @@ document.addEventListener('alpine:init', function () {
             <section class="rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl overflow-hidden">
                 <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800 sm:px-6">
                     <h2 class="text-lg font-bold text-gray-900 dark:text-white">Recent requisitions</h2>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Latest item requests submitted to the store.</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {% if department_store_mode|default(false) %}
+                        Latest requisitions for {{ department_store_label|default('your department')|lower }} store items.
+                        {% else %}
+                        Latest item requests submitted to the store.
+                        {% endif %}
+                    </p>
                 </div>
                 <div class="overflow-x-auto">
                     {% if recent_requisitions %}

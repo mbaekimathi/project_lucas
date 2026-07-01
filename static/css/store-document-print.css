@@ -24,6 +24,25 @@
     margin: 0 auto;
 }
 
+.sd-doc-body {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+    padding: 1.25rem 1.5rem 1rem;
+}
+
+.sd-doc-body .acr-print-letterhead {
+    margin-bottom: 0.75rem;
+}
+
+.sd-doc-body .acr-print-letterhead__meta-extra {
+    margin: 0.35rem 0 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--print-brand-muted, #64748b);
+}
+
 .sd-doc-actions {
     margin-bottom: 1.25rem;
     display: flex;
@@ -1632,6 +1651,12 @@
     }
     .sd-doc-wrap {
         max-width: none;
+    }
+    .sd-doc-body {
+        box-shadow: none;
+        border: none;
+        border-radius: 0;
+        padding: 0;
     }
     .sd-doc-page .ar-rc-table thead th {
         -webkit-print-color-adjust: exact;

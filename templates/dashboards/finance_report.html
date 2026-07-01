@@ -4,13 +4,16 @@
 
 {% block sidebar_content %}
 {% set finance_report_slug = report_slug %}
-{% include 'dashboards/includes/finance_reports_page_sidebar.html' %}
+{% include 'dashboards/includes/finance_reports_full_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
 {% include 'dashboards/includes/finance_reports_ui.html' %}
+{% set _core_slugs = finance_core_report_slugs|default(['revenue-collection', 'expenditure', 'financial-statements']) %}
+{% set _unified = report_slug in _core_slugs %}
 <script type="application/json" id="fr-page-config">{{ {
     'reportSlug': report_slug,
+    'unifiedMode': _unified,
     'dataApi': employee_dash_url('finance-overview/reports/' ~ report_slug ~ '/data'),
     'defaultAcademicYearId': filter_options.default_academic_year_id,
     'defaultTermId': filter_options.default_term_id,
@@ -24,10 +27,11 @@
     'expenditureLedger': expenditure_ledger|default(''),
     'financialStatement': financial_statement|default(''),
     'expenditureListUrl': employee_dash_url('finance-overview/reports/expenditure'),
-    'expenditureVoteBase': employee_dash_url('finance-overview/reports/expenditure/votes')
+    'expenditureVoteBase': employee_dash_url('finance-overview/reports/expenditure/votes'),
+    'revenueBook': revenue_book|default(request.args.get('book', 'general-ledger'))
 }|tojson }}</script>
 
-<div class="fr-report-shell page-content">
+<div class="fr-report-shell page-content{% if _unified %} fr-report-shell--unified{% endif %}">
     {% set _ledger_init = expenditure_ledger_initial|default(none) %}
     {% set _stmt_init = financial_statement_initial|default(none) %}
     {% set _stmt_summary = _stmt_init.ledger_summary|default([]) if _stmt_init else [] %}
@@ -43,6 +47,15 @@
     {% set _ledger_rows = _ledger_table.rows|default([]) %}
     {% set _ledger_row_count = _ledger_init.row_count if _ledger_init and _ledger_init.row_count is not none else none %}
     <div class="fr-inner">
+        {% if _unified %}
+        {% with report_title=report_meta.title, report_period_label='Set dates below', report_generated_at=report_generated_at, letterhead_id='fr-print-letterhead', print_title_id='fr-print-title', print_period_id='fr-print-period', print_generated_id='fr-print-generated', print_primary_id='fr-print-primary', print_footer_id='fr-print-footer', print_footer_title_id='fr-print-footer-title', hide_print_meta_primary=true, letterhead_sync_mode='fr-unified', financial_year_label=filter_options.financial_year_label|default('') %}
+        {% include 'dashboards/includes/accounts_print_letterhead.html' %}
+        {% endwith %}
+        {% with report_period_label='Set dates below', report_generated_at=report_generated_at %}
+        {% include 'dashboards/includes/finance_reports_unified_header.html' %}
+        {% endwith %}
+        {% include 'dashboards/includes/finance_reports_subnav.html' %}
+        {% else %}
         <div class="fr-toolbar no-print">
             <nav class="fr-breadcrumb" aria-label="Breadcrumb">
                 <a href="{{ employee_dash_url('finance-overview') }}">Accounts reports</a>
@@ -75,6 +88,7 @@
         {% endwith %}
 
         {% include 'dashboards/includes/finance_reports_filters.html' %}
+        {% endif %}
 
         <div id="fr-loading" class="fr-report-state fr-report-state--loading hidden" role="status" aria-live="polite">
             <i class="fas fa-circle-notch fa-spin fr-report-state__icon" aria-hidden="true"></i>
@@ -157,11 +171,18 @@
             <p class="fr-report-state__title" id="fr-statements-blank-title">{% if _stmt_init and _stmt_init.books_message %}{{ _stmt_init.books_message }}{% elif report_slug == 'financial-statements' %}Choose a financial statement from the sidebar.{% else %}&nbsp;{% endif %}</p>
         </div>
 
+        <div id="fr-revenue-blank" class="fr-report-state hidden" role="status">
+            <i class="fas fa-wallet fr-report-state__icon" aria-hidden="true"></i>
+            <p class="fr-report-state__title" id="fr-revenue-blank-title">Choose a finance account to view its General Ledger and Cash Book.</p>
+        </div>
+
+        <div id="fr-vote-ledgers-wrap" class="fr-vote-ledgers hidden" aria-label="Vote general ledgers"></div>
+
         <section id="fr-table-wrap" class="fr-report-panel{% if not ((report_slug == 'expenditure' and expenditure_votes_initial|default([]) and not expenditure_vote|default('') and not expenditure_ledger|default('')) or (report_slug == 'expenditure' and expenditure_ledger|default('') and not expenditure_vote|default('')) or (report_slug == 'expenditure' and expenditure_vote|default('')) or (report_slug == 'financial-statements' and _stmt_show_table)) %} hidden{% endif %}" aria-label="Report data">
             <div class="fr-report-panel__head">
                 <h2 class="fr-report-panel__title" style="margin:0;text-transform:none;letter-spacing:0;font-size:0.9375rem;color:var(--fr-ink)">
                     <i class="fas fa-table text-[var(--fr-teal)] mr-1" aria-hidden="true"></i>
-                    <span id="fr-table-title">{% if financial_statement|default('') %}{% for item in financial_statements_nav|default([]) %}{% if item.slug == financial_statement %}{{ item.title }}{% endif %}{% endfor %}{% elif expenditure_ledger|default('') and expenditure_vote|default('') %}{% for item in vote_ledger_nav|default([]) %}{% if item.slug == expenditure_ledger %}{{ item.title }}{% endif %}{% endfor %}{% elif expenditure_ledger|default('') %}{% for item in expenditure_books_nav|default([]) %}{% if item.slug == expenditure_ledger %}{{ item.title }}{% endif %}{% endfor %}{% elif expenditure_vote|default('') %}Vote Transactions{% elif report_slug == 'expenditure' %}Votes — budget, expenditure &amp; balance{% else %}Report detail{% endif %}</span>
+                    <span id="fr-table-title">{% if report_slug == 'revenue-collection' %}{% for item in revenue_book_nav|default([]) %}{% if item.slug == (revenue_book|default(request.args.get('book', 'general-ledger')|lower)) %}{{ item.title }}{% endif %}{% endfor %}{% elif financial_statement|default('') %}{% for item in financial_statements_nav|default([]) %}{% if item.slug == financial_statement %}{{ item.title }}{% endif %}{% endfor %}{% elif expenditure_ledger|default('') and expenditure_vote|default('') %}{% for item in vote_ledger_nav|default([]) %}{% if item.slug == expenditure_ledger %}{{ item.title }}{% endif %}{% endfor %}{% elif expenditure_ledger|default('') %}{% for item in expenditure_books_nav|default([]) %}{% if item.slug == expenditure_ledger %}{{ item.title }}{% endif %}{% endfor %}{% elif expenditure_vote|default('') %}Vote Transactions{% elif report_slug == 'expenditure' %}Votes — budget, expenditure &amp; balance{% else %}Report detail{% endif %}</span>
                 </h2>
             </div>
             <div class="fr-report-panel__toolbar no-print">

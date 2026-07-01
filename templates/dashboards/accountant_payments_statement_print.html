@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Supplier payment statement{% if print_all %}s{% endif %} — {{ school_settings.school_name or 'School' }}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    {% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
     {% set brand = school_settings.primary_color or '#0d9488' %}
     <style>
         * { box-sizing: border-box; }
@@ -45,34 +46,11 @@
             margin-bottom: 24px;
             overflow: hidden;
             box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
-        }
-        .doc__head {
             padding: 20px 24px 16px;
-            text-align: center;
-            border-bottom: 3px double {{ brand }};
         }
-        .doc__school {
-            font-size: 1.1rem;
-            font-weight: 800;
-            color: {{ brand }};
-            text-transform: uppercase;
+        .doc .acr-print-letterhead {
+            margin-bottom: 12px;
         }
-        .doc__meta { margin-top: 4px; font-size: 0.7rem; color: #64748b; }
-        .doc__title {
-            margin-top: 12px;
-            font-size: 0.7rem;
-            font-weight: 800;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: #334155;
-        }
-        .doc__supplier {
-            margin-top: 10px;
-            font-size: 1rem;
-            font-weight: 800;
-            color: #0f172a;
-        }
-        .doc__sub { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
         .summary {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -139,13 +117,8 @@
         .status--partial { background: #ffedd5; color: #9a3412; }
         .status--paid { background: #d1fae5; color: #065f46; }
         .empty { padding: 12px; text-align: center; color: #94a3b8; font-style: italic; }
-        .doc__footer {
-            padding: 10px 16px;
-            font-size: 0.6rem;
-            color: #94a3b8;
-            text-align: center;
-            border-top: 1px dashed #e2e8f0;
-            background: #fafafa;
+        .doc .section:last-child {
+            padding-bottom: 12px;
         }
         .page-cover {
             background: #fff;
@@ -153,12 +126,9 @@
             border-radius: 4px;
             padding: 24px;
             margin-bottom: 24px;
-            text-align: center;
         }
-        .page-cover h1 { font-size: 1.25rem; margin: 0 0 8px; color: {{ brand }}; }
-        .page-cover p { margin: 4px 0; color: #64748b; font-size: 0.8rem; }
         @media print {
-            body { background: #fff; padding: 0; font-size: 10px; }
+            body { background: #fff; padding: 0 0 14mm; font-size: 10px; }
             .actions { display: none !important; }
             .doc, .page-cover { box-shadow: none; border: none; page-break-inside: avoid; }
             .doc { page-break-after: always; margin-bottom: 0; }
@@ -169,7 +139,7 @@
 <body>
     <div class="wrap">
         <div class="actions no-print">
-            <button type="button" class="btn-print" onclick="window.print()">
+            <button type="button" class="btn-print" onclick="printPaymentStatement()">
                 <i class="fas fa-print"></i> Print payment statement{% if print_all %}s{% endif %}
             </button>
             <a href="{{ employee_dash_url('payments-invoices') }}?payment={{ payment_filter }}" class="btn-back">
@@ -179,29 +149,17 @@
 
         {% if print_all %}
         <div class="page-cover">
-            <h1>{{ school_settings.school_name or 'School' }}</h1>
-            <p><strong>Supplier payment statements</strong></p>
-            <p>Filter: {{ filter_label }} · {{ packs|length }} supplier(s)</p>
-            <p>Generated {{ generated_at }}</p>
+            {% with report_title='Supplier payment statements', print_meta_extra='Filter: ' ~ filter_label ~ ' · ' ~ packs|length ~ ' supplier(s)', report_period_label=filter_label, report_generated_at=generated_at, letterhead_id='cover-print-letterhead', print_title_id='cover-print-title', print_period_id='cover-print-period', print_generated_id='cover-print-generated', letterhead_always_visible=true, letterhead_sync_mode=false, hide_print_meta_primary=true, with_print_footer=false %}
+            {% include 'dashboards/includes/accounts_print_letterhead.html' %}
+            {% endwith %}
         </div>
         {% endif %}
 
         {% for pack in packs %}
         <article class="doc">
-            <header class="doc__head">
-                <div class="doc__school">{{ school_settings.school_name or 'School' }}</div>
-                <div class="doc__meta">
-                    {% if school_settings.school_location %}{{ school_settings.school_location }} · {% endif %}
-                    Payment statement
-                </div>
-                <div class="doc__title">Supplier account statement</div>
-                <div class="doc__supplier">{{ pack.supplier_name }}</div>
-                <div class="doc__sub">
-                    Phone: {{ pack.supplier_phone or '—' }}
-                    · {{ pack.invoice_count }} invoice(s)
-                    · {{ pack.payment_line_count }} payment(s)
-                </div>
-            </header>
+            {% with report_title='Supplier account statement', print_meta_primary=pack.supplier_name, print_meta_extra='Phone: ' ~ (pack.supplier_phone or '—') ~ ' · ' ~ pack.invoice_count ~ ' invoice(s) · ' ~ pack.payment_line_count ~ ' payment(s)', report_period_label=filter_label, report_generated_at=generated_at, letterhead_id='doc-print-letterhead-' ~ loop.index, print_title_id='doc-print-title-' ~ loop.index, print_period_id='doc-print-period-' ~ loop.index, print_generated_id='doc-print-generated-' ~ loop.index, print_primary_id='doc-print-primary-' ~ loop.index, letterhead_always_visible=true, letterhead_sync_mode=false, with_print_footer=false %}
+            {% include 'dashboards/includes/accounts_print_letterhead.html' %}
+            {% endwith %}
 
             <div class="summary">
                 <div class="summary__cell">
@@ -327,17 +285,45 @@
                 </table>
             </div>
             {% endif %}
-
-            <footer class="doc__footer">
-                Statement for {{ pack.supplier_name }} · Printed {{ generated_at }}
-            </footer>
         </article>
         {% endfor %}
+
+        {% with report_title='Supplier payment statement' if not print_all else 'Supplier payment statements', print_footer_id='pay-print-footer', print_footer_title_id='pay-print-footer-title' %}
+        {% include 'dashboards/includes/accounts_print_footer.html' %}
+        {% endwith %}
     </div>
     <script>
-        if (window.location.search.indexOf('auto=1') !== -1) {
-            window.addEventListener('load', function () { window.print(); });
+        function syncPayPrintFooter() {
+            var footerTitle = document.getElementById('pay-print-footer-title');
+            var title = {{ ('Supplier payment statements' if print_all else 'Supplier payment statement')|tojson }};
+            if (footerTitle) footerTitle.textContent = title;
         }
+        function printPaymentStatement() {
+            syncPayPrintFooter();
+            var wrap = document.querySelector('.wrap');
+            if (!wrap || typeof window.printAccountsInFrame !== 'function') {
+                window.print();
+                return;
+            }
+            var clone = wrap.cloneNode(true);
+            clone.querySelectorAll('.actions, .no-print').forEach(function (node) {
+                node.parentNode.removeChild(node);
+            });
+            var footer = document.getElementById('pay-print-footer');
+            var html = clone.innerHTML;
+            if (footer) html += footer.outerHTML;
+            window.printAccountsInFrame({
+                title: document.title,
+                html: html,
+                htmlClass: 'acr-accounts-print',
+                bodyClass: 'acr-accounts-print',
+            });
+        }
+        if (window.location.search.indexOf('auto=1') !== -1) {
+            window.addEventListener('load', function () { printPaymentStatement(); });
+        }
+        window.syncAccountsPrintFooter = syncPayPrintFooter;
+        syncPayPrintFooter();
     </script>
 </body>
 </html>

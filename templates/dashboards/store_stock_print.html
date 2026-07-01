@@ -1,25 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    {% from 'dashboards/includes/store_document_print_macros.html' import sd_page_head, sd_actions, sd_header, sd_footer, sd_sig_field with context %}
+    {% from 'dashboards/includes/store_document_print_macros.html' import sd_page_head, sd_actions, sd_doc_open, sd_doc_close, sd_sig_field, sd_print_scripts with context %}
     {% set is_in = movement.movement_type == 'in' %}
+    {% set doc_title = 'Goods Received Note' if is_in else 'Stock Issue Note' %}
     {{ sd_page_head(('Goods received' if is_in else 'Stock issue') ~ ' — ' ~ movement.reference_number) }}
+    {% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
 </head>
-<body class="sd-doc-page" style="--brand-primary: {{ school_settings.primary_color or '#166534' }}; --brand-secondary: {{ school_settings.secondary_color or '#22c55e' }};">
-    <div class="sd-doc-wrap">
+<body class="sd-doc-page sd-doc-page--compact">
+    <div class="sd-doc-wrap sd-doc-print-root">
         {{ sd_actions(
             'Print goods received note' if is_in else 'Print stock issue note',
             employee_dash_url('store-stock/audits'),
             'Back to audits'
         ) }}
 
-        {{ sd_header(
-            'Official store document',
-            'Goods Received Note' if is_in else 'Stock Issue Note',
-            '',
-            'Reference',
-            movement.reference_number
-        ) }}
+        {% set movement_date_display -%}
+            {%- if not is_in and movement.stock_out_date_display -%}
+                {{- movement.stock_out_date_display -}}
+            {%- elif movement.created_at and movement.created_at.strftime -%}
+                {{- movement.created_at.strftime('%d %b %Y, %H:%M') -}}
+            {%- elif movement.created_at -%}
+                {{- movement.created_at -}}
+            {%- else -%}
+                —
+            {%- endif -%}
+        {%- endset %}
+        {% set generated_display -%}
+            {%- if movement.created_at and movement.created_at.strftime -%}
+                {{- movement.created_at.strftime('%d %b %Y, %H:%M') -}}
+            {%- elif movement.created_at -%}
+                {{- movement.created_at -}}
+            {%- else -%}
+                —
+            {%- endif -%}
+        {%- endset %}
+
+        {{ sd_doc_open() }}
+        {% with
+            report_title=doc_title,
+            print_meta_extra='Reference: ' ~ movement.reference_number,
+            report_period_label=movement_date_display,
+            report_generated_at=generated_display,
+            letterhead_id='sd-stock-print-letterhead',
+            print_title_id='sd-stock-print-title',
+            print_period_id='sd-stock-print-period',
+            print_generated_id='sd-stock-print-generated',
+            letterhead_always_visible=true,
+            letterhead_sync_mode=false,
+            hide_print_meta_primary=true,
+            with_print_footer=false
+        %}
+        {% include 'dashboards/includes/accounts_print_letterhead.html' %}
+        {% endwith %}
 
         {% if is_in %}
         <p class="sd-doc-lead">
@@ -37,7 +70,7 @@
             <div class="ar-rc-meta-grid">
                 <div class="ar-rc-meta-item">
                     <span class="ar-rc-meta-label">Date &amp; time</span>
-                    <span class="ar-rc-meta-value">{% if not is_in and movement.stock_out_date_display %}{{ movement.stock_out_date_display }}{% elif movement.created_at and movement.created_at.strftime %}{{ movement.created_at.strftime('%d %b %Y, %H:%M') }}{% elif movement.created_at %}{{ movement.created_at }}{% else %}—{% endif %}</span>
+                    <span class="ar-rc-meta-value">{{ movement_date_display }}</span>
                 </div>
                 <div class="ar-rc-meta-item">
                     <span class="ar-rc-meta-label">Recorded by</span>
@@ -171,13 +204,18 @@
             </div>
             {% endif %}
         </div>
-
-        {{ sd_footer('Official store document · ' ~ movement.reference_number) }}
+        {{ sd_doc_close() }}
     </div>
-    <script>
-        if (window.location.search.indexOf('auto=1') !== -1) {
-            window.addEventListener('load', function () { window.print(); });
-        }
-    </script>
+
+    {% with
+        report_title=doc_title,
+        print_footer_id='sd-print-footer',
+        print_footer_title_id='sd-print-footer-title',
+        footer_always_visible=false
+    %}
+    {% include 'dashboards/includes/accounts_print_footer.html' %}
+    {% endwith %}
+
+    {{ sd_print_scripts(doc_title) }}
 </body>
 </html>

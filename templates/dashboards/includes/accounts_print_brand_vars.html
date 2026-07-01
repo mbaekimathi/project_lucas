@@ -1,0 +1,42 @@
+{# System theme colors for accounts print — from System Settings #}
+{% set _print_primary = school_settings.primary_color|default('#800020') %}
+{% set _print_secondary = school_settings.secondary_color|default('#A00030') %}
+{% set _print_accent = school_settings.accent_color|default('#5C0014') %}
+<style>
+:root,
+html.acr-accounts-print,
+html.acr-accounts-print-measure {
+    --print-brand-primary: {{ _print_primary }};
+    --print-brand-secondary: {{ _print_secondary }};
+    --print-brand-accent: {{ _print_accent }};
+    --brand-primary: {{ _print_primary }};
+    --brand-secondary: {{ _print_secondary }};
+    --brand-accent: {{ _print_accent }};
+    --acr-teal: var(--print-brand-primary);
+    --acr-teal-bright: var(--print-brand-secondary);
+    --print-brand-ink: #0f172a;
+    --print-brand-muted: #64748b;
+    --print-brand-subtle: #334155;
+    --print-brand-border: {{ _print_primary }};
+    --print-brand-soft-bg: color-mix(in srgb, {{ _print_primary }} 10%, #f8fafc);
+    --print-brand-head-bg: color-mix(in srgb, {{ _print_primary }} 14%, #f1f5f9);
+    --print-brand-kpi-bg: color-mix(in srgb, {{ _print_primary }} 8%, #f8fafc);
+    --print-brand-line: color-mix(in srgb, {{ _print_primary }} 22%, #94a3b8);
+}
+
+@media print {
+    html.acr-accounts-print .acr-print-letterhead__brand,
+    html.acr-accounts-print .acr-print-footer,
+    html.acr-accounts-print .acr-print-letterhead__title,
+    html.acr-accounts-print .acr-print-footer__title,
+    html.acr-accounts-print .acr-print-letterhead__qr-label,
+    html.acr-accounts-print .acr-report-section .acr-section__head,
+    html.acr-accounts-print .acr-table--stack thead th,
+    html.acr-accounts-print .acr-table--stack tfoot td,
+    html.acr-accounts-print .acr-print-summary .acr-kpi,
+    html.acr-accounts-print .fr-report-table th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+</style>

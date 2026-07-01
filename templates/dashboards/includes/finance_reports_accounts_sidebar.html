@@ -8,6 +8,7 @@
 {% set _dt = request.args.get('date_to') or _fo.default_date_to|default('') %}
 {% set _src = request.args.get('source', 'all') %}
 {% set _grade = request.args.get('grade', '') %}
+{% set _book = revenue_book|default(request.args.get('book', 'general-ledger')|lower) %}
 {% set _rc_base = employee_dash_url('finance-overview/reports/revenue-collection') %}
 
 {% macro fr_rc_filter_href(fa_id='') %}
@@ -17,20 +18,23 @@
 {% if _dt %}{% set href = href ~ ('&' if _fy or _df else '?') ~ 'date_to=' ~ _dt %}{% endif %}
 {% if _src %}{% set href = href ~ ('&' if '?' in href else '?') ~ 'source=' ~ (_src|urlencode) %}{% endif %}
 {% if _grade %}{% set href = href ~ ('&' if '?' in href else '?') ~ 'grade=' ~ (_grade|urlencode) %}{% endif %}
+{% if _book %}{% set href = href ~ ('&' if '?' in href else '?') ~ 'book=' ~ _book %}{% endif %}
 {% if fa_id %}{% set href = href ~ ('&' if '?' in href else '?') ~ 'finance_account_id=' ~ fa_id %}{% endif %}
 {{ href }}
 {% endmacro %}
 
-{% if _slug == 'revenue-collection' and _accounts %}
+{% set _on_hub = request.endpoint == 'finance_overview' %}
+
+{% if (_slug == 'revenue-collection' or _on_hub) and _accounts %}
 <p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Finance accounts</p>
 
-<a href="{{ fr_rc_filter_href() }}"
+<a href="{{ employee_dash_url('finance-overview') if _on_hub else fr_rc_filter_href() }}"
    data-fr-sidebar-all-accounts="1"
-   class="sidebar-item {% if not _active_fa %}sidebar-item-active{% endif %}"
-   title="All accounts on this report">
+   class="sidebar-item {% if _on_hub or not _active_fa %}sidebar-item-active{% endif %}"
+   title="{% if _on_hub %}All registered finance accounts{% else %}All accounts on this report{% endif %}">
     <i class="fas fa-layer-group w-5"></i>
     <span>All accounts</span>
-    {% if not _active_fa %}<i class="fas fa-check-circle ml-auto text-green-500 fr-sidebar-active-mark"></i>{% endif %}
+    {% if _on_hub or not _active_fa %}<i class="fas fa-check-circle ml-auto text-green-500 fr-sidebar-active-mark"></i>{% endif %}
 </a>
 
 {% for a in _accounts %}
