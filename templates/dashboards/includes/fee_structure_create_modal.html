@@ -183,7 +183,7 @@ window.feeStructureCreateModal = function() {
         },
         get validFeeItemsCount() {
             return (this.feeItems || []).filter(item =>
-                item.itemName && (item.itemDescription || '').trim() && item.amount
+                item.itemName && item.voteCode && (item.itemDescription || '').trim() && item.amount
             ).length;
         },
         get selectableLibraryIndices() {
@@ -486,6 +486,7 @@ window.feeStructureCreateModal = function() {
             if (this.isFeeItemDuplicate(item)) return;
             this.feeItems.push({
                 itemName: (item.item_name || '').toUpperCase(),
+                voteCode: (item.vote_code || '').toUpperCase(),
                 itemDescription: (item.item_description || '').toUpperCase(),
                 amount: item.amount,
                 isExisting: true
@@ -511,7 +512,7 @@ window.feeStructureCreateModal = function() {
             }
         },
         addNewItem() {
-            this.feeItems.push({ itemName: '', itemDescription: '', amount: '', isExisting: false });
+            this.feeItems.push({ itemName: '', voteCode: '', itemDescription: '', amount: '', isExisting: false });
             this.calculateTotal();
         },
         removeItem(index) {
@@ -600,10 +601,10 @@ window.feeStructureCreateModal = function() {
             
             // Validate that at least one vote is provided
             const validItems = this.feeItems.filter(item =>
-                item.itemName && (item.itemDescription || '').trim() && item.amount
+                item.itemName && item.voteCode && (item.itemDescription || '').trim() && item.amount
             );
             if (validItems.length === 0) {
-                this.error = 'Please add at least one vote with a name, description, and amount before creating the fee structure.';
+                this.error = 'Please add at least one vote with a name, code, description, and amount before creating the fee structure.';
                 this.loading = false;
                 return;
             }
@@ -612,6 +613,14 @@ window.feeStructureCreateModal = function() {
             );
             if (missingDescription) {
                 this.error = 'Each vote must have a description.';
+                this.loading = false;
+                return;
+            }
+            const missingVoteCode = this.feeItems.some(item =>
+                item.itemName && item.amount && !(item.voteCode || '').trim()
+            );
+            if (missingVoteCode) {
+                this.error = 'Each vote must have a vote code.';
                 this.loading = false;
                 return;
             }
@@ -628,6 +637,7 @@ window.feeStructureCreateModal = function() {
                     category: this.category,
                     fee_items: validItems.map(item => ({
                         item_name: item.itemName.toUpperCase().trim(),
+                        vote_code: item.voteCode.toUpperCase().trim(),
                         item_description: item.itemDescription.trim(),
                         amount: parseFloat(item.amount) || 0
                     }))

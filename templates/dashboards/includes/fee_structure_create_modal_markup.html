@@ -181,6 +181,7 @@
                                                :disabled="isFeeItemDuplicate(item)"
                                                @change="toggleLibrarySelection(index)">
                                         <span class="fsm-library-name" x-text="item.item_name"></span>
+                                        <span class="fsm-library-code" x-show="item.vote_code" x-text="item.vote_code"></span>
                                         <span class="fsm-library-amount" x-text="'KES ' + parseFloat(item.amount).toLocaleString()"></span>
                                     </label>
                                 </template>
@@ -192,19 +193,35 @@
                         </div>
                         <div class="fsm-items">
                             <template x-for="(item, index) in feeItems" :key="index">
-                                <div class="fsm-item-row">
-                                    <input type="text" class="fsm-input uppercase fsm-item-name" x-model="item.itemName"
-                                           @input="item.itemName = item.itemName.toUpperCase()" placeholder="VOTE NAME" required>
-                                    <textarea class="fsm-textarea fsm-item-desc uppercase" x-model="item.itemDescription" rows="2"
-                                              placeholder="VOTE DESCRIPTION" required
-                                              @input="item.itemDescription = ($event.target.value || '').toUpperCase()"></textarea>
-                                    <div class="fsm-item-amount">
-                                        <span>KES</span>
-                                        <input type="number" class="fsm-input" x-model="item.amount" @input="calculateTotal()"
-                                               placeholder="0" step="0.01" min="0" required>
+                                <div class="fsm-vote-row">
+                                    <div class="fsm-vote-fields">
+                                        <div class="fsm-vote-field">
+                                            <label class="fsm-label-sm">Vote name <span class="req">*</span></label>
+                                            <input type="text" class="fsm-input uppercase" x-model="item.itemName"
+                                                   @input="item.itemName = item.itemName.toUpperCase()" placeholder="e.g. TUITION" required>
+                                        </div>
+                                        <div class="fsm-vote-field fsm-vote-field--code">
+                                            <label class="fsm-label-sm">Vote code <span class="req">*</span></label>
+                                            <input type="text" class="fsm-input uppercase" x-model="item.voteCode"
+                                                   @input="item.voteCode = item.voteCode.toUpperCase()" placeholder="e.g. T01" required>
+                                        </div>
+                                        <div class="fsm-vote-field fsm-vote-field--amount">
+                                            <label class="fsm-label-sm">Vote amount <span class="req">*</span></label>
+                                            <div class="fsm-item-amount">
+                                                <span>KES</span>
+                                                <input type="number" class="fsm-input" x-model="item.amount" @input="calculateTotal()"
+                                                       placeholder="0" step="0.01" min="0" required>
+                                            </div>
+                                        </div>
+                                        <div class="fsm-vote-field fsm-vote-field--desc">
+                                            <label class="fsm-label-sm">Vote description <span class="req">*</span></label>
+                                            <textarea class="fsm-textarea uppercase" x-model="item.itemDescription" rows="2"
+                                                      placeholder="e.g. TERM TUITION FEES"
+                                                      @input="item.itemDescription = ($event.target.value || '').toUpperCase()" required></textarea>
+                                        </div>
                                     </div>
                                     <div class="fsm-item-actions">
-                                        <button type="button" class="fsm-item-remove" @click="removeItem(index)" aria-label="Remove">
+                                        <button type="button" class="fsm-item-remove" @click="removeItem(index)" aria-label="Remove vote">
                                             <i class="fas fa-trash-alt"></i>
                                         </button>
                                     </div>

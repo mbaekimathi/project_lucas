@@ -11,9 +11,7 @@
             @change="regCategoryCustom = ''">
         <option value="">Select category…</option>
         {% for cat in account_categories %}
-        {% if (cat|lower|trim) != 'petty cash' %}
         <option value="{{ cat }}">{{ cat }}</option>
-        {% endif %}
         {% endfor %}
         <option value="{{ cat_add }}">+ Add new category…</option>
     </select>
@@ -31,9 +29,7 @@
             @change="onEditCategorySelectChange()">
         <option value="">Select category…</option>
         {% for cat in account_categories %}
-        {% if (cat|lower|trim) != 'petty cash' %}
         <option value="{{ cat }}">{{ cat }}</option>
-        {% endif %}
         {% endfor %}
         <option value="{{ cat_add }}">+ Add new category…</option>
     </select>

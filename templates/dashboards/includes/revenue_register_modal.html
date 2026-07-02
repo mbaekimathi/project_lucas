@@ -30,6 +30,9 @@ window.revenueRegisterModal = function () {
         error: '',
         success: '',
         registerUrl: {{ (employee_dash_url('revenue/register') ~ ('?source=' ~ source_filter if source_filter != 'all' else ''))|tojson }},
+        voteTemplateUrl: {{ employee_dash_url('revenue/vote-template')|tojson }},
+        voteTemplateLoading: false,
+        votesFromTemplate: false,
         successRedirectUrl: {{ (employee_dash_url('revenue') ~ ('?source=' ~ source_filter ~ '&' if source_filter != 'all' else '?') ~ 'registered=1')|tojson }},
         get selectedAccountDescription() {
             var id = String(this.financeAccountId || '');
@@ -107,6 +110,49 @@ window.revenueRegisterModal = function () {
                 return String(a.id) === id;
             });
             this.revenueTitle = acct ? acct.account_name : '';
+            this.amount = '';
+            this.description = '';
+            this.votesFromTemplate = false;
+            this.loadVoteTemplate();
+        },
+        loadVoteTemplate() {
+            var id = String(this.financeAccountId || '');
+            if (!id || !this.voteTemplateUrl) {
+                this.lineItems = [];
+                return;
+            }
+            var self = this;
+            this.voteTemplateLoading = true;
+            fetch(this.voteTemplateUrl + '?finance_account_id=' + encodeURIComponent(id), {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data && data.ok && data.votes && data.votes.length) {
+                        self.lineItems = data.votes.map(function (v) {
+                            return {
+                                itemName: v.item_name || '',
+                                voteCode: v.vote_code || '',
+                                itemDescription: v.item_description || '',
+                                amount: '',
+                            };
+                        });
+                        self.votesFromTemplate = true;
+                    } else {
+                        self.lineItems = [];
+                        self.votesFromTemplate = false;
+                        self.addFirstLineItem();
+                    }
+                })
+                .catch(function () {
+                    self.lineItems = [];
+                    self.votesFromTemplate = false;
+                    self.addFirstLineItem();
+                })
+                .finally(function () {
+                    self.voteTemplateLoading = false;
+                });
         },
         onTotalAmountChange() {
             if (this.parsedTotalAmount > 0 && !this.lineItems.length) {
@@ -115,18 +161,33 @@ window.revenueRegisterModal = function () {
         },
         getValidLineItems() {
             var out = [];
+            var byName = {};
             (this.lineItems || []).forEach(function (item) {
-                var name = String(item.itemName || '').trim();
+                var name = String(item.itemName || '').trim().toUpperCase();
+                var voteCode = String(item.voteCode || '').trim().toUpperCase();
+                var desc = String(item.itemDescription || '').trim().toUpperCase();
                 var raw = String(item.amount || '').replace(/,/g, '').trim();
                 var n = parseFloat(raw);
-                if (name && !isNaN(n) && n > 0) {
-                    out.push({ item_name: name, amount: n });
+                if (name && voteCode && desc && !isNaN(n) && n > 0) {
+                    if (byName[name]) {
+                        byName[name].amount = Math.round((byName[name].amount + n) * 100) / 100;
+                        byName[name].vote_code = voteCode;
+                        byName[name].item_description = desc;
+                    } else {
+                        byName[name] = {
+                            item_name: name,
+                            vote_code: voteCode,
+                            item_description: desc,
+                            amount: n,
+                        };
+                        out.push(byName[name]);
+                    }
                 }
             });
             return out;
         },
         addLineItem() {
-            this.lineItems.push({ itemName: '', amount: '' });
+            this.lineItems.push({ itemName: '', voteCode: '', itemDescription: '', amount: '' });
         },
         addFirstLineItem() {
             if (!this.lineItems.length) {
@@ -138,6 +199,8 @@ window.revenueRegisterModal = function () {
             if (rem <= 0) return;
             this.lineItems.push({
                 itemName: '',
+                voteCode: '',
+                itemDescription: '',
                 amount: rem.toFixed(2),
             });
         },
@@ -165,6 +228,8 @@ window.revenueRegisterModal = function () {
             this.amount = '';
             this.description = '';
             this.lineItems = [];
+            this.votesFromTemplate = false;
+            this.voteTemplateLoading = false;
             this.error = '';
             this.success = '';
             this.loading = false;
@@ -187,7 +252,27 @@ window.revenueRegisterModal = function () {
             }
             var validItems = this.getValidLineItems();
             if (!validItems.length) {
-                this.error = 'Add at least one distribution line (item and amount).';
+                this.error = 'Add at least one vote with a name, code, description, and amount.';
+                return;
+            }
+            var missingVoteCode = (this.lineItems || []).some(function (item) {
+                var name = String(item.itemName || '').trim();
+                var raw = String(item.amount || '').replace(/,/g, '').trim();
+                var n = parseFloat(raw);
+                return name && !isNaN(n) && n > 0 && !String(item.voteCode || '').trim();
+            });
+            if (missingVoteCode) {
+                this.error = 'Each vote must have a vote code.';
+                return;
+            }
+            var missingDescription = (this.lineItems || []).some(function (item) {
+                var name = String(item.itemName || '').trim();
+                var raw = String(item.amount || '').replace(/,/g, '').trim();
+                var n = parseFloat(raw);
+                return name && !isNaN(n) && n > 0 && !String(item.itemDescription || '').trim();
+            });
+            if (missingDescription) {
+                this.error = 'Each vote must have a description.';
                 return;
             }
             if (!this.isBalanced) {
@@ -252,7 +337,6 @@ window.revenueRegisterModal = function () {
      @keydown.escape.window="$store.revenueRegister.close()"
      x-init="$watch('$store.revenueRegister.isOpen', function (open) {
          if (!open) resetForm();
-         else addFirstLineItem();
      })">
     {% include 'dashboards/includes/revenue_register_modal_markup.html' %}
 </div>

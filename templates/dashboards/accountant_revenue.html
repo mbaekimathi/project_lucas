@@ -325,7 +325,7 @@
                 </div>
                 {% else %}
                 <p class="text-xs text-slate-400 py-2">
-                    No active Income accounts in the chart of accounts.
+                    No active fund accounts in the chart of accounts.
                     <a href="{{ employee_dash_url('accounts') }}" class="text-teal-300 hover:text-white font-semibold">Add accounts</a>
                 </p>
                 {% endif %}
@@ -611,7 +611,10 @@
                                     <ul x-show="row.line_items && row.line_items.length" class="mt-1 space-y-0.5">
                                         <template x-for="(li, liIdx) in (row.line_items || [])" :key="'li-' + liIdx">
                                             <li class="text-[10px] text-teal-700 dark:text-teal-400 flex justify-between gap-2">
-                                                <span class="truncate" x-text="li.item_name"></span>
+                                                <span class="truncate min-w-0">
+                                                    <span class="font-mono font-bold" x-show="li.vote_code" x-text="li.vote_code + ' · '"></span>
+                                                    <span x-text="li.item_name"></span>
+                                                </span>
                                                 <span class="shrink-0 tabular-nums" x-text="'KES ' + li.amount_display"></span>
                                             </li>
                                         </template>

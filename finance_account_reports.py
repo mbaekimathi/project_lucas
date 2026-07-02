@@ -1060,9 +1060,27 @@ def fetch_petty_cash_book_payload(cursor, account_id, filters, helpers):
     if not account:
         return {'error': 'Account not found'}
 
-    cat = (account.get('account_category') or '').strip().lower()
-    if cat != 'petty cash':
-        return {'error': 'Not a petty cash account'}
+    is_petty = helpers.get('is_petty_cash_ledger')
+    if is_petty:
+        ok = is_petty(
+            account.get('account_category'),
+            account.get('account_name'),
+            account.get('account_description'),
+        )
+        if not ok:
+            load_votes = helpers.get('load_account_expense_votes')
+            votes = []
+            if load_votes:
+                try:
+                    votes = load_votes(cursor, account_id) or []
+                except Exception:
+                    pass
+            if not votes:
+                return {'error': 'Not a petty cash account'}
+    else:
+        cat = (account.get('account_category') or '').strip().lower()
+        if cat not in ('petty cash', 'operational imprest funds'):
+            return {'error': 'Not a petty cash account'}
 
     date_from, date_to = _parse_dates(filters)
     refresh = helpers.get('refresh_balances')

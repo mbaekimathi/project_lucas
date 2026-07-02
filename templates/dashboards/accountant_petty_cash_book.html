@@ -818,7 +818,7 @@ document.addEventListener('alpine:init', function () {
                             <option value="{{ acc.id }}">{{ acc.account_name }} ({{ acc.account_category }}) — KES {{ acc.current_balance_display }}</option>
                             {% endfor %}
                         </select>
-                        <p class="pcb-field-hint text-[var(--acc-muted)] normal-case mt-1">Choose a registered finance account to use in the petty cash book. Its category will be set to petty cash.</p>
+                        <p class="pcb-field-hint text-[var(--acc-muted)] normal-case mt-1">Choose a registered finance account to use in the petty cash book. Expense votes and payment modes are saved on the account.</p>
                         {% if not finance_accounts_picker|default([]) %}
                         <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case">No accounts found. Register accounts under Accounts first.</p>
                         {% endif %}

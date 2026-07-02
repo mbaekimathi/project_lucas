@@ -249,9 +249,9 @@ document.addEventListener('alpine:init', () => {
             $store.feeModals.viewModal.openViewModal(structure);
         }
     },
-    confirmDelete(id, name) {
+    confirmDelete(id, name, structureIds) {
         if ($store.feeModals.deleteModal) {
-            $store.feeModals.deleteModal.confirmDelete(id, name);
+            $store.feeModals.deleteModal.confirmDelete(id, name, structureIds);
         }
     }
 }">
@@ -444,7 +444,7 @@ document.addEventListener('alpine:init', () => {
                                             class="fs-action fs-action--edit" title="Edit batch">
                                         <i class="fas fa-pen"></i>
                                     </button>
-                                    <button type="button" @click="confirmDelete(group.id, group.fee_name)"
+                                    <button type="button" @click="confirmDelete(group.id, group.fee_name, group.structureIds)"
                                             class="fs-action fs-action--delete" title="Delete">
                                         <i class="fas fa-trash-alt"></i>
                                     </button>
@@ -508,7 +508,7 @@ document.addEventListener('alpine:init', () => {
                                     class="fs-mobile-btn fs-action fs-action--edit" title="Edit">
                                 <i class="fas fa-pen"></i>
                             </button>
-                            <button type="button" @click="confirmDelete(group.id, group.fee_name)"
+                            <button type="button" @click="confirmDelete(group.id, group.fee_name, group.structureIds)"
                                     class="fs-mobile-btn fs-action fs-action--delete" title="Delete">
                                 <i class="fas fa-trash-alt"></i>
                             </button>
@@ -773,6 +773,7 @@ document.addEventListener('alpine:init', () => {
                                 <thead>
                                     <tr>
                                         <th>#</th>
+                                        <th>Code</th>
                                         <th>Vote</th>
                                         <th>Amount (per student)</th>
                                     </tr>
@@ -781,6 +782,7 @@ document.addEventListener('alpine:init', () => {
                                     <template x-for="(item, index) in voteItems" :key="index">
                                         <tr>
                                             <td x-text="index + 1"></td>
+                                            <td class="font-mono text-xs" x-text="getItemVoteCode(item)"></td>
                                             <td>
                                                 <div class="fsv-vote-name" x-text="getItemName(item)"></div>
                                                 <div class="fsv-vote-desc" x-text="getItemDescription(item)"></div>
@@ -789,7 +791,7 @@ document.addEventListener('alpine:init', () => {
                                         </tr>
                                     </template>
                                     <tr class="fsv-table__total">
-                                        <td colspan="2">Total per student</td>
+                                        <td colspan="3">Total per student</td>
                                         <td x-text="'KES ' + formatAmount(perStudentTotal)"></td>
                                     </tr>
                                 </tbody>
@@ -926,6 +928,11 @@ function feeStructureViewModal() {
         getItemName(item) {
             if (!item) return 'N/A';
             return item.item_name || item['item_name'] || 'N/A';
+        },
+        getItemVoteCode(item) {
+            if (!item) return '—';
+            const code = item.vote_code || item['vote_code'] || '';
+            return code || '—';
         },
         getItemDescription(item) {
             if (!item) return '—';
@@ -1093,7 +1100,7 @@ function editModalData() {
         startDate: '',
         endDate: '',
         paymentDeadline: '',
-        feeItems: [{ itemName: '', itemDescription: '', amount: '' }],
+        feeItems: [{ itemName: '', voteCode: '', itemDescription: '', amount: '' }],
         totalAmount: 0,
         loading: false,
         error: '',
@@ -1294,7 +1301,7 @@ function editModalData() {
             }, 0);
         },
         addNewItem() {
-            this.feeItems.push({ itemName: '', itemDescription: '', amount: '' });
+            this.feeItems.push({ itemName: '', voteCode: '', itemDescription: '', amount: '' });
             this.calculateTotal();
         },
         removeItem(index) {
@@ -1411,10 +1418,10 @@ function editModalData() {
                 return;
             }
             const validItems = this.feeItems.filter(item =>
-                item.itemName && (item.itemDescription || '').trim() && item.amount
+                item.itemName && item.voteCode && (item.itemDescription || '').trim() && item.amount
             );
             if (validItems.length === 0) {
-                this.error = 'Please add at least one vote with a name, description, and amount.';
+                this.error = 'Please add at least one vote with a name, code, description, and amount.';
                 this.loading = false;
                 return;
             }
@@ -1423,6 +1430,14 @@ function editModalData() {
             );
             if (missingDescription) {
                 this.error = 'Each vote must have a description.';
+                this.loading = false;
+                return;
+            }
+            const missingVoteCode = this.feeItems.some(item =>
+                item.itemName && item.amount && !(item.voteCode || '').trim()
+            );
+            if (missingVoteCode) {
+                this.error = 'Each vote must have a vote code.';
                 this.loading = false;
                 return;
             }
@@ -1444,9 +1459,10 @@ function editModalData() {
                     end_date: this.endDate,
                     payment_deadline: this.paymentDeadline,
                     fee_items: this.feeItems
-                        .filter(item => item.itemName && (item.itemDescription || '').trim() && item.amount)
+                        .filter(item => item.itemName && item.voteCode && (item.itemDescription || '').trim() && item.amount)
                         .map(item => ({
                             item_name: item.itemName.toUpperCase().trim(),
+                            vote_code: item.voteCode.toUpperCase().trim(),
                             item_description: item.itemDescription.trim(),
                             amount: parseFloat(item.amount) || 0
                         }))
@@ -1529,10 +1545,11 @@ function editModalData() {
             this.feeItems = items.length > 0
                 ? items.map(item => ({
                     itemName: (item.item_name || '').toUpperCase(),
+                    voteCode: (item.vote_code || '').toUpperCase(),
                     itemDescription: (item.item_description || '').toUpperCase(),
                     amount: item.amount != null ? item.amount : ''
                 }))
-                : [{ itemName: '', itemDescription: '', amount: '' }];
+                : [{ itemName: '', voteCode: '', itemDescription: '', amount: '' }];
 
             this.accountLevelsError = '';
             if (this.financeAccountId) {
@@ -1711,20 +1728,36 @@ function editModalData() {
                         </div>
                         <div class="fsm-items">
                             <template x-for="(item, index) in feeItems" :key="index">
-                                <div class="fsm-item-row">
-                                    <input type="text" class="fsm-input uppercase fsm-item-name" x-model="item.itemName"
-                                           @input="item.itemName = item.itemName.toUpperCase()" placeholder="VOTE NAME" required>
-                                    <textarea class="fsm-textarea fsm-item-desc uppercase" x-model="item.itemDescription" rows="2"
-                                              placeholder="VOTE DESCRIPTION" required
-                                              @input="item.itemDescription = ($event.target.value || '').toUpperCase()"></textarea>
-                                    <div class="fsm-item-amount">
-                                        <span>KES</span>
-                                        <input type="number" class="fsm-input" x-model="item.amount" @input="calculateTotal()"
-                                               placeholder="0" step="0.01" min="0" required>
+                                <div class="fsm-vote-row">
+                                    <div class="fsm-vote-fields">
+                                        <div class="fsm-vote-field">
+                                            <label class="fsm-label-sm">Vote name <span class="req">*</span></label>
+                                            <input type="text" class="fsm-input uppercase" x-model="item.itemName"
+                                                   @input="item.itemName = item.itemName.toUpperCase()" placeholder="e.g. TUITION" required>
+                                        </div>
+                                        <div class="fsm-vote-field fsm-vote-field--code">
+                                            <label class="fsm-label-sm">Vote code <span class="req">*</span></label>
+                                            <input type="text" class="fsm-input uppercase" x-model="item.voteCode"
+                                                   @input="item.voteCode = item.voteCode.toUpperCase()" placeholder="e.g. T01" required>
+                                        </div>
+                                        <div class="fsm-vote-field fsm-vote-field--amount">
+                                            <label class="fsm-label-sm">Vote amount <span class="req">*</span></label>
+                                            <div class="fsm-item-amount">
+                                                <span>KES</span>
+                                                <input type="number" class="fsm-input" x-model="item.amount" @input="calculateTotal()"
+                                                       placeholder="0" step="0.01" min="0" required>
+                                            </div>
+                                        </div>
+                                        <div class="fsm-vote-field fsm-vote-field--desc">
+                                            <label class="fsm-label-sm">Vote description <span class="req">*</span></label>
+                                            <textarea class="fsm-textarea uppercase" x-model="item.itemDescription" rows="2"
+                                                      placeholder="e.g. TERM TUITION FEES"
+                                                      @input="item.itemDescription = ($event.target.value || '').toUpperCase()" required></textarea>
+                                        </div>
                                     </div>
                                     <div class="fsm-item-actions">
                                         <button type="button" class="fsm-item-remove" @click="removeItem(index)"
-                                                x-show="feeItems.length > 1" aria-label="Remove">
+                                                x-show="feeItems.length > 1" aria-label="Remove vote">
                                             <i class="fas fa-trash-alt"></i>
                                         </button>
                                     </div>
@@ -1759,7 +1792,13 @@ function feeStructureDeleteModal() {
     return {
         deleteModalOpen: false,
         structureId: null,
+        structureIds: [],
         structureName: '',
+        verificationCode: '',
+        codeSent: false,
+        codeMessage: '',
+        devCode: '',
+        codeSending: false,
         loading: false,
         error: '',
         init() {
@@ -1773,18 +1812,56 @@ function feeStructureDeleteModal() {
                 }, 100);
             }
         },
-        confirmDelete(id, name) {
+        confirmDelete(id, name, structureIds) {
             this.structureId = id;
+            this.structureIds = (structureIds && structureIds.length) ? structureIds : [id];
             this.structureName = name;
+            this.verificationCode = '';
+            this.codeSent = false;
+            this.codeMessage = '';
+            this.devCode = '';
+            this.codeSending = false;
             this.error = '';
             this.deleteModalOpen = true;
         },
+        sendVerificationCode() {
+            this.codeSending = true;
+            this.error = '';
+            fetch(deleteUrlBase + '/' + this.structureId + '/delete/request-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ structure_ids: this.structureIds })
+            })
+            .then(r => r.json())
+            .then(data => {
+                this.codeSending = false;
+                if (!data.success) {
+                    this.error = data.message || 'Could not send verification code.';
+                    return;
+                }
+                this.codeSent = true;
+                this.codeMessage = data.message || 'Verification code sent to your email.';
+                this.devCode = data.dev_code ? String(data.dev_code) : '';
+            })
+            .catch(() => {
+                this.codeSending = false;
+                this.error = 'Could not send verification code. Please try again.';
+            });
+        },
         deleteStructure() {
+            if (!String(this.verificationCode || '').trim()) {
+                this.error = 'Enter the 6-digit confirmation code sent to your email.';
+                return;
+            }
             this.loading = true;
             this.error = '';
             fetch(deleteUrlBase + '/' + this.structureId + '/delete', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    structure_ids: this.structureIds,
+                    confirmation_code: String(this.verificationCode || '').trim()
+                })
             })
             .then(r => r.json())
             .then(data => {
@@ -1839,8 +1916,25 @@ function feeStructureDeleteModal() {
 
                 <p class="text-gray-700 dark:text-gray-300 mb-4">
                     Are you sure you want to delete the fee structure <strong x-text="structureName"></strong>?
-                    This action cannot be undone and will also delete all associated votes.
+                    This action cannot be undone and will remove all class levels in this structure,
+                    associated votes, student fee payments, and related finance ledger entries.
                 </p>
+
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-3" x-show="codeMessage" x-text="codeMessage"></p>
+                <p class="text-sm font-semibold text-amber-700 dark:text-amber-300 mb-3" x-show="devCode" x-cloak>
+                    Code: <span class="font-mono tracking-widest" x-text="devCode"></span>
+                </p>
+
+                <div class="flex flex-col sm:flex-row gap-2 mb-4">
+                    <button type="button" @click="sendVerificationCode()" :disabled="codeSending"
+                            class="px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium disabled:opacity-50">
+                        <i class="fas fa-spinner fa-spin mr-2" x-show="codeSending"></i>
+                        <span x-text="codeSent ? 'Resend code to my email' : 'Send verification code'"></span>
+                    </button>
+                    <input type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code"
+                           x-model="verificationCode"
+                           class="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-center tracking-[0.3em] font-mono text-sm dark:text-white">
+                </div>
 
                 <div class="flex items-center justify-end space-x-3">
                     <button type="button" @click="deleteModalOpen = false"
@@ -1850,7 +1944,7 @@ function feeStructureDeleteModal() {
                     <button type="button" @click="deleteStructure()" :disabled="loading"
                             class="px-6 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-300 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
                         <i class="fas fa-spinner fa-spin" x-show="loading"></i>
-                        <span x-text="loading ? 'Deleting...' : 'Delete'"></span>
+                        <span x-text="loading ? 'Deleting...' : 'Confirm delete'"></span>
                     </button>
                 </div>
             </div>

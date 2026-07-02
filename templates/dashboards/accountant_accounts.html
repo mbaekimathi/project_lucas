@@ -346,7 +346,7 @@
                         <label for="account_name" class="fa-field-label">Account name <span class="text-red-500">*</span></label>
                         <div class="fa-suggest-wrap">
                             <input type="text" id="account_name" name="account_name" required maxlength="255"
-                                   placeholder="e.g. Main school bank account" class="fa-input" autocomplete="off"
+                                   placeholder="e.g. School tuition account" class="fa-input" autocomplete="off"
                                    x-model="regName"
                                    @input="onFieldSuggestInput('reg', 'name', $event)"
                                    @focus="openFieldSuggest('reg', 'name')"
@@ -364,8 +364,8 @@
                                 </template>
                             </ul>
                         </div>
-                        <p class="fa-suggest-hint" x-show="knownAccountNames.length">
-                            <i class="fas fa-lightbulb"></i> Suggestions from <span x-text="knownAccountNames.length"></span> existing account name<span x-show="knownAccountNames.length !== 1">s</span>
+                        <p class="fa-suggest-hint" x-show="accountNameSuggestionPool.length">
+                            <i class="fas fa-lightbulb"></i> Choose a suggested name or type your own
                         </p>
                     </div>
                     <div class="fa-span-2">
@@ -616,15 +616,46 @@
                     <p x-show="!viewAccount.academic_levels || !viewAccount.academic_levels.length"
                        class="text-xs text-[var(--acc-muted)]">—</p>
                     <div class="fa-view-modal-actions" x-show="viewAccount">
-                        <form method="post" class="inline"
-                              x-bind:action="viewAccount ? accountPostUrl(viewAccount.id, 'delete') : '#'"
-                              @submit="if (!confirm('Delete this account permanently? This cannot be undone.')) $event.preventDefault()">
-                            <button type="submit" class="fa-view-action-btn fa-view-action-btn--delete">
+                        <template x-if="!accountDeleteOpen">
+                            <button type="button" @click="openAccountDelete()"
+                                    class="fa-view-action-btn fa-view-action-btn--delete">
                                 <i class="fas fa-trash-can" aria-hidden="true"></i>
                                 Delete
                             </button>
-                        </form>
-                        <div class="fa-view-modal-actions__end">
+                        </template>
+                        <div class="fa-span-2 w-full rounded-lg border border-red-200 bg-red-50/80 dark:border-red-900/40 dark:bg-red-950/20 p-3 space-y-3"
+                             x-show="accountDeleteOpen" x-cloak>
+                            <p class="text-xs text-red-800 dark:text-red-300 leading-relaxed">
+                                Deleting <strong x-text="viewAccount ? viewAccount.account_name : ''"></strong> will remove all ledger transactions and petty cash records linked to this account. This cannot be undone.
+                            </p>
+                            <p class="text-[11px] text-[var(--acc-muted)]" x-show="deleteCodeMessage" x-text="deleteCodeMessage"></p>
+                            <p class="text-xs font-semibold text-amber-800 dark:text-amber-300" x-show="deleteDevCode" x-cloak>
+                                Code: <span class="font-mono tracking-widest" x-text="deleteDevCode"></span>
+                            </p>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <button type="button" @click="sendAccountDeleteCode()" :disabled="deleteCodeSending"
+                                        class="accounts-btn-ghost inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold">
+                                    <i class="fas fa-spinner fa-spin" x-show="deleteCodeSending"></i>
+                                    <span x-text="deleteCodeSent ? 'Resend code' : 'Send verification code'"></span>
+                                </button>
+                                <input type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code"
+                                       x-model="deleteVerificationCode"
+                                       class="accounts-field flex-1 rounded-lg border px-3 py-2 text-sm text-center tracking-[0.3em] font-mono dark:text-white">
+                            </div>
+                            <p class="text-xs text-red-600 dark:text-red-400" x-show="deleteError" x-text="deleteError"></p>
+                            <div class="flex flex-wrap gap-2 justify-end">
+                                <button type="button" @click="cancelAccountDelete()"
+                                        class="accounts-btn-ghost inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold">
+                                    Cancel
+                                </button>
+                                <button type="button" @click="confirmAccountDelete()" :disabled="deleteLoading"
+                                        class="fa-view-action-btn fa-view-action-btn--delete inline-flex items-center gap-2">
+                                    <i class="fas fa-spinner fa-spin" x-show="deleteLoading"></i>
+                                    Confirm delete
+                                </button>
+                            </div>
+                        </div>
+                        <div class="fa-view-modal-actions__end" x-show="!accountDeleteOpen">
                             <button type="button" @click="closeViewModal()"
                                     class="accounts-btn-ghost inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
                                 Close
@@ -778,11 +809,20 @@ function accountsPage() {
         formOpen: {{ form_open_default|default(false)|tojson }},
         accountsRegistry: {{ accounts_client|default([])|tojson }},
         accountCategoryOptions: {{ account_categories|tojson }},
+        accountNamePresets: {{ account_name_suggestions|default([])|tojson }},
         categoryAddMarker: {{ account_category_add_value|default('__add_new__')|tojson }},
         accountsBaseUrl: {{ employee_dash_url('accounts')|tojson }},
         schoolMpesaPresets: {{ mpesa_account_presets|default([])|tojson }},
         viewModalOpen: false,
         viewAccount: null,
+        accountDeleteOpen: false,
+        deleteVerificationCode: '',
+        deleteCodeSent: false,
+        deleteCodeMessage: '',
+        deleteDevCode: '',
+        deleteCodeSending: false,
+        deleteLoading: false,
+        deleteError: '',
         editModalOpen: false,
         editAccount: null,
         editLevelIds: [],
@@ -867,8 +907,80 @@ function accountsPage() {
         },
         closeViewModal: function () {
             this.viewModalOpen = false;
+            this.cancelAccountDelete();
             var self = this;
             setTimeout(function () { self.viewAccount = null; }, 200);
+        },
+        resetAccountDeleteState: function () {
+            this.accountDeleteOpen = false;
+            this.deleteVerificationCode = '';
+            this.deleteCodeSent = false;
+            this.deleteCodeMessage = '';
+            this.deleteDevCode = '';
+            this.deleteCodeSending = false;
+            this.deleteLoading = false;
+            this.deleteError = '';
+        },
+        openAccountDelete: function () {
+            this.resetAccountDeleteState();
+            this.accountDeleteOpen = true;
+        },
+        cancelAccountDelete: function () {
+            this.resetAccountDeleteState();
+        },
+        sendAccountDeleteCode: function () {
+            var self = this;
+            if (!self.viewAccount || !self.viewAccount.id) return;
+            self.deleteCodeSending = true;
+            self.deleteError = '';
+            fetch(self.accountPostUrl(self.viewAccount.id, 'delete/request-code'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: '{}'
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                self.deleteCodeSending = false;
+                if (!data.success) {
+                    self.deleteError = data.message || 'Could not send verification code.';
+                    return;
+                }
+                self.deleteCodeSent = true;
+                self.deleteCodeMessage = data.message || 'Verification code sent to your email.';
+                self.deleteDevCode = data.dev_code ? String(data.dev_code) : '';
+            })
+            .catch(function () {
+                self.deleteCodeSending = false;
+                self.deleteError = 'Could not send verification code. Please try again.';
+            });
+        },
+        confirmAccountDelete: function () {
+            var self = this;
+            if (!self.viewAccount || !self.viewAccount.id) return;
+            if (!String(self.deleteVerificationCode || '').trim()) {
+                self.deleteError = 'Enter the 6-digit confirmation code sent to your email.';
+                return;
+            }
+            self.deleteLoading = true;
+            self.deleteError = '';
+            fetch(self.accountPostUrl(self.viewAccount.id, 'delete'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ confirmation_code: String(self.deleteVerificationCode || '').trim() })
+            })
+            .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+            .then(function (res) {
+                self.deleteLoading = false;
+                if (!res.ok || !res.data.success) {
+                    self.deleteError = (res.data && res.data.message) || 'Could not delete the account.';
+                    return;
+                }
+                window.location.href = (res.data.redirect || self.accountsBaseUrl);
+            })
+            .catch(function () {
+                self.deleteLoading = false;
+                self.deleteError = 'Could not delete the account. Please try again.';
+            });
         },
         _suggestKey: function (scope, field) {
             return scope + (field === 'name' ? 'Name' : 'Desc');
@@ -892,6 +1004,27 @@ function accountsPage() {
         get knownAccountNames() {
             return this._uniqueAccountValues('account_name');
         },
+        get accountNameSuggestionPool() {
+            var seen = {};
+            var out = [];
+            (this.accountNamePresets || []).forEach(function (v) {
+                var s = String(v || '').trim();
+                if (!s) return;
+                var k = s.toLowerCase();
+                if (seen[k]) return;
+                seen[k] = true;
+                out.push(s);
+            });
+            (this.knownAccountNames || []).forEach(function (v) {
+                var s = String(v || '').trim();
+                if (!s) return;
+                var k = s.toLowerCase();
+                if (seen[k]) return;
+                seen[k] = true;
+                out.push(s);
+            });
+            return out;
+        },
         get knownAccountDescriptions() {
             return this._uniqueAccountValues('account_description');
         },
@@ -910,7 +1043,7 @@ function accountsPage() {
             return field === 'name' ? this.editName : this.editDescription;
         },
         _fieldPool: function (field) {
-            return field === 'name' ? this.knownAccountNames : this.knownAccountDescriptions;
+            return field === 'name' ? this.accountNameSuggestionPool : this.knownAccountDescriptions;
         },
         fieldSuggestions: function (scope, field) {
             return this._filterFieldSuggestions(

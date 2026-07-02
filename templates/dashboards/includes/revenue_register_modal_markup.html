@@ -34,14 +34,14 @@
                             <label class="fsm-label" for="rvm-finance-account">Finance account <span class="req">*</span></label>
                             <select id="rvm-finance-account" class="fsm-select" x-model="financeAccountId" required
                                     @change="onFinanceAccountChange()">
-                                <option value="">Choose Income account</option>
+                                <option value="">Choose finance account</option>
                                 <template x-for="acct in incomeAccounts" :key="acct.id">
                                     <option :value="acct.id" x-text="acct.account_name"></option>
                                 </template>
                             </select>
                             <p x-show="incomeAccounts.length === 0" class="fsm-hint">
                                 <a href="{{ employee_dash_url('accounts') }}" class="font-semibold text-teal-600 dark:text-teal-400 hover:underline">Create an account</a>
-                                with category <strong>Income</strong> first.
+                                with a fund category (e.g. Capitation, Administrative) first.
                             </p>
                             <p x-show="financeAccountId && selectedAccountDescription" class="fsm-hint" x-text="selectedAccountDescription"></p>
                         </div>
@@ -83,10 +83,20 @@
 
                     <section class="fsm-panel">
                         <div class="fsm-panel__head">
-                            <h3 class="fsm-panel__title"><i class="fas fa-receipt"></i> Distribution breakdown <span class="req">*</span></h3>
-                            <span class="fsm-badge" x-text="validLineItemsCount + ' line' + (validLineItemsCount === 1 ? '' : 's')"></span>
+                            <h3 class="fsm-panel__title"><i class="fas fa-receipt"></i> Votes <span class="req">*</span></h3>
+                            <span class="fsm-badge" x-text="validLineItemsCount + ' vote' + (validLineItemsCount === 1 ? '' : 's')"></span>
                         </div>
-                        <p class="fsm-hint mb-3">Enter the total income, then split it across line items. Amounts must add up to the total.</p>
+                        <p class="fsm-hint mb-3">
+                            Enter the total for <strong>this</strong> income entry only, then allocate it across votes.
+                            Amounts are not carried over from previous registrations.
+                        </p>
+                        <p x-show="votesFromTemplate" x-cloak class="fsm-hint mb-3 text-teal-700 dark:text-teal-400">
+                            <i class="fas fa-sync-alt mr-1"></i>
+                            Votes loaded from this account's saved structure. Enter new amounts below.
+                        </p>
+                        <p x-show="voteTemplateLoading" x-cloak class="fsm-hint mb-3">
+                            <i class="fas fa-spinner fa-spin mr-1"></i> Loading votes…
+                        </p>
 
                         <div class="fsm-field fsm-field--full mb-3">
                             <label class="fsm-label" for="rvm-amount">Total amount (KES) <span class="req">*</span></label>
@@ -115,7 +125,7 @@
 
                         <div class="fsm-items-actions">
                             <button type="button" class="fsm-btn-add" @click="addLineItem()">
-                                <i class="fas fa-plus"></i> Add line
+                                <i class="fas fa-plus"></i> Add vote
                             </button>
                             <button type="button" class="fsm-btn-ghost-sm" x-show="remainingAmount > 0.009"
                                     @click="addLineItemWithRemaining()">
@@ -124,26 +134,47 @@
                         </div>
 
                         <div x-show="!lineItems.length" class="fsm-empty">
-                            <p class="fsm-hint text-center">Enter a total amount, then add lines to distribute it.</p>
-                            <button type="button" class="fsm-btn-add mt-2" @click="addFirstLineItem()">Add first line</button>
+                            <p class="fsm-hint text-center">Enter a total amount, then add votes to distribute it.</p>
+                            <button type="button" class="fsm-btn-add mt-2" @click="addFirstLineItem()">Add first vote</button>
                         </div>
 
                         <div class="fsm-items mt-2">
-                            <template x-for="(item, index) in lineItems" :key="'rvm-line-' + index">
-                                <div class="fsm-item-row">
-                                    <input type="text" class="fsm-input" x-model="item.itemName"
-                                           placeholder="Item / purpose" required>
-                                    <div class="fsm-item-amount">
-                                        <span>KES</span>
-                                        <input type="text" inputmode="decimal" class="fsm-input" x-model="item.amount"
-                                               placeholder="0" @input="recalculateAllocation()">
+                            <template x-for="(item, index) in lineItems" :key="'rvm-line-' + index + '-' + (item.voteCode || item.itemName || '')">
+                                <div class="fsm-vote-row">
+                                    <div class="fsm-vote-fields">
+                                        <div class="fsm-vote-field">
+                                            <label class="fsm-label-sm">Vote name <span class="req">*</span></label>
+                                            <input type="text" class="fsm-input uppercase" x-model="item.itemName"
+                                                   @input="item.itemName = item.itemName.toUpperCase()"
+                                                   placeholder="e.g. CAPITATION" required>
+                                        </div>
+                                        <div class="fsm-vote-field fsm-vote-field--code">
+                                            <label class="fsm-label-sm">Vote code <span class="req">*</span></label>
+                                            <input type="text" class="fsm-input uppercase" x-model="item.voteCode"
+                                                   @input="item.voteCode = item.voteCode.toUpperCase()"
+                                                   placeholder="e.g. C01" required>
+                                        </div>
+                                        <div class="fsm-vote-field fsm-vote-field--amount">
+                                            <label class="fsm-label-sm">Vote amount <span class="req">*</span></label>
+                                            <div class="fsm-item-amount">
+                                                <span>KES</span>
+                                                <input type="text" inputmode="decimal" class="fsm-input" x-model="item.amount"
+                                                       placeholder="0" @input="recalculateAllocation()">
+                                            </div>
+                                        </div>
+                                        <div class="fsm-vote-field fsm-vote-field--desc">
+                                            <label class="fsm-label-sm">Vote description <span class="req">*</span></label>
+                                            <textarea class="fsm-textarea uppercase" x-model="item.itemDescription" rows="2"
+                                                      placeholder="e.g. GOVERNMENT CAPITATION GRANT"
+                                                      @input="item.itemDescription = ($event.target.value || '').toUpperCase()" required></textarea>
+                                        </div>
                                     </div>
-                                    <div class="fsm-item-actions flex gap-0.5">
+                                    <div class="fsm-item-actions flex flex-col gap-0.5">
                                         <button type="button" class="rvm-fill-btn" x-show="remainingAmount > 0.009"
-                                                @click="fillRemaining(index)" title="Apply unallocated balance to this line">
+                                                @click="fillRemaining(index)" title="Apply unallocated balance to this vote">
                                             <i class="fas fa-magic"></i>
                                         </button>
-                                        <button type="button" class="fsm-item-remove" @click="removeLineItem(index)" aria-label="Remove">
+                                        <button type="button" class="fsm-item-remove" @click="removeLineItem(index)" aria-label="Remove vote">
                                             <i class="fas fa-trash-alt"></i>
                                         </button>
                                     </div>
@@ -152,7 +183,7 @@
                         </div>
 
                         <p x-show="parsedTotalAmount > 0 && isBalanced" x-cloak class="rvm-balanced-msg mt-2">
-                            <i class="fas fa-check-circle"></i> Breakdown matches the total — ready to save.
+                            <i class="fas fa-check-circle"></i> Vote amounts match the total — ready to save.
                         </p>
                     </section>
                 </div>

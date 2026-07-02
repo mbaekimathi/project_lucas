@@ -28,6 +28,8 @@ document.addEventListener('alpine:init', function () {
       paymentMethod: '',
       financeAccountId: '',
       paymentReference: '',
+      expenseVote: '',
+      expenseVotes: [],
       financeAccounts: [],
       paymentModeMap: { 'Cash': 'cash', 'Cheque': 'cheque', 'Mobile Money': 'mpesa' },
       paymentDescription: '',
@@ -97,6 +99,12 @@ document.addEventListener('alpine:init', function () {
         } catch (e) {
           this.financeAccounts = [];
         }
+        var evl = document.getElementById('expense-votes-json');
+        try {
+          this.expenseVotes = evl && evl.textContent ? JSON.parse(evl.textContent) : [];
+        } catch (e) {
+          this.expenseVotes = [];
+        }
         this.refreshAnalytics();
         var flashEl = document.getElementById('payment-page-flash');
         if (flashEl && flashEl.textContent) {
@@ -115,6 +123,9 @@ document.addEventListener('alpine:init', function () {
           if (open) self.registerModalOpen = false;
           document.body.classList.toggle('overflow-hidden', !!(open || self.registerModalOpen));
           if (!open) self.resetPayForm();
+        });
+        this.$watch('financeAccountId', function () {
+          self.syncExpenseVoteSelection();
         });
         this.$watch('registerModalOpen', function (open) {
           if (open) self.payModalOpen = false;
@@ -155,9 +166,11 @@ document.addEventListener('alpine:init', function () {
         if (!data) return;
         if (data.analytics) this.analytics = data.analytics;
         if (data.finance_accounts) this.financeAccounts = data.finance_accounts;
+        if (data.expense_votes) this.expenseVotes = data.expense_votes;
         if (data.supplier_payables) this.supplierPayables = data.supplier_payables;
         if (data.stock_in_records) this.stockInRecords = data.stock_in_records;
         if (data.record_count != null) this.recordCount = data.record_count;
+        if (this.payModalOpen) this.syncExpenseVoteSelection();
       },
       showFlash: function (message, type) {
         var self = this;
@@ -267,6 +280,19 @@ document.addEventListener('alpine:init', function () {
         }
         return label;
       },
+      accountOptionLabel: function (acc) {
+        if (!acc) return '';
+        return (acc.account_name || 'Account') + ' · KES ' + (acc.current_balance_display || '0.00');
+      },
+      get payAmountPlaceholder() {
+        if (this.selectedSupplier && this.selectedInvoiceIds.length) {
+          return 'Selected total KES ' + this.selectedInvoicesTotalDisplay;
+        }
+        if (this.selectedRecord && !this.selectedSupplier && this.selectedRecord.balance_due_display) {
+          return 'Max KES ' + this.selectedRecord.balance_due_display;
+        }
+        return '0.00';
+      },
       isPayInvoiceSelected: function (id) {
         return this.selectedInvoiceIds.indexOf(String(id)) !== -1;
       },
@@ -322,8 +348,6 @@ document.addEventListener('alpine:init', function () {
         var list = this.financeAccounts || [];
         if (!mode) return list;
         return list.filter(function (acc) {
-          var cat = (acc.account_category || '').toLowerCase();
-          if (cat === 'income') return true;
           var modes = acc.payment_modes || [];
           return !modes.length || modes.indexOf(mode) >= 0;
         });
@@ -334,6 +358,36 @@ document.addEventListener('alpine:init', function () {
         return (this.financeAccounts || []).find(function (a) {
           return String(a.id) === id;
         }) || null;
+      },
+      expenseVotesForAccount: function () {
+        var acct = this.selectedFinanceAccount;
+        var linked = (acct && acct.expense_votes && acct.expense_votes.length)
+          ? acct.expense_votes
+          : [];
+        var all = this.expenseVotes || [];
+        var byName = {};
+        all.forEach(function (v) {
+          var key = String((v && v.name) || '').toUpperCase();
+          if (key) byName[key] = v;
+        });
+        return linked.map(function (name) {
+          var key = String(name || '').toUpperCase();
+          return byName[key] || { name: key, description: null, label: key };
+        }).sort(function (a, b) {
+          return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+      },
+      get expenseVoteOptions() {
+        return this.expenseVotesForAccount();
+      },
+      syncExpenseVoteSelection: function () {
+        var votes = this.expenseVotesForAccount();
+        var current = String(this.expenseVote || '').toUpperCase();
+        if (!votes.some(function (v) {
+          return String(v.name || '').toUpperCase() === current;
+        })) {
+          this.expenseVote = '';
+        }
       },
       get parsedPayAmount() {
         var n = parseFloat(String(this.amountPaid || '').replace(/,/g, ''));
@@ -490,6 +544,7 @@ document.addEventListener('alpine:init', function () {
         this.paymentMethod = '';
         this.financeAccountId = '';
         this.paymentReference = '';
+        this.expenseVote = '';
         this.selectedInvoiceIds = [];
         this.invoiceDropdownOpen = false;
       },
@@ -820,6 +875,17 @@ document.addEventListener('alpine:init', function () {
           this.showFlash('Select the account to pay from.', 'error');
           return;
         }
+        if (!this.expenseVotesForAccount().length) {
+          this.showFlash(
+            'No expense votes for this account. Register revenue and add votes under School revenue first.',
+            'error'
+          );
+          return;
+        }
+        if (!String(this.expenseVote || '').trim()) {
+          this.showFlash('Select the expense vote to charge.', 'error');
+          return;
+        }
         if (!(this.paymentReference || '').trim()) {
           this.showFlash('Enter the payment reference code.', 'error');
           return;
@@ -853,6 +919,7 @@ document.addEventListener('alpine:init', function () {
           movement_ids: this.selectedSupplier ? this.selectedInvoiceIds.slice() : [],
           payment_method: this.paymentMethod,
           finance_account_id: this.financeAccountId,
+          vote_name: this.expenseVote,
           payment_reference: (this.paymentReference || '').trim(),
         }, {
           onSuccess: function () { self.closePay(); },
@@ -884,6 +951,44 @@ document.addEventListener('alpine:init', function () {
 .accounts-btn-primary { background: linear-gradient(135deg, #0d9488, #0f766e); box-shadow: 0 2px 10px rgba(13,148,136,0.35); }
 .accounts-btn-primary:hover { filter: brightness(1.06); }
 .accounts-modal { border: 1px solid var(--acc-line); box-shadow: 0 24px 48px -12px rgba(15,23,42,0.25); }
+.pay-settle-shell {
+    width: 100%;
+    max-width: 32rem;
+    max-height: min(95dvh, 100%);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+@media (max-width: 639px) {
+    .pay-settle-overlay { align-items: flex-end; padding: 0; }
+    .pay-settle-shell {
+        max-width: 100%;
+        border-radius: 1rem 1rem 0 0;
+        max-height: min(92dvh, 100%);
+    }
+}
+.pay-settle-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+.pay-settle-foot {
+    flex-shrink: 0;
+    border-top: 1px solid var(--acc-line);
+    background: var(--acc-surface);
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+.dark .pay-settle-foot { background: #0f172a; }
+.pay-field-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+}
+@media (min-width: 480px) {
+    .pay-field-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .accounts-field { border-color: var(--acc-line); background: #fafbfc; }
 .accounts-field:focus { border-color: #14b8a6; box-shadow: 0 0 0 3px rgba(20,184,166,0.2); outline: none; }
 .dark .accounts-field { background: #0f172a; }
@@ -979,6 +1084,7 @@ document.addEventListener('alpine:init', function () {
 
         <script type="application/json" id="supplier-payables-json">{{ supplier_payables|default([])|tojson }}</script>
         <script type="application/json" id="finance-accounts-json">{{ finance_accounts_picker|default([])|tojson }}</script>
+        <script type="application/json" id="expense-votes-json">{{ expense_votes|default([])|tojson }}</script>
         <script type="application/json" id="stock-in-records-json">{{ stock_in_records|tojson }}</script>
         <script type="application/json" id="payment-analytics-json">{{ payment_analytics|default({})|tojson }}</script>
 
@@ -1288,207 +1394,196 @@ document.addEventListener('alpine:init', function () {
 
         <!-- Record payment modal (stock in) -->
         <div x-show="payModalOpen" x-cloak
-             class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+             class="pay-settle-overlay fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4"
              @keydown.escape.window="closePay()">
             <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" @click="closePay()"></div>
             <div x-ref="payModalPanel" tabindex="-1" role="dialog" aria-modal="true"
-                 class="accounts-modal relative z-10 w-full max-w-lg rounded-xl bg-white dark:bg-slate-900 max-h-[90vh] overflow-hidden flex flex-col"
+                 aria-labelledby="pay-modal-title"
+                 class="accounts-modal pay-settle-shell relative z-10 rounded-xl bg-white dark:bg-slate-900 overflow-hidden"
                  @click.stop>
-                <div class="border-b border-slate-700 px-5 py-4 sm:px-6 flex items-start justify-between gap-3 bg-gradient-to-r from-slate-800 to-teal-900 shrink-0">
-                    <div>
+                <div class="shrink-0 border-b border-slate-700 px-4 py-3 sm:px-5 flex items-start justify-between gap-2 bg-gradient-to-r from-slate-800 to-teal-900">
+                    <div class="min-w-0 flex-1">
                         <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-200">Settle payable</p>
                         <template x-if="selectedSupplier">
-                            <div>
-                                <h3 class="mt-1 text-lg font-bold text-white uppercase" x-text="selectedSupplier.supplier_name"></h3>
-                                <p class="mt-1 text-xs text-slate-300 normal-case tabular-nums">
-                                    <span x-text="selectedSupplier.payable_invoice_count || selectedSupplier.invoice_count"></span> outstanding invoice(s)
-                                    · Total balance
-                                    <span class="font-semibold text-amber-300" x-text="'KES ' + selectedSupplier.balance_due_display"></span>
+                            <div class="min-w-0">
+                                <h3 id="pay-modal-title" class="mt-0.5 text-base sm:text-lg font-bold text-white truncate normal-case"
+                                    x-text="selectedSupplier.supplier_name"></h3>
+                                <p class="mt-0.5 text-[11px] sm:text-xs text-slate-300 tabular-nums truncate">
+                                    <span x-show="selectedInvoiceIds.length"
+                                          x-text="selectedInvoiceIds.length + ' invoice(s) · KES ' + selectedInvoicesTotalDisplay"></span>
+                                    <span x-show="!selectedInvoiceIds.length"
+                                          x-text="'Outstanding KES ' + (selectedSupplier.balance_due_display || '0.00')"></span>
                                 </p>
-                                <template x-if="selectedInvoiceIds.length">
-                                    <p class="mt-1 text-xs text-teal-100 normal-case tabular-nums">
-                                        <span x-text="selectedInvoiceIds.length"></span> invoice(s) selected
-                                        · Total
-                                        <span class="font-semibold text-amber-300" x-text="'KES ' + selectedInvoicesTotalDisplay"></span>
-                                    </p>
-                                </template>
                             </div>
                         </template>
                         <template x-if="selectedRecord && !selectedSupplier">
-                            <div>
-                                <h3 class="mt-1 text-lg font-bold text-white font-mono" x-text="selectedRecord.reference_number"></h3>
-                                <p class="mt-1 text-xs text-slate-300 normal-case tabular-nums">
-                                    Total <span class="font-semibold" x-text="selectedRecord.total_amount_display"></span>
-                                    · Paid <span x-text="selectedRecord.amount_paid_display"></span>
-                                    · Balance <span class="font-semibold text-amber-300" x-text="selectedRecord.balance_due_display"></span>
+                            <div class="min-w-0">
+                                <h3 id="pay-modal-title" class="mt-0.5 text-base sm:text-lg font-bold text-white font-mono truncate"
+                                    x-text="selectedRecord.reference_number"></h3>
+                                <p class="mt-0.5 text-[11px] sm:text-xs text-slate-300 tabular-nums">
+                                    Balance <span class="font-semibold text-amber-300" x-text="'KES ' + selectedRecord.balance_due_display"></span>
                                 </p>
                             </div>
                         </template>
                     </div>
-                    <button type="button" @click="closePay()"
+                    <button type="button" @click="closePay()" aria-label="Close"
                             class="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-white/10">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
 
-                <form method="post" :action="payPostUrl" @submit="submitPay($event)" class="p-5 sm:p-6 space-y-4">
-                    <div x-show="selectedSupplier" x-cloak class="relative" @click.outside="invoiceDropdownOpen = false">
-                        <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                            <label for="pay_invoices_trigger" class="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Invoices to pay</label>
-                            <div class="flex gap-2 text-[10px] font-semibold uppercase" x-show="supplierInvoiceOptions.length && invoiceDropdownOpen">
-                                <button type="button" @click="selectAllPayInvoices()"
-                                        class="text-teal-700 hover:text-teal-900 dark:text-teal-400">Select all</button>
-                                <span class="text-slate-300">|</span>
-                                <button type="button" @click="clearPayInvoices()"
-                                        class="text-slate-500 hover:text-slate-700 dark:text-slate-400">Clear</button>
+                <form method="post" :action="payPostUrl" @submit="submitPay($event)" class="flex flex-col flex-1 min-h-0">
+                    <div class="pay-settle-body px-4 py-3 sm:px-5 sm:py-4 space-y-3">
+                        <div x-show="selectedSupplier" x-cloak class="relative" @click.outside="invoiceDropdownOpen = false">
+                            <div class="mb-1 flex items-center justify-between gap-2">
+                                <label for="pay_invoices_trigger" class="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">Invoices</label>
+                                <div class="flex gap-2 text-[10px] font-semibold uppercase" x-show="supplierInvoiceOptions.length && invoiceDropdownOpen">
+                                    <button type="button" @click="selectAllPayInvoices()"
+                                            class="text-teal-700 dark:text-teal-400">All</button>
+                                    <span class="text-slate-300">|</span>
+                                    <button type="button" @click="clearPayInvoices()"
+                                            class="text-slate-500 dark:text-slate-400">Clear</button>
+                                </div>
                             </div>
-                        </div>
-                        <button type="button"
-                                id="pay_invoices_trigger"
-                                @click="invoiceDropdownOpen = !invoiceDropdownOpen"
-                                class="accounts-field flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm dark:text-white normal-case"
-                                :disabled="!supplierInvoiceOptions.length"
-                                :aria-expanded="invoiceDropdownOpen">
-                            <span class="min-w-0 truncate"
-                                  :class="selectedInvoiceIds.length ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500'"
-                                  x-text="invoiceDropdownSummary"></span>
-                            <i class="fas fa-chevron-down shrink-0 text-xs text-slate-400 transition-transform"
-                               :class="invoiceDropdownOpen ? 'rotate-180' : ''"></i>
-                        </button>
-                        <div x-show="invoiceDropdownOpen && supplierInvoiceOptions.length"
-                             x-cloak
-                             class="accounts-dropdown absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-                            <div class="max-h-52 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                                <template x-for="inv in supplierInvoiceOptions" :key="inv.id">
-                                    <label class="flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/60">
-                                        <input type="checkbox"
-                                               class="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                               :checked="isPayInvoiceSelected(inv.id)"
-                                               @change="togglePayInvoice(inv.id)" />
-                                        <span class="min-w-0 flex-1">
-                                            <span class="block text-sm font-medium text-slate-800 dark:text-slate-100 normal-case"
+                            <button type="button"
+                                    id="pay_invoices_trigger"
+                                    @click="invoiceDropdownOpen = !invoiceDropdownOpen"
+                                    class="accounts-field flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm dark:text-white normal-case"
+                                    :disabled="!supplierInvoiceOptions.length"
+                                    :aria-expanded="invoiceDropdownOpen">
+                                <span class="min-w-0 truncate"
+                                      :class="selectedInvoiceIds.length ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500'"
+                                      x-text="invoiceDropdownSummary"></span>
+                                <i class="fas fa-chevron-down shrink-0 text-xs text-slate-400 transition-transform"
+                                   :class="invoiceDropdownOpen ? 'rotate-180' : ''"></i>
+                            </button>
+                            <div x-show="invoiceDropdownOpen && supplierInvoiceOptions.length"
+                                 x-cloak
+                                 class="accounts-dropdown absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                                <div class="max-h-36 sm:max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                                    <template x-for="inv in supplierInvoiceOptions" :key="inv.id">
+                                        <label class="flex cursor-pointer items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                                            <input type="checkbox"
+                                                   class="h-4 w-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                   :checked="isPayInvoiceSelected(inv.id)"
+                                                   @change="togglePayInvoice(inv.id)" />
+                                            <span class="min-w-0 flex-1 text-sm font-medium text-slate-800 dark:text-slate-100 normal-case truncate"
                                                   x-text="invoiceOptionLabel(inv)"></span>
-                                            <span class="block text-[11px] text-slate-500 normal-case truncate"
-                                                  x-show="inv.item_name" x-text="inv.item_name"></span>
-                                        </span>
-                                        <span class="shrink-0 text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-400 whitespace-nowrap"
-                                              x-text="'KES ' + (inv.balance_due_display || '0.00')"></span>
-                                    </label>
-                                </template>
+                                        </label>
+                                    </template>
+                                </div>
+                            </div>
+                            <p class="mt-1 text-[11px] text-amber-600 dark:text-amber-400"
+                               x-show="selectedSupplier && !supplierInvoiceOptions.length" x-cloak>
+                                No outstanding invoices for this supplier.
+                            </p>
+                        </div>
+
+                        <input type="hidden" name="supplier_phone"
+                               :value="selectedSupplier && !String(selectedSupplier.phone_key || '').startsWith('__no_phone_') ? selectedSupplier.phone_key : ''" />
+
+                        <div class="pay-field-grid pay-field-grid--2">
+                            <div>
+                                <label for="pay_method" class="mb-1 block text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">Mode</label>
+                                <select name="payment_method" id="pay_method" required
+                                        x-model="paymentMethod"
+                                        @change="onPaymentMethodChange()"
+                                        class="accounts-field w-full rounded-lg border px-3 py-2 text-sm dark:text-white">
+                                    <option value="">Select</option>
+                                    <option value="Cash">Cash</option>
+                                    <option value="Cheque">Cheque</option>
+                                    <option value="Mobile Money">Mobile Money</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="pay_reference" class="mb-1 block text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">Reference</label>
+                                <input type="text" name="payment_reference" id="pay_reference" maxlength="255" required
+                                       x-model="paymentReference"
+                                       placeholder="Cheque / M-Pesa / receipt no."
+                                       class="accounts-field w-full rounded-lg border px-3 py-2 text-sm dark:text-white" />
                             </div>
                         </div>
-                        <p class="mt-2 text-sm font-medium text-slate-700 dark:text-slate-200 normal-case"
-                           x-show="selectedInvoiceIds.length" x-cloak>
-                            Selected total:
-                            <span class="tabular-nums text-teal-700 dark:text-teal-400" x-text="'KES ' + selectedInvoicesTotalDisplay"></span>
-                            <span class="text-slate-500 font-normal">
-                                (<span x-text="selectedInvoiceIds.length"></span> invoice<span x-show="selectedInvoiceIds.length !== 1">s</span>)
-                            </span>
-                        </p>
-                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="supplierInvoiceOptions.length">
-                            Open the list and tick invoices to pay. Delivery note — reference · balance. Amount defaults to the selected total; edit below to pay a partial amount.
-                        </p>
-                        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
-                           x-show="selectedSupplier && !supplierInvoiceOptions.length" x-cloak>
-                            No outstanding invoices found for this supplier. Refresh the page and try again.
-                        </p>
+
+                        <div class="pay-field-grid pay-field-grid--2">
+                            <div>
+                                <label for="pay_finance_account" class="mb-1 block text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">Pay from</label>
+                                <select name="finance_account_id" id="pay_finance_account" required
+                                        x-model="financeAccountId"
+                                        class="accounts-field w-full rounded-lg border px-3 py-2 text-sm dark:text-white">
+                                    <option value="">Select account</option>
+                                    <template x-for="acc in filteredFinanceAccounts" :key="acc.id">
+                                        <option :value="acc.id" x-text="accountOptionLabel(acc)"></option>
+                                    </template>
+                                </select>
+                                <p class="mt-1 text-[11px] text-amber-600 dark:text-amber-400"
+                                   x-show="paymentMethod && !filteredFinanceAccounts.length && financeAccounts.length">
+                                    No account for this mode.
+                                </p>
+                                <p class="mt-1 text-[11px] text-amber-600 dark:text-amber-400"
+                                   x-show="!financeAccounts.length">
+                                    No fund accounts available.
+                                </p>
+                            </div>
+                            <div>
+                                <label for="pay_expense_vote" class="mb-1 block text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">Expense vote</label>
+                                <select name="vote_name" id="pay_expense_vote" required
+                                        x-model="expenseVote"
+                                        :disabled="!financeAccountId"
+                                        class="accounts-field w-full rounded-lg border px-3 py-2 text-sm dark:text-white disabled:opacity-60">
+                                    <option value="">Select vote</option>
+                                    <template x-for="vote in expenseVoteOptions" :key="vote.name">
+                                        <option :value="vote.name"
+                                                x-text="vote.description ? (vote.name + ' — ' + vote.description) : vote.name"></option>
+                                    </template>
+                                </select>
+                                <p class="mt-1 text-[11px] text-amber-600 dark:text-amber-400"
+                                   x-show="financeAccountId && !expenseVoteOptions.length">
+                                    No votes for this account.
+                                    <a href="{{ employee_dash_url('revenue') }}?register=1"
+                                       class="font-semibold text-teal-700 dark:text-teal-400 hover:underline">Register revenue</a>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="pay-field-grid pay-field-grid--2">
+                            <div>
+                                <label for="pay_company_name" class="mb-1 block text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">Paid to</label>
+                                <input type="text" name="paid_to_company_name" id="pay_company_name" maxlength="255" required
+                                       x-model="paidToCompanyName"
+                                       @input="paidToCompanyName = ($event.target.value || '').toUpperCase()"
+                                       placeholder="Company name"
+                                       class="accounts-field w-full rounded-lg border px-3 py-2 text-sm uppercase dark:text-white" />
+                            </div>
+                            <div>
+                                <label for="pay_company_phone" class="mb-1 block text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">Phone</label>
+                                <input type="tel" name="paid_to_company_phone" id="pay_company_phone" required
+                                       x-model="paidToCompanyPhone"
+                                       placeholder="0712 345 678"
+                                       class="accounts-field w-full rounded-lg border px-3 py-2 text-sm dark:text-white" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="pay_amount" class="mb-1 block text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">Amount (KES)</label>
+                            <input type="number" name="amount_paid" id="pay_amount" min="0.01" step="0.01" required
+                                   x-model="amountPaid"
+                                   :placeholder="payAmountPlaceholder"
+                                   class="accounts-field w-full rounded-lg border px-3 py-2 text-sm tabular-nums dark:text-white" />
+                            <p class="mt-1 text-[11px] text-red-600 dark:text-red-400 font-semibold"
+                               x-show="payAmountExceedsBalance" x-cloak>
+                                Insufficient balance in selected account.
+                            </p>
+                        </div>
                     </div>
 
-                    <input type="hidden" name="supplier_phone"
-                           :value="selectedSupplier && !String(selectedSupplier.phone_key || '').startsWith('__no_phone_') ? selectedSupplier.phone_key : ''" />
-
-                    <div>
-                        <label for="pay_finance_account" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Pay from account</label>
-                        <select name="finance_account_id" id="pay_finance_account" required
-                                x-model="financeAccountId"
-                                class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
-                            <option value="">Select account</option>
-                            <template x-for="acc in filteredFinanceAccounts" :key="acc.id">
-                                <option :value="acc.id"
-                                        x-text="acc.account_name + ' (' + acc.account_category + ') — KES ' + acc.current_balance_display"></option>
-                            </template>
-                        </select>
-                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedFinanceAccount">
-                            Available balance:
-                            <span class="font-semibold tabular-nums text-teal-700 dark:text-teal-400"
-                                  x-text="'KES ' + (selectedFinanceAccount ? selectedFinanceAccount.current_balance_display : '0.00')"></span>
-                        </p>
-                        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
-                           x-show="paymentMethod && !filteredFinanceAccounts.length && financeAccounts.length">
-                            No bank or cash accounts match this payment mode. Income accounts are always listed when available.
-                        </p>
-                        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400 normal-case"
-                           x-show="!financeAccounts.length">
-                            No accounts available. Add an Income, Bank, or Cash account under Accounts.
-                        </p>
-                    </div>
-
-                    <div>
-                        <label for="pay_method" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Payment mode</label>
-                        <select name="payment_method" id="pay_method" required
-                                x-model="paymentMethod"
-                                @change="onPaymentMethodChange()"
-                                class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white">
-                            <option value="">Select mode</option>
-                            <option value="Cash">Cash</option>
-                            <option value="Cheque">Cheque</option>
-                            <option value="Mobile Money">Mobile Money</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label for="pay_reference" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Reference code</label>
-                        <input type="text" name="payment_reference" id="pay_reference" maxlength="255" required
-                               x-model="paymentReference"
-                               placeholder="Cheque no., M-Pesa code, receipt no., etc."
-                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
-                    </div>
-
-                    <div>
-                        <label for="pay_company_name" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company name paid to</label>
-                        <input type="text" name="paid_to_company_name" id="pay_company_name" maxlength="255" required
-                               x-model="paidToCompanyName"
-                               @input="paidToCompanyName = ($event.target.value || '').toUpperCase()"
-                               placeholder="SUPPLIER / COMPANY NAME"
-                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm uppercase dark:text-white" />
-                    </div>
-
-                    <div>
-                        <label for="pay_company_phone" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company number</label>
-                        <input type="tel" name="paid_to_company_phone" id="pay_company_phone" required
-                               x-model="paidToCompanyPhone"
-                               placeholder="e.g. 0712 345 678"
-                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
-                    </div>
-
-                    <div>
-                        <label for="pay_amount" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Amount paid (KES)</label>
-                        <input type="number" name="amount_paid" id="pay_amount" min="0.01" step="0.01" required
-                               x-model="amountPaid"
-                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
-                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedSupplier && selectedInvoiceIds.length">
-                            <span x-text="selectedInvoiceIds.length"></span> invoice(s) selected · balance
-                            <span class="font-semibold tabular-nums" x-text="'KES ' + selectedInvoicesTotalDisplay"></span>.
-                            Amount defaults to that total — edit to pay less.
-                        </p>
-                        <p class="mt-1 text-xs text-red-600 dark:text-red-400 font-semibold normal-case"
-                           x-show="payAmountExceedsBalance" x-cloak>
-                            Insufficient funds in the selected account. Reduce the amount or choose another account.
-                        </p>
-                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedRecord && !selectedSupplier">
-                            Maximum:
-                            <span class="font-semibold tabular-nums" x-text="selectedRecord.balance_due_display"></span>
-                        </p>
-                    </div>
-
-                    <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                    <div class="pay-settle-foot px-4 py-3 sm:px-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                         <button type="button" @click="closePay()"
-                                class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                                class="inline-flex justify-center rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
                             Cancel
                         </button>
                         <button type="submit"
                                 :disabled="paySubmitting || payAmountExceedsBalance || (selectedSupplier && !selectedInvoiceIds.length)"
-                                class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                                class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
                             <i class="fas fa-spinner fa-spin" x-show="paySubmitting"></i>
                             <i class="fas fa-check" x-show="!paySubmitting"></i>
                             <span x-text="paySubmitting ? 'Processing…' : 'Record payment'"></span>

@@ -28435,9 +28435,11 @@ def get_fee_items():
     try:
         with connection.cursor() as cursor:
             # Get distinct fee items from all fee structures
+            ensure_fee_items_vote_code_column(cursor)
             cursor.execute("""
                 SELECT DISTINCT 
-                    item_name, 
+                    item_name,
+                    vote_code,
                     item_description, 
                     amount
                 FROM fee_items
@@ -28448,11 +28450,20 @@ def get_fee_items():
             items = []
             if items_results:
                 for item in items_results:
-                    item_dict = {
-                        'item_name': item.get('item_name', '') if isinstance(item, dict) else item[0],
-                        'item_description': item.get('item_description', '') if isinstance(item, dict) else item[1],
-                        'amount': float(item.get('amount', 0)) if isinstance(item, dict) else float(item[2] if len(item) > 2 else 0)
-                    }
+                    if isinstance(item, dict):
+                        item_dict = {
+                            'item_name': item.get('item_name', ''),
+                            'vote_code': item.get('vote_code', '') or '',
+                            'item_description': item.get('item_description', ''),
+                            'amount': float(item.get('amount', 0)),
+                        }
+                    else:
+                        item_dict = {
+                            'item_name': item[0] if len(item) > 0 else '',
+                            'vote_code': item[1] if len(item) > 1 else '',
+                            'item_description': item[2] if len(item) > 2 else '',
+                            'amount': float(item[3] if len(item) > 3 else 0),
+                        }
                     items.append(item_dict)
             
             return jsonify({'success': True, 'items': items}), 200
@@ -28897,6 +28908,8 @@ def create_fee_structure():
         try:
             with connection.cursor() as cursor:
                 ensure_fee_structures_finance_account_column(cursor)
+                ensure_fee_items_vote_code_column(cursor)
+                ensure_student_fee_votes_vote_code_column(cursor)
 
                 ok_levels, levels_msg = _finance_account_accepts_levels(
                     cursor, finance_account_id, academic_level_ids
@@ -29016,18 +29029,20 @@ def create_fee_structure():
                     fee_structure_id = cursor.lastrowid
                     created_structure_ids.append(fee_structure_id)
 
+                    ensure_fee_items_vote_code_column(cursor)
                     items_inserted = 0
                     for index, item in enumerate(fee_items):
                         item_name = item.get('item_name', '').strip().upper()
+                        vote_code = item.get('vote_code', '').strip().upper()
                         item_description = item.get('item_description', '').strip().upper()
                         amount = float(item.get('amount', 0))
-                        if not item_name or not item_description or amount <= 0:
+                        if not item_name or not vote_code or not item_description or amount <= 0:
                             continue
                         cursor.execute("""
                             INSERT INTO fee_items 
-                            (fee_structure_id, item_name, item_description, amount, item_order)
-                            VALUES (%s, %s, %s, %s, %s)
-                        """, (fee_structure_id, item_name, item_description, amount, index))
+                            (fee_structure_id, item_name, vote_code, item_description, amount, item_order)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (fee_structure_id, item_name, vote_code, item_description, amount, index))
                         items_inserted += 1
                     total_items_inserted += items_inserted
                     _sync_student_fee_votes_for_structure(cursor, fee_structure_id)
@@ -29037,7 +29052,7 @@ def create_fee_structure():
                     connection.rollback()
                     return jsonify({
                         'success': False, 
-                        'message': 'No valid votes were provided. Please ensure all votes have a name, description, and amount greater than 0.'
+                        'message': 'No valid votes were provided. Please ensure all votes have a name, code, description, and amount greater than 0.'
                     }), 400
                 
                 connection.commit()
@@ -29099,6 +29114,8 @@ def fee_structures():
             with connection.cursor() as cursor:
                 ensure_fee_structures_finance_account_column(cursor)
                 ensure_student_fee_votes_table(cursor)
+                ensure_fee_items_vote_code_column(cursor)
+                ensure_student_fee_votes_vote_code_column(cursor)
                 finance_accounts_picker = _fetch_finance_accounts_for_fee_structure_picker(cursor)
 
                 # Fetch all fee structures with academic level and academic year info
@@ -29124,7 +29141,7 @@ def fee_structures():
                 for row in structures:
                     # Fetch fee items for this structure
                     cursor.execute("""
-                        SELECT id, item_name, item_description, amount, item_order
+                        SELECT id, item_name, vote_code, item_description, amount, item_order
                         FROM fee_items
                         WHERE fee_structure_id = %s
                         ORDER BY item_order ASC
@@ -29194,6 +29211,7 @@ def fee_structures():
                         'items': [{
                             'id': item.get('id'),
                             'item_name': item.get('item_name', ''),
+                            'vote_code': item.get('vote_code', '') or '',
                             'item_description': item.get('item_description', ''),
                             'amount': float(item.get('amount', 0))
                         } for item in items]
@@ -30818,6 +30836,8 @@ def update_fee_structure(structure_id):
         try:
             with connection.cursor() as cursor:
                 ensure_fee_structures_finance_account_column(cursor)
+                ensure_fee_items_vote_code_column(cursor)
+                ensure_student_fee_votes_vote_code_column(cursor)
 
                 ok_levels, levels_msg = _finance_account_accepts_levels(
                     cursor, finance_account_id, academic_level_ids
@@ -31011,6 +31031,218 @@ def update_fee_structure(structure_id):
         print(f"Error in update_fee_structure: {e}")
         return jsonify({'success': False, 'message': 'An error occurred'}), 500
 
+
+def _finance_delete_verification_target_key(action, target_parts):
+    """Stable session key tying a verification code to one delete target."""
+    if action == 'finance_account':
+        return f'account:{int(target_parts[0])}'
+    if action == 'fee_structure':
+        ids = sorted({int(x) for x in target_parts if int(x) > 0})
+        return 'fee_structure:' + ','.join(str(i) for i in ids)
+    return ''
+
+
+def _resolve_session_verification_email(cursor):
+    """Email and display name for the logged-in user."""
+    email = normalize_login_email(session.get('email') or '')
+    name = (session.get('full_name') or '').strip() or 'User'
+    if email:
+        return email, name
+
+    employee_id = session.get('employee_id') or session.get('user_id')
+    if employee_id:
+        cursor.execute(
+            """
+            SELECT full_name, email
+            FROM employees
+            WHERE id = %s OR employee_id = %s
+            LIMIT 1
+            """,
+            (employee_id, employee_id),
+        )
+        row = cursor.fetchone()
+        if row:
+            if isinstance(row, dict):
+                name = (row.get('full_name') or '').strip() or name
+                email = normalize_login_email(row.get('email') or '')
+            else:
+                name = (row[0] or '').strip() if len(row) > 0 else name
+                email = normalize_login_email(row[1] or '') if len(row) > 1 else ''
+    return email, name
+
+
+def send_finance_delete_verification_email(to_email, recipient_name, verification_code, action_label):
+    """Send 6-digit confirmation code before deleting finance data."""
+    try:
+        if not apply_mail_config_from_env_and_integration():
+            print("Finance delete code: SMTP not configured.")
+            return False
+        settings = get_school_settings()
+        school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'School').strip() or 'School'
+        safe_name = (recipient_name or 'there').strip() or 'there'
+        label = (action_label or 'this record').strip() or 'this record'
+        subject = f"{school_name} — Delete confirmation code"
+        html_body = f"""
+        <!DOCTYPE html>
+        <html><head><meta charset="UTF-8"></head>
+        <body style="font-family:system-ui,sans-serif;line-height:1.6;color:#333;max-width:560px;margin:0 auto;padding:24px;">
+            <p>Hello {safe_name},</p>
+            <p>You requested to permanently delete {label}.</p>
+            <p>Use this 6-digit code to confirm:</p>
+            <p style="font-size:28px;font-weight:700;letter-spacing:0.2em;color:#1e293b;">{verification_code}</p>
+            <p style="color:#64748b;font-size:14px;">This code expires in 10 minutes. If this wasn't you, ignore this email.</p>
+            <p style="margin-top:24px;font-size:13px;color:#94a3b8;">{school_name}</p>
+        </body></html>
+        """
+        text_body = (
+            f"Hello {safe_name},\n\n"
+            f"You requested to permanently delete {label}.\n\n"
+            f"Confirmation code: {verification_code}\n\n"
+            f"This code expires in 10 minutes. If you didn't request this, ignore it.\n\n{school_name}\n"
+        )
+        msg = Message(subject=subject, recipients=[to_email], html=html_body, body=text_body)
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"Error sending finance delete verification email: {e}")
+        return False
+
+
+def _issue_finance_delete_verification_code(cursor, action, target_key, action_label):
+    """Create session-bound delete code and email it to the logged-in user."""
+    recipient_email, recipient_name = _resolve_session_verification_email(cursor)
+    if not recipient_email:
+        return False, 'Your account has no email configured to receive the confirmation code.', None
+
+    code = ''.join(secrets.choice('0123456789') for _ in range(6))
+    session['finance_delete_verification'] = {
+        'action': action,
+        'target_key': target_key,
+        'code_hash': generate_password_hash(code),
+        'requested_by': session.get('employee_id') or session.get('user_id'),
+        'expires_at': (datetime.utcnow() + timedelta(minutes=10)).isoformat(),
+    }
+    session.modified = True
+
+    sent = send_finance_delete_verification_email(
+        recipient_email, recipient_name, code, action_label,
+    )
+    if not sent:
+        return True, (
+            'Email delivery is currently unavailable. Use the code shown on screen to continue.'
+        ), code
+    return True, f'Confirmation code sent to {recipient_email}.', None
+
+
+def _validate_finance_delete_verification_code(action, target_key, confirmation_code):
+    """Validate emailed delete confirmation code for the current session."""
+    code = str(confirmation_code or '').strip().replace(' ', '')
+    if not code:
+        return False, 'Enter the 6-digit confirmation code sent to your email.'
+    if (not code.isdigit()) or len(code) != 6:
+        return False, 'Enter a valid 6-digit confirmation code.'
+
+    pending = session.get('finance_delete_verification') or {}
+    expires_at_str = str(pending.get('expires_at') or '').strip()
+    try:
+        expires_at = datetime.fromisoformat(expires_at_str) if expires_at_str else None
+    except Exception:
+        expires_at = None
+    is_expired = (expires_at is None) or (datetime.utcnow() > expires_at)
+    pending_matches = (
+        pending.get('action') == action and
+        pending.get('target_key') == target_key
+    )
+    if not pending_matches or is_expired:
+        return False, 'Your confirmation session is missing or expired. Request a new 6-digit code.'
+
+    pending_code_hash = str(pending.get('code_hash') or '')
+    code_ok = False
+    try:
+        code_ok = bool(pending_code_hash) and check_password_hash(pending_code_hash, code)
+    except Exception:
+        code_ok = False
+    if not code_ok:
+        return False, 'Invalid confirmation code.'
+
+    requested_by = pending.get('requested_by')
+    current_user = session.get('employee_id') or session.get('user_id')
+    if requested_by and current_user and str(requested_by) != str(current_user):
+        return False, 'Confirmation code was issued to another user session.'
+
+    session.pop('finance_delete_verification', None)
+    session.modified = True
+    return True, ''
+
+
+@app.route('/dashboard/employee/student-fees/fee-structure/<int:structure_id>/delete/request-code', methods=['POST'])
+@login_required
+def request_fee_structure_delete_code(structure_id):
+    """Email a 6-digit code before deleting a fee structure."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    has_delete_fee_structure_permission = check_permission_or_role(
+        'delete_fee_structure', ['accountant', 'head of institution'],
+    )
+    has_manage_fees_permission = check_permission_or_role(
+        'manage_fees', ['accountant', 'head of institution'],
+    )
+    if not (is_technician or has_delete_fee_structure_permission or has_manage_fees_permission):
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            data = request.get_json(silent=True) or {}
+            requested_ids = data.get('structure_ids')
+            batch_ids = []
+            if isinstance(requested_ids, (list, tuple)) and requested_ids:
+                try:
+                    batch_ids = sorted({int(x) for x in requested_ids if int(x) > 0})
+                except (TypeError, ValueError):
+                    batch_ids = []
+            if not batch_ids:
+                batch_ids = _fetch_fee_structure_batch_ids_for_delete(cursor, structure_id)
+            if not batch_ids:
+                return jsonify({'success': False, 'message': 'Fee structure not found.'}), 404
+
+            cursor.execute(
+                "SELECT fee_name FROM fee_structures WHERE id = %s LIMIT 1",
+                (structure_id,),
+            )
+            row = cursor.fetchone()
+            fee_name = (
+                (row.get('fee_name') or '').strip()
+                if isinstance(row, dict) else (row[0] or '').strip()
+            ) if row else 'Fee structure'
+            if not fee_name:
+                fee_name = 'Fee structure'
+
+            target_key = _finance_delete_verification_target_key('fee_structure', batch_ids)
+            ok, message, dev_code = _issue_finance_delete_verification_code(
+                cursor,
+                'fee_structure',
+                target_key,
+                f'fee structure "{fee_name}"',
+            )
+            if not ok:
+                return jsonify({'success': False, 'message': message}), 400
+            payload = {'success': True, 'message': message}
+            if dev_code:
+                payload['delivery'] = 'onscreen'
+                payload['dev_code'] = dev_code
+            return jsonify(payload), 200
+    except Exception as e:
+        print(f"request_fee_structure_delete_code: {e}")
+        return jsonify({'success': False, 'message': 'Could not send confirmation code.'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/dashboard/employee/student-fees/fee-structure/<int:structure_id>/delete', methods=['POST'])
 @login_required
 def delete_fee_structure(structure_id):
@@ -31036,10 +31268,72 @@ def delete_fee_structure(structure_id):
     
     try:
         with connection.cursor() as cursor:
-            # Delete fee structure (cascade will delete items)
-            cursor.execute("DELETE FROM fee_structures WHERE id = %s", (structure_id,))
+            data = request.get_json(silent=True) or {}
+            requested_ids = data.get('structure_ids')
+            batch_ids = []
+            if isinstance(requested_ids, (list, tuple)) and requested_ids:
+                try:
+                    batch_ids = sorted({
+                        int(x) for x in requested_ids if int(x) > 0
+                    })
+                except (TypeError, ValueError):
+                    batch_ids = []
+            if not batch_ids:
+                batch_ids = _fetch_fee_structure_batch_ids_for_delete(cursor, structure_id)
+            if batch_ids:
+                placeholders = ','.join(['%s'] * len(batch_ids))
+                cursor.execute(
+                    f"SELECT id FROM fee_structures WHERE id IN ({placeholders})",
+                    tuple(batch_ids),
+                )
+                batch_ids = []
+                for row in cursor.fetchall() or []:
+                    rid = row.get('id') if isinstance(row, dict) else row[0]
+                    if rid is not None:
+                        batch_ids.append(int(rid))
+            if not batch_ids:
+                return jsonify({'success': False, 'message': 'Fee structure not found.'}), 404
+
+            cursor.execute(
+                "SELECT fee_name FROM fee_structures WHERE id = %s LIMIT 1",
+                (structure_id,),
+            )
+            row = cursor.fetchone()
+            fee_name = (
+                (row.get('fee_name') or '').strip()
+                if isinstance(row, dict) else (row[0] or '').strip()
+            ) if row else 'Fee structure'
+            if not fee_name:
+                fee_name = 'Fee structure'
+
+            target_key = _finance_delete_verification_target_key('fee_structure', batch_ids)
+            confirmation_code = data.get('confirmation_code')
+            code_ok, code_message = _validate_finance_delete_verification_code(
+                'fee_structure', target_key, confirmation_code,
+            )
+            if not code_ok:
+                return jsonify({'success': False, 'message': code_message}), 401
+
+            total_payments = 0
+            for sid in batch_ids:
+                purged = _purge_fee_structure_fee_transactions(cursor, sid)
+                total_payments += int(purged.get('payments') or 0)
+                cursor.execute("DELETE FROM fee_structures WHERE id = %s", (sid,))
+
             connection.commit()
-            return jsonify({'success': True, 'message': 'Fee structure deleted successfully'}), 200
+
+            level_note = ''
+            if len(batch_ids) > 1:
+                level_note = f' ({len(batch_ids)} class levels)'
+
+            if total_payments:
+                message = (
+                    f'Fee structure "{fee_name}"{level_note} deleted with '
+                    f'{total_payments} student payment(s) and related ledger entries.'
+                )
+            else:
+                message = f'Fee structure "{fee_name}"{level_note} deleted successfully.'
+            return jsonify({'success': True, 'message': message}), 200
     except Exception as e:
         connection.rollback()
         print(f"Error deleting fee structure: {e}")
@@ -50450,6 +50744,7 @@ def ensure_store_stock_in_payment_lines_table(cursor):
             "ADD COLUMN payment_method VARCHAR(50) NULL AFTER paid_by_name",
             "ADD COLUMN finance_account_id INT NULL AFTER payment_method",
             "ADD COLUMN payment_reference VARCHAR(255) NULL AFTER finance_account_id",
+            "ADD COLUMN vote_name VARCHAR(255) NULL AFTER payment_reference",
         ):
             col_name = col_sql.split('ADD COLUMN ')[1].split()[0]
             try:
@@ -50585,6 +50880,233 @@ def ensure_finance_account_expense_votes_table(cursor):
         _finance_account_expense_votes_schema_ensuring = False
 
 
+_finance_account_revenue_votes_schema_ensuring = False
+
+
+def ensure_finance_account_revenue_votes_table(cursor):
+    """Canonical revenue vote definitions per finance account (structure only, no amounts)."""
+    global _finance_account_revenue_votes_schema_ensuring
+    if _finance_account_revenue_votes_schema_ensuring:
+        return
+    _finance_account_revenue_votes_schema_ensuring = True
+    try:
+        ensure_finance_accounts_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS finance_account_revenue_votes (
+                finance_account_id INT NOT NULL,
+                vote_name VARCHAR(255) NOT NULL,
+                vote_code VARCHAR(32) NOT NULL,
+                item_description TEXT NOT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (finance_account_id, vote_name),
+                UNIQUE KEY uq_far_votes_code (finance_account_id, vote_code),
+                INDEX idx_far_votes_account (finance_account_id),
+                FOREIGN KEY (finance_account_id) REFERENCES finance_accounts(id) ON DELETE CASCADE
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_finance_account_revenue_votes_table: {e}")
+    finally:
+        _finance_account_revenue_votes_schema_ensuring = False
+
+
+def _derive_revenue_vote_code_from_name(name):
+    """Fallback vote code when legacy revenue rows have no code."""
+    name = (name or '').strip().upper()
+    if not name:
+        return 'VOTE'
+    parts = [p for p in re.split(r'[^A-Z0-9]+', name) if p]
+    if len(parts) >= 2:
+        code = ''.join(p[0] for p in parts[:6])
+        if len(code) >= 2:
+            return code[:32]
+    compact = re.sub(r'[^A-Z0-9]+', '', name)
+    return (compact[:8] if compact else name[:8])[:32]
+
+
+def _merge_revenue_line_items_by_vote(line_items):
+    """Combine duplicate vote rows in one submission (same vote name sums amounts)."""
+    by_name = {}
+    order = []
+    for item in line_items or []:
+        name = (item.get('item_name') or '').strip().upper()
+        vote_code = (item.get('vote_code') or '').strip().upper()
+        item_description = (item.get('item_description') or '').strip().upper()
+        try:
+            amt = round(float(item.get('amount') or 0), 2)
+        except (TypeError, ValueError):
+            amt = 0
+        if not name or not vote_code or not item_description or amt <= 0:
+            continue
+        if name not in by_name:
+            by_name[name] = {
+                'item_name': name[:255],
+                'vote_code': vote_code[:32],
+                'item_description': item_description,
+                'amount': amt,
+            }
+            order.append(name)
+            continue
+        existing = by_name[name]
+        existing['amount'] = round(float(existing['amount'] or 0) + amt, 2)
+        if vote_code:
+            existing['vote_code'] = vote_code[:32]
+        if item_description:
+            existing['item_description'] = item_description
+    return [by_name[key] for key in order]
+
+
+def _check_revenue_vote_code_collisions(line_items):
+    """Reject when the same vote code is used for different vote names."""
+    code_to_name = {}
+    for item in line_items or []:
+        name = (item.get('item_name') or '').strip().upper()
+        vote_code = (item.get('vote_code') or '').strip().upper()
+        if not name or not vote_code:
+            continue
+        prior = code_to_name.get(vote_code)
+        if prior and prior != name:
+            return False, (
+                f'Vote code {vote_code} is already used for {prior}. '
+                'Each vote code must belong to one vote only.'
+            )
+        code_to_name[vote_code] = name
+    return True, None
+
+
+def _fetch_canonical_revenue_votes_for_account(cursor, account_id):
+    """Saved vote definitions for a finance account (no amounts)."""
+    ensure_finance_account_revenue_votes_table(cursor)
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return []
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT vote_name, vote_code, item_description, sort_order
+            FROM finance_account_revenue_votes
+            WHERE finance_account_id = %s
+            ORDER BY sort_order ASC, vote_name ASC
+            """,
+            (account_id,),
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                name = (r.get('vote_name') or '').strip()
+                code = (r.get('vote_code') or '').strip()
+                desc = (r.get('item_description') or '').strip()
+            else:
+                name = (r[0] or '').strip()
+                code = (r[1] or '').strip() if len(r) > 1 else ''
+                desc = (r[2] or '').strip() if len(r) > 2 else ''
+            if not name or not code or not desc:
+                continue
+            rows.append({
+                'item_name': name.upper(),
+                'vote_code': code.upper(),
+                'item_description': desc.upper(),
+            })
+    except Exception as e:
+        print(f"_fetch_canonical_revenue_votes_for_account: {e}")
+    return rows
+
+
+def _seed_finance_account_revenue_votes_from_latest_entry(cursor, account_id):
+    """Backfill canonical votes from the latest revenue registration for an account."""
+    ensure_accountant_revenue_table(cursor)
+    ensure_accountant_revenue_finance_account_column(cursor)
+    ensure_accountant_revenue_items_table(cursor)
+    ensure_accountant_revenue_items_vote_columns(cursor)
+    ensure_finance_account_revenue_votes_table(cursor)
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return []
+    latest_id = None
+    try:
+        cursor.execute(
+            """
+            SELECT id FROM accountant_revenue
+            WHERE finance_account_id = %s
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (account_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            latest_id = int(row.get('id') if isinstance(row, dict) else row[0])
+    except Exception as e:
+        print(f"_seed_finance_account_revenue_votes_from_latest_entry lookup: {e}")
+        return []
+    if not latest_id:
+        return []
+    by_id = _fetch_revenue_line_items_by_revenue_ids(cursor, [latest_id])
+    raw_items = by_id.get(latest_id) or []
+    merged = _merge_revenue_line_items_by_vote([
+        {
+            'item_name': (i.get('item_name') or '').strip().upper(),
+            'vote_code': (
+                (i.get('vote_code') or '').strip().upper()
+                or _derive_revenue_vote_code_from_name(i.get('item_name'))
+            ),
+            'item_description': (
+                (i.get('item_description') or '').strip().upper()
+                or (i.get('item_name') or '').strip().upper()
+            ),
+            'amount': float(i.get('amount') or 0),
+        }
+        for i in raw_items
+    ])
+    if not merged:
+        return []
+    _sync_finance_account_revenue_vote_template(cursor, account_id, merged)
+    return _fetch_canonical_revenue_votes_for_account(cursor, account_id)
+
+
+def _sync_finance_account_revenue_vote_template(cursor, account_id, line_items):
+    """Replace canonical vote definitions for an account from a successful registration."""
+    ensure_finance_account_revenue_votes_table(cursor)
+    account_id = int(account_id)
+    merged = _merge_revenue_line_items_by_vote(line_items or [])
+    cursor.execute(
+        'DELETE FROM finance_account_revenue_votes WHERE finance_account_id = %s',
+        (account_id,),
+    )
+    for idx, item in enumerate(merged):
+        name = (item.get('item_name') or '').strip().upper()
+        vote_code = (item.get('vote_code') or '').strip().upper()
+        item_description = (item.get('item_description') or '').strip().upper()
+        if not name or not vote_code or not item_description:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO finance_account_revenue_votes
+                (finance_account_id, vote_name, vote_code, item_description, sort_order)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (account_id, name[:255], vote_code[:32], item_description, int(idx)),
+        )
+
+
+def _fetch_finance_account_revenue_vote_template(cursor, account_id):
+    """Vote structure for new revenue entry — definitions only, never historical amounts."""
+    rows = _fetch_canonical_revenue_votes_for_account(cursor, account_id)
+    if rows:
+        return rows
+    return _seed_finance_account_revenue_votes_from_latest_entry(cursor, account_id)
+
+
+def _ensure_finance_account_revenue_votes_ready(cursor, account_id):
+    """Ensure canonical votes exist for an account before reads."""
+    rows = _fetch_canonical_revenue_votes_for_account(cursor, account_id)
+    if rows:
+        return rows
+    return _seed_finance_account_revenue_votes_from_latest_entry(cursor, account_id)
+
+
 def _parse_expense_vote_names_from_form(form):
     """Parse expense_vote_names[] from POST (unique uppercase vote names)."""
     raw = form.getlist('expense_vote_names') if form else []
@@ -50653,6 +51175,144 @@ def _fetch_finance_account_expense_votes_map(cursor, account_ids):
     except Exception as e:
         print(f"_fetch_finance_account_expense_votes_map: {e}")
     return out
+
+
+def _fetch_finance_account_revenue_vote_names_map(cursor, account_ids):
+    """Map finance_account_id -> distinct canonical revenue vote names."""
+    ensure_finance_account_revenue_votes_table(cursor)
+    out = {int(aid): [] for aid in (account_ids or []) if aid is not None}
+    ids = [int(a) for a in (account_ids or []) if a is not None]
+    if not ids:
+        return out
+    for aid in ids:
+        rows = _ensure_finance_account_revenue_votes_ready(cursor, aid)
+        out[aid] = [(r.get('item_name') or '').strip().upper() for r in rows if r.get('item_name')]
+    return out
+
+
+def _fetch_finance_account_disbursement_votes_map(cursor, account_ids):
+    """Votes available when paying from an account (manual links, revenue, fee items)."""
+    manual = _fetch_finance_account_expense_votes_map(cursor, account_ids)
+    revenue = _fetch_finance_account_revenue_vote_names_map(cursor, account_ids)
+    ids = [int(a) for a in (account_ids or []) if a is not None]
+    out = {}
+    for aid in ids:
+        seen = set()
+        merged = []
+        for bucket in (
+            manual.get(aid) or [],
+            revenue.get(aid) or [],
+            _fetch_account_fee_vote_names_for_cash_book(cursor, aid),
+        ):
+            for vote in bucket:
+                key = str(vote or '').strip().upper()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                merged.append(key)
+        out[aid] = merged
+    return out
+
+
+def _fetch_revenue_expense_picker_votes(cursor):
+    """Distinct canonical revenue votes with descriptions for expense pickers."""
+    ensure_finance_account_revenue_votes_table(cursor)
+    ensure_accountant_revenue_table(cursor)
+    ensure_accountant_revenue_finance_account_column(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT DISTINCT finance_account_id
+            FROM accountant_revenue
+            WHERE finance_account_id IS NOT NULL
+            """
+        )
+        for row in cursor.fetchall() or []:
+            aid = row.get('finance_account_id') if isinstance(row, dict) else row[0]
+            if aid is not None:
+                _ensure_finance_account_revenue_votes_ready(cursor, int(aid))
+    except Exception as e:
+        print(f"_fetch_revenue_expense_picker_votes backfill: {e}")
+    votes = []
+    seen = set()
+    try:
+        cursor.execute(
+            """
+            SELECT vote_name, vote_code, item_description
+            FROM finance_account_revenue_votes
+            ORDER BY finance_account_id ASC, sort_order ASC, vote_name ASC
+            """
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                name = (r.get('vote_name') or '').strip()
+                desc = (r.get('item_description') or '').strip() or None
+            else:
+                name = (r[0] or '').strip()
+                desc = (r[2] or '').strip() or None if len(r) > 2 else None
+            key = name.upper()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            votes.append({
+                'name': key,
+                'description': desc,
+                'label': name,
+            })
+    except Exception as e:
+        print(f"_fetch_revenue_expense_picker_votes: {e}")
+    return votes
+
+
+def _merge_expense_picker_votes(base_votes, extra_votes):
+    """Merge vote picker lists by uppercase name."""
+    out = list(base_votes or [])
+    seen = {
+        str(v.get('name') or '').upper()
+        for v in out
+        if isinstance(v, dict) and str(v.get('name') or '').strip()
+    }
+    for v in extra_votes or []:
+        if not isinstance(v, dict):
+            continue
+        key = str(v.get('name') or '').upper()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(v)
+    out.sort(key=lambda item: str(item.get('name') or '').lower())
+    return out
+
+
+def _fetch_payments_expense_picker_votes(cursor):
+    """Store categories plus revenue-registered votes for payment expense pickers."""
+    return _merge_expense_picker_votes(
+        _fetch_store_expense_category_picker_votes(cursor),
+        _fetch_revenue_expense_picker_votes(cursor),
+    )
+
+
+def _validate_expense_vote_for_finance_account(cursor, finance_account_id, vote_name):
+    """Ensure vote_name is linked to the paying finance account."""
+    vote_name = (vote_name or '').strip().upper()
+    if not vote_name:
+        return False, 'Select the expense vote to charge.'
+    try:
+        fid = int(finance_account_id)
+    except (TypeError, ValueError):
+        return False, 'Select the account to pay from.'
+    allowed = _fetch_finance_account_disbursement_votes_map(cursor, [fid]).get(fid, [])
+    allowed_set = {str(v).strip().upper() for v in (allowed or []) if str(v).strip()}
+    if not allowed_set:
+        return False, (
+            'This account has no expense votes. '
+            'Register revenue for this account first.'
+        )
+    if vote_name not in allowed_set:
+        return False, 'Select an expense vote linked to the paying account.'
+    if not _is_valid_store_expense_category(cursor, vote_name, extra_allowed=allowed):
+        return False, 'Select a valid expense vote from the list.'
+    return True, vote_name
 
 
 def _generate_petty_cash_expense_reference(cursor):
@@ -50926,7 +51586,7 @@ def _record_petty_cash_expense(cursor, form, recorded_by_name=None):
     ensure_finance_accounts_table(cursor)
     cursor.execute(
         """
-        SELECT id, account_name, account_category, account_status
+        SELECT id, account_name, account_category, account_status, account_description
         FROM finance_accounts WHERE id = %s LIMIT 1
         """,
         (int(finance_account_id),),
@@ -50935,15 +51595,21 @@ def _record_petty_cash_expense(cursor, form, recorded_by_name=None):
     if not acct_row:
         return False, 'Petty cash account not found.'
     if isinstance(acct_row, dict):
-        acct_cat = (acct_row.get('account_category') or '').strip().lower()
+        acct_cat = (acct_row.get('account_category') or '').strip()
         acct_name = (acct_row.get('account_name') or '').strip()
         acct_status = (acct_row.get('account_status') or 'active').strip().lower()
+        acct_desc = (acct_row.get('account_description') or '').strip()
     else:
-        acct_cat = (acct_row[2] or '').strip().lower() if len(acct_row) > 2 else ''
+        acct_cat = (acct_row[2] or '').strip() if len(acct_row) > 2 else ''
         acct_name = (acct_row[1] or '').strip() if len(acct_row) > 1 else ''
         acct_status = (acct_row[3] or 'active').strip().lower() if len(acct_row) > 3 else 'active'
-    if acct_cat != 'petty cash':
-        return False, 'Payments from this page must use a Petty cash account.'
+        acct_desc = (acct_row[4] or '').strip() if len(acct_row) > 4 else ''
+    if not _finance_account_is_petty_cash_ledger(acct_cat, acct_name, acct_desc):
+        votes_map = _fetch_finance_account_expense_votes_map(
+            cursor, [int(finance_account_id)],
+        )
+        if not (votes_map.get(int(finance_account_id)) or []):
+            return False, 'Payments from this page must use a Petty cash account.'
     if acct_status != 'active':
         return False, 'That petty cash account is not active.'
 
@@ -51618,6 +52284,8 @@ def ensure_accountant_revenue_items_table(cursor):
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 revenue_id INT NOT NULL,
                 item_name VARCHAR(255) NOT NULL,
+                vote_code VARCHAR(32) NULL,
+                item_description TEXT NULL,
                 amount DECIMAL(14, 2) NOT NULL,
                 item_order INT NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -51629,6 +52297,25 @@ def ensure_accountant_revenue_items_table(cursor):
         print(f"ensure_accountant_revenue_items_table: {e}")
     finally:
         _accountant_revenue_items_schema_ensuring = False
+
+
+def ensure_accountant_revenue_items_vote_columns(cursor):
+    """Vote code and description on revenue distribution line items."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM accountant_revenue_items LIKE 'vote_code'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "ALTER TABLE accountant_revenue_items ADD COLUMN vote_code VARCHAR(32) NULL "
+                "AFTER item_name"
+            )
+        cursor.execute("SHOW COLUMNS FROM accountant_revenue_items LIKE 'item_description'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "ALTER TABLE accountant_revenue_items ADD COLUMN item_description TEXT NULL "
+                "AFTER vote_code"
+            )
+    except Exception as e:
+        print(f"ensure_accountant_revenue_items_vote_columns: {e}")
 
 
 def _parse_revenue_line_items_payload(raw):
@@ -51653,7 +52340,13 @@ def _parse_revenue_line_items_payload(raw):
             continue
         name = (
             entry.get('item_name') or entry.get('itemName') or ''
-        ).strip()
+        ).strip().upper()
+        vote_code = (
+            entry.get('vote_code') or entry.get('voteCode') or ''
+        ).strip().upper()
+        item_description = (
+            entry.get('item_description') or entry.get('itemDescription') or ''
+        ).strip().upper()
         raw_amt = entry.get('amount')
         if raw_amt is None or raw_amt == '':
             continue
@@ -51661,10 +52354,12 @@ def _parse_revenue_line_items_payload(raw):
             amt = float(str(raw_amt).replace(',', '').strip())
         except (TypeError, ValueError):
             continue
-        if not name or amt <= 0:
+        if not name or not vote_code or not item_description or amt <= 0:
             continue
         items.append({
             'item_name': name[:255],
+            'vote_code': vote_code[:32],
+            'item_description': item_description,
             'amount': round(amt, 2),
         })
     return items
@@ -51674,8 +52369,13 @@ def _validate_revenue_line_items(line_items, total_amount):
     """Ensure breakdown lines exist and sum to the declared total."""
     from decimal import Decimal, InvalidOperation
 
+    line_items = _merge_revenue_line_items_by_vote(line_items or [])
+    ok_codes, code_err = _check_revenue_vote_code_collisions(line_items)
+    if not ok_codes:
+        return False, code_err, []
+
     if not line_items:
-        return False, 'Add at least one distribution line (item and amount).', []
+        return False, 'Add at least one vote with a name, code, description, and amount.', []
     total = Decimal(str(total_amount)).quantize(Decimal('0.01'))
     items_sum = Decimal('0')
     normalized = []
@@ -51684,13 +52384,20 @@ def _validate_revenue_line_items(line_items, total_amount):
             amt = Decimal(str(item.get('amount') or 0)).quantize(Decimal('0.01'))
         except (InvalidOperation, TypeError, ValueError):
             continue
-        name = (item.get('item_name') or '').strip()
-        if not name or amt <= 0:
+        name = (item.get('item_name') or '').strip().upper()
+        vote_code = (item.get('vote_code') or '').strip().upper()
+        item_description = (item.get('item_description') or '').strip().upper()
+        if not name or not vote_code or not item_description or amt <= 0:
             continue
-        normalized.append({'item_name': name[:255], 'amount': float(amt)})
+        normalized.append({
+            'item_name': name[:255],
+            'vote_code': vote_code[:32],
+            'item_description': item_description,
+            'amount': float(amt),
+        })
         items_sum += amt
     if not normalized:
-        return False, 'Add at least one distribution line (item and amount).', []
+        return False, 'Add at least one vote with a name, code, description, and amount.', []
     diff = total - items_sum
     if abs(diff) > Decimal('0.01'):
         if diff > 0:
@@ -51710,6 +52417,7 @@ def _validate_revenue_line_items(line_items, total_amount):
 def _replace_accountant_revenue_items(cursor, revenue_id, line_items):
     """Replace all distribution lines for a revenue entry."""
     ensure_accountant_revenue_items_table(cursor)
+    ensure_accountant_revenue_items_vote_columns(cursor)
     rid = int(revenue_id)
     cursor.execute(
         'DELETE FROM accountant_revenue_items WHERE revenue_id = %s',
@@ -51717,20 +52425,22 @@ def _replace_accountant_revenue_items(cursor, revenue_id, line_items):
     )
     inserted = 0
     for index, item in enumerate(line_items or []):
-        name = (item.get('item_name') or '').strip()
+        name = (item.get('item_name') or '').strip().upper()
+        vote_code = (item.get('vote_code') or '').strip().upper()
+        item_description = (item.get('item_description') or '').strip().upper()
         try:
             amt = float(item.get('amount') or 0)
         except (TypeError, ValueError):
             amt = 0
-        if not name or amt <= 0:
+        if not name or not vote_code or not item_description or amt <= 0:
             continue
         cursor.execute(
             """
             INSERT INTO accountant_revenue_items
-                (revenue_id, item_name, amount, item_order)
-            VALUES (%s, %s, %s, %s)
+                (revenue_id, item_name, vote_code, item_description, amount, item_order)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (rid, name[:255], round(amt, 2), index),
+            (rid, name[:255], vote_code[:32], item_description, round(amt, 2), index),
         )
         inserted += 1
     return inserted
@@ -51742,12 +52452,13 @@ def _fetch_revenue_line_items_by_revenue_ids(cursor, revenue_ids):
     if not ids:
         return {}
     ensure_accountant_revenue_items_table(cursor)
+    ensure_accountant_revenue_items_vote_columns(cursor)
     placeholders = ','.join(['%s'] * len(ids))
     by_id = {i: [] for i in ids}
     try:
         cursor.execute(
             f"""
-            SELECT revenue_id, item_name, amount, item_order
+            SELECT revenue_id, item_name, vote_code, item_description, amount, item_order
             FROM accountant_revenue_items
             WHERE revenue_id IN ({placeholders})
             ORDER BY revenue_id, item_order, id
@@ -51758,15 +52469,21 @@ def _fetch_revenue_line_items_by_revenue_ids(cursor, revenue_ids):
             if isinstance(row, dict):
                 rid = int(row.get('revenue_id') or 0)
                 name = (row.get('item_name') or '').strip()
+                vote_code = (row.get('vote_code') or '').strip()
+                item_description = (row.get('item_description') or '').strip()
                 amt = float(row.get('amount') or 0)
             else:
                 rid = int(row[0] or 0)
                 name = (row[1] or '').strip()
-                amt = float(row[2] or 0)
+                vote_code = (row[2] or '').strip() if len(row) > 2 else ''
+                item_description = (row[3] or '').strip() if len(row) > 3 else ''
+                amt = float(row[4] or 0) if len(row) > 4 else 0
             if rid not in by_id:
                 continue
             by_id[rid].append({
                 'item_name': name,
+                'vote_code': vote_code,
+                'item_description': item_description,
                 'amount': round(amt, 2),
                 'amount_display': _format_kes_amount(amt),
             })
@@ -51794,15 +52511,82 @@ def _attach_revenue_line_items_to_rows(cursor, rows):
         row['line_items'] = items
         if items:
             row['breakdown_display'] = '; '.join(
-                f"{i['item_name']}: KES {i['amount_display']}" for i in items
+                (
+                    f"{i['vote_code']}: {i['item_name']}"
+                    if i.get('vote_code')
+                    else i['item_name']
+                )
+                + f": KES {i['amount_display']}"
+                for i in items
             )
         else:
             row['breakdown_display'] = ''
     return rows
 
 
+FINANCE_ACCOUNT_CATEGORIES = (
+    'ADMINISTRATIVE FUNDS',
+    'CAPITATION FUNDS',
+    'DEVELOPMENT FUNDS',
+    'OPERATIONAL IMPREST FUNDS',
+    'TRUST & LIABILITIES',
+)
+
+
 def _finance_account_category_is_income(category):
+    """True when the stored category is a fund/income ledger (built-in or legacy Income)."""
+    v = (category or '').strip().lower()
+    if not v:
+        return False
+    if v == 'income':
+        return True
+    for cat in FINANCE_ACCOUNT_CATEGORIES:
+        if v == cat.lower():
+            return True
+    return False
+
+
+def _finance_account_category_is_legacy_income(category):
+    """Legacy chart category used only for revenue ledgers (not fund categories)."""
     return (category or '').strip().lower() == 'income'
+
+
+def _finance_account_supports_disbursement_mode(payment_modes, mode):
+    """True when account has no configured modes or includes the payment mode."""
+    if not mode:
+        return True
+    configured = [
+        (m or '').strip().lower()
+        for m in (payment_modes or [])
+        if (m or '').strip()
+    ]
+    return not configured or mode in configured
+
+
+def _finance_account_is_revenue_eligible(
+    category=None, account_name=None, account_description=None,
+):
+    """Fund accounts that may receive manually registered revenue (not pocket money)."""
+    if _finance_account_is_pocket_money_ledger(
+        category, account_name, account_description,
+    ):
+        return False
+    return _finance_account_category_is_income(category)
+
+
+def _finance_revenue_eligible_categories_sql_in():
+    """SQL IN (...) values for revenue-eligible account_category (lowercase)."""
+    cats = ['income'] + [c.lower() for c in FINANCE_ACCOUNT_CATEGORIES]
+    return ', '.join("'" + c.replace("'", "''") + "'" for c in cats)
+
+
+def _finance_revenue_eligible_sql_predicate(table_alias='fa'):
+    a = table_alias
+    in_list = _finance_revenue_eligible_categories_sql_in()
+    return f"""(
+        LOWER(TRIM({a}.account_category)) IN ({in_list})
+        AND NOT ({_finance_pocket_money_ledger_sql_predicate(a)})
+    )"""
 
 
 def _finance_account_category_is_pocket_money(category):
@@ -51829,35 +52613,119 @@ def _finance_pocket_money_ledger_sql_predicate(table_alias='fa'):
     )"""
 
 
+def _finance_account_category_is_petty_cash(category):
+    """True for legacy Petty cash or Operational imprest fund categories."""
+    v = (category or '').strip().lower()
+    return v in ('petty cash', 'operational imprest funds')
+
+
+def _finance_account_is_petty_cash_ledger(
+    category=None, account_name=None, account_description=None,
+):
+    """True for petty cash book accounts (category, name, or explicit link votes)."""
+    if _finance_account_category_is_petty_cash(category):
+        return True
+    blob = f'{(account_name or "")} {(account_description or "")}'.lower()
+    if 'petty cash' in blob:
+        return True
+    name_low = (account_name or '').strip().lower()
+    if 'petty' in name_low and ('cashbook' in name_low or 'cash book' in name_low):
+        return True
+    return False
+
+
+def _finance_petty_cash_ledger_sql_predicate(table_alias='fa'):
+    """SQL fragment: finance accounts treated as petty cash book ledgers."""
+    a = table_alias
+    return f"""(
+        LOWER(TRIM({a}.account_category)) IN ('petty cash', 'operational imprest funds')
+        OR LOWER({a}.account_name) LIKE '%petty cash%'
+        OR (
+            LOWER({a}.account_name) LIKE '%petty%'
+            AND (
+                LOWER({a}.account_name) LIKE '%cashbook%'
+                OR LOWER({a}.account_name) LIKE '%cash book%'
+            )
+        )
+        OR LOWER(COALESCE({a}.account_description, '')) LIKE '%petty cash%'
+    )"""
+
+
+def _finance_account_category_is_disbursement(category):
+    """True when payments/disbursements may be posted from this account category."""
+    v = (category or '').strip().lower()
+    if not v:
+        return False
+    if v in ('income', 'bank', 'cash', 'petty cash', 'asset'):
+        return True
+    for cat in FINANCE_ACCOUNT_CATEGORIES:
+        if v == cat.lower():
+            return True
+    return False
+
+
+def _finance_account_is_disbursement_eligible(
+    category=None, account_name=None, account_description=None,
+):
+    """Fund accounts that may pay out (excludes pocket money ledgers)."""
+    if _finance_account_is_pocket_money_ledger(
+        category, account_name, account_description,
+    ):
+        return False
+    return _finance_account_category_is_disbursement(category)
+
+
+def _finance_disbursement_eligible_categories_sql_in():
+    """SQL IN (...) values for disbursement-eligible account_category (lowercase)."""
+    legacy = ['income', 'bank', 'cash', 'petty cash', 'asset']
+    cats = legacy + [c.lower() for c in FINANCE_ACCOUNT_CATEGORIES]
+    return ', '.join("'" + c.replace("'", "''") + "'" for c in cats)
+
+
+def _finance_disbursement_eligible_sql_predicate(table_alias='fa'):
+    a = table_alias
+    in_list = _finance_disbursement_eligible_categories_sql_in()
+    return f"""(
+        LOWER(TRIM({a}.account_category)) IN ({in_list})
+        AND NOT ({_finance_pocket_money_ledger_sql_predicate(a)})
+    )"""
+
+
 def _fetch_finance_accounts_for_revenue_picker(cursor):
     """Active finance accounts in the Income category (for registering other revenue)."""
     ensure_finance_accounts_table(cursor)
     rows = []
     try:
         cursor.execute(
-            """
+            f"""
             SELECT fa.id, fa.account_category, fa.account_name, fa.account_description
             FROM finance_accounts fa
             WHERE LOWER(COALESCE(fa.account_status, 'active')) = 'active'
-              AND LOWER(TRIM(fa.account_category)) = 'income'
+              AND {_finance_revenue_eligible_sql_predicate('fa')}
             ORDER BY fa.account_name ASC
             """
         )
         for r in cursor.fetchall() or []:
             if isinstance(r, dict):
-                rows.append({
+                row = {
                     'id': r.get('id'),
                     'account_category': (r.get('account_category') or '').strip(),
                     'account_name': (r.get('account_name') or '').strip(),
                     'account_description': (r.get('account_description') or '').strip(),
-                })
+                }
             else:
-                rows.append({
+                row = {
                     'id': r[0],
                     'account_category': (r[1] or '').strip() if len(r) > 1 else '',
                     'account_name': (r[2] or '').strip() if len(r) > 2 else '',
                     'account_description': (r[3] or '').strip() if len(r) > 3 else '',
-                })
+                }
+            if _finance_account_is_revenue_eligible(
+                row.get('account_category'),
+                row.get('account_name'),
+                row.get('account_description'),
+            ):
+                rows.append(row)
     except Exception as e:
         print(f"_fetch_finance_accounts_for_revenue_picker: {e}")
     return rows
@@ -51891,8 +52759,8 @@ def _validate_revenue_finance_account(cursor, finance_account_id):
         status = (row[3] or 'active').strip().lower() if len(row) > 3 else 'active'
     if status and status != 'active':
         return False, None, 'That finance account is not active.'
-    if not _finance_account_category_is_income(category):
-        return False, None, 'Revenue must be posted to an Income category account.'
+    if not _finance_account_is_revenue_eligible(category, name, None):
+        return False, None, 'Revenue must be posted to an eligible fund account.'
     return True, {'id': int(finance_account_id), 'account_name': name}, None
 
 
@@ -52037,24 +52905,22 @@ def _supplier_payment_mode_for_method(payment_method):
 
 
 def _fetch_finance_accounts_for_disbursement_picker(cursor):
-    """Active accounts available to pay from (Income/revenue, Bank, Cash, Petty cash, Asset)."""
+    """Active accounts available to pay from (fund accounts and legacy ledger categories)."""
     ensure_finance_accounts_table(cursor)
     _sync_finance_account_balances(cursor)
     rows = []
     try:
         cursor.execute(
-            """
+            f"""
             SELECT id, account_category, account_name, account_description,
                    COALESCE(current_balance, 0) AS current_balance
-            FROM finance_accounts
-            WHERE LOWER(COALESCE(account_status, 'active')) = 'active'
-              AND LOWER(TRIM(account_category)) IN (
-                  'income', 'bank', 'cash', 'petty cash', 'asset'
-              )
+            FROM finance_accounts fa
+            WHERE LOWER(COALESCE(fa.account_status, 'active')) = 'active'
+              AND {_finance_disbursement_eligible_sql_predicate('fa')}
             ORDER BY
-              CASE WHEN LOWER(TRIM(account_category)) = 'income' THEN 0 ELSE 1 END,
-              account_category ASC,
-              account_name ASC
+              CASE WHEN LOWER(TRIM(fa.account_category)) IN ('income', 'operational imprest funds', 'petty cash') THEN 0 ELSE 1 END,
+              fa.account_category ASC,
+              fa.account_name ASC
             """
         )
         raw = cursor.fetchall() or []
@@ -52063,6 +52929,7 @@ def _fetch_finance_accounts_for_disbursement_picker(cursor):
             aid = r.get('id') if isinstance(r, dict) else r[0]
             account_ids.append(aid)
         payments_map = _fetch_finance_account_payment_methods_map(cursor, account_ids)
+        votes_map = _fetch_finance_account_disbursement_votes_map(cursor, account_ids)
         for r in raw:
             if isinstance(r, dict):
                 aid = r.get('id')
@@ -52092,11 +52959,76 @@ def _fetch_finance_accounts_for_disbursement_picker(cursor):
                 if pm.get('payment_mode')
             ]
             row['payment_modes'] = modes
-            if (row.get('account_category') or '').strip().lower() == 'income':
+            row['expense_votes'] = votes_map.get(int(aid), []) if aid is not None else []
+            if _finance_account_category_is_legacy_income(row.get('account_category')):
                 row['payment_modes'] = []
-            rows.append(row)
+            if _finance_account_is_disbursement_eligible(
+                row.get('account_category'),
+                row.get('account_name'),
+                row.get('account_description'),
+            ):
+                rows.append(row)
     except Exception as e:
         print(f"_fetch_finance_accounts_for_disbursement_picker: {e}")
+    return rows
+
+
+def _fetch_finance_accounts_for_petty_cash_link_picker(cursor):
+    """Active fund accounts not yet linked to the petty cash book."""
+    ensure_finance_accounts_table(cursor)
+    ensure_finance_account_expense_votes_table(cursor)
+    _sync_finance_account_balances(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT fa.id, fa.account_category, fa.account_name, fa.account_description,
+                   COALESCE(fa.current_balance, 0) AS current_balance
+            FROM finance_accounts fa
+            WHERE LOWER(COALESCE(fa.account_status, 'active')) = 'active'
+              AND {_finance_disbursement_eligible_sql_predicate('fa')}
+              AND NOT ({_finance_petty_cash_ledger_sql_predicate('fa')})
+              AND NOT EXISTS (
+                  SELECT 1 FROM finance_account_expense_votes ev
+                  WHERE ev.finance_account_id = fa.id
+              )
+            ORDER BY fa.account_name ASC, fa.id ASC
+            """
+        )
+        raw = cursor.fetchall() or []
+        for r in raw:
+            if isinstance(r, dict):
+                bal = float(r.get('current_balance') or 0)
+                row = {
+                    'id': r.get('id'),
+                    'account_category': (r.get('account_category') or '').strip(),
+                    'account_name': (r.get('account_name') or '').strip(),
+                    'account_description': (r.get('account_description') or '').strip(),
+                    'current_balance': bal,
+                    'current_balance_display': f'{bal:.2f}',
+                }
+            else:
+                bal = float(r[4] if len(r) > 4 else 0)
+                row = {
+                    'id': r[0],
+                    'account_category': (r[1] or '').strip() if len(r) > 1 else '',
+                    'account_name': (r[2] or '').strip() if len(r) > 2 else '',
+                    'account_description': (r[3] or '').strip() if len(r) > 3 else '',
+                    'current_balance': bal,
+                    'current_balance_display': f'{bal:.2f}',
+                }
+            if _finance_account_is_disbursement_eligible(
+                row.get('account_category'),
+                row.get('account_name'),
+                row.get('account_description'),
+            ) and not _finance_account_is_petty_cash_ledger(
+                row.get('account_category'),
+                row.get('account_name'),
+                row.get('account_description'),
+            ):
+                rows.append(row)
+    except Exception as e:
+        print(f"_fetch_finance_accounts_for_petty_cash_link_picker: {e}")
     return rows
 
 
@@ -52132,7 +53064,8 @@ def _validate_disbursement_finance_account(cursor, finance_account_id, payment_m
     cursor.execute(
         """
         SELECT id, account_name, account_category, account_status,
-               COALESCE(current_balance, 0) AS current_balance
+               COALESCE(current_balance, 0) AS current_balance,
+               account_description
         FROM finance_accounts WHERE id = %s LIMIT 1
         """,
         (fid,),
@@ -52145,30 +53078,36 @@ def _validate_disbursement_finance_account(cursor, finance_account_id, payment_m
         category = (row.get('account_category') or '').strip()
         status = (row.get('account_status') or 'active').strip().lower()
         balance = Decimal(str(row.get('current_balance') or 0)).quantize(Decimal('0.01'))
+        description = row.get('account_description')
     else:
         name = (row[1] or '').strip() if len(row) > 1 else ''
         category = (row[2] or '').strip() if len(row) > 2 else ''
         status = (row[3] or 'active').strip().lower() if len(row) > 3 else 'active'
         balance = Decimal(str(row[4] if len(row) > 4 else 0)).quantize(Decimal('0.01'))
+        description = row[5] if len(row) > 5 else ''
     if status != 'active':
         return False, None, 'That finance account is not active.'
-    cat_low = category.lower()
-    if cat_low not in ('income', 'bank', 'cash', 'petty cash', 'asset'):
+    if not _finance_account_is_disbursement_eligible(category, name, description):
         return False, None, (
-            'Payments can only be made from Income, Bank, Cash, or Petty cash accounts.'
+            'Payments can only be made from registered fund or disbursement accounts.'
         )
+    cat_low = category.lower()
     mode = _supplier_payment_mode_for_method(payment_method)
-    if mode and cat_low != 'income':
-        payments_map = _fetch_finance_account_payment_methods_map(cursor, [fid])
-        configured = [
-            (pm.get('payment_mode') or '').lower()
-            for pm in (payments_map.get(fid) or [])
-        ]
-        if configured and mode not in configured:
+    payments_map = _fetch_finance_account_payment_methods_map(cursor, [fid])
+    configured = [
+        (pm.get('payment_mode') or '').lower()
+        for pm in (payments_map.get(fid) or [])
+        if pm.get('payment_mode')
+    ]
+    if mode and not _finance_account_supports_disbursement_mode(configured, mode):
+        if _finance_account_category_is_legacy_income(category):
             return False, None, (
-                f'{name} is not set up for {payment_method} payments. '
-                'Choose another account or payment mode.'
+                f'{name} is an income ledger and cannot be used for supplier payments.'
             )
+        return False, None, (
+            f'{name} is not set up for {payment_method} payments. '
+            'Choose another account or payment mode.'
+        )
     if balance < amt:
         return False, None, _insufficient_funds_message(name, balance)
     return True, {'id': fid, 'account_name': name, 'current_balance': float(balance)}, None
@@ -52720,8 +53659,8 @@ def _sync_finance_account_balances(cursor):
     return changed
 
 
-def _parse_expense_payment_funding(form):
-    """Parse payment method, source account, and reference from POST form."""
+def _parse_expense_payment_funding(form, cursor=None):
+    """Parse payment method, source account, reference, and expense vote from POST form."""
     payment_method = _normalize_supplier_payment_method(
         (form.get('payment_method') if form else None) or ''
     )
@@ -52738,10 +53677,21 @@ def _parse_expense_payment_funding(form):
         return None, 'Enter the payment reference code.'
     if len(reference) > 255:
         reference = reference[:255]
+    vote_name = (form.get('vote_name') or form.get('expense_vote') or '').strip().upper()
+    if cursor is not None:
+        ok, result = _validate_expense_vote_for_finance_account(
+            cursor, finance_account_id, vote_name,
+        )
+        if not ok:
+            return None, result
+        vote_name = result
+    elif not vote_name:
+        return None, 'Select the expense vote to charge.'
     return {
         'payment_method': payment_method,
         'finance_account_id': finance_account_id,
         'payment_reference': reference,
+        'vote_name': vote_name,
     }, None
 
 
@@ -52758,19 +53708,12 @@ def _normalize_revenue_source_type(value):
     return None
 
 
-FINANCE_ACCOUNT_CATEGORIES = (
-    'Bank',
-    'Cash',
-    'Petty cash',
-    'Pocket money account',
-    'Accounts receivable',
-    'Accounts payable',
-    'Income',
-    'Expense',
-    'Asset',
-    'Liability',
-    'Equity',
-    'Other',
+FINANCE_ACCOUNT_NAME_SUGGESTIONS = (
+    'SCHOOL TUITION ACCOUNT',
+    'SCHOOL OPERATIONS ACCOUNT',
+    'SCHOOL INFRASTRUCTURE ACCOUNT',
+    'SCHOOL PETTY CASHBOOK',
+    'POCKET MONEY ACCOUNT',
 )
 # Sentinel posted when the user chooses "Add new category" on the accounts form.
 FINANCE_ACCOUNT_CATEGORY_ADD_MARKER = '__add_new__'
@@ -54065,7 +55008,8 @@ def _account_ledger_vote_map(cursor, account_id, ledger_rows):
         try:
             cursor.execute(
                 f"""
-                SELECT pl.id, UPPER(TRIM(COALESCE(si.item_category, ''))) AS vote_name
+                SELECT pl.id,
+                       UPPER(TRIM(COALESCE(NULLIF(pl.vote_name, ''), si.item_category, ''))) AS vote_name
                 FROM store_stock_in_payment_lines pl
                 INNER JOIN store_stock_movements m ON m.id = pl.movement_id
                 INNER JOIN store_inventory_items si ON si.id = m.store_item_id
@@ -55680,6 +56624,36 @@ def ensure_fee_items_finance_account_column(cursor):
         print(f"ensure_fee_items_finance_account_column: {e}")
 
 
+def ensure_fee_items_vote_code_column(cursor):
+    """Short vote code for fee line items (e.g. T01, B02)."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM fee_items LIKE 'vote_code'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "ALTER TABLE fee_items ADD COLUMN vote_code VARCHAR(32) NULL "
+                "AFTER item_name"
+            )
+            cursor.execute(
+                "CREATE INDEX idx_fee_items_vote_code ON fee_items (vote_code)"
+            )
+    except Exception as e:
+        print(f"ensure_fee_items_vote_code_column: {e}")
+
+
+def ensure_student_fee_votes_vote_code_column(cursor):
+    """Vote code mirrored on per-student fee vote rows."""
+    try:
+        ensure_student_fee_votes_table(cursor)
+        cursor.execute("SHOW COLUMNS FROM student_fee_votes LIKE 'vote_code'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "ALTER TABLE student_fee_votes ADD COLUMN vote_code VARCHAR(32) NULL "
+                "AFTER item_name"
+            )
+    except Exception as e:
+        print(f"ensure_student_fee_votes_vote_code_column: {e}")
+
+
 _FEE_ITEM_ACCOUNT_NAME_HINTS = (
     (('PROPERTY', 'DEVELOPMENT', 'INFRA', 'CAPITAL'), ('DEVELOPMENT', 'INFRA')),
     (('MEDICAL', 'BUS', 'CONTIGEN', 'OPERATION', 'ACTIVITY', 'STORE'), ('OPERATION',)),
@@ -55776,6 +56750,7 @@ def _fetch_fee_structure_items_with_accounts_cached(
 
 def _fetch_fee_structure_items_with_accounts(cursor, fee_structure_id, fs_finance_account_id=None, level_id=None):
     ensure_fee_items_finance_account_column(cursor)
+    ensure_fee_items_vote_code_column(cursor)
     if fs_finance_account_id is None or level_id is None:
         cursor.execute(
             """
@@ -55796,7 +56771,7 @@ def _fetch_fee_structure_items_with_accounts(cursor, fee_structure_id, fs_financ
                 )
     cursor.execute(
         """
-        SELECT id, item_name, item_description, amount, finance_account_id
+        SELECT id, item_name, vote_code, item_description, amount, finance_account_id
         FROM fee_items
         WHERE fee_structure_id = %s
         ORDER BY item_order ASC, id ASC
@@ -55809,6 +56784,7 @@ def _fetch_fee_structure_items_with_accounts(cursor, fee_structure_id, fs_financ
             item = {
                 'id': r.get('id'),
                 'item_name': r.get('item_name'),
+                'vote_code': r.get('vote_code'),
                 'item_description': r.get('item_description'),
                 'amount': float(r.get('amount') or 0),
                 'finance_account_id': r.get('finance_account_id'),
@@ -55817,9 +56793,10 @@ def _fetch_fee_structure_items_with_accounts(cursor, fee_structure_id, fs_financ
             item = {
                 'id': r[0],
                 'item_name': r[1],
-                'item_description': r[2] if len(r) > 2 else '',
-                'amount': float(r[3] or 0) if len(r) > 3 else 0.0,
-                'finance_account_id': r[4] if len(r) > 4 else None,
+                'vote_code': r[2] if len(r) > 2 else '',
+                'item_description': r[3] if len(r) > 3 else '',
+                'amount': float(r[4] or 0) if len(r) > 4 else 0.0,
+                'finance_account_id': r[5] if len(r) > 5 else None,
             }
         item['target_account_id'] = _resolve_fee_item_finance_account_id(
             cursor, item, fs_finance_account_id, level_id,
@@ -56173,6 +57150,76 @@ def _fetch_fee_structure_batch_siblings(cursor, structure_id):
     return siblings
 
 
+def _fetch_fee_structure_batch_ids_for_delete(cursor, structure_id):
+    """All fee_structure row ids in the same UI batch as structure_id."""
+    try:
+        structure_id = int(structure_id)
+    except (TypeError, ValueError):
+        return []
+    if structure_id <= 0:
+        return []
+
+    cursor.execute(
+        """
+        SELECT id, fee_name, academic_year_id, term_id, category, finance_account_id
+        FROM fee_structures
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (structure_id,),
+    )
+    anchor = cursor.fetchone()
+    if not anchor:
+        return []
+
+    if isinstance(anchor, dict):
+        fee_name = anchor.get('fee_name')
+        year_id = anchor.get('academic_year_id')
+        term_id = anchor.get('term_id')
+        category = anchor.get('category') or 'both'
+        fa_id = anchor.get('finance_account_id')
+    else:
+        fee_name = anchor[1]
+        year_id = anchor[2]
+        term_id = anchor[3]
+        category = anchor[4] or 'both'
+        fa_id = anchor[5] if len(anchor) > 5 else None
+
+    if fa_id is None:
+        cursor.execute(
+            """
+            SELECT id
+            FROM fee_structures
+            WHERE fee_name = %s
+              AND academic_year_id <=> %s
+              AND term_id <=> %s
+              AND COALESCE(category, 'both') = %s
+              AND finance_account_id IS NULL
+            """,
+            (fee_name, year_id, term_id, category),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT id
+            FROM fee_structures
+            WHERE fee_name = %s
+              AND academic_year_id <=> %s
+              AND term_id <=> %s
+              AND COALESCE(category, 'both') = %s
+              AND finance_account_id = %s
+            """,
+            (fee_name, year_id, term_id, category, fa_id),
+        )
+
+    ids = []
+    for row in cursor.fetchall() or []:
+        rid = row.get('id') if isinstance(row, dict) else row[0]
+        if rid is not None:
+            ids.append(int(rid))
+    return ids
+
+
 def _fee_structure_has_payments(cursor, structure_id):
     try:
         cursor.execute(
@@ -56187,22 +57234,104 @@ def _fee_structure_has_payments(cursor, structure_id):
         return False
 
 
+def _purge_fee_structure_fee_transactions(cursor, structure_id):
+    """Remove student fee payments and linked finance ledger rows for a fee structure."""
+    try:
+        structure_id = int(structure_id)
+    except (TypeError, ValueError):
+        return {'payments': 0, 'ledger': 0}
+    if structure_id <= 0:
+        return {'payments': 0, 'ledger': 0}
+
+    ensure_finance_account_transactions_table(cursor)
+    ensure_student_fee_votes_table(cursor)
+    ensure_mpesa_stk_transactions_table(cursor)
+
+    cursor.execute(
+        "SELECT id FROM student_payments WHERE fee_structure_id = %s",
+        (structure_id,),
+    )
+    payment_ids = []
+    for row in cursor.fetchall() or []:
+        pid = row.get('id') if isinstance(row, dict) else row[0]
+        if pid is not None:
+            payment_ids.append(int(pid))
+
+    payment_count = len(payment_ids)
+    ledger_count = 0
+    affected_accounts = set()
+
+    if payment_ids:
+        placeholders = ','.join(['%s'] * len(payment_ids))
+        params = tuple(payment_ids)
+
+        cursor.execute(
+            f"""
+            SELECT DISTINCT finance_account_id
+            FROM finance_account_transactions
+            WHERE related_type = 'student_payment'
+              AND related_id IN ({placeholders})
+              AND finance_account_id IS NOT NULL
+            """,
+            params,
+        )
+        for row in cursor.fetchall() or []:
+            aid = row.get('finance_account_id') if isinstance(row, dict) else row[0]
+            if aid is not None:
+                affected_accounts.add(int(aid))
+
+        cursor.execute(
+            f"""
+            DELETE FROM finance_account_transactions
+            WHERE related_type = 'student_payment'
+              AND related_id IN ({placeholders})
+            """,
+            params,
+        )
+        ledger_count = int(cursor.rowcount or 0)
+
+        cursor.execute(
+            f"DELETE FROM student_payments WHERE id IN ({placeholders})",
+            params,
+        )
+
+    cursor.execute(
+        "DELETE FROM student_fee_votes WHERE fee_structure_id = %s",
+        (structure_id,),
+    )
+
+    try:
+        cursor.execute(
+            "UPDATE mpesa_stk_transactions SET fee_structure_id = NULL WHERE fee_structure_id = %s",
+            (structure_id,),
+        )
+    except Exception as e:
+        print(f"_purge_fee_structure_fee_transactions mpesa_stk: {e}")
+
+    for aid in affected_accounts:
+        _refresh_finance_account_balance_from_ledger(cursor, aid)
+
+    return {'payments': payment_count, 'ledger': ledger_count}
+
+
 def _replace_fee_structure_items(cursor, structure_id, fee_items):
+    ensure_fee_items_vote_code_column(cursor)
     cursor.execute("DELETE FROM fee_items WHERE fee_structure_id = %s", (int(structure_id),))
     items_inserted = 0
     for index, item in enumerate(fee_items):
         item_name = item.get('item_name', '').strip().upper()
+        vote_code = item.get('vote_code', '').strip().upper()
         item_description = item.get('item_description', '').strip().upper()
         amount = float(item.get('amount', 0))
-        if not item_name or not item_description or amount <= 0:
+        if not item_name or not vote_code or not item_description or amount <= 0:
             continue
         cursor.execute(
             """
             INSERT INTO fee_items
-            (fee_structure_id, item_name, item_description, amount, item_order)
-            VALUES (%s, %s, %s, %s, %s)
+            (fee_structure_id, item_name, vote_code, item_description, amount, item_order)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (int(structure_id), item_name, item_description, amount, index),
+            (int(structure_id), item_name, vote_code, item_description, amount, index),
         )
         items_inserted += 1
     return items_inserted
@@ -56392,9 +57521,10 @@ def _sync_student_fee_votes_for_structure(cursor, fee_structure_id):
         level_id = fs_row[0] if len(fs_row) > 0 else None
         category = (fs_row[1] if len(fs_row) > 1 else None) or 'both'
 
+    ensure_student_fee_votes_vote_code_column(cursor)
     cursor.execute(
         """
-        SELECT id, item_name, item_description, amount, item_order
+        SELECT id, item_name, vote_code, item_description, amount, item_order
         FROM fee_items
         WHERE fee_structure_id = %s
         ORDER BY item_order ASC, id ASC
@@ -56419,25 +57549,28 @@ def _sync_student_fee_votes_for_structure(cursor, fee_structure_id):
             if isinstance(item, dict):
                 fee_item_id = item.get('id')
                 item_name = (item.get('item_name') or '').strip().upper()
+                vote_code = (item.get('vote_code') or '').strip().upper()
                 item_description = (item.get('item_description') or '').strip().upper()
                 amount = float(item.get('amount') or 0)
                 item_order = int(item.get('item_order') or 0)
             else:
                 fee_item_id = item[0] if len(item) > 0 else None
                 item_name = (item[1] or '').strip().upper() if len(item) > 1 else ''
-                item_description = (item[2] or '').strip().upper() if len(item) > 2 else ''
-                amount = float(item[3] if len(item) > 3 and item[3] else 0)
-                item_order = int(item[4] or 0) if len(item) > 4 else 0
+                vote_code = (item[2] or '').strip().upper() if len(item) > 2 else ''
+                item_description = (item[3] or '').strip().upper() if len(item) > 3 else ''
+                amount = float(item[4] if len(item) > 4 and item[4] else 0)
+                item_order = int(item[5] or 0) if len(item) > 5 else 0
             if not item_name or amount <= 0:
                 continue
             cursor.execute(
                 """
                 INSERT INTO student_fee_votes
                     (student_id, fee_structure_id, fee_item_id,
-                     item_name, item_description, amount, item_order)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                     item_name, vote_code, item_description, amount, item_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     fee_item_id = VALUES(fee_item_id),
+                    vote_code = VALUES(vote_code),
                     item_description = VALUES(item_description),
                     amount = VALUES(amount),
                     item_order = VALUES(item_order)
@@ -56447,6 +57580,7 @@ def _sync_student_fee_votes_for_structure(cursor, fee_structure_id):
                     fee_structure_id,
                     fee_item_id,
                     item_name,
+                    vote_code,
                     item_description,
                     amount,
                     item_order,
@@ -57551,6 +58685,7 @@ def _finance_account_report_helpers():
         'load_account_fee_votes_meta': _fetch_account_fee_votes_meta_for_cash_book,
         'load_expense_vote_descriptions': _expense_vote_description_map,
         'load_student_payment_vote_context': _cash_book_student_payment_vote_context,
+        'is_petty_cash_ledger': _finance_account_is_petty_cash_ledger,
     }
 
 
@@ -57693,17 +58828,25 @@ def _render_finance_account_report_page(account_id, report_slug):
 def _fetch_petty_cash_accounts(cursor):
     """Active petty cash finance accounts for the petty cash book."""
     ensure_finance_accounts_table(cursor)
+    ensure_finance_account_expense_votes_table(cursor)
     _sync_finance_account_balances(cursor)
     rows = []
     try:
         cursor.execute(
-            """
-            SELECT id, account_category, account_name, account_description,
-                   COALESCE(current_balance, 0) AS current_balance,
-                   account_status
-            FROM finance_accounts
-            WHERE LOWER(TRIM(account_category)) = 'petty cash'
-            ORDER BY account_name ASC, id ASC
+            f"""
+            SELECT fa.id, fa.account_category, fa.account_name, fa.account_description,
+                   COALESCE(fa.current_balance, 0) AS current_balance,
+                   fa.account_status
+            FROM finance_accounts fa
+            WHERE LOWER(COALESCE(fa.account_status, 'active')) = 'active'
+              AND (
+                {_finance_petty_cash_ledger_sql_predicate('fa')}
+                OR EXISTS (
+                    SELECT 1 FROM finance_account_expense_votes ev
+                    WHERE ev.finance_account_id = fa.id
+                )
+              )
+            ORDER BY fa.account_name ASC, fa.id ASC
             """
         )
         raw = cursor.fetchall() or []
@@ -57712,7 +58855,7 @@ def _fetch_petty_cash_accounts(cursor):
             aid = r.get('id') if isinstance(r, dict) else r[0]
             account_ids.append(aid)
         payments_map = _fetch_finance_account_payment_methods_map(cursor, account_ids)
-        votes_map = _fetch_finance_account_expense_votes_map(cursor, account_ids)
+        votes_map = _fetch_finance_account_disbursement_votes_map(cursor, account_ids)
         for r in raw:
             if isinstance(r, dict):
                 aid = r.get('id')
@@ -57898,15 +59041,15 @@ def _link_existing_account_to_petty_cash_book(
     if status != 'active':
         return False, 'That account is not active.'
     desc = normalize_text(description, allow_empty=True)
-    cursor.execute(
-        """
-        UPDATE finance_accounts
-        SET account_category = %s,
-            account_description = %s
-        WHERE id = %s
-        """,
-        ('Petty cash', desc or row.get('account_description'), int(account_id)),
-    )
+    if desc:
+        cursor.execute(
+            """
+            UPDATE finance_accounts
+            SET account_description = %s
+            WHERE id = %s
+            """,
+            (desc or row.get('account_description'), int(account_id)),
+        )
     _save_finance_account_expense_votes(cursor, account_id, vote_names)
     _save_finance_account_payment_methods(cursor, account_id, payment_records)
     name = (row.get('account_name') or '').strip()
@@ -57938,8 +59081,8 @@ def _render_petty_cash_book_page():
     if connection:
         try:
             with connection.cursor() as cursor:
-                expense_votes = _fetch_store_expense_category_picker_votes(cursor)
-                finance_accounts_picker = _fetch_finance_accounts_for_disbursement_picker(cursor)
+                expense_votes = _fetch_payments_expense_picker_votes(cursor)
+                finance_accounts_picker = _fetch_finance_accounts_for_petty_cash_link_picker(cursor)
                 next_expense_reference = _generate_petty_cash_expense_reference(cursor)
         except Exception as e:
             print(f"_render_petty_cash_book_page votes: {e}")
@@ -58013,7 +59156,7 @@ def _fetch_revenue_totals_by_finance_accounts(cursor):
     ensure_accountant_revenue_finance_account_column(cursor)
     rows = []
     try:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 fa.id,
                 fa.account_name,
@@ -58030,7 +59173,7 @@ def _fetch_revenue_totals_by_finance_accounts(cursor):
                 GROUP BY finance_account_id
             ) reg ON reg.finance_account_id = fa.id
             WHERE LOWER(COALESCE(fa.account_status, 'active')) = 'active'
-              AND LOWER(TRIM(fa.account_category)) = 'income'
+              AND {_finance_revenue_eligible_sql_predicate('fa')}
             ORDER BY COALESCE(reg.registered_amount, 0) DESC, fa.account_name ASC
         """)
         for row in cursor.fetchall() or []:
@@ -60193,7 +61336,7 @@ def _apply_supplier_offset_for_fee_payment(
 def _apply_stock_in_payment(
     cursor, movement_id, pay_amount, company_name, company_phone, paid_by_name,
     payment_method=None, finance_account_id=None, payment_reference=None,
-    skip_account_debit=False,
+    skip_account_debit=False, vote_name=None,
 ):
     """Apply one payment line to a stock-in movement. Returns (ok, message)."""
     from decimal import Decimal, InvalidOperation
@@ -60243,28 +61386,32 @@ def _apply_stock_in_payment(
     new_paid = (paid_dec + pay_dec).quantize(Decimal('0.01'))
     new_status = _store_stock_payment_status(new_paid, total_dec)
     ensure_store_stock_in_payment_lines_table(cursor)
+    vote_label = (vote_name or '').strip().upper() or None
     cursor.execute(
         """
         INSERT INTO store_stock_in_payment_lines
             (movement_id, amount_paid, paid_to_company_name,
              paid_to_company_phone, paid_by_name, payment_method,
-             finance_account_id, payment_reference)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+             finance_account_id, payment_reference, vote_name)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             movement_id, pay_dec, company_name, company_phone, paid_by_name or None,
-            payment_method, finance_account_id, payment_reference,
+            payment_method, finance_account_id, payment_reference, vote_label,
         ),
     )
     line_id = cursor.lastrowid
     if not skip_account_debit and finance_account_id and payment_method and line_id:
+        debit_desc = f'Stock-in payment {ref_no}'
+        if vote_label:
+            debit_desc = f'{vote_label} — {debit_desc}'
         ok, err = _debit_finance_account(
             cursor,
             finance_account_id,
             pay_dec,
             payment_method,
             payment_reference,
-            f'Stock-in payment {ref_no}',
+            debit_desc,
             related_type='stock_in_payment_line',
             related_id=int(line_id),
             recorded_by_name=paid_by_name,
@@ -60289,6 +61436,7 @@ def _apply_stock_in_payment(
 def _record_supplier_pay_all(
     cursor, phone_norm, pay_amount, company_name, company_phone, paid_by_name,
     payment_method=None, finance_account_id=None, payment_reference=None,
+    vote_name=None,
 ):
     """Apply payment across all outstanding invoices for a supplier phone."""
     from decimal import Decimal, InvalidOperation
@@ -60341,6 +61489,7 @@ def _record_supplier_pay_all(
             finance_account_id=finance_account_id,
             payment_reference=payment_reference,
             skip_account_debit=False,
+            vote_name=vote_name,
         )
         if not ok:
             return False, msg
@@ -60362,7 +61511,7 @@ def _record_supplier_pay_all(
 def _record_supplier_pay_selected_invoices(
     cursor, movement_ids, company_name, company_phone, paid_by_name,
     payment_method=None, finance_account_id=None, payment_reference=None,
-    expected_amount=None,
+    expected_amount=None, vote_name=None,
 ):
     """Pay selected outstanding stock-in invoices — full or partial (FIFO across selection)."""
     from decimal import Decimal, InvalidOperation
@@ -60454,6 +61603,7 @@ def _record_supplier_pay_selected_invoices(
             finance_account_id=finance_account_id,
             payment_reference=payment_reference,
             skip_account_debit=False,
+            vote_name=vote_name,
         )
         if not ok:
             return False, msg
@@ -83853,6 +85003,7 @@ def accountant_accounts():
         accounts_by_category=accounts_by_category,
         accounts_client=_finance_accounts_client_payload(accounts),
         account_categories=_build_finance_account_category_options(accounts),
+        account_name_suggestions=list(FINANCE_ACCOUNT_NAME_SUGGESTIONS),
         account_category_add_value=FINANCE_ACCOUNT_CATEGORY_ADD_MARKER,
         academic_levels_picker=academic_levels_picker,
         levels_by_category=levels_by_category,
@@ -84158,7 +85309,7 @@ def register_finance_account():
     finally:
         connection.close()
 
-    is_petty_cash = (category or '').strip().lower() == 'petty cash'
+    is_petty_cash = _finance_account_category_is_petty_cash(category)
     petty_cash_vote_names = []
     if is_petty_cash:
         # Petty cash accounts are managed from the Petty cash book page (votes are chosen there).
@@ -84364,15 +85515,135 @@ def toggle_finance_account_suspend(account_id):
     return redirect(redirect_url)
 
 
+def _purge_finance_account_related_records(cursor, account_id):
+    """Remove ledger transactions and other dependents before deleting a finance account."""
+    try:
+        account_id = int(account_id)
+    except (TypeError, ValueError):
+        return 0
+    if account_id <= 0:
+        return 0
+
+    ensure_finance_account_transactions_table(cursor)
+    ensure_petty_cash_expenses_table(cursor)
+    ensure_finance_account_expense_votes_table(cursor)
+    ensure_fee_structures_finance_account_column(cursor)
+    ensure_fee_items_finance_account_column(cursor)
+    ensure_accountant_revenue_finance_account_column(cursor)
+    ensure_student_pocket_money_tables(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+    ensure_mpesa_stk_transactions_table(cursor)
+
+    txn_count = 0
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS c FROM finance_account_transactions
+            WHERE finance_account_id = %s
+            """,
+            (account_id,),
+        )
+        row = cursor.fetchone()
+        if isinstance(row, dict):
+            txn_count = int(row.get('c') or 0)
+        elif row:
+            txn_count = int(row[0] or 0)
+    except Exception as e:
+        print(f"_purge_finance_account_related_records count: {e}")
+
+    cursor.execute(
+        "DELETE FROM finance_account_transactions WHERE finance_account_id = %s",
+        (account_id,),
+    )
+    cursor.execute(
+        "DELETE FROM petty_cash_expenses WHERE finance_account_id = %s",
+        (account_id,),
+    )
+
+    for stmt in (
+        "UPDATE fee_structures SET finance_account_id = NULL WHERE finance_account_id = %s",
+        "UPDATE fee_items SET finance_account_id = NULL WHERE finance_account_id = %s",
+        "UPDATE accountant_revenue SET finance_account_id = NULL WHERE finance_account_id = %s",
+        "UPDATE student_pocket_money_transactions SET finance_account_id = NULL WHERE finance_account_id = %s",
+        "UPDATE store_stock_in_payment_lines SET finance_account_id = NULL WHERE finance_account_id = %s",
+        "UPDATE mpesa_stk_transactions SET finance_account_id = NULL WHERE finance_account_id = %s",
+    ):
+        try:
+            cursor.execute(stmt, (account_id,))
+        except Exception as e:
+            print(f"_purge_finance_account_related_records clear ref: {e}")
+
+    return txn_count
+
+
+@app.route('/dashboard/employee/accounts/<int:account_id>/delete/request-code', methods=['POST'])
+@login_required
+def request_finance_account_delete_code(account_id):
+    """Email a 6-digit code before deleting a finance account."""
+    redir = _accountant_guard()
+    if redir:
+        return jsonify({'success': False, 'message': 'Unauthorized.'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Could not connect to the database.'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            existing = _fetch_finance_account_by_id(cursor, account_id)
+            if not existing:
+                return jsonify({'success': False, 'message': 'Account not found.'}), 404
+            label = existing.get('account_name') or 'Account'
+            target_key = _finance_delete_verification_target_key('finance_account', [account_id])
+            ok, message, dev_code = _issue_finance_delete_verification_code(
+                cursor,
+                'finance_account',
+                target_key,
+                f'finance account "{label}"',
+            )
+            if not ok:
+                return jsonify({'success': False, 'message': message}), 400
+            payload = {'success': True, 'message': message}
+            if dev_code:
+                payload['delivery'] = 'onscreen'
+                payload['dev_code'] = dev_code
+            return jsonify(payload), 200
+    except Exception as e:
+        print(f"request_finance_account_delete_code: {e}")
+        return jsonify({'success': False, 'message': 'Could not send confirmation code.'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/dashboard/employee/accounts/<int:account_id>/delete', methods=['POST'])
 @login_required
 def delete_finance_account(account_id):
-    """Permanently delete a finance account."""
+    """Permanently delete a finance account and its ledger transactions."""
     redir = _accountant_guard()
     if redir:
         return redir
 
     redirect_url = employee_dash_url('accounts')
+    wants_json = (
+        request.is_json or
+        (request.headers.get('X-Requested-With') or '').lower() == 'xmlhttprequest'
+    )
+    data = request.get_json(silent=True) if wants_json else {}
+    confirmation_code = (
+        (data.get('confirmation_code') if isinstance(data, dict) else None) or
+        request.form.get('confirmation_code')
+    )
+    target_key = _finance_delete_verification_target_key('finance_account', [account_id])
+    code_ok, code_message = _validate_finance_delete_verification_code(
+        'finance_account', target_key, confirmation_code,
+    )
+    if not code_ok:
+        if wants_json:
+            return jsonify({'success': False, 'message': code_message}), 401
+        flash(code_message, 'error')
+        return redirect(redirect_url)
+
     connection = get_db_connection()
     if not connection:
         flash('Could not connect to the database.', 'error')
@@ -84387,12 +85658,23 @@ def delete_finance_account(account_id):
                 flash('Account not found.', 'error')
                 return redirect(redirect_url)
             label = existing.get('account_name') or 'Account'
+            txn_deleted = _purge_finance_account_related_records(cursor, account_id)
             cursor.execute("DELETE FROM finance_accounts WHERE id = %s", (account_id,))
             connection.commit()
-            flash(f'Account "{label}" deleted.', 'success')
+            if txn_deleted:
+                message = (
+                    f'Account "{label}" and {txn_deleted} related transaction(s) deleted.'
+                )
+            else:
+                message = f'Account "{label}" deleted.'
+            if wants_json:
+                return jsonify({'success': True, 'message': message, 'redirect': redirect_url})
+            flash(message, 'success')
     except Exception as e:
         print(f"delete_finance_account: {e}")
         connection.rollback()
+        if wants_json:
+            return jsonify({'success': False, 'message': 'Could not delete the account. Please try again.'}), 500
         flash('Could not delete the account. Please try again.', 'error')
     finally:
         connection.close()
@@ -84524,6 +85806,43 @@ def _revenue_register_wants_ajax():
     )
 
 
+@app.route('/dashboard/employee/revenue/vote-template', methods=['GET'])
+@login_required
+def revenue_vote_template():
+    """Canonical vote structure for an account (no amounts — avoids colliding with prior entries)."""
+    redir = _accountant_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    raw_id = (request.args.get('finance_account_id') or '').strip()
+    try:
+        finance_account_id = int(raw_id) if raw_id else None
+    except (TypeError, ValueError):
+        finance_account_id = None
+    if not finance_account_id:
+        return jsonify({'ok': False, 'message': 'Select a finance account.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ok_acct, acct, acct_err = _validate_revenue_finance_account(
+                cursor, finance_account_id,
+            )
+            if not ok_acct:
+                return jsonify({'ok': False, 'message': acct_err or 'Invalid account.'}), 400
+            votes = _fetch_finance_account_revenue_vote_template(cursor, finance_account_id)
+            return jsonify({
+                'ok': True,
+                'votes': votes,
+                'account_name': (acct or {}).get('account_name') or '',
+            })
+    except Exception as e:
+        print(f"revenue_vote_template: {e}")
+        return jsonify({'ok': False, 'message': 'Could not load votes.'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/dashboard/employee/revenue/register', methods=['POST'])
 @login_required
 def register_accountant_revenue():
@@ -84607,6 +85926,10 @@ def register_accountant_revenue():
         return _fail('Enter a valid amount greater than zero.')
 
     line_items = _parse_revenue_line_items_payload(request.form.get('line_items'))
+    line_items = _merge_revenue_line_items_by_vote(line_items)
+    ok_codes, code_err = _check_revenue_vote_code_collisions(line_items)
+    if not ok_codes:
+        return _fail(code_err or 'Duplicate vote codes in the breakdown.')
     ok_items, items_err, line_items = _validate_revenue_line_items(
         line_items, amount,
     )
@@ -84622,6 +85945,7 @@ def register_accountant_revenue():
             ensure_accountant_revenue_table(cursor)
             ensure_accountant_revenue_finance_account_column(cursor)
             ensure_accountant_revenue_items_table(cursor)
+            ensure_accountant_revenue_items_vote_columns(cursor)
             ok_acct, acct, acct_err = _validate_revenue_finance_account(
                 cursor, finance_account_id,
             )
@@ -84649,6 +85973,9 @@ def register_accountant_revenue():
             revenue_id = cursor.lastrowid
             if revenue_id:
                 _replace_accountant_revenue_items(cursor, revenue_id, line_items)
+                _sync_finance_account_revenue_vote_template(
+                    cursor, finance_account_id, line_items,
+                )
             ensure_finance_account_transactions_table(cursor)
             ok_credit, credit_err = _credit_finance_account(
                 cursor, finance_account_id, amount,
@@ -84718,6 +86045,7 @@ def _fetch_payments_invoices_live_payload(cursor, payment_filter='outstanding'):
     ensure_finance_account_transactions_table(cursor)
     analytics = _fetch_accountant_payment_analytics(cursor)
     finance_accounts = _fetch_finance_accounts_for_disbursement_picker(cursor)
+    expense_votes = _fetch_payments_expense_picker_votes(cursor)
     stock_in_records = _fetch_store_stock_in_list(cursor, payment_filter='all')
     supplier_payables = _aggregate_supplier_payables_by_phone(
         stock_in_records, status_filter=payment_filter,
@@ -84725,6 +86053,7 @@ def _fetch_payments_invoices_live_payload(cursor, payment_filter='outstanding'):
     return {
         'analytics': analytics,
         'finance_accounts': finance_accounts,
+        'expense_votes': expense_votes,
         'supplier_payables': supplier_payables,
         'stock_in_records': stock_in_records,
         'record_count': len(supplier_payables),
@@ -84821,6 +86150,7 @@ def accountant_payments_invoices():
     supplier_payables = []
     misc_payments = []
     finance_accounts_picker = []
+    expense_votes = []
     payment_analytics = {}
     connection = get_db_connection()
     if connection:
@@ -84833,6 +86163,7 @@ def accountant_payments_invoices():
                 ensure_finance_account_transactions_table(cursor)
                 connection.commit()
                 payment_analytics = _fetch_accountant_payment_analytics(cursor)
+                expense_votes = _fetch_payments_expense_picker_votes(cursor)
                 finance_accounts_picker = _fetch_finance_accounts_for_disbursement_picker(cursor)
                 stock_in_records = _fetch_store_stock_in_list(
                     cursor, payment_filter='all',
@@ -84862,6 +86193,7 @@ def accountant_payments_invoices():
         record_count=len(supplier_payables),
         misc_payment_count=len(misc_payments),
         finance_accounts_picker=finance_accounts_picker,
+        expense_votes=expense_votes,
         outstanding_total_display=pa.get('stock_in_outstanding_display', '0.00'),
         misc_payments_total_display=pa.get('misc_total_display', '0.00'),
     )
@@ -85047,16 +86379,15 @@ def record_supplier_pay_all():
     if len(company_name) > 255:
         company_name = company_name[:255]
 
-    funding, fund_err = _parse_expense_payment_funding(request.form)
-    if fund_err:
-        return _pay_fail(fund_err)
-
     connection = get_db_connection()
     if not connection:
         return _pay_fail('Could not connect to the database.')
 
     try:
         with connection.cursor() as cursor:
+            funding, fund_err = _parse_expense_payment_funding(request.form, cursor)
+            if fund_err:
+                return _pay_fail(fund_err)
             paid_by = (
                 session.get('full_name') or session.get('username') or ''
             ).strip()
@@ -85067,6 +86398,7 @@ def record_supplier_pay_all():
                     finance_account_id=funding['finance_account_id'],
                     payment_reference=funding['payment_reference'],
                     expected_amount=pay_amount,
+                    vote_name=funding.get('vote_name'),
                 )
             else:
                 ok, message = _record_supplier_pay_all(
@@ -85074,6 +86406,7 @@ def record_supplier_pay_all():
                     payment_method=funding['payment_method'],
                     finance_account_id=funding['finance_account_id'],
                     payment_reference=funding['payment_reference'],
+                    vote_name=funding.get('vote_name'),
                 )
             if ok:
                 connection.commit()
@@ -85140,16 +86473,15 @@ def record_stock_in_payment(movement_id):
     if len(company_name) > 255:
         company_name = company_name[:255]
 
-    funding, fund_err = _parse_expense_payment_funding(request.form)
-    if fund_err:
-        return _pay_fail(fund_err)
-
     connection = get_db_connection()
     if not connection:
         return _pay_fail('Could not connect to the database.')
 
     try:
         with connection.cursor() as cursor:
+            funding, fund_err = _parse_expense_payment_funding(request.form, cursor)
+            if fund_err:
+                return _pay_fail(fund_err)
             paid_by = (
                 session.get('full_name') or session.get('username') or ''
             ).strip()
@@ -85158,6 +86490,7 @@ def record_stock_in_payment(movement_id):
                 payment_method=funding['payment_method'],
                 finance_account_id=funding['finance_account_id'],
                 payment_reference=funding['payment_reference'],
+                vote_name=funding.get('vote_name'),
             )
             if ok:
                 connection.commit()
