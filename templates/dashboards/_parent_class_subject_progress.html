@@ -16,14 +16,20 @@
                         {% if pcp.grade %}<span class="font-semibold text-gray-700 dark:text-gray-300">{{ pcp.grade }}</span>{% endif %}
                         {% if pcp.grade and pcp.term_label %} · {% endif %}
                         {% if pcp.term_label %}{{ pcp.term_label }}{% endif %}
-                        {% if not pcp.grade and not pcp.term_label %}Curriculum coverage for your child&apos;s class this term{% endif %}
+                        {% if not pcp.grade and not pcp.term_label %}Curriculum coverage for {% if portal_mode|default('parent') == 'student' %}your class this term{% else %}your child&apos;s class this term{% endif %}{% endif %}
                     </p>
                 </div>
             </div>
             {% if sid %}
+            {% if portal_mode|default('parent') == 'student' %}
+            <a href="{{ student_dash_url('exam-progress') }}" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline shrink-0 inline-flex items-center gap-1">
+                My exam results <i class="fas fa-arrow-right text-[10px]"></i>
+            </a>
+            {% else %}
             <a href="{{ parent_dash_url('exam-progress/' ~ sid) }}" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline shrink-0 inline-flex items-center gap-1">
                 Personal exam results <i class="fas fa-arrow-right text-[10px]"></i>
             </a>
+            {% endif %}
             {% endif %}
         </div>
         {% if subjects %}

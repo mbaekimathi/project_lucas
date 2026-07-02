@@ -33,6 +33,8 @@ function academicCalendarManage() {
         formTermId: '{{ selected_term_id or "" }}',
         formAffectsAllLevels: true,
         formLevelIds: [],
+        formImageUrl: '',
+        formRemoveImage: false,
         setFormMode(mode, activityId) {
             const actionEl = document.getElementById('form-action');
             const idEl = document.getElementById('form-activity-id');
@@ -51,6 +53,8 @@ function academicCalendarManage() {
             this.formTermId = '{{ selected_term_id or "" }}';
             this.formAffectsAllLevels = true;
             this.formLevelIds = [];
+            this.formImageUrl = '';
+            this.formRemoveImage = false;
             this.setFormMode('add', null);
         },
         openRegisterModal() {
@@ -107,6 +111,8 @@ function academicCalendarManage() {
             this.formTermId = payload.termId ? String(payload.termId) : '';
             this.formAffectsAllLevels = payload.affectsAllLevels !== false;
             this.formLevelIds = (payload.levelIds || []).map(id => Number(id));
+            this.formImageUrl = payload.imageUrl || '';
+            this.formRemoveImage = false;
             this.setFormMode('edit', payload.id);
             const yearSelect = document.getElementById('academic_year_id');
             if (yearSelect && payload.yearId) {
@@ -178,6 +184,12 @@ function academicCalendarManage() {
         {% for item in activities %}
         <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-3"
              :class="editing && editId === {{ item.id }} ? 'bg-violet-50/80 dark:bg-violet-950/20' : ''">
+            {% if item.image_url %}
+            <div class="shrink-0">
+                <img src="{{ item.image_url }}" alt="{{ item.activity_title }}"
+                     class="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover border border-gray-200 dark:border-gray-600">
+            </div>
+            {% endif %}
             <div class="min-w-0 flex-1">
                 <p class="font-semibold text-gray-900 dark:text-white m-0 uppercase">{{ item.activity_title }}</p>
                 <p class="text-xs text-gray-500 mt-0.5 m-0">
@@ -207,7 +219,8 @@ function academicCalendarManage() {
                             "about": item.activity_about or "",
                             "notifyParents": item.notify_parents|default(true),
                             "affectsAllLevels": item.affects_all_levels|default(true),
-                            "levelIds": item.academic_level_ids|default([])
+                            "levelIds": item.academic_level_ids|default([]),
+                            "imageUrl": item.image_url or ""
                         }|tojson }}'
                         @click="startEditFromEl($event.currentTarget)"
                         class="text-xs font-semibold text-violet-600 hover:text-violet-700 px-2 py-1 rounded border border-violet-200 dark:border-violet-900">
@@ -260,6 +273,7 @@ function academicCalendarManage() {
 
             <form method="POST" id="activity-form"
                   action="{{ employee_dash_url('academic-calendar/manage') }}{% if selected_year_id %}?academic_year_id={{ selected_year_id }}{% if selected_term_id %}&term_id={{ selected_term_id }}{% endif %}{% endif %}"
+                  enctype="multipart/form-data"
                   class="flex flex-col min-h-0 flex-1">
                 <input type="hidden" name="action" id="form-action" value="add">
                 <input type="hidden" name="activity_id" id="form-activity-id" value="">
@@ -329,6 +343,29 @@ function academicCalendarManage() {
                         <textarea id="activity_about" name="activity_about" rows="3" x-model="formAbout"
                                   class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
                                   placeholder="Describe what will happen, who should attend, and any preparation needed…"></textarea>
+                    </div>
+
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+                        <div>
+                            <p class="text-xs font-semibold text-gray-700 dark:text-gray-200 m-0">Event image <span class="font-normal text-gray-400">(optional)</span></p>
+                            <p class="text-[11px] text-gray-500 dark:text-gray-400 m-0 mt-0.5">Upload a photo or poster for this activity. PNG, JPG, or WebP — max 10MB.</p>
+                        </div>
+                        <div x-show="formImageUrl && !formRemoveImage" x-cloak class="flex items-start gap-3">
+                            <img :src="formImageUrl" alt="Current event image"
+                                 class="w-24 h-24 rounded-lg object-cover border border-gray-200 dark:border-gray-600 shrink-0">
+                            <label class="flex items-center gap-2 cursor-pointer text-sm text-rose-600 dark:text-rose-400">
+                                <input type="checkbox" name="remove_activity_image" value="1"
+                                       x-model="formRemoveImage"
+                                       class="rounded border-gray-300 text-rose-600 focus:ring-rose-500">
+                                Remove current image
+                            </label>
+                        </div>
+                        <div>
+                            <label for="activity_image" class="block text-[11px] font-semibold text-gray-500 mb-1"
+                                   x-text="formImageUrl && !formRemoveImage ? 'Replace image' : 'Choose image'"></label>
+                            <input type="file" id="activity_image" name="activity_image" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                                   class="block w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100 dark:file:bg-violet-950 dark:file:text-violet-300">
+                        </div>
                     </div>
 
                     <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">

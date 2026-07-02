@@ -10,10 +10,11 @@
 {% block body_class %}public-site cbc-saas school-public news-calendar-page{% endblock %}
 
 {% block content %}
-{% set hero_img = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=1920&q=80&auto=format&fit=crop' %}
-{% set bento_items = upcoming_activities[:6] if upcoming_activities else [] %}
+{% set hero_img = spotlight.cover_image if spotlight and spotlight.has_custom_image else 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=1920&q=80&auto=format&fit=crop' %}
+{% set bento_pool = (upcoming_activities|selectattr('has_custom_image')|list) + (upcoming_activities|rejectattr('has_custom_image')|list) %}
+{% set bento_items = bento_pool[:6] if bento_pool else [] %}
 {% if spotlight and bento_items and bento_items[0].id == spotlight.id %}
-    {% set bento_items = upcoming_activities[1:7] %}
+    {% set bento_items = bento_pool[1:7] %}
 {% endif %}
 
 <section class="news-hub py-6 md:py-10 edu-section--tint" aria-label="School news and academic calendar">
@@ -53,8 +54,8 @@
                 <span class="news-stat__label">This month</span>
             </div>
             <div class="news-stat">
-                <span class="news-stat__value">{{ category_counts.get('exam', 0) }}</span>
-                <span class="news-stat__label">Exams</span>
+                <span class="news-stat__value">{{ photo_highlights|length }}</span>
+                <span class="news-stat__label">With photos</span>
             </div>
             <div class="news-stat">
                 <span class="news-stat__value">{{ total_count }}</span>
@@ -107,8 +108,11 @@
                      x-show="filter === 'all' || filter === '{{ spotlight.category }}'"
                      x-transition>
                 <div class="news-spotlight__visual">
-                    <img src="{{ spotlight.cover_image }}" alt="" class="news-spotlight__img" loading="eager" decoding="async" width="800" height="500">
+                    <img src="{{ spotlight.cover_image }}" alt="{{ spotlight.activity_title }}" class="news-spotlight__img" loading="eager" decoding="async" width="800" height="500">
                     <div class="news-spotlight__visual-scrim" aria-hidden="true"></div>
+                    {% if spotlight.has_custom_image %}
+                    <span class="news-spotlight__badge-photo"><i class="fas fa-camera" aria-hidden="true"></i> School photo</span>
+                    {% endif %}
                     {% if spotlight.is_today %}
                     <span class="news-spotlight__badge-live">Happening today</span>
                     {% elif spotlight.days_until is not none and spotlight.days_until <= 7 %}
@@ -147,6 +151,47 @@
             </article>
             {% endif %}
 
+            {% if photo_highlights %}
+            <section class="news-photo-highlights" aria-label="Event photos">
+                <div class="news-section-head">
+                    <div>
+                        <p class="edu-eyebrow mb-1">Visual highlights</p>
+                        <h2>Event photos</h2>
+                        <p class="news-photo-highlights__lead">Official images from the school academic calendar.</p>
+                    </div>
+                </div>
+                <div class="news-photo-grid">
+                    {% for item in photo_highlights %}
+                    <article class="news-photo-card fade-in-section"
+                             x-show="filter === 'all' || filter === '{{ item.category }}'"
+                             x-transition>
+                        <a href="#news-event-{{ item.id }}" class="news-photo-card__link">
+                            <div class="news-photo-card__media">
+                                <img src="{{ item.cover_image }}" alt="{{ item.activity_title }}" class="news-photo-card__img" loading="lazy" decoding="async">
+                                <div class="news-photo-card__overlay" aria-hidden="true"></div>
+                                {% if item.date_day %}
+                                <div class="news-photo-card__date">
+                                    <span class="news-photo-card__date-day">{{ item.date_day }}</span>
+                                    <span class="news-photo-card__date-mon">{{ item.date_month }}</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="news-photo-card__body">
+                                <span class="news-photo-card__tag" style="color: {{ item.color_text }}; background: {{ item.color_bg }};">
+                                    <i class="fas {{ item.category_icon }}" aria-hidden="true"></i> {{ item.category_label }}
+                                </span>
+                                <h3 class="news-photo-card__title">{{ item.activity_title }}</h3>
+                                <p class="news-photo-card__meta">
+                                    <i class="fas fa-calendar-alt" aria-hidden="true"></i> {{ item.date_range_label }}
+                                </p>
+                            </div>
+                        </a>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
             {% if bento_items %}
             <div class="news-section-head">
                 <div>
@@ -156,11 +201,14 @@
             </div>
             <div class="news-bento">
                 {% for item in bento_items %}
-                <article class="news-bento__item news-bento-card fade-in-section"
+                <article class="news-bento__item news-bento-card fade-in-section{% if item.has_custom_image %} has-photo{% endif %}"
                          x-show="filter === 'all' || filter === '{{ item.category }}'"
                          x-transition>
-                    <div class="news-bento-card__bg" style="background-image: url('{{ item.cover_image }}');" role="img" aria-label=""></div>
+                    <div class="news-bento-card__bg" style="background-image: url('{{ item.cover_image }}');" role="img" aria-label="{{ item.activity_title }}"></div>
                     <div class="news-bento-card__overlay" aria-hidden="true"></div>
+                    {% if item.has_custom_image %}
+                    <span class="news-bento-card__photo-badge"><i class="fas fa-camera" aria-hidden="true"></i></span>
+                    {% endif %}
                     <div class="news-bento-card__content">
                         <span class="news-bento-card__tag" style="color: {{ item.color_text }}; background: {{ item.color_bg }};">
                             <i class="fas {{ item.category_icon }}" aria-hidden="true"></i> {{ item.category_label }}
@@ -231,8 +279,9 @@
                     <div class="news-tree__branches">
                         {% for branch in branch_tree.branches %}
                         {% set item = branch.item %}
-                        <article class="news-tree__branch news-tree__branch--{{ branch.side }} fade-in-section{% if not item.is_upcoming %} is-past{% endif %}"
+                        <article class="news-tree__branch news-tree__branch--{{ branch.side }} fade-in-section{% if not item.is_upcoming %} is-past{% endif %}{% if item.has_custom_image %} has-photo{% endif %}"
                                  data-category="{{ item.category }}"
+                                 id="news-event-{{ item.id }}"
                                  style="--branch-mid: {{ branch.mid_pct }}%; --branch-span: {{ branch.span_pct }}%; --branch-color: {{ item.color_badge }};"
                                  x-show="(filter === 'all' || filter === '{{ item.category }}') && ({{ 'true' if item.is_upcoming else 'false' }} || showPast)"
                                  x-transition>
@@ -259,6 +308,11 @@
                             </div>
 
                             <div class="news-tree__leaf-card">
+                                {% if item.has_custom_image %}
+                                <div class="news-tree__leaf-media">
+                                    <img src="{{ item.cover_image }}" alt="{{ item.activity_title }}" class="news-tree__leaf-img" loading="lazy" decoding="async">
+                                </div>
+                                {% endif %}
                                 <div class="news-tree__leaf-card-head">
                                     <span class="news-tag" style="color: {{ item.color_text }}; background: {{ item.color_bg }}; border: 1px solid color-mix(in srgb, {{ item.color_badge }} 30%, transparent);">
                                         <i class="fas {{ item.category_icon }}" aria-hidden="true"></i> {{ item.category_label }}
@@ -320,15 +374,45 @@
                             <span class="news-month-block__count">{{ group['items']|length }} events</span>
                         </div>
                         {% for item in group['items'] %}
-                        <article class="news-timeline-card fade-in-section{% if not item.is_upcoming %} is-past{% endif %}"
+                        <article class="news-timeline-card fade-in-section{% if not item.is_upcoming %} is-past{% endif %}{% if item.has_custom_image %} has-photo{% endif %}"
+                                 id="news-event-{{ item.id }}"
                                  data-category="{{ item.category }}"
                                  x-show="(filter === 'all' || filter === '{{ item.category }}') && ({{ 'true' if item.is_upcoming else 'false' }} || showPast)"
                                  x-transition>
+                            <div class="news-timeline-card__thumb" style="background-image: url('{{ item.cover_image }}');" role="img" aria-label="{{ item.activity_title }}">
+                                <div class="news-timeline-card__thumb-scrim" aria-hidden="true"></div>
+                                {% if item.date_day %}
+                                <div class="news-timeline-card__date-stack">
+                                    <span class="news-timeline-card__date-day">{{ item.date_day }}</span>
+                                    <span class="news-timeline-card__date-mon">{{ item.date_month }}</span>
+                                </div>
+                                {% endif %}
+                            </div>
                             <div class="news-timeline-card__body">
+                                <div class="news-timeline-card__row">
+                                    <span class="news-tag" style="color: {{ item.color_text }}; background: {{ item.color_bg }}; border: 1px solid color-mix(in srgb, {{ item.color_badge }} 30%, transparent);">
+                                        <i class="fas {{ item.category_icon }}" aria-hidden="true"></i> {{ item.category_label }}
+                                    </span>
+                                    {% if item.has_custom_image %}
+                                    <span class="news-tag news-tag--photo"><i class="fas fa-camera" aria-hidden="true"></i> Photo</span>
+                                    {% endif %}
+                                    {% if item.is_today %}
+                                    <span class="news-tag news-tag--live"><i class="fas fa-circle text-[5px]" aria-hidden="true"></i> Today</span>
+                                    {% elif item.is_upcoming and item.days_until is not none and item.days_until <= 3 %}
+                                    <span class="news-tag news-tag--soon">Soon</span>
+                                    {% elif not item.is_upcoming %}
+                                    <span class="news-tag" style="opacity: 0.7;">Archive</span>
+                                    {% endif %}
+                                </div>
                                 <h4 class="news-timeline-card__title">{{ item.activity_title }}</h4>
                                 <div class="news-timeline-card__meta">
                                     <span><i class="fas fa-calendar-alt text-brand-primary" aria-hidden="true"></i> {{ item.date_range_label }}</span>
+                                    {% if item.term_label %}<span><i class="fas fa-bookmark" aria-hidden="true"></i> {{ item.term_label }}</span>{% endif %}
+                                    {% if item.levels_affected_label %}<span><i class="fas fa-layer-group" aria-hidden="true"></i> {{ item.levels_affected_label }}</span>{% endif %}
                                 </div>
+                                {% if item.activity_about %}
+                                <p class="news-timeline-card__text">{{ item.activity_about }}</p>
+                                {% endif %}
                             </div>
                         </article>
                         {% endfor %}

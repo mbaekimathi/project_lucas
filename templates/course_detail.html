@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course_page_title|default(course.subject_name ~ ' — Scheme of work — ' ~ (school_settings.school_name or 'Our school')) }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-courses.css') }}">
+<meta name="description" content="{{ course_meta_description|default('Scheme of work for ' ~ course.subject_name ~ ' at ' ~ (school_settings.school_name or 'our school'))|e }}">
+{% endblock %}
+
+{% block body_class %}public-site cbc-saas school-public courses-page course-detail-page{% endblock %}
+
+{% block content %}
+{% set hero_img = course.main_photo_url or 'https://images.unsplash.com/photo-1427504494784-3a09ca0284a5?w=1920&q=80&auto=format&fit=crop' %}
+
+<section class="courses-hub py-6 md:py-10 edu-section--tint" aria-label="{{ course.subject_name }} scheme of work">
+    <div class="courses-hub__mesh" aria-hidden="true"></div>
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl courses-hub__inner">
+
+        <nav class="course-breadcrumb" aria-label="Breadcrumb">
+            <a href="{{ url_for('courses') }}" class="course-breadcrumb__link">
+                <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                All courses
+            </a>
+        </nav>
+
+        <header class="scheme-page-header">
+            <img src="{{ hero_img }}" alt="{{ course.subject_name }}" class="scheme-page-header__photo" loading="eager">
+            <div class="scheme-page-header__text">
+                <h1 class="scheme-page-header__title">{{ course.subject_name }}</h1>
+                <p class="scheme-page-header__subtitle">Scheme of work</p>
+            </div>
+        </header>
+
+        {% if course.scheme_of_work %}
+        <div class="scheme-topics" role="list">
+            {% for topic in course.scheme_of_work %}
+            {% set subtopics = topic.subtopics or [] %}
+            {% set single_unnamed = subtopics|length == 1 and not (subtopics[0].sub_topic or '')|trim %}
+            <article class="scheme-topic" role="listitem">
+                <header class="scheme-topic__head">
+                    <span class="scheme-topic__index">{{ loop.index }}</span>
+                    <h2 class="scheme-topic__title">{{ topic.topic }}</h2>
+                </header>
+
+                <div class="scheme-topic__body">
+                    {% if subtopics %}
+                        {% if single_unnamed %}
+                        {% set sub = subtopics[0] %}
+                        <div class="scheme-subtopic scheme-subtopic--flat">
+                            {% include 'includes/scheme_subtopic_fields.html' %}
+                        </div>
+                        {% else %}
+                        <div class="scheme-subtopics">
+                            {% for sub in subtopics %}
+                            {% set sub_title = (sub.sub_topic or '')|trim %}
+                            <div class="scheme-subtopic">
+                                {% if sub_title %}
+                                <h3 class="scheme-subtopic__title">{{ sub_title }}</h3>
+                                {% endif %}
+                                {% include 'includes/scheme_subtopic_fields.html' %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    {% else %}
+                    <p class="scheme-topic__empty">Sub-topics for this topic will be published soon.</p>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="course-scheme-empty">
+            <div class="course-scheme-empty__icon" aria-hidden="true"><i class="fas fa-list-ul"></i></div>
+            <h2 class="text-lg font-bold text-slate-900 dark:text-white mb-2">Scheme of work coming soon</h2>
+            <p class="text-slate-600 dark:text-slate-400 text-sm max-w-md mx-auto mb-0">
+                The learning plan for this subject is being prepared.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

@@ -2,15 +2,41 @@
 
 {% block title %}{{ student.full_name }} — Attendance - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% if portal_mode|default('parent') == 'student' %}
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+{% endblock %}
+{% endif %}
+
 
 {% block sidebar_content %}
+{% if portal_mode|default('parent') == 'student' %}
+{% set student_nav_scope = 'all' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
+{% else %}
 {% set parent_nav_scope = 'attendance' %}
 {% include 'dashboards/includes/parent_page_sidebar.html' %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }}">
-    {% if is_technician and current_view_role == 'parent' %}
+<div class="{% if portal_mode|default('parent') == 'student' %}sp-portal {% endif %}p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }} space-y-5 sm:space-y-6">
+    {% if portal_mode|default('parent') == 'student' %}
+    {% set sp_tech_hint = 'Select a student to view their attendance' %}
+    {% set sp_tech_action = student_dash_url('attendance') %}
+    {% set sp_selected_id = parent_student_id %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
+    <a href="{{ student_dash_url() }}" class="sp-back"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard</a>
+
+    {% set role_theme = 'student' %}
+    {% set role_hero_eyebrow = 'Student portal' %}
+    {% set role_hero_title = 'My attendance' %}
+    {% set role_hero_subtitle = student.full_name ~ ' · ' ~ student.student_id ~ ((' · ' ~ student.current_grade) if student.current_grade else '') ~ ' — daily presence tracked by your class teacher.' %}
+    {% set role_hero_icon_class = 'fa-chart-pie' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
+
+    {% elif is_technician and current_view_role == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
         <div class="flex items-center justify-between flex-wrap gap-4">
             <div class="flex items-center gap-3">
@@ -37,16 +63,17 @@
     </div>
     {% endif %}
 
-    {% if show_sibling_nav %}
+    {% if show_sibling_nav and portal_mode|default('parent') == 'parent' %}
     <a href="{{ parent_dash_url('attendance') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
         <i class="fas fa-arrow-left mr-2"></i>Choose another child
     </a>
-    {% else %}
+    {% elif portal_mode|default('parent') == 'parent' %}
     <a href="{{ parent_dash_url() }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
         <i class="fas fa-arrow-left mr-2"></i>Back to dashboard
     </a>
     {% endif %}
 
+    {% if portal_mode|default('parent') == 'parent' %}
     <div class="page-hero mb-6 sm:mb-8">
         <div class="relative px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
             <div class="flex items-center gap-4">
@@ -69,11 +96,13 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
-    <form method="GET" action="{{ parent_dash_url('attendance/' ~ parent_student_id) }}" class="filter-bar mb-6 modern-card p-4 sm:p-5 flex flex-wrap gap-4 items-end">
+    <form method="GET" action="{% if portal_mode|default('parent') == 'student' %}{{ student_dash_url('attendance') }}{% else %}{{ parent_dash_url('attendance/' ~ parent_student_id) }}{% endif %}"
+          class="{% if portal_mode|default('parent') == 'student' %}sp-filter{% else %}filter-bar mb-6 modern-card p-4 sm:p-5 flex flex-wrap gap-4 items-end{% endif %}">
         <div class="flex-1 min-w-[180px]">
-            <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Academic year</label>
-            <select name="academic_year_id" class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            <label class="{% if portal_mode|default('parent') == 'student' %}sp-filter__label{% else %}block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5{% endif %}">Academic year</label>
+            <select name="academic_year_id" class="{% if portal_mode|default('parent') != 'student' %}w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white{% endif %}">
                 <option value="">All years</option>
                 {% for y in academic_years %}
                 <option value="{{ y.id }}" {% if selected_academic_year_id == y.id %}selected{% endif %}>{{ y.year_name }}{% if y.is_current %} (Current){% endif %}</option>
@@ -81,8 +110,8 @@
             </select>
         </div>
         <div class="flex-1 min-w-[200px]">
-            <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Term</label>
-            <select name="term_id" class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            <label class="{% if portal_mode|default('parent') == 'student' %}sp-filter__label{% else %}block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5{% endif %}">Term</label>
+            <select name="term_id" class="{% if portal_mode|default('parent') != 'student' %}w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white{% endif %}">
                 {% if not terms %}
                 <option value="">No terms available</option>
                 {% endif %}
@@ -91,8 +120,8 @@
                 {% endfor %}
             </select>
         </div>
-        <button type="submit" class="touch-btn px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold hover:opacity-95 shadow-md">
-            <i class="fas fa-sync-alt mr-2"></i>Apply
+        <button type="submit" class="{% if portal_mode|default('parent') == 'student' %}sp-btn sp-btn--primary{% else %}touch-btn px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold hover:opacity-95 shadow-md{% endif %}">
+            <i class="fas fa-sync-alt mr-2" aria-hidden="true"></i>Apply
         </button>
     </form>
 
@@ -303,12 +332,12 @@
     })();
     </script>
     {% else %}
-    <div class="empty-state modern-card">
-        <div class="empty-state-icon">
-            <i class="fas fa-chart-line text-gray-400 text-3xl"></i>
+    <div class="{% if portal_mode|default('parent') == 'student' %}sp-panel{% else %}empty-state modern-card{% endif %}">
+        <div class="sp-empty">
+            <div class="sp-empty__icon"><i class="fas fa-chart-line" aria-hidden="true"></i></div>
+            <p class="sp-empty__title">No attendance recorded yet</p>
+            <p class="sp-empty__text">When teachers record attendance for this term, you will see rates, weekly breakdown, and day-by-day status here.</p>
         </div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No attendance recorded yet</h3>
-        <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto">When teachers record attendance for this term, you will see rates, weekly breakdown, and day-by-day status here.</p>
     </div>
     {% endif %}
 </div>

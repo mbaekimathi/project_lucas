@@ -1,0 +1,26 @@
+{% if is_technician and current_view_role == 'student' %}
+<div class="sp-tech-banner mb-2">
+    <div class="flex items-center gap-3 min-w-0">
+        <span class="sp-panel__title-icon"><i class="fas fa-user-cog" aria-hidden="true"></i></span>
+        <div>
+            <p class="text-sm font-bold text-gray-900 dark:text-white m-0">Technician preview</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 m-0">{{ sp_tech_hint|default('Select a student to view their portal') }}</p>
+        </div>
+    </div>
+    <form method="GET" action="{{ sp_tech_action|default(student_dash_url()) }}" class="flex items-center gap-2 flex-wrap">
+        <select name="student_id" onchange="this.form.submit()"
+                class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white min-w-[220px]">
+            <option value="">— Select student —</option>
+            {% for st in all_students %}
+            {% set sid = st.get('student_id', '') or st[1] if st else '' %}
+            <option value="{{ sid }}" {% if sid == (sp_selected_id|default(selected_student_id)) %}selected{% endif %}>
+                {{ st.get('full_name', '') or st[2] if st else '' }} — {{ sid }}
+            </option>
+            {% endfor %}
+        </select>
+        {% if selected_student_id %}
+        <a href="{{ sp_tech_clear_url|default(student_dash_url()) }}" class="sp-btn sp-btn--ghost text-xs py-2">Clear</a>
+        {% endif %}
+    </form>
+</div>
+{% endif %}

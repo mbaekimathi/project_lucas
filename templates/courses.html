@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}{{ courses_page_title|default('Courses — ' ~ (school_settings.school_name or 'Our school')) }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public-courses.css') }}">
+<meta name="description" content="{{ courses_meta_description|default('Subjects and learning areas at ' ~ (school_settings.school_name or 'our school'))|e }}">
+{% endblock %}
+
+{% block body_class %}public-site cbc-saas school-public courses-page{% endblock %}
+
+{% block content %}
+{% set hero_img = 'https://images.unsplash.com/photo-1427504494784-3a09ca0284a5?w=1920&q=80&auto=format&fit=crop' %}
+
+<section class="courses-hub py-6 md:py-10 edu-section--tint" aria-label="School courses and subjects">
+    <div class="courses-hub__mesh" aria-hidden="true"></div>
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl courses-hub__inner">
+
+        <header class="courses-hero">
+            <div class="courses-hero__bg" style="background-image: url('{{ hero_img }}');" role="img" aria-label="Students in class"></div>
+            <div class="courses-hero__scrim" aria-hidden="true"></div>
+            <div class="courses-hero__content">
+                <p class="courses-hero__eyebrow"><i class="fas fa-book-open" aria-hidden="true"></i> Academic offerings</p>
+                <h1 class="courses-hero__title">Our courses</h1>
+                <p class="courses-hero__lead">
+                    Registered subjects and learning areas at {{ school_settings.school_name or 'our school' }} — aligned with the Competency Based Curriculum.
+                </p>
+            </div>
+        </header>
+
+        {% if course_subjects %}
+        <div class="courses-stats" aria-label="Course statistics">
+            <div class="courses-stat">
+                <span class="courses-stat__value">{{ courses_count }}</span>
+                <span class="courses-stat__label">Active subjects</span>
+            </div>
+            <div class="courses-stat">
+                <span class="courses-stat__value">{{ described_count }}</span>
+                <span class="courses-stat__label">With descriptions</span>
+            </div>
+            <div class="courses-stat">
+                <span class="courses-stat__value">{{ course_categories|length }}</span>
+                <span class="courses-stat__label">Categories</span>
+            </div>
+            <div class="courses-stat">
+                <span class="courses-stat__value">CBC</span>
+                <span class="courses-stat__label">Curriculum</span>
+            </div>
+        </div>
+
+        <div x-data="{ query: '', category: 'all' }">
+            <div class="courses-controls">
+                <div class="courses-controls__search">
+                    <label for="courses-search" class="courses-controls__label">Search subjects</label>
+                    <div class="courses-search-wrap">
+                        <i class="fas fa-search courses-search-wrap__icon" aria-hidden="true"></i>
+                        <input type="search"
+                               id="courses-search"
+                               x-model="query"
+                               placeholder="Search by name or code…"
+                               class="courses-search-input"
+                               autocomplete="off">
+                    </div>
+                </div>
+                {% if course_categories %}
+                <div>
+                    <p class="courses-controls__label">Filter by category</p>
+                    <div class="courses-filter-tabs" role="group" aria-label="Filter by category">
+                        <button type="button" class="courses-chip" :class="{ 'is-active': category === 'all' }" @click="category = 'all'">
+                            All <span class="courses-chip__count">{{ courses_count }}</span>
+                        </button>
+                        {% for cat in course_categories %}
+                        <button type="button" class="courses-chip" :class="{ 'is-active': category === '{{ cat|e }}' }" @click="category = '{{ cat|e }}'">
+                            {{ cat }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="courses-grid" role="list">
+                {% for item in course_subjects %}
+                <a href="{{ url_for('course_detail', subject_id=item.id) }}"
+                   class="courses-card courses-card--link fade-in-section"
+                   role="listitem"
+                   id="course-{{ item.id }}"
+                   data-name="{{ (item.subject_name or '')|lower }}"
+                   data-code="{{ (item.subject_code or '')|lower }}"
+                   data-category="{{ (item.category or '')|lower }}"
+                   x-show="(!query || $el.dataset.name.includes(query.toLowerCase()) || $el.dataset.code.includes(query.toLowerCase())) && (category === 'all' || $el.dataset.category === category.toLowerCase())"
+                   x-transition
+                   aria-label="View scheme of work for {{ item.subject_name }}">
+                    {% set card_img = item.main_photo_url or 'https://images.unsplash.com/photo-1427504494784-3a09ca0284a5?w=800&q=80&auto=format&fit=crop' %}
+                    <div class="courses-card__media">
+                        <img src="{{ card_img }}" alt="{{ item.subject_name }}" class="courses-card__photo" loading="lazy">
+                    </div>
+                    <div class="courses-card__head">
+                        <div class="courses-card__titles">
+                            <h2 class="courses-card__name">{{ item.subject_name }}</h2>
+                            {% if item.subject_code %}
+                            <p class="courses-card__code">{{ item.subject_code }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <p class="courses-card__desc{% if not item.has_description %} courses-card__desc--empty{% endif %}">
+                        {% if item.has_description %}
+                        {{ item.description }}
+                        {% else %}
+                        Description will be published soon. Contact the school office for more detail about this subject.
+                        {% endif %}
+                    </p>
+                    <div class="courses-card__footer">
+                        <p class="courses-card__category">
+                            <i class="fas fa-folder-open" aria-hidden="true"></i>
+                            <span>{{ item.category_label or 'Uncategorized' }}</span>
+                        </p>
+                        <span class="courses-card__cta">
+                            {% if item.has_scheme %}
+                            View scheme
+                            {% else %}
+                            View details
+                            {% endif %}
+                            <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                        </span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <div class="courses-empty">
+            <div class="courses-empty__icon" aria-hidden="true"><i class="fas fa-book-open"></i></div>
+            <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-2">Courses coming soon</h2>
+            <p class="text-slate-600 dark:text-slate-400 text-sm max-w-md mx-auto mb-0">
+                Active subjects will appear here once they are registered in the academic curriculum.
+            </p>
+        </div>
+        {% endif %}
+
+        <footer class="courses-cta-bar">
+            <p class="text-sm m-0">Interested in enrolling? <a href="{{ url_for('admission') }}" class="courses-cta-bar__text-link">Start an application</a>.</p>
+            <a href="{{ url_for('admission') }}" class="courses-cta-bar__btn">
+                <i class="fas fa-user-graduate" aria-hidden="true"></i>
+                Apply now
+                <i class="fas fa-arrow-right" aria-hidden="true"></i>
+            </a>
+        </footer>
+    </div>
+</section>
+{% endblock %}

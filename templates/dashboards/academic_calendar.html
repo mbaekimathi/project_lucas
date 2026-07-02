@@ -2,6 +2,12 @@
 
 {% block title %}Academic calendar — {{ school_settings.school_name or 'School' }}{% endblock %}
 
+{% if portal == 'student' %}
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+{% endblock %}
+{% endif %}
+
 {% block sidebar_content %}
 {% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
 {% if portal == 'parent' %}
@@ -40,14 +46,19 @@
 {% endblock %}
 
 {% block content %}
-<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
-    {% set role_theme = portal_page_variant|default('default') %}
+<div class="{% if portal == 'student' %}sp-portal {% endif %}role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-5 sm:space-y-6">
+    {% set role_theme = 'student' if portal == 'student' else portal_page_variant|default('default') %}
+    {% set role_hero_eyebrow = 'Student portal' if portal == 'student' else none %}
     {% set role_hero_title = 'Academic calendar' %}
     {% set role_hero_subtitle = (selected_year.year_name if selected_year else 'School activities by academic year') ~ ((' · ' ~ selected_term.term_name) if selected_term else (' · All terms' if calendar_terms else '')) %}
     {% set role_hero_icon_class = 'fa-calendar-alt' %}
     {% include 'dashboards/includes/role_hero.html' %}
 
-    <div class="flex flex-wrap items-end gap-3 mb-6">
+    {% if portal == 'student' %}
+    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
+    {% endif %}
+
+    <div class="{% if portal == 'student' %}sp-filter{% else %}flex flex-wrap items-end gap-3 mb-6{% endif %}">
         <form method="GET" action="{% if portal == 'parent' %}{{ parent_dash_url('academic-calendar') }}{% elif portal == 'student' %}{{ student_dash_url('academic-calendar') }}{% else %}{{ employee_dash_url('academic-calendar') }}{% endif %}" class="flex flex-wrap items-end gap-2">
             {% if view_month %}<input type="hidden" name="month" value="{{ view_month }}">{% endif %}
             <div>
@@ -185,6 +196,14 @@
                 <div class="flex flex-wrap items-start gap-3">
                     <span class="acal-ref-badge acal-ref-badge-lg shrink-0"
                           style="background:{{ item.color_badge }};">{{ item.ref }}</span>
+                    {% if item.image_url %}
+                    <div class="shrink-0">
+                        <img src="{{ item.image_url }}" alt="{{ item.activity_title }}"
+                             class="acal-activity-image rounded-lg object-cover border border-gray-200 dark:border-gray-600 cursor-pointer"
+                             loading="lazy"
+                             onclick="this.classList.toggle('acal-activity-image--expanded')">
+                    </div>
+                    {% endif %}
                     <div class="min-w-0 flex-1">
                         <p class="font-semibold text-gray-900 dark:text-white m-0 uppercase">{{ item.activity_title }}</p>
                         <p class="text-xs text-gray-500 mt-1 m-0">
@@ -309,6 +328,20 @@
     min-width: 1.75rem;
     height: 1.75rem;
     font-size: 0.8rem;
+}
+.acal-activity-image {
+    width: 5.5rem;
+    height: 5.5rem;
+    transition: width 0.2s ease, height 0.2s ease;
+}
+@media (min-width: 640px) {
+    .acal-activity-image { width: 7rem; height: 7rem; }
+}
+.acal-activity-image--expanded {
+    width: min(100%, 20rem);
+    height: auto;
+    max-height: 16rem;
+    object-fit: contain;
 }
 </style>
 {% endblock %}

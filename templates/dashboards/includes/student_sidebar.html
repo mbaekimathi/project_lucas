@@ -5,15 +5,17 @@
 {% set acal_href = student_dash_url('academic-calendar') %}
 {% set acal_hide_manage = true %}
 {% include 'dashboards/includes/academic_calendar_sidebar_links.html' %}
-<a @click.prevent="comingSoonTitle = 'My Timetable / Classes'; comingSoonModalOpen = true"
-   class="sidebar-item">
+<a href="{{ student_dash_url('class-timetable') }}"
+   class="sidebar-item {% if '/class-timetable' in request.path %}sidebar-item-active{% endif %}">
     <i class="fas fa-calendar-alt w-5"></i>
     <span>My timetable</span>
+    {% if '/class-timetable' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
-<a @click.prevent="comingSoonTitle = 'Attendance'; comingSoonModalOpen = true"
-   class="sidebar-item">
+<a href="{{ student_dash_url('attendance') }}"
+   class="sidebar-item {% if request.endpoint == 'student_portal_attendance' %}sidebar-item-active{% endif %}">
     <i class="fas fa-check-circle w-5"></i>
     <span>Attendance</span>
+    {% if request.endpoint == 'student_portal_attendance' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a @click.prevent="comingSoonTitle = 'Assignments / Homework'; comingSoonModalOpen = true"
    class="sidebar-item">
@@ -30,23 +32,30 @@
 
 {% if _stu_nav in ('all', 'fees') %}
 <p class="px-3 {% if _stu_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees</p>
+<a href="{{ student_dash_url('pocket-money') }}"
+   class="sidebar-item {% if request.endpoint == 'student_portal_pocket_money' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-coins w-5"></i>
+    <span>Pocket money</span>
+    {% if request.endpoint == 'student_portal_pocket_money' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 <a href="{{ student_dash_url('fees') }}"
-   class="sidebar-item {% if request.path.endswith('/fees') %}sidebar-item-active{% endif %}">
+   class="sidebar-item {% if request.endpoint == 'student_fees_view' %}sidebar-item-active{% endif %}">
     <i class="fas fa-money-bill-wave w-5"></i>
     <span>Fees / payment</span>
-    {% if request.path.endswith('/fees') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint in ('student_fees_view', 'dashboard_student') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}
 
 {% if _stu_nav == 'all' %}
 <p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
-<a @click.prevent="comingSoonTitle = 'Library'; comingSoonModalOpen = true"
-   class="sidebar-item">
+<a href="{{ student_dash_url('library') }}"
+   class="sidebar-item {% if request.endpoint == 'student_portal_library' %}sidebar-item-active{% endif %}">
     <i class="fas fa-book w-5"></i>
     <span>Library</span>
+    {% if request.endpoint == 'student_portal_library' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
-<a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true"
-   class="sidebar-item">
+<a href="{{ student_dash_url() }}#notifications-hub"
+   class="sidebar-item {% if request.endpoint == 'dashboard_student' and '#notifications' in (request.url|default('')) %}sidebar-item-active{% endif %}">
     <i class="fas fa-bell w-5"></i>
     <span>Notifications</span>
 </a>

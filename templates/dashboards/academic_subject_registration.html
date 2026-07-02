@@ -55,6 +55,28 @@
             min-width: 700px;
         }
     }
+
+    .scheme-topic-card {
+        border: 2px solid rgba(128, 0, 32, 0.12);
+        border-radius: 1rem;
+        background: rgba(255, 255, 255, 0.6);
+    }
+
+    .dark .scheme-topic-card {
+        background: rgba(17, 24, 39, 0.5);
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .scheme-subtopic-card {
+        border: 1px dashed rgba(128, 0, 32, 0.2);
+        border-radius: 0.85rem;
+        background: rgba(248, 250, 252, 0.9);
+    }
+
+    .dark .scheme-subtopic-card {
+        background: rgba(31, 41, 55, 0.55);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
 </style>
 {% endblock %}
 
@@ -168,7 +190,155 @@
                           placeholder="SUBJECT DESCRIPTION..."
                           style="text-transform: uppercase;"></textarea>
             </div>
+
+            <!-- Course main photo -->
+            <div class="rounded-xl border-2 border-gray-300 dark:border-gray-600 p-4 sm:p-5 bg-white dark:bg-gray-700/50 space-y-3">
+                <div>
+                    <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 m-0">
+                        Course Main Photo <span class="font-normal text-gray-400">(optional)</span>
+                    </p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1">
+                        Upload a cover image for this course on the public courses page. PNG, JPG, GIF, or WebP — max 10MB.
+                    </p>
+                </div>
+                <div x-show="formMainPhotoUrl && !formRemoveMainPhoto && !mainPhotoPreview" x-cloak class="flex items-start gap-4">
+                    <img :src="formMainPhotoUrl" alt="Current course photo"
+                         class="w-28 h-28 rounded-xl object-cover border-2 border-gray-200 dark:border-gray-600 shrink-0 shadow-sm">
+                    <label class="flex items-center gap-2 cursor-pointer text-sm text-rose-600 dark:text-rose-400 pt-1">
+                        <input type="checkbox" name="remove_main_photo" value="1"
+                               x-model="formRemoveMainPhoto"
+                               class="rounded border-gray-300 text-rose-600 focus:ring-rose-500">
+                        Remove current photo
+                    </label>
+                </div>
+                <div>
+                    <label for="main_photo" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5"
+                           x-text="formMainPhotoUrl && !formRemoveMainPhoto ? 'Replace photo' : 'Choose photo'"></label>
+                    <input type="file" id="main_photo" name="main_photo"
+                           accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                           @change="onMainPhotoSelected($event)"
+                           class="block w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-brand-primary/10 file:text-brand-primary hover:file:bg-brand-primary/20 dark:file:bg-brand-primary/20 dark:file:text-brand-primary">
+                </div>
+                <div x-show="mainPhotoPreview && !formRemoveMainPhoto" x-cloak>
+                    <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">New photo preview</p>
+                    <img :src="mainPhotoPreview" alt="New course photo preview"
+                         class="w-28 h-28 rounded-xl object-cover border-2 border-brand-primary/30 shadow-sm">
+                </div>
+            </div>
             
+            <!-- Scheme of Work (optional) -->
+            <div class="rounded-xl border-2 border-gray-300 dark:border-gray-600 p-4 sm:p-5 bg-white dark:bg-gray-700/40 space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 m-0">
+                            Scheme of Work <span class="font-normal text-gray-400">(optional)</span>
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1">
+                            Add topics and sub-topics with learning outcomes, activities, resources, assessment, and references.
+                        </p>
+                    </div>
+                    <button type="button"
+                            @click="addSchemeTopic()"
+                            class="modern-btn px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold shadow-md shrink-0">
+                        <i class="fas fa-plus mr-1"></i> Add Topic
+                    </button>
+                </div>
+
+                <div x-show="schemeOfWork.length === 0" class="text-center py-6 rounded-lg border border-dashed border-gray-300 dark:border-gray-600">
+                    <p class="text-sm text-gray-500 dark:text-gray-400 m-0">No scheme of work added yet. Click <strong>Add Topic</strong> to begin.</p>
+                </div>
+
+                <template x-for="(topic, topicIndex) in schemeOfWork" :key="topic._key">
+                    <div class="scheme-topic-card p-4 space-y-4">
+                        <div class="flex flex-col sm:flex-row sm:items-start gap-3">
+                            <div class="flex-1">
+                                <label class="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">
+                                    Topic <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text"
+                                       x-model="topic.topic_name"
+                                       class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                       placeholder="Main topic to be taught">
+                            </div>
+                            <button type="button"
+                                    @click="removeSchemeTopic(topicIndex)"
+                                    class="modern-btn px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold shrink-0 self-end sm:self-auto">
+                                <i class="fas fa-trash mr-1"></i> Remove Topic
+                            </button>
+                        </div>
+
+                        <div class="space-y-3 pl-0 sm:pl-3 border-l-0 sm:border-l-2 border-brand-primary/20">
+                            <div class="flex items-center justify-between gap-2">
+                                <p class="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 m-0">Sub-topics</p>
+                                <button type="button"
+                                        @click="addSchemeSubtopic(topicIndex)"
+                                        class="text-xs font-semibold text-brand-primary hover:underline">
+                                    <i class="fas fa-plus mr-1"></i> Add Sub-topic
+                                </button>
+                            </div>
+
+                            <template x-for="(subtopic, subIndex) in topic.subtopics" :key="subtopic._key">
+                                <div class="scheme-subtopic-card p-3 sm:p-4 space-y-3">
+                                    <div class="flex flex-col sm:flex-row sm:items-start gap-3">
+                                        <div class="flex-1">
+                                            <label class="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">
+                                                Sub-topic <span class="text-red-500">*</span>
+                                            </label>
+                                            <input type="text"
+                                                   x-model="subtopic.subtopic_name"
+                                                   class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                                   placeholder="Specific content under the topic">
+                                        </div>
+                                        <button type="button"
+                                                @click="removeSchemeSubtopic(topicIndex, subIndex)"
+                                                class="modern-btn px-2.5 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-semibold shrink-0">
+                                            <i class="fas fa-times mr-1"></i> Remove
+                                        </button>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div class="md:col-span-2">
+                                            <label class="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">Learning Outcomes / Objectives</label>
+                                            <textarea x-model="subtopic.learning_outcomes" rows="2"
+                                                      class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary resize-none"
+                                                      placeholder="What learners should know or be able to do"></textarea>
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">Learning Activities</label>
+                                            <textarea x-model="subtopic.learning_activities" rows="2"
+                                                      class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary resize-none"
+                                                      placeholder="Activities for the teacher and learners"></textarea>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">Teaching &amp; Learning Resources</label>
+                                            <textarea x-model="subtopic.teaching_resources" rows="2"
+                                                      class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary resize-none"
+                                                      placeholder="Textbooks, charts, ICT, models, etc."></textarea>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">Assessment Methods</label>
+                                            <textarea x-model="subtopic.assessment_methods" rows="2"
+                                                      class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary resize-none"
+                                                      placeholder="Quizzes, assignments, oral questions, practical work, tests"></textarea>
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">References</label>
+                                            <textarea x-model="subtopic.references" rows="2"
+                                                      class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary resize-none"
+                                                      placeholder="Syllabus, curriculum designs, textbooks, teacher's guides"></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <p x-show="topic.subtopics.length === 0" class="text-xs text-gray-500 dark:text-gray-400 m-0 py-2">
+                                No sub-topics yet. Add at least one sub-topic under this topic.
+                            </p>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
             <!-- Status (only when editing) -->
             <div x-show="editingSubject">
                 <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -225,10 +395,12 @@
                 <table class="w-full border-collapse">
                     <thead>
                         <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden sm:table-cell">Photo</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject Name</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject Code</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden md:table-cell">Description</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden lg:table-cell">Academic Levels</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold hidden md:table-cell">Scheme</th>
                             <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Status</th>
                             <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
                         </tr>
@@ -236,11 +408,29 @@
                     <tbody>
                         <template x-for="subject in subjects" :key="subject.id">
                             <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                <td class="p-3 sm:p-4 hidden sm:table-cell">
+                                    <template x-if="subject.main_photo_url">
+                                        <img :src="subject.main_photo_url" :alt="subject.subject_name"
+                                             class="w-12 h-12 rounded-lg object-cover border border-gray-200 dark:border-gray-600">
+                                    </template>
+                                    <template x-if="!subject.main_photo_url">
+                                        <div class="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400">
+                                            <i class="fas fa-image text-sm"></i>
+                                        </div>
+                                    </template>
+                                </td>
                                 <td class="p-3 sm:p-4 text-sm font-semibold text-gray-900 dark:text-white" x-text="subject.subject_name"></td>
                                 <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white" x-text="subject.subject_code || '—'"></td>
                                 <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden md:table-cell" x-text="subject.description || '—'"></td>
                                 <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden lg:table-cell">
                                     <span x-text="(subject.academic_levels || []).map(l => l.level_name).join(', ') || '—'"></span>
+                                </td>
+                                <td class="p-3 sm:p-4 text-center hidden md:table-cell">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
+                                          :class="(subject.scheme_topic_count || 0) > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'">
+                                        <i class="fas fa-sitemap text-[10px]"></i>
+                                        <span x-text="(subject.scheme_topic_count || 0) + ' / ' + (subject.scheme_subtopic_count || 0)"></span>
+                                    </span>
                                 </td>
                                 <td class="p-3 sm:p-4 text-center">
                                     <span class="px-3 py-1.5 rounded-full text-xs font-semibold"
@@ -284,6 +474,115 @@ function subjectRegistration() {
         showRegisterForm: false,
         editingSubject: false,
         saving: false,
+        formMainPhotoUrl: '',
+        formRemoveMainPhoto: false,
+        mainPhotoPreview: '',
+        schemeOfWork: [],
+        schemeKeyCounter: 1,
+
+        newSchemeSubtopic() {
+            return {
+                _key: 'st-' + (this.schemeKeyCounter++),
+                subtopic_name: '',
+                learning_outcomes: '',
+                learning_activities: '',
+                teaching_resources: '',
+                assessment_methods: '',
+                references: ''
+            };
+        },
+
+        newSchemeTopic() {
+            return {
+                _key: 'tp-' + (this.schemeKeyCounter++),
+                topic_name: '',
+                subtopics: [this.newSchemeSubtopic()]
+            };
+        },
+
+        cloneSchemeOfWork(source) {
+            const items = Array.isArray(source) ? source : [];
+            return items.map((topic) => ({
+                _key: 'tp-' + (this.schemeKeyCounter++),
+                topic_name: topic.topic_name || '',
+                subtopics: (topic.subtopics || []).map((st) => ({
+                    _key: 'st-' + (this.schemeKeyCounter++),
+                    subtopic_name: st.subtopic_name || '',
+                    learning_outcomes: st.learning_outcomes || '',
+                    learning_activities: st.learning_activities || '',
+                    teaching_resources: st.teaching_resources || '',
+                    assessment_methods: st.assessment_methods || '',
+                    references: st.references || ''
+                }))
+            }));
+        },
+
+        addSchemeTopic() {
+            this.schemeOfWork.push(this.newSchemeTopic());
+        },
+
+        removeSchemeTopic(topicIndex) {
+            this.schemeOfWork.splice(topicIndex, 1);
+        },
+
+        addSchemeSubtopic(topicIndex) {
+            if (!this.schemeOfWork[topicIndex]) {
+                return;
+            }
+            this.schemeOfWork[topicIndex].subtopics.push(this.newSchemeSubtopic());
+        },
+
+        removeSchemeSubtopic(topicIndex, subIndex) {
+            if (!this.schemeOfWork[topicIndex]) {
+                return;
+            }
+            this.schemeOfWork[topicIndex].subtopics.splice(subIndex, 1);
+        },
+
+        buildSchemePayload() {
+            return this.schemeOfWork
+                .map((topic) => {
+                    const topicName = (topic.topic_name || '').trim();
+                    if (!topicName) {
+                        return null;
+                    }
+                    const subtopics = (topic.subtopics || [])
+                        .map((st) => {
+                            const subtopicName = (st.subtopic_name || '').trim();
+                            if (!subtopicName) {
+                                return null;
+                            }
+                            return {
+                                subtopic_name: subtopicName,
+                                learning_outcomes: (st.learning_outcomes || '').trim(),
+                                learning_activities: (st.learning_activities || '').trim(),
+                                teaching_resources: (st.teaching_resources || '').trim(),
+                                assessment_methods: (st.assessment_methods || '').trim(),
+                                references: (st.references || '').trim()
+                            };
+                        })
+                        .filter(Boolean);
+                    return {
+                        topic_name: topicName,
+                        subtopics
+                    };
+                })
+                .filter(Boolean);
+        },
+        
+        onMainPhotoSelected(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) {
+                this.mainPhotoPreview = '';
+                return;
+            }
+            this.formRemoveMainPhoto = false;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                this.mainPhotoPreview = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        },
         
         async saveSubject() {
             if (!this.formData.subject_name.trim()) {
@@ -295,18 +594,25 @@ function subjectRegistration() {
                 return;
             }
             
-            // Ensure all fields are uppercase
-            const subjectData = {
-                subject_name: this.formData.subject_name.trim().toUpperCase(),
-                subject_code: this.formData.subject_code ? this.formData.subject_code.trim().toUpperCase() : '',
-                description: this.formData.description ? this.formData.description.trim().toUpperCase() : '',
-                academic_level_ids: this.formData.academic_level_ids,
-                status: this.formData.status
-            };
-            
+            const payload = new FormData();
+            payload.append('subject_name', this.formData.subject_name.trim().toUpperCase());
+            payload.append('subject_code', this.formData.subject_code ? this.formData.subject_code.trim().toUpperCase() : '');
+            payload.append('description', this.formData.description ? this.formData.description.trim().toUpperCase() : '');
+            payload.append('status', this.formData.status);
+            this.formData.academic_level_ids.forEach((id) => {
+                payload.append('academic_level_ids', id);
+            });
             if (this.editingSubject) {
-                subjectData.subject_id = this.formData.subject_id;
+                payload.append('subject_id', this.formData.subject_id);
             }
+            if (this.formRemoveMainPhoto) {
+                payload.append('remove_main_photo', '1');
+            }
+            const fileInput = document.getElementById('main_photo');
+            if (fileInput && fileInput.files && fileInput.files[0]) {
+                payload.append('main_photo', fileInput.files[0]);
+            }
+            payload.append('scheme_of_work', JSON.stringify(this.buildSchemePayload()));
             
             this.saving = true;
             
@@ -317,10 +623,7 @@ function subjectRegistration() {
                 
                 const response = await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(subjectData)
+                    body: payload
                 });
                 
                 const result = await response.json();
@@ -349,6 +652,14 @@ function subjectRegistration() {
                 academic_level_ids: (subject.academic_level_ids || []).map(id => Number(id)),
                 status: subject.status
             };
+            this.formMainPhotoUrl = subject.main_photo_url || '';
+            this.formRemoveMainPhoto = false;
+            this.mainPhotoPreview = '';
+            const fileInput = document.getElementById('main_photo');
+            if (fileInput) {
+                fileInput.value = '';
+            }
+            this.schemeOfWork = this.cloneSchemeOfWork(subject.scheme_of_work || []);
             this.editingSubject = true;
             this.showRegisterForm = true;
             
@@ -396,6 +707,14 @@ function subjectRegistration() {
                 academic_level_ids: [],
                 status: 'active'
             };
+            this.formMainPhotoUrl = '';
+            this.formRemoveMainPhoto = false;
+            this.mainPhotoPreview = '';
+            const fileInput = document.getElementById('main_photo');
+            if (fileInput) {
+                fileInput.value = '';
+            }
+            this.schemeOfWork = [];
             this.editingSubject = false;
             this.showRegisterForm = false;
         },

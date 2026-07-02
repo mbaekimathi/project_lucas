@@ -1,0 +1,169 @@
+{% set hub_notifications = hub_notifications|default(student_hub_notifications|default([])) %}
+<section id="notifications-hub"
+         class="sp-panel overflow-hidden"
+         aria-labelledby="student-notifications-hub-heading">
+    <header class="sp-panel__head bg-gradient-to-r from-violet-50/90 to-indigo-50/70 dark:from-violet-950/30 dark:to-indigo-950/25 border-b border-gray-100 dark:border-gray-700">
+        <div class="flex flex-wrap items-start justify-between gap-3 w-full">
+            <div class="flex items-start gap-3 min-w-0">
+                <span class="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <i class="fas fa-bell" aria-hidden="true"></i>
+                </span>
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h2 id="student-notifications-hub-heading" class="sp-panel__title m-0">
+                            Notifications
+                        </h2>
+                        {% if hub_notifications %}
+                        <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/40 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-800 dark:text-violet-200">
+                            {{ hub_notifications|length }} update{{ '' if hub_notifications|length == 1 else 's' }}
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                            Up to date
+                        </span>
+                        {% endif %}
+                    </div>
+                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 m-0 mt-0.5">
+                        Fee reminders, released exam results, and school calendar updates for your class.
+                    </p>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 shrink-0">
+                <a href="{{ student_dash_url('fees') }}"
+                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:underline">
+                    <i class="fas fa-wallet"></i> View fees
+                </a>
+                <a href="{{ student_dash_url('academic-calendar') }}"
+                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:underline">
+                    <i class="fas fa-calendar-alt"></i> Full calendar
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <div class="sp-panel__body">
+        {% if push_notifications_active|default(false) %}
+        <div class="mb-4 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/80 dark:bg-violet-950/20 px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
+            <p class="text-xs text-violet-900 dark:text-violet-200 m-0">
+                <i class="fas fa-mobile-alt mr-1" aria-hidden="true"></i>
+                Turn on <strong>lock-screen alerts</strong> so you see updates without opening the portal.
+            </p>
+            <button type="button" onclick="window.portalEnablePushNotifications && window.portalEnablePushNotifications()"
+                    class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shrink-0">
+                Enable push
+            </button>
+        </div>
+        {% endif %}
+        {% if hub_notifications %}
+        <div class="space-y-3">
+            {% for note in hub_notifications %}
+            {% if note.type == 'fee_deadline' %}
+            <article class="rounded-xl border p-4
+                {% if note.urgency == 'overdue' %}border-red-200 dark:border-red-900/60 bg-red-50/70 dark:bg-red-950/20
+                {% elif note.urgency == 'due_soon' %}border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20
+                {% else %}border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/15{% endif %}">
+                <div class="flex items-start gap-3">
+                    <span class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0
+                        {% if note.urgency == 'overdue' %}bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300
+                        {% elif note.urgency == 'due_soon' %}bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300
+                        {% else %}bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300{% endif %}">
+                        <i class="fas {% if note.urgency == 'overdue' %}fa-exclamation-triangle{% else %}fa-wallet{% endif %} text-sm" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-bold text-gray-900 dark:text-white m-0 uppercase">{{ note.title }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-300 m-0 mt-0.5">{{ note.fee_name }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1">{{ note.subtitle }}</p>
+                        {% if note.payment_status_label %}
+                        <p class="text-[11px] font-semibold m-0 mt-1.5
+                            {% if note.urgency == 'overdue' %}text-red-600 dark:text-red-400
+                            {% elif note.urgency == 'due_soon' %}text-amber-700 dark:text-amber-300
+                            {% else %}text-indigo-700 dark:text-indigo-300{% endif %}">
+                            {{ note.payment_status_label }}
+                        </p>
+                        {% endif %}
+                        <a href="{{ student_dash_url('fees') }}"
+                           class="inline-flex items-center gap-1 text-xs font-semibold mt-2 text-indigo-700 dark:text-indigo-300 hover:underline">
+                            <i class="fas fa-arrow-right text-[10px]"></i> View fees &amp; pay
+                        </a>
+                    </div>
+                </div>
+            </article>
+            {% elif note.type == 'exam_results' %}
+            <article class="rounded-xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/70 dark:bg-violet-950/20 p-4">
+                <div class="flex items-start gap-3">
+                    <span class="w-9 h-9 rounded-lg bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 flex items-center justify-center shrink-0">
+                        <i class="fas fa-clipboard-check text-sm" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-bold text-gray-900 dark:text-white m-0 uppercase">{{ note.title }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-300 m-0 mt-0.5">
+                            {{ note.exam_name }}{% if note.exam_type %} ({{ note.exam_type }}){% endif %}
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1">
+                            {% if note.gazetted_at_display %}Released {{ note.gazetted_at_display }}{% if note.subtitle %} · {% endif %}{% endif %}{{ note.subtitle }}
+                        </p>
+                        <a href="{{ student_dash_url('exam-progress') }}"
+                           class="inline-flex items-center gap-1 text-xs font-semibold mt-2 text-violet-700 dark:text-violet-300 hover:underline">
+                            <i class="fas fa-arrow-right text-[10px]"></i> View exam results
+                        </a>
+                    </div>
+                </div>
+            </article>
+            {% elif note.type == 'portal' %}
+            <article class="rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50/70 dark:bg-sky-950/20 p-4">
+                <div class="flex items-start gap-3">
+                    <span class="w-9 h-9 rounded-lg bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-300 flex items-center justify-center shrink-0">
+                        <i class="fas fa-envelope text-sm" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-bold text-gray-900 dark:text-white m-0 uppercase">{{ note.title }}</p>
+                        {% if note.subtitle %}
+                        <p class="text-xs text-gray-600 dark:text-gray-300 m-0 mt-1">{{ note.subtitle }}</p>
+                        {% endif %}
+                        {% if note.gazetted_at_display %}
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400 m-0 mt-1">{{ note.gazetted_at_display }}</p>
+                        {% endif %}
+                        {% if note.link_url %}
+                        <a href="{{ note.link_url }}"
+                           class="inline-flex items-center gap-1 text-xs font-semibold mt-2 text-sky-700 dark:text-sky-300 hover:underline">
+                            <i class="fas fa-arrow-right text-[10px]"></i> Open
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </article>
+            {% else %}
+            <article class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-4">
+                <div class="flex items-start gap-3">
+                    <span class="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
+                        <i class="fas fa-bullhorn text-sm" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-bold text-gray-900 dark:text-white m-0 uppercase">{{ note.activity_title }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-0.5">
+                            {{ note.activity_date_display }}{% if note.end_date_display and note.end_date_display != note.activity_date_display %} — {{ note.end_date_display }}{% endif %}
+                            · {{ note.category_label }}
+                        </p>
+                        {% if not note.affects_all_levels %}
+                        <p class="text-[11px] text-violet-600 dark:text-violet-400 m-0 mt-0.5">
+                            <i class="fas fa-layer-group mr-0.5"></i>{{ note.levels_affected_label }}
+                        </p>
+                        {% endif %}
+                        {% if note.activity_about %}
+                        <p class="text-sm text-gray-600 dark:text-gray-300 m-0 mt-2 leading-relaxed">{{ note.activity_about }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </article>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="sp-empty py-8">
+            <div class="sp-empty__icon"><i class="fas fa-inbox" aria-hidden="true"></i></div>
+            <p class="sp-empty__title">No notifications right now</p>
+            <p class="sp-empty__text">Fee reminders, released exam results, and calendar updates for your class will appear here automatically.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>

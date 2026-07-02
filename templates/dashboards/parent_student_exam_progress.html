@@ -4,12 +4,15 @@
 
 {% block extra_head %}
 <script type="application/json" id="pep-page-config">{{ pep_config|default({})|tojson }}</script>
+{% if portal_mode|default('parent') == 'student' %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+{% endif %}
 {% endblock %}
 
 {% block sidebar_content %}
 {% if portal_mode|default('parent') == 'student' %}
 {% set student_nav_scope = 'all' %}
-{% include 'dashboards/includes/student_sidebar.html' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
 {% else %}
 {% set parent_nav_scope = 'exams' %}
 {% include 'dashboards/includes/parent_page_sidebar.html' %}
@@ -17,9 +20,15 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }}"
+<div class="{% if portal_mode|default('parent') == 'student' %}sp-portal {% endif %}p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }} space-y-5 sm:space-y-6"
      x-data="parentExamProgressPage()">
-    {% if is_technician and current_view_role == 'parent' %}
+    {% if portal_mode|default('parent') == 'student' %}
+    {% set sp_tech_hint = 'Select a student to view their exam results' %}
+    {% set sp_tech_action = student_dash_url('exam-progress') %}
+    {% set sp_selected_id = student.student_id %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
+    <a href="{{ student_dash_url() }}" class="sp-back"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard</a>
+    {% elif is_technician and current_view_role == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
         <div class="flex items-center justify-between flex-wrap gap-4">
             <div class="flex items-center gap-3">
@@ -46,41 +55,11 @@
     </div>
     {% endif %}
 
-    {% if is_technician and current_view_role == 'student' and portal_mode|default('parent') == 'student' %}
-    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
-        <div class="flex items-center justify-between flex-wrap gap-4">
-            <div class="flex items-center gap-3">
-                <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician Test Mode</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their exam results</p>
-                </div>
-            </div>
-            <form method="GET" action="{{ student_dash_url('exam-progress') }}" class="flex items-center gap-3">
-                <select name="student_id" onchange="this.form.submit()"
-                        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-w-[250px]">
-                    <option value="">-- Select a Student --</option>
-                    {% for st in all_students %}
-                    {% set sid = st.get('student_id', '') or st[1] if st else '' %}
-                    <option value="{{ sid }}" {% if sid == student.student_id %}selected{% endif %}>
-                        {{ st.get('full_name', '') or st[2] if st else '' }} — {{ sid }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </form>
-        </div>
-    </div>
-    {% endif %}
-
     {% if show_sibling_nav and portal_mode|default('parent') == 'parent' %}
     <a href="{{ parent_dash_url('exam-progress') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
         <i class="fas fa-arrow-left mr-2"></i>Choose another child
     </a>
-    {% elif portal_mode|default('parent') == 'student' %}
-    <a href="{{ student_dash_url() }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
-        <i class="fas fa-arrow-left mr-2"></i>Back to dashboard
-    </a>
-    {% else %}
+    {% elif portal_mode|default('parent') == 'parent' %}
     <a href="{{ parent_dash_url() }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
         <i class="fas fa-arrow-left mr-2"></i>Back to dashboard
     </a>
@@ -88,7 +67,7 @@
 
     {% set role_theme = portal_mode|default('parent') %}
     {% set role_hero_eyebrow = 'Student portal' if portal_mode|default('parent') == 'student' else 'Academics' %}
-    {% set role_hero_title = student.full_name %}
+    {% set role_hero_title = 'My exam results' if portal_mode|default('parent') == 'student' else student.full_name %}
     {% if portal_mode|default('parent') == 'student' %}
     {% set role_hero_subtitle = 'Official gazetted exam results — individual marks and performance by exam.' %}
     {% else %}
@@ -96,6 +75,10 @@
     {% endif %}
     {% set role_hero_icon_class = 'fa-user-graduate' %}
     {% include 'dashboards/includes/role_hero.html' %}
+
+    {% if portal_mode|default('parent') == 'student' %}
+    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
+    {% endif %}
 
     {% if portal_mode|default('parent') == 'parent' %}
     <div class="mb-4 flex flex-wrap items-center justify-end gap-3">
@@ -106,7 +89,7 @@
     {% endif %}
 
     {% if has_exam_marks %}
-    <div class="modern-card px-3 py-2 sm:px-3.5 sm:py-2.5 mb-4 border border-gray-200 dark:border-gray-700"
+    <div class="{% if portal_mode|default('parent') == 'student' %}sp-panel sp-panel__body px-3 py-2 sm:px-3.5 sm:py-2.5{% else %}modern-card px-3 py-2 sm:px-3.5 sm:py-2.5 mb-4 border border-gray-200 dark:border-gray-700{% endif %}"
          :class="{ 'opacity-60 pointer-events-none': loading }">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-2.5">
             <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 shrink-0">

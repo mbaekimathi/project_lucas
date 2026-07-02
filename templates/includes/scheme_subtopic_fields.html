@@ -1,0 +1,32 @@
+<dl class="scheme-subtopic__fields">
+    {% if sub.learning_outcomes %}
+    <div class="scheme-field scheme-field--outcomes">
+        <dt><i class="fas fa-bullseye" aria-hidden="true"></i> Learning outcomes</dt>
+        <dd>{{ sub.learning_outcomes }}</dd>
+    </div>
+    {% endif %}
+    {% if sub.learning_activities %}
+    <div class="scheme-field scheme-field--activities">
+        <dt><i class="fas fa-person-chalkboard" aria-hidden="true"></i> Learning activities</dt>
+        <dd>{{ sub.learning_activities }}</dd>
+    </div>
+    {% endif %}
+    {% if sub.teaching_resources %}
+    <div class="scheme-field scheme-field--resources">
+        <dt><i class="fas fa-toolbox" aria-hidden="true"></i> Teaching &amp; learning resources</dt>
+        <dd>{{ sub.teaching_resources }}</dd>
+    </div>
+    {% endif %}
+    {% if sub.assessment_methods %}
+    <div class="scheme-field scheme-field--assessment">
+        <dt><i class="fas fa-clipboard-check" aria-hidden="true"></i> Assessment methods</dt>
+        <dd>{{ sub.assessment_methods }}</dd>
+    </div>
+    {% endif %}
+    {% if sub.reference_notes %}
+    <div class="scheme-field scheme-field--references">
+        <dt><i class="fas fa-book" aria-hidden="true"></i> References</dt>
+        <dd>{{ sub.reference_notes }}</dd>
+    </div>
+    {% endif %}
+</dl>

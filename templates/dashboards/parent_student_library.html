@@ -2,14 +2,53 @@
 
 {% block title %}{{ student.full_name }} — Library - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% if portal_mode|default('parent') == 'student' %}
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+{% endblock %}
+{% endif %}
+
 
 {% block sidebar_content %}
+{% if portal_mode|default('parent') == 'student' %}
+{% set student_nav_scope = 'all' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
+{% else %}
 {% set parent_nav_scope = 'library' %}
 {% include 'dashboards/includes/parent_page_sidebar.html' %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }}">
+<div class="{% if portal_mode|default('parent') == 'student' %}sp-portal {% endif %}p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }} space-y-5 sm:space-y-6">
+
+    {% if portal_mode|default('parent') == 'student' %}
+    {% set sp_tech_hint = 'Select a student to view their library books' %}
+    {% set sp_tech_action = student_dash_url('library') %}
+    {% set sp_selected_id = parent_student_id %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
+    <a href="{{ student_dash_url() }}" class="sp-back"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard</a>
+
+    {% set role_theme = 'student' %}
+    {% set role_hero_eyebrow = 'Student portal' %}
+    {% set role_hero_title = 'My library' %}
+    {% set role_hero_subtitle = student.full_name ~ ' · ' ~ student.student_id ~ ' — books issued to you by your teachers.' %}
+    {% set role_hero_icon_class = 'fa-book-open' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
+
+    <div class="sp-stat-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 28rem;">
+        <div class="sp-stat sp-stat--paid">
+            <p class="sp-stat__label">With you now</p>
+            <p class="sp-stat__value sp-stat__value--paid">{{ active_count }}</p>
+        </div>
+        <div class="sp-stat sp-stat--info">
+            <p class="sp-stat__label">Returned</p>
+            <p class="sp-stat__value">{{ returned_count }}</p>
+        </div>
+    </div>
+
+    {% else %}
     {% if is_technician and current_view_role == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
         <div class="flex items-center justify-between flex-wrap gap-4">
@@ -72,46 +111,43 @@
         </span>
         {% endif %}
     </div>
+    {% endif %}
 
     {% if books %}
-    <div class="rounded-2xl border border-gray-200/90 bg-white shadow-sm overflow-hidden dark:border-gray-700 dark:bg-gray-900/90">
-        <div class="overflow-x-auto">
-            <table class="min-w-full text-sm">
+    <section class="{% if portal_mode|default('parent') == 'student' %}sp-panel sp-panel__body--flush{% else %}rounded-2xl border border-gray-200/90 bg-white shadow-sm overflow-hidden dark:border-gray-700 dark:bg-gray-900/90{% endif %}">
+        <div class="sp-table-wrap">
+            <table class="{% if portal_mode|default('parent') == 'student' %}sp-table sp-lib-table{% else %}min-w-full text-sm{% endif %}">
                 <thead>
-                    <tr class="border-b border-gray-200 bg-gray-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-600 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-400">
-                        <th class="px-4 py-3 whitespace-nowrap">Copy ref</th>
-                        <th class="px-4 py-3 whitespace-nowrap">Book</th>
-                        <th class="px-4 py-3 whitespace-nowrap">Subject</th>
-                        <th class="px-4 py-3 whitespace-nowrap">Class</th>
-                        <th class="px-4 py-3 whitespace-nowrap">Teacher</th>
-                        <th class="px-4 py-3 whitespace-nowrap">Status</th>
-                        <th class="px-4 py-3 whitespace-nowrap">Issued</th>
-                        <th class="px-4 py-3 whitespace-nowrap">Returned</th>
+                    <tr class="{% if portal_mode|default('parent') != 'student' %}border-b border-gray-200 bg-gray-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-600 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-400{% endif %}">
+                        <th class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 whitespace-nowrap{% endif %}">Copy ref</th>
+                        <th class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 whitespace-nowrap{% endif %}">Book</th>
+                        <th class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 whitespace-nowrap{% endif %}">Subject</th>
+                        <th class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 whitespace-nowrap{% endif %}">Class</th>
+                        <th class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 whitespace-nowrap{% endif %}">Teacher</th>
+                        <th class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 whitespace-nowrap{% endif %}">Status</th>
+                        <th class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 whitespace-nowrap{% endif %}">Issued</th>
+                        <th class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 whitespace-nowrap{% endif %}">Returned</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody class="{% if portal_mode|default('parent') != 'student' %}divide-y divide-gray-100 dark:divide-gray-800{% endif %}">
                     {% for book in books %}
-                    <tr class="hover:bg-violet-50/50 dark:hover:bg-violet-950/20 {% if book.status == 'returned' %}opacity-75{% endif %}">
-                        <td class="px-4 py-3 font-mono text-xs font-bold text-violet-800 dark:text-violet-200 whitespace-nowrap">{{ book.copy_code }}</td>
-                        <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{{ book.book_name }}</td>
-                        <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ book.subject_name or '—' }}</td>
-                        <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ book.level_name or '—' }}</td>
-                        <td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{{ book.teacher_name or '—' }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap">
+                    <tr class="{% if portal_mode|default('parent') != 'student' %}hover:bg-violet-50/50 dark:hover:bg-violet-950/20 {% if book.status == 'returned' %}opacity-75{% endif %}{% endif %}">
+                        <td class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 font-mono text-xs font-bold text-violet-800 dark:text-violet-200 whitespace-nowrap{% else %}font-mono text-xs font-bold{% endif %}">{{ book.copy_code }}</td>
+                        <td class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 font-medium text-gray-900 dark:text-gray-100{% else %}font-semibold{% endif %}">{{ book.book_name }}</td>
+                        <td class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 text-gray-600 dark:text-gray-400{% endif %}">{{ book.subject_name or '—' }}</td>
+                        <td class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap{% endif %}">{{ book.level_name or '—' }}</td>
+                        <td class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap{% endif %}">{{ book.teacher_name or '—' }}</td>
+                        <td class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 whitespace-nowrap{% endif %}">
                             {% if book.status == 'issued' %}
-                            <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-                                <i class="fas fa-circle text-[6px]" aria-hidden="true"></i> With student
-                            </span>
+                            <span class="sp-chip sp-chip--active"><i class="fas fa-circle text-[6px]"></i> With me</span>
                             {% else %}
-                            <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                                <i class="fas fa-undo text-[10px]" aria-hidden="true"></i> Returned
-                            </span>
+                            <span class="sp-chip sp-chip--grade"><i class="fas fa-undo text-[10px]"></i> Returned</span>
                             {% endif %}
                         </td>
-                        <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">
+                        <td class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs{% else %}text-xs text-gray-500{% endif %}">
                             {{ book.issued_at.strftime('%d %b %Y') if book.issued_at else '—' }}
                         </td>
-                        <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">
+                        <td class="{% if portal_mode|default('parent') != 'student' %}px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs{% else %}text-xs text-gray-500{% endif %}">
                             {{ book.returned_at.strftime('%d %b %Y') if book.returned_at else '—' }}
                         </td>
                     </tr>
@@ -119,15 +155,21 @@
                 </tbody>
             </table>
         </div>
-    </div>
+    </section>
     {% else %}
-    <div class="rounded-2xl border border-dashed border-gray-300 bg-white/80 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-900/50">
-        <i class="fas fa-book-open text-4xl text-gray-300 dark:text-gray-600 mb-4" aria-hidden="true"></i>
-        <p class="text-gray-700 dark:text-gray-300 font-medium">No library books issued yet</p>
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-            When your child's teacher issues a school library book to them, it will appear here.
-        </p>
-    </div>
+    <section class="sp-panel">
+        <div class="sp-empty">
+            <div class="sp-empty__icon"><i class="fas fa-book-open" aria-hidden="true"></i></div>
+            <p class="sp-empty__title">No library books yet</p>
+            <p class="sp-empty__text">
+                {% if portal_mode|default('parent') == 'student' %}
+                When your teacher issues a school library book to you, it will appear here with status and dates.
+                {% else %}
+                When your child's teacher issues a school library book to them, it will appear here.
+                {% endif %}
+            </p>
+        </div>
+    </section>
     {% endif %}
 </div>
 {% endblock %}

@@ -2,13 +2,43 @@
 
 {% block title %}{{ student.full_name }} — Class timetable - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% if portal_mode|default('parent') == 'student' %}
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+{% endblock %}
+{% endif %}
+
 {% block sidebar_content %}
+{% if portal_mode|default('parent') == 'student' %}
+{% set student_nav_scope = 'all' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
+{% else %}
 {% set parent_nav_scope = 'exams' %}
 {% include 'dashboards/includes/parent_page_sidebar.html' %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }}">
+<div class="{% if portal_mode|default('parent') == 'student' %}sp-portal {% endif %}p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }} space-y-5 sm:space-y-6">
+
+    {% if portal_mode|default('parent') == 'student' %}
+    {% set sp_tech_hint = 'Select a student to view their class timetable' %}
+    {% set sp_tech_action = student_dash_url('class-timetable') %}
+    {% set sp_selected_id = student.student_id %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
+
+    <a href="{{ student_dash_url() }}" class="sp-back"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard</a>
+
+    {% set role_theme = 'student' %}
+    {% set role_hero_eyebrow = 'Student portal' %}
+    {% set role_hero_title = 'My timetable' %}
+    {% set role_hero_subtitle = student.full_name ~ ' · ' ~ (student.resolved_level_name or student.current_grade or 'Class') ~ ((' · ' ~ year_label ~ ' · ' ~ term_label) if year_label and term_label else ((' · ' ~ term_label) if term_label else '')) %}
+    {% set role_hero_icon_class = 'fa-calendar-week' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
+
+    {% else %}
     {% if is_technician and current_view_role == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
         <div class="flex items-center justify-between flex-wrap gap-4">
@@ -36,7 +66,7 @@
     </div>
     {% endif %}
 
-    {% if sibling_count and sibling_count > 1 %}
+    {% if show_sibling_nav and portal_mode|default('parent') == 'parent' %}
     <a href="{{ parent_dash_url('class-timetable') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
         <i class="fas fa-arrow-left mr-2"></i>Choose another child
     </a>
@@ -52,30 +82,32 @@
     {% set role_hero_subtitle = 'Class timetable · ' ~ (student.resolved_level_name or student.current_grade or 'Class') ~ ((' · ' ~ year_label ~ ' · ' ~ term_label) if year_label and term_label else ((' · ' ~ term_label) if term_label else '')) %}
     {% set role_hero_icon_class = 'fa-calendar-week' %}
     {% include 'dashboards/includes/role_hero.html' %}
+    {% endif %}
 
     {% if term_options and term_options|length > 0 %}
-    <div class="modern-card p-4 sm:p-5 mb-6 border border-gray-200 dark:border-gray-700">
-        <form method="get" action="{{ parent_dash_url('class-timetable/' ~ student.student_id) }}" class="flex flex-wrap items-end gap-3">
-            <div class="min-w-[200px] flex-1">
-                <label for="term_id_tt" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Term</label>
-                <select name="term_id" id="term_id_tt" class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 text-gray-900 dark:text-white">
-                    {% for t in term_options %}
-                    <option value="{{ t.id }}" {% if selected_term_id and (t.id == selected_term_id or t.id|string == selected_term_id|string) %}selected{% endif %}>{{ t.year_name }} · {{ t.term_name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-sm">
-                <i class="fas fa-sync-alt text-xs"></i> Show term
-            </button>
-        </form>
-    </div>
+    <form method="get" action="{% if portal_mode|default('parent') == 'student' %}{{ student_dash_url('class-timetable') }}{% else %}{{ parent_dash_url('class-timetable/' ~ student.student_id) }}{% endif %}"
+          class="{% if portal_mode|default('parent') == 'student' %}sp-filter{% else %}modern-card p-4 sm:p-5 mb-6 border border-gray-200 dark:border-gray-700 flex flex-wrap items-end gap-3{% endif %}">
+        <div class="flex-1 min-w-[200px]">
+            <label for="term_id_tt" class="{% if portal_mode|default('parent') == 'student' %}sp-filter__label{% else %}block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1{% endif %}">Term</label>
+            <select name="term_id" id="term_id_tt" class="{% if portal_mode|default('parent') != 'student' %}w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 text-gray-900 dark:text-white{% endif %}">
+                {% for t in term_options %}
+                <option value="{{ t.id }}" {% if selected_term_id and (t.id == selected_term_id or t.id|string == selected_term_id|string) %}selected{% endif %}>{{ t.year_name }} · {{ t.term_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="{% if portal_mode|default('parent') == 'student' %}sp-btn sp-btn--primary{% else %}inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-sm{% endif %}">
+            <i class="fas fa-sync-alt text-xs" aria-hidden="true"></i> Show term
+        </button>
+    </form>
     {% endif %}
 
     {% if not student.academic_level_id %}
-    <div class="modern-card p-6 mb-6 border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/30">
-        <p class="text-amber-900 dark:text-amber-100 font-medium"><i class="fas fa-exclamation-triangle mr-2"></i>Class timetable unavailable</p>
-        <p class="text-sm text-amber-800/90 dark:text-amber-200/90 mt-2">
-            The student’s grade on file (<strong>{{ student.current_grade or 'not set' }}</strong>) does not match an active academic level in the school system, so we cannot load a class timetable. Please contact the school so the grade matches a level name used for timetabling.
+    <div class="{% if portal_mode|default('parent') == 'student' %}sp-alert sp-alert--warning{% else %}modern-card p-6 mb-6 border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/30{% endif %}">
+        <p class="{% if portal_mode|default('parent') == 'student' %}m-0{% else %}text-amber-900 dark:text-amber-100 font-medium{% endif %}">
+            <i class="fas fa-exclamation-triangle mr-2" aria-hidden="true"></i>Class timetable unavailable
+        </p>
+        <p class="{% if portal_mode|default('parent') == 'student' %}mt-2 mb-0 text-sm opacity-90{% else %}text-sm text-amber-800/90 dark:text-amber-200/90 mt-2{% endif %}">
+            Your grade on file (<strong>{{ student.current_grade or 'not set' }}</strong>) does not match an active academic level, so we cannot load a timetable. Please contact the school office.
         </p>
     </div>
     {% else %}

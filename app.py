@@ -689,6 +689,9 @@ PAYMENT_PROOF_FOLDER = 'static/uploads/payment_proofs'
 COMMUNICATION_ATTACHMENT_FOLDER = 'static/uploads/communication'
 STORE_INVENTORY_FOLDER = 'static/uploads/store_inventory'
 GALLERY_UPLOAD_FOLDER = 'static/uploads/gallery'
+ABOUT_UPLOAD_FOLDER = 'static/uploads/about'
+ACADEMIC_CALENDAR_UPLOAD_FOLDER = 'static/uploads/academic_calendar'
+SUBJECT_COURSE_PHOTO_FOLDER = 'static/uploads/subject_courses'
 BACKUP_FOLDER = 'static/uploads/backups'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 ALLOWED_COMMUNICATION_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'}
@@ -707,6 +710,9 @@ os.makedirs(PAYMENT_PROOF_FOLDER, exist_ok=True)
 os.makedirs(COMMUNICATION_ATTACHMENT_FOLDER, exist_ok=True)
 os.makedirs(STORE_INVENTORY_FOLDER, exist_ok=True)
 os.makedirs(GALLERY_UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(ABOUT_UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(ACADEMIC_CALENDAR_UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(SUBJECT_COURSE_PHOTO_FOLDER, exist_ok=True)
 
 def allowed_communication_attachment(filename):
     """Attachments for communication centre broadcasts."""
@@ -952,6 +958,173 @@ def _save_school_gallery_image(file_storage, item_id=None):
     )
 
 
+def _academic_calendar_image_static_path(relative_path):
+    if not relative_path:
+        return ''
+    rel = str(relative_path).strip().replace('\\', '/').lstrip('/')
+    if rel.lower().startswith('static/'):
+        rel = rel[7:]
+    return rel
+
+
+def _academic_calendar_image_public_url(relative_path):
+    rel = _academic_calendar_image_static_path(relative_path)
+    if not rel:
+        return ''
+    try:
+        return url_for('static', filename=rel)
+    except Exception:
+        return ''
+
+
+def _remove_academic_calendar_image_file(relative_path):
+    rel = _academic_calendar_image_static_path(relative_path)
+    if not rel or not rel.startswith('uploads/academic_calendar/'):
+        return
+    file_path = os.path.join('static', rel)
+    if os.path.isfile(file_path):
+        try:
+            os.remove(file_path)
+        except OSError as e:
+            print(f"_remove_academic_calendar_image_file: {e}")
+
+
+def _save_academic_calendar_activity_image(file_storage, activity_id=None):
+    if not file_storage or not getattr(file_storage, 'filename', None):
+        return None
+    filename = (file_storage.filename or '').strip()
+    if not filename or not allowed_file(filename):
+        return None
+    stamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    suffix = secure_filename(str(activity_id or 'new'))[:20] or 'new'
+    return _save_optimized_image(
+        file_storage,
+        ACADEMIC_CALENDAR_UPLOAD_FOLDER,
+        f'acal_{stamp}_{suffix}',
+        preset='gallery',
+    )
+
+
+def _subject_course_image_static_path(relative_path):
+    if not relative_path:
+        return ''
+    rel = str(relative_path).strip().replace('\\', '/').lstrip('/')
+    if rel.lower().startswith('static/'):
+        rel = rel[7:]
+    return rel
+
+
+def _subject_course_image_public_url(relative_path):
+    rel = _subject_course_image_static_path(relative_path)
+    if not rel:
+        return ''
+    try:
+        return url_for('static', filename=rel)
+    except Exception:
+        return ''
+
+
+def _remove_subject_course_image_file(relative_path):
+    rel = _subject_course_image_static_path(relative_path)
+    if not rel or not rel.startswith('uploads/subject_courses/'):
+        return
+    file_path = os.path.join('static', rel)
+    if os.path.isfile(file_path):
+        try:
+            os.remove(file_path)
+        except OSError as e:
+            print(f"_remove_subject_course_image_file: {e}")
+
+
+def _save_subject_course_main_photo(file_storage, subject_id=None):
+    if not file_storage or not getattr(file_storage, 'filename', None):
+        return None
+    filename = (file_storage.filename or '').strip()
+    if not filename or not allowed_file(filename):
+        return None
+    stamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    suffix = secure_filename(str(subject_id or 'new'))[:20] or 'new'
+    return _save_optimized_image(
+        file_storage,
+        SUBJECT_COURSE_PHOTO_FOLDER,
+        f'subject_{stamp}_{suffix}',
+        preset='gallery',
+    )
+
+
+def _resolve_subject_main_photo_path(request, existing_path=None, subject_id=None):
+    """Apply optional remove/upload for a subject course main photo."""
+    remove = (request.form.get('remove_main_photo') or '').strip().lower() in (
+        '1', 'on', 'true', 'yes',
+    )
+    if remove:
+        if existing_path:
+            _remove_subject_course_image_file(existing_path)
+        return None, None
+    upload = request.files.get('main_photo')
+    if upload and (upload.filename or '').strip():
+        saved = _save_subject_course_main_photo(upload, subject_id)
+        if not saved:
+            return existing_path, 'Photo must be PNG, JPG, GIF, or WebP (max 10MB).'
+        if existing_path and existing_path != saved:
+            _remove_subject_course_image_file(existing_path)
+        return saved, None
+    return existing_path, None
+
+
+def _subject_registration_payload():
+    """Read subject create/update fields from multipart form or JSON."""
+    if request.content_type and 'multipart/form-data' in (request.content_type or ''):
+        academic_level_ids = []
+        for lid in request.form.getlist('academic_level_ids'):
+            try:
+                lid_int = int(lid)
+                if lid_int > 0:
+                    academic_level_ids.append(lid_int)
+            except (ValueError, TypeError):
+                continue
+        payload = {
+            'subject_id': request.form.get('subject_id'),
+            'subject_name': (request.form.get('subject_name') or '').strip().upper(),
+            'subject_code': (request.form.get('subject_code') or '').strip().upper(),
+            'description': (request.form.get('description') or '').strip().upper(),
+            'status': (request.form.get('status') or 'active').strip().lower(),
+            'academic_level_ids': academic_level_ids,
+        }
+        return payload, True
+    data = request.get_json(silent=True) or {}
+    academic_level_ids = data.get('academic_level_ids') or []
+    payload = {
+        'subject_id': data.get('subject_id'),
+        'subject_name': (data.get('subject_name') or '').strip().upper(),
+        'subject_code': (data.get('subject_code') or '').strip().upper() if data.get('subject_code') else '',
+        'description': (data.get('description') or '').strip().upper() if data.get('description') else '',
+        'status': (data.get('status') or 'active'),
+        'academic_level_ids': academic_level_ids,
+    }
+    return payload, False
+
+
+def _resolve_calendar_activity_image_path(request, existing_path=None, activity_id=None):
+    """Apply optional remove/upload for a calendar activity image."""
+    remove = (request.form.get('remove_activity_image') or '').strip().lower() in (
+        '1', 'on', 'true', 'yes',
+    )
+    if remove:
+        if existing_path:
+            _remove_academic_calendar_image_file(existing_path)
+        return None, None
+    upload = request.files.get('activity_image')
+    if upload and (upload.filename or '').strip():
+        saved = _save_academic_calendar_activity_image(upload, activity_id)
+        if not saved:
+            return existing_path, 'Image must be PNG, JPG, GIF, or WebP (max 10MB).'
+        if existing_path and existing_path != saved:
+            _remove_academic_calendar_image_file(existing_path)
+        return saved, None
+    return existing_path, None
+
+
 def _normalize_gallery_seo_title(value):
     text = re.sub(r'\s+', ' ', (value or '').strip())
     return text[:255]
@@ -1069,6 +1242,196 @@ def _process_school_gallery_on_profile_save(cursor, req):
         current_count += 1
 
 
+MAX_ABOUT_SLIDESHOW_ITEMS = 12
+_ABOUT_SLIDESHOW_TABLE_READY = False
+
+
+def ensure_about_page_columns(cursor):
+    """Add public /about page copy fields to school_settings."""
+    cols = [
+        ('about_headline', 'TEXT NULL', 'school_hero_image'),
+        ('about_intro', 'TEXT NULL', 'about_headline'),
+        ('about_mission', 'TEXT NULL', 'about_intro'),
+        ('about_vision', 'TEXT NULL', 'about_mission'),
+        ('about_values', 'TEXT NULL', 'about_vision'),
+        ('about_promise', 'TEXT NULL', 'about_values'),
+    ]
+    for col_name, col_def, after_col in cols:
+        try:
+            if _table_has_column(cursor, 'school_settings', col_name):
+                continue
+            cursor.execute(
+                f"ALTER TABLE school_settings ADD COLUMN {col_name} {col_def} AFTER {after_col}"
+            )
+        except Exception as e:
+            print(f"ensure_about_page_columns ({col_name}): {e}")
+
+
+def ensure_about_slideshow_table(cursor):
+    """Slideshow images for the public /about page."""
+    global _ABOUT_SLIDESHOW_TABLE_READY
+    if _ABOUT_SLIDESHOW_TABLE_READY:
+        return True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS about_slideshow (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                image_url VARCHAR(500) NOT NULL,
+                alt_text VARCHAR(255) NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        """)
+        _ABOUT_SLIDESHOW_TABLE_READY = True
+        return True
+    except Exception as e:
+        print(f"ensure_about_slideshow_table: {e}")
+        return False
+
+
+def _about_static_path(relative_path):
+    if not relative_path:
+        return ''
+    rel = str(relative_path).strip().replace('\\', '/').lstrip('/')
+    if rel.lower().startswith('static/'):
+        rel = rel[7:]
+    return rel
+
+
+def _about_image_public_url(relative_path):
+    rel = _about_static_path(relative_path)
+    if not rel:
+        return ''
+    try:
+        return url_for('static', filename=rel)
+    except Exception:
+        return ''
+
+
+def _remove_about_slideshow_image_file(relative_path):
+    rel = _about_static_path(relative_path)
+    if not rel or not rel.startswith('uploads/about/'):
+        return
+    file_path = os.path.join('static', rel)
+    if os.path.isfile(file_path):
+        try:
+            os.remove(file_path)
+        except OSError as e:
+            print(f"_remove_about_slideshow_image_file: {e}")
+
+
+def _save_about_slideshow_image(file_storage, item_id=None):
+    if not file_storage or not getattr(file_storage, 'filename', None):
+        return None
+    filename = (file_storage.filename or '').strip()
+    if not filename or not allowed_file(filename):
+        return None
+    stamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    suffix = secure_filename(str(item_id or 'new'))[:20] or 'new'
+    return _save_optimized_image(
+        file_storage,
+        ABOUT_UPLOAD_FOLDER,
+        f'about_{stamp}_{suffix}',
+        preset='gallery',
+    )
+
+
+def _normalize_about_alt_text(value):
+    return (value or '').strip()[:255] or None
+
+
+def _serialize_about_slideshow_row(row):
+    if not row:
+        return None
+    if isinstance(row, dict):
+        image_url = row.get('image_url') or ''
+        return {
+            'id': row.get('id'),
+            'image_url': image_url,
+            'alt_text': (row.get('alt_text') or '').strip(),
+            'image_src': _about_image_public_url(image_url),
+            'sort_order': int(row.get('sort_order') or 0),
+        }
+    return {
+        'id': row[0] if len(row) > 0 else None,
+        'image_url': row[1] if len(row) > 1 else '',
+        'alt_text': ((row[2] if len(row) > 2 else '') or '').strip(),
+        'image_src': _about_image_public_url(row[1] if len(row) > 1 else ''),
+        'sort_order': int(row[3] if len(row) > 3 else 0),
+    }
+
+
+def load_about_slideshow_items(cursor):
+    ensure_about_slideshow_table(cursor)
+    cursor.execute("""
+        SELECT id, image_url, alt_text, sort_order
+        FROM about_slideshow
+        ORDER BY sort_order ASC, id ASC
+    """)
+    rows = cursor.fetchall() or []
+    return [_serialize_about_slideshow_row(r) for r in rows if r]
+
+
+def _process_about_slideshow_on_profile_save(cursor, req):
+    """Apply alt-text updates, deletions, and new uploads for /about slideshow."""
+    ensure_about_slideshow_table(cursor)
+
+    for key in list(req.form.keys()):
+        if not key.startswith('about_slide_alt_'):
+            continue
+        sid_raw = key[len('about_slide_alt_'):]
+        if not str(sid_raw).isdigit():
+            continue
+        sid = int(sid_raw)
+        alt_text = _normalize_about_alt_text(req.form.get(key))
+        cursor.execute(
+            "UPDATE about_slideshow SET alt_text = %s WHERE id = %s",
+            (alt_text, sid),
+        )
+
+    for sid_raw in req.form.getlist('about_slide_delete'):
+        if not str(sid_raw).isdigit():
+            continue
+        sid = int(sid_raw)
+        cursor.execute("SELECT image_url FROM about_slideshow WHERE id = %s", (sid,))
+        row = cursor.fetchone()
+        if row:
+            img = row.get('image_url') if isinstance(row, dict) else row[0]
+            _remove_about_slideshow_image_file(img)
+        cursor.execute("DELETE FROM about_slideshow WHERE id = %s", (sid,))
+
+    cursor.execute("SELECT COUNT(*) AS c FROM about_slideshow")
+    count_row = cursor.fetchone() or {}
+    current_count = int(
+        (count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0
+    )
+
+    new_files = req.files.getlist('about_slide_new_image')
+    new_alts = req.form.getlist('about_slide_new_alt')
+    for idx, file_storage in enumerate(new_files):
+        if current_count >= MAX_ABOUT_SLIDESHOW_ITEMS:
+            break
+        if not file_storage or not getattr(file_storage, 'filename', None):
+            continue
+        if not (file_storage.filename or '').strip():
+            continue
+        alt_text = _normalize_about_alt_text(
+            new_alts[idx] if idx < len(new_alts) else ''
+        )
+        image_path = _save_about_slideshow_image(file_storage, item_id=f'new{idx}')
+        if not image_path:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO about_slideshow (image_url, alt_text, sort_order)
+            VALUES (%s, %s, %s)
+            """,
+            (image_path, alt_text, current_count),
+        )
+        current_count += 1
+
+
 def allowed_payment_file(filename):
     """Check if payment proof file extension is allowed"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_PAYMENT_EXTENSIONS
@@ -1099,6 +1462,12 @@ def _default_school_data():
         'school_phone': '',
         'school_logo': None,
         'school_hero_image': None,
+        'about_headline': '',
+        'about_intro': '',
+        'about_mission': '',
+        'about_vision': '',
+        'about_values': '',
+        'about_promise': '',
         'twitter_url': '',
         'facebook_url': '',
         'instagram_url': '',
@@ -1267,6 +1636,12 @@ def get_school_settings():
                             'school_phone': result.get('school_phone') or '',
                             'school_logo': result.get('school_logo') or None,
                             'school_hero_image': result.get('school_hero_image') or None,
+                            'about_headline': (result.get('about_headline') or '').strip(),
+                            'about_intro': (result.get('about_intro') or '').strip(),
+                            'about_mission': (result.get('about_mission') or '').strip(),
+                            'about_vision': (result.get('about_vision') or '').strip(),
+                            'about_values': (result.get('about_values') or '').strip(),
+                            'about_promise': (result.get('about_promise') or '').strip(),
                             'twitter_url': result.get('twitter_url') or '',
                             'facebook_url': result.get('facebook_url') or '',
                             'instagram_url': result.get('instagram_url') or '',
@@ -1835,6 +2210,258 @@ def ensure_exam_timetable_settings_columns(cursor):
             )
         except Exception as e:
             print(f"ensure_exam_timetable_settings_columns ({col_name}): {e}")
+
+
+def ensure_subject_main_photo_column(cursor):
+    """Main course photo for public courses page and subject registration."""
+    try:
+        if _table_has_column(cursor, 'subjects', 'main_photo'):
+            return True
+        cursor.execute(
+            """
+            ALTER TABLE subjects
+            ADD COLUMN main_photo VARCHAR(500) NULL
+            AFTER description
+            """
+        )
+        print("OK: Added subjects.main_photo column")
+        return True
+    except Exception as e:
+        print(f"ensure_subject_main_photo_column: {e}")
+        return False
+
+
+def ensure_subject_scheme_tables(cursor):
+    """Optional scheme of work (topics + subtopics) per registered subject."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subject_scheme_topics (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                subject_id INT NOT NULL,
+                topic_name VARCHAR(500) NOT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_sst_subject (subject_id),
+                INDEX idx_sst_sort (subject_id, sort_order)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subject_scheme_subtopics (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                topic_id INT NOT NULL,
+                sub_topic VARCHAR(500) NOT NULL,
+                learning_outcomes TEXT NULL,
+                learning_activities TEXT NULL,
+                teaching_resources TEXT NULL,
+                assessment_methods TEXT NULL,
+                reference_notes TEXT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_sss_topic (topic_id),
+                INDEX idx_sss_sort (topic_id, sort_order)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        return True
+    except Exception as e:
+        print(f"ensure_subject_scheme_tables: {e}")
+        return False
+
+
+def _scheme_text_field(value, max_len=5000):
+    text = re.sub(r'\s+', ' ', (value or '').strip())
+    if max_len and len(text) > max_len:
+        text = text[:max_len]
+    return text or None
+
+
+def _fetch_scheme_of_work_for_subjects(cursor, subject_ids):
+    """Return {subject_id: [topics with subtopics]} for many subjects."""
+    result = {int(sid): [] for sid in subject_ids if sid}
+    if not subject_ids:
+        return result
+    ensure_subject_scheme_tables(cursor)
+    placeholders = ','.join(['%s'] * len(subject_ids))
+    cursor.execute(f"""
+        SELECT id, subject_id, topic_name, sort_order
+        FROM subject_scheme_topics
+        WHERE subject_id IN ({placeholders})
+        ORDER BY subject_id ASC, sort_order ASC, id ASC
+    """, tuple(subject_ids))
+    topic_rows = cursor.fetchall() or []
+    topic_ids = []
+    topic_meta = {}
+    for row in topic_rows:
+        if isinstance(row, dict):
+            tid = row.get('id')
+            sid = row.get('subject_id')
+            topic_meta[tid] = {
+                'id': tid,
+                'topic': row.get('topic_name') or '',
+                'sort_order': int(row.get('sort_order') or 0),
+            }
+        else:
+            tid = row[0]
+            sid = row[1]
+            topic_meta[tid] = {
+                'id': tid,
+                'topic': row[2] if len(row) > 2 else '',
+                'sort_order': int(row[3] or 0) if len(row) > 3 else 0,
+            }
+        topic_ids.append(tid)
+        result.setdefault(int(sid), []).append(topic_meta[tid])
+
+    subtopics_by_topic = {tid: [] for tid in topic_ids}
+    if topic_ids:
+        st_placeholders = ','.join(['%s'] * len(topic_ids))
+        cursor.execute(f"""
+            SELECT topic_id, sub_topic, learning_outcomes, learning_activities,
+                   teaching_resources, assessment_methods, reference_notes, sort_order
+            FROM subject_scheme_subtopics
+            WHERE topic_id IN ({st_placeholders})
+            ORDER BY topic_id ASC, sort_order ASC, id ASC
+        """, tuple(topic_ids))
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                tid = row.get('topic_id')
+                subtopics_by_topic.setdefault(tid, []).append({
+                    'sub_topic': row.get('sub_topic') or '',
+                    'learning_outcomes': row.get('learning_outcomes') or '',
+                    'learning_activities': row.get('learning_activities') or '',
+                    'teaching_resources': row.get('teaching_resources') or '',
+                    'assessment_methods': row.get('assessment_methods') or '',
+                    'reference_notes': row.get('reference_notes') or '',
+                })
+            else:
+                tid = row[0]
+                subtopics_by_topic.setdefault(tid, []).append({
+                    'sub_topic': row[1] if len(row) > 1 else '',
+                    'learning_outcomes': row[2] if len(row) > 2 else '',
+                    'learning_activities': row[3] if len(row) > 3 else '',
+                    'teaching_resources': row[4] if len(row) > 4 else '',
+                    'assessment_methods': row[5] if len(row) > 5 else '',
+                    'reference_notes': row[6] if len(row) > 6 else '',
+                })
+
+    for sid, topics in result.items():
+        for topic in topics:
+            topic['topic_name'] = topic.get('topic') or ''
+            normalized_subtopics = []
+            for st in subtopics_by_topic.get(topic.get('id'), []):
+                normalized_subtopics.append({
+                    'subtopic_name': st.get('sub_topic') or '',
+                    'learning_outcomes': st.get('learning_outcomes') or '',
+                    'learning_activities': st.get('learning_activities') or '',
+                    'teaching_resources': st.get('teaching_resources') or '',
+                    'assessment_methods': st.get('assessment_methods') or '',
+                    'references': st.get('reference_notes') or '',
+                })
+            topic['subtopics'] = normalized_subtopics
+        result[sid] = sorted(topics, key=lambda t: (t.get('sort_order', 0), t.get('id', 0)))
+    return result
+
+
+def _parse_scheme_of_work_payload():
+    """Normalize optional scheme-of-work rows from multipart form JSON or request body."""
+    raw = None
+    form_val = request.form.get('scheme_of_work')
+    if form_val:
+        try:
+            raw = json.loads(form_val)
+        except (TypeError, ValueError):
+            raw = None
+    if raw is None:
+        data = request.get_json(silent=True) or {}
+        raw = data.get('scheme_of_work')
+    if not raw or not isinstance(raw, list):
+        return []
+
+    cleaned = []
+    for ti, topic in enumerate(raw):
+        if not isinstance(topic, dict):
+            continue
+        topic_name = (topic.get('topic_name') or topic.get('topic') or '').strip()
+        if not topic_name:
+            continue
+        if len(topic_name) > 500:
+            topic_name = topic_name[:500]
+        subtopics_clean = []
+        for si, st in enumerate(topic.get('subtopics') or []):
+            if not isinstance(st, dict):
+                continue
+            subtopic_name = (st.get('subtopic_name') or st.get('sub_topic') or '').strip()
+            if not subtopic_name:
+                continue
+            if len(subtopic_name) > 500:
+                subtopic_name = subtopic_name[:500]
+            subtopics_clean.append({
+                'sub_topic': subtopic_name,
+                'learning_outcomes': _scheme_text_field(st.get('learning_outcomes')),
+                'learning_activities': _scheme_text_field(st.get('learning_activities')),
+                'teaching_resources': _scheme_text_field(st.get('teaching_resources')),
+                'assessment_methods': _scheme_text_field(st.get('assessment_methods')),
+                'reference_notes': _scheme_text_field(st.get('references') or st.get('reference_notes')),
+                'sort_order': si,
+            })
+        cleaned.append({
+            'topic_name': topic_name,
+            'sort_order': ti,
+            'subtopics': subtopics_clean,
+        })
+    return cleaned
+
+
+def _delete_subject_scheme_of_work(cursor, subject_id):
+    ensure_subject_scheme_tables(cursor)
+    cursor.execute("SELECT id FROM subject_scheme_topics WHERE subject_id = %s", (int(subject_id),))
+    topic_ids = [
+        row.get('id') if isinstance(row, dict) else row[0]
+        for row in (cursor.fetchall() or [])
+    ]
+    if topic_ids:
+        placeholders = ','.join(['%s'] * len(topic_ids))
+        cursor.execute(
+            f"DELETE FROM subject_scheme_subtopics WHERE topic_id IN ({placeholders})",
+            tuple(topic_ids),
+        )
+    cursor.execute("DELETE FROM subject_scheme_topics WHERE subject_id = %s", (int(subject_id),))
+
+
+def _save_subject_scheme_of_work(cursor, subject_id, topics_data):
+    """Replace all scheme-of-work rows for a subject."""
+    _delete_subject_scheme_of_work(cursor, subject_id)
+    if not topics_data:
+        return
+    for topic in topics_data:
+        cursor.execute("""
+            INSERT INTO subject_scheme_topics (subject_id, topic_name, sort_order)
+            VALUES (%s, %s, %s)
+        """, (int(subject_id), topic['topic_name'], topic.get('sort_order') or 0))
+        topic_id = cursor.lastrowid
+        for st in topic.get('subtopics') or []:
+            cursor.execute("""
+                INSERT INTO subject_scheme_subtopics
+                    (topic_id, sub_topic, learning_outcomes, learning_activities,
+                     teaching_resources, assessment_methods, reference_notes, sort_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                topic_id,
+                st['sub_topic'],
+                st.get('learning_outcomes'),
+                st.get('learning_activities'),
+                st.get('teaching_resources'),
+                st.get('assessment_methods'),
+                st.get('reference_notes'),
+                st.get('sort_order') or 0,
+            ))
+
+
+def _scheme_of_work_provided():
+    if request.content_type and 'multipart/form-data' in (request.content_type or ''):
+        return 'scheme_of_work' in request.form
+    body = request.get_json(silent=True)
+    return isinstance(body, dict) and 'scheme_of_work' in body
 
 
 def ensure_subject_exam_total_marks_column(cursor):
@@ -3007,6 +3634,12 @@ def ensure_academic_calendar_activities_table(cursor):
                 ALTER TABLE academic_calendar_activities
                 ADD COLUMN notify_parents TINYINT(1) NOT NULL DEFAULT 1 AFTER activity_about
             """)
+        cursor.execute("SHOW COLUMNS FROM academic_calendar_activities LIKE 'image_path'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE academic_calendar_activities
+                ADD COLUMN image_path VARCHAR(500) NULL AFTER notify_parents
+            """)
     except Exception as e:
         print(f"ensure_academic_calendar_activities_table: {e}")
 
@@ -3523,6 +4156,58 @@ def _fetch_parent_hub_notifications(
         entry = dict(act)
         entry['type'] = 'calendar'
         items.append(entry)
+
+    def _hub_sort_key(item):
+        if item.get('type') == 'fee_deadline':
+            urgency = item.get('urgency') or 'upcoming'
+            prio = {'overdue': 0, 'due_soon': 1, 'upcoming': 2}.get(urgency, 2)
+            return (prio, item.get('payment_deadline') or date_cls.max)
+        if item.get('type') == 'exam_results':
+            ga = item.get('gazetted_at')
+            sort_dt = _coerce_to_date(ga) if not hasattr(ga, 'year') else ga.date() if hasattr(ga, 'date') else ga
+            return (2, sort_dt or date_cls.min, item.get('exam_name') or '')
+        if item.get('type') == 'portal':
+            return (1, item.get('gazetted_at_display') or '', item.get('id') or 0)
+        return (
+            3,
+            _coerce_to_date(item.get('activity_date')) or date_cls.max,
+            item.get('id') or 0,
+        )
+
+    items.sort(key=_hub_sort_key)
+    return items[:limit]
+
+
+def _fetch_student_hub_notifications(cursor, student_id=None, user_id=None, limit=12):
+    """Merged student hub feed: portal alerts + fee deadlines + exam results + calendar."""
+    if not school_notifications_enabled() or not notification_mode_enabled('app'):
+        return []
+    limit = max(1, min(int(limit or 12), 30))
+    items = []
+    sid = (student_id or '').strip()
+
+    if user_id:
+        for note in _fetch_portal_notifications_for_recipient(
+            cursor, user_id=user_id, recipient_type='student', limit=limit,
+        ):
+            items.append(note)
+
+    if sid:
+        note = _fetch_parent_fee_deadline_notification_for_student(cursor, sid)
+        if note:
+            items.append(note)
+
+        for note in _fetch_parent_gazetted_exam_notifications(
+            cursor, student_id=sid, limit=limit,
+        ):
+            items.append(note)
+
+        for act in _fetch_parent_calendar_notifications(
+            cursor, parent_email=None, student_id=sid, limit=limit,
+        ):
+            entry = dict(act)
+            entry['type'] = 'calendar'
+            items.append(entry)
 
     def _hub_sort_key(item):
         if item.get('type') == 'fee_deadline':
@@ -4090,6 +4775,7 @@ def _calendar_activity_row_dict(row):
         about = (row.get('activity_about') or row.get('description') or '').strip()
         notify_raw = row.get('notify_parents')
         notify_parents = True if notify_raw is None else bool(int(notify_raw))
+        image_path = (row.get('image_path') or '').strip()
         title = (row.get('activity_title') or '').strip().upper()
         return {
             'id': row.get('id'),
@@ -4106,16 +4792,19 @@ def _calendar_activity_row_dict(row):
             'category_label': ACADEMIC_CALENDAR_CATEGORY_LABELS.get(category, category.title()),
             'activity_about': about,
             'notify_parents': notify_parents,
+            'image_path': image_path,
+            'image_url': _academic_calendar_image_public_url(image_path),
             'activity_date_input': _calendar_date_input_value(activity_date),
             'end_date_input': _calendar_date_input_value(end_date),
         }
-    term_name = (row[9] if len(row) > 9 else '') or ''
+    term_name = (row[10] if len(row) > 10 else '') or ''
     category = (row[6] if len(row) > 6 else 'event') or 'event'
     activity_date_val = row[4] if len(row) > 4 else None
     end_date_val = row[5] if len(row) > 5 else None
     about = ((row[7] if len(row) > 7 else '') or '').strip()
     notify_raw = row[8] if len(row) > 8 else 1
     notify_parents = True if notify_raw is None else bool(int(notify_raw))
+    image_path = ((row[9] if len(row) > 9 else '') or '').strip()
     title = ((row[3] if len(row) > 3 else '') or '').strip().upper()
     return {
         'id': row[0] if len(row) > 0 else None,
@@ -4134,6 +4823,8 @@ def _calendar_activity_row_dict(row):
         'category_label': ACADEMIC_CALENDAR_CATEGORY_LABELS.get(category, category.title()),
         'activity_about': about,
         'notify_parents': notify_parents,
+        'image_path': image_path,
+        'image_url': _academic_calendar_image_public_url(image_path),
     }
 
 
@@ -4198,7 +4889,7 @@ def _fetch_academic_calendar_activities(cursor, academic_year_id, term_id=None):
         return []
     query = """
         SELECT a.id, a.academic_year_id, a.term_id, a.activity_title, a.activity_date, a.end_date,
-               a.category, a.activity_about, a.notify_parents, t.term_name
+               a.category, a.activity_about, a.notify_parents, a.image_path, t.term_name
         FROM academic_calendar_activities a
         LEFT JOIN terms t ON t.id = a.term_id
         WHERE a.academic_year_id = %s AND COALESCE(a.status, 'active') = 'active'
@@ -4214,6 +4905,72 @@ def _fetch_academic_calendar_activities(cursor, academic_year_id, term_id=None):
     query += " ORDER BY a.activity_date ASC, a.id ASC"
     cursor.execute(query, tuple(params))
     return [_calendar_activity_row_dict(r) for r in (cursor.fetchall() or [])]
+
+
+def _synthesize_term_calendar_activities(cursor, academic_year_id):
+    """Build term-date rows from the terms table for public calendar display."""
+    activities = []
+    for term in _fetch_terms_for_calendar_year(cursor, academic_year_id):
+        start = _coerce_to_date(term.get('start_date'))
+        if not start:
+            continue
+        end = _coerce_to_date(term.get('end_date'))
+        term_name = (term.get('term_name') or '').strip()
+        term_id = term.get('id')
+        try:
+            synthetic_id = -int(term_id) if term_id is not None else None
+        except (TypeError, ValueError):
+            synthetic_id = None
+        activities.append({
+            'id': synthetic_id,
+            'academic_year_id': int(academic_year_id),
+            'term_id': term_id,
+            'term_name': term_name,
+            'term_label': term_name or 'Whole year',
+            'activity_title': term_name or 'Term dates',
+            'activity_date': start,
+            'activity_date_display': _format_date_short(start) or '',
+            'end_date': end,
+            'end_date_display': _format_date_short(end) or '',
+            'category': 'term',
+            'category_label': ACADEMIC_CALENDAR_CATEGORY_LABELS.get('term', 'Term dates'),
+            'activity_about': 'Official term dates for this academic year.',
+            'notify_parents': True,
+            'activity_date_input': _calendar_date_input_value(start),
+            'end_date_input': _calendar_date_input_value(end),
+            'is_synthetic_term': True,
+        })
+    return activities
+
+
+def _merge_term_dates_into_calendar_activities(cursor, academic_year_id, activities):
+    """Include published term dates when building the public academic calendar feed."""
+    merged = list(activities or [])
+    covered_term_ids = set()
+    for act in merged:
+        if (act.get('category') or '').strip().lower() != 'term':
+            continue
+        try:
+            tid = int(act.get('term_id') or 0)
+        except (TypeError, ValueError):
+            tid = 0
+        if tid:
+            covered_term_ids.add(tid)
+    for row in _synthesize_term_calendar_activities(cursor, academic_year_id):
+        try:
+            tid = int(row.get('term_id') or 0)
+        except (TypeError, ValueError):
+            tid = 0
+        if tid and tid in covered_term_ids:
+            continue
+        merged.append(row)
+    merged.sort(
+        key=lambda x: (
+            _coerce_to_date(x.get('activity_date')) or date_cls.min,
+            x.get('id') or 0,
+        ),
+    )
+    return merged
 
 
 def _group_calendar_activities_by_month(activities):
@@ -4358,9 +5115,12 @@ def _prepare_public_calendar_news(activities, selected_year=None):
         entry['color_bg'] = colors['bg']
         entry['color_text'] = colors['text']
         entry['category_icon'] = ACADEMIC_CALENDAR_CATEGORY_ICONS.get(category, 'fa-bell')
-        entry['cover_image'] = ACADEMIC_CALENDAR_CATEGORY_COVERS.get(
+        image_url = (act.get('image_url') or '').strip()
+        default_cover = ACADEMIC_CALENDAR_CATEGORY_COVERS.get(
             category, ACADEMIC_CALENDAR_CATEGORY_COVERS['other'],
         )
+        entry['has_custom_image'] = bool(image_url)
+        entry['cover_image'] = image_url or default_cover
         if start:
             entry['date_day'] = start.day
             entry['date_month'] = start.strftime('%b').upper()
@@ -4413,8 +5173,15 @@ def _prepare_public_calendar_news(activities, selected_year=None):
         if candidate.get('is_today'):
             spotlight = candidate
             break
+    if not spotlight:
+        for candidate in upcoming:
+            if candidate.get('has_custom_image'):
+                spotlight = candidate
+                break
     if not spotlight and upcoming:
         spotlight = upcoming[0]
+
+    photo_highlights = [a for a in enriched if a.get('has_custom_image')]
 
     year_label = ''
     if selected_year and selected_year.get('year_name'):
@@ -4437,6 +5204,7 @@ def _prepare_public_calendar_news(activities, selected_year=None):
         'past_count': len(past),
         'total_count': len(enriched),
         'spotlight': spotlight,
+        'photo_highlights': photo_highlights,
         'category_counts': category_counts,
         'this_month_count': this_month_count,
     }
@@ -12990,6 +13758,8 @@ def init_db():
                 )
             """)
             try:
+                ensure_subject_main_photo_column(cursor)
+                ensure_subject_scheme_tables(cursor)
                 ensure_subject_exam_total_marks_column(cursor)
                 ensure_subject_exam_display_order_columns(cursor)
                 ensure_subject_exam_combination_tables(cursor)
@@ -17384,6 +18154,7 @@ def home():
     team_total = 0
     news_upcoming_count = 0
     news_spotlight_title = ''
+    courses_count = 0
     connection = get_db_connection()
     if connection:
         try:
@@ -17404,6 +18175,7 @@ def home():
                                 selected_year = y
                                 break
                         raw = _fetch_academic_calendar_activities(cursor, selected_year_id, term_id=None)
+                        raw = _merge_term_dates_into_calendar_activities(cursor, selected_year_id, raw)
                         raw = _attach_calendar_activity_levels(cursor, raw)
                         news_payload = _prepare_public_calendar_news(raw, selected_year)
                         news_upcoming_count = news_payload.get('upcoming_count') or 0
@@ -17411,6 +18183,10 @@ def home():
                         news_spotlight_title = (spotlight.get('activity_title') or '').strip()
                 except Exception as e:
                     print(f"home news preview: {e}")
+                try:
+                    courses_count = len(_fetch_public_course_subjects(cursor))
+                except Exception as e:
+                    print(f"home courses preview: {e}")
         except Exception as e:
             print(f"home preview: {e}")
         finally:
@@ -17421,6 +18197,7 @@ def home():
         team_total=team_total,
         news_upcoming_count=news_upcoming_count,
         news_spotlight_title=news_spotlight_title,
+        courses_count=courses_count,
         progress_current_year=date_cls.today().year,
     )
 
@@ -17434,7 +18211,8 @@ def public_site_search():
     searchable_routes = {
         'home': url_for('home'),
         'features': url_for('features'),
-        'programs': url_for('features'),
+        'programs': url_for('courses'),
+        'courses': url_for('courses'),
         'solutions': url_for('solutions'),
         'community': url_for('solutions'),
         'pricing': url_for('pricing'),
@@ -17457,11 +18235,230 @@ def public_site_search():
 
 @app.route('/about')
 def about():
-    return render_template('about.html')
+    about_slideshow = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                about_slideshow = load_about_slideshow_items(cursor)
+        except Exception as e:
+            print(f"about slideshow load: {e}")
+        finally:
+            connection.close()
+    return render_template('about.html', about_slideshow=about_slideshow)
 
 @app.route('/programs')
 def programs():
-    return redirect(url_for('features'))
+    return redirect(url_for('courses'))
+
+
+def _fetch_public_course_subjects(cursor):
+    """Active subjects with descriptions for the public courses page."""
+    subjects = []
+    try:
+        ensure_subject_main_photo_column(cursor)
+        cursor.execute("""
+            SELECT s.id, s.subject_name, s.subject_code, s.description, s.main_photo
+            FROM subjects s
+            WHERE COALESCE(s.status, 'active') = 'active'
+            ORDER BY s.subject_name ASC
+        """)
+        rows = cursor.fetchall() or []
+        subject_levels_map = {}
+        cursor.execute("""
+            SELECT sal.subject_id, al.id AS level_id, al.level_name, al.level_category
+            FROM subject_academic_levels sal
+            INNER JOIN academic_levels al ON sal.academic_level_id = al.id
+            WHERE COALESCE(al.level_status, 'active') = 'active'
+            ORDER BY al.level_category ASC, al.level_name ASC
+        """)
+        for m in cursor.fetchall() or []:
+            sid = m.get('subject_id') if isinstance(m, dict) else m[0]
+            subject_levels_map.setdefault(sid, []).append({
+                'id': m.get('level_id') if isinstance(m, dict) else m[1],
+                'level_name': (m.get('level_name') or '') if isinstance(m, dict) else (m[2] if len(m) > 2 else ''),
+                'level_category': (m.get('level_category') or '') if isinstance(m, dict) else (m[3] if len(m) > 3 else ''),
+            })
+        for row in rows:
+            if isinstance(row, dict):
+                sid = row.get('id')
+                name = (row.get('subject_name') or '').strip()
+                code = (row.get('subject_code') or '').strip()
+                desc = (row.get('description') or '').strip()
+                main_photo = (row.get('main_photo') or '').strip()
+            else:
+                sid = row[0] if len(row) > 0 else None
+                name = (row[1] if len(row) > 1 else '').strip()
+                code = (row[2] if len(row) > 2 else '').strip()
+                desc = (row[3] if len(row) > 3 else '').strip()
+                main_photo = (row[4] if len(row) > 4 else '').strip()
+            levels = subject_levels_map.get(sid, [])
+            level_names = [lv.get('level_name') for lv in levels if lv.get('level_name')]
+            categories = sorted({
+                (lv.get('level_category') or '').strip()
+                for lv in levels
+                if (lv.get('level_category') or '').strip()
+            })
+            subjects.append({
+                'id': sid,
+                'subject_name': name,
+                'subject_code': code,
+                'description': desc,
+                'has_description': bool(desc),
+                'main_photo_url': _subject_course_image_public_url(main_photo),
+                'academic_levels': levels,
+                'level_names': level_names,
+                'level_categories': categories,
+            })
+        if subjects:
+            id_to_gc = fetch_subject_id_to_exam_group_category(
+                cursor, [s['id'] for s in subjects],
+            )
+            scheme_map = _fetch_scheme_of_work_for_subjects(
+                cursor, [s['id'] for s in subjects],
+            )
+            for s in subjects:
+                category = id_to_gc.get(s['id'], 'Uncategorized')
+                s['category'] = category
+                s['category_label'] = category
+                scheme = scheme_map.get(s['id'], [])
+                s['scheme_topic_count'] = len(scheme)
+                s['scheme_subtopic_count'] = sum(len(t.get('subtopics') or []) for t in scheme)
+                s['has_scheme'] = bool(scheme)
+    except Exception as e:
+        print(f"_fetch_public_course_subjects: {e}")
+    return subjects
+
+
+def _fetch_public_course_subject(cursor, subject_id):
+    """Single active subject with scheme of work for the public course detail page."""
+    try:
+        ensure_subject_main_photo_column(cursor)
+        cursor.execute("""
+            SELECT s.id, s.subject_name, s.subject_code, s.description, s.main_photo
+            FROM subjects s
+            WHERE s.id = %s AND COALESCE(s.status, 'active') = 'active'
+        """, (subject_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        if isinstance(row, dict):
+            sid = row.get('id')
+            name = (row.get('subject_name') or '').strip()
+            code = (row.get('subject_code') or '').strip()
+            desc = (row.get('description') or '').strip()
+            main_photo = (row.get('main_photo') or '').strip()
+        else:
+            sid = row[0]
+            name = (row[1] if len(row) > 1 else '').strip()
+            code = (row[2] if len(row) > 2 else '').strip()
+            desc = (row[3] if len(row) > 3 else '').strip()
+            main_photo = (row[4] if len(row) > 4 else '').strip()
+
+        cursor.execute("""
+            SELECT al.id, al.level_name, al.level_category
+            FROM subject_academic_levels sal
+            INNER JOIN academic_levels al ON sal.academic_level_id = al.id
+            WHERE sal.subject_id = %s AND COALESCE(al.level_status, 'active') = 'active'
+            ORDER BY al.level_category ASC, al.level_name ASC
+        """, (subject_id,))
+        levels = []
+        for m in cursor.fetchall() or []:
+            levels.append({
+                'id': m.get('id') if isinstance(m, dict) else m[0],
+                'level_name': (m.get('level_name') or '') if isinstance(m, dict) else (m[1] if len(m) > 1 else ''),
+                'level_category': (m.get('level_category') or '') if isinstance(m, dict) else (m[2] if len(m) > 2 else ''),
+            })
+
+        id_to_gc = fetch_subject_id_to_exam_group_category(cursor, [sid])
+        category = id_to_gc.get(sid, 'Uncategorized')
+        scheme_map = _fetch_scheme_of_work_for_subjects(cursor, [sid])
+        scheme = scheme_map.get(sid, [])
+
+        return {
+            'id': sid,
+            'subject_name': name,
+            'subject_code': code,
+            'description': desc,
+            'has_description': bool(desc),
+            'main_photo_url': _subject_course_image_public_url(main_photo),
+            'academic_levels': levels,
+            'level_names': [lv.get('level_name') for lv in levels if lv.get('level_name')],
+            'category': category,
+            'category_label': category,
+            'scheme_of_work': scheme,
+            'scheme_topic_count': len(scheme),
+            'scheme_subtopic_count': sum(len(t.get('subtopics') or []) for t in scheme),
+            'has_scheme': bool(scheme),
+        }
+    except Exception as e:
+        print(f"_fetch_public_course_subject: {e}")
+        return None
+
+
+@app.route('/courses')
+def courses():
+    course_subjects = []
+    course_categories = []
+    described_count = 0
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                course_subjects = _fetch_public_course_subjects(cursor)
+                described_count = sum(1 for s in course_subjects if s.get('has_description'))
+                cat_set = set()
+                for s in course_subjects:
+                    cat = (s.get('category') or '').strip()
+                    if cat and cat != 'Uncategorized':
+                        cat_set.add(cat)
+                course_categories = sorted(cat_set)
+        except Exception as e:
+            print(f"courses page: {e}")
+        finally:
+            connection.close()
+    school_name = (get_school_settings().get('school_name') or 'Our school').strip()
+    return render_template(
+        'courses.html',
+        course_subjects=course_subjects,
+        courses_count=len(course_subjects),
+        described_count=described_count,
+        course_categories=course_categories,
+        courses_page_title=f'Courses — {school_name}',
+        courses_meta_description=(
+            f'Explore active subjects and learning areas offered at {school_name}. '
+            f'View course descriptions across our academic programmes.'
+        ),
+    )
+
+
+@app.route('/courses/<int:subject_id>')
+def course_detail(subject_id):
+    course = None
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                course = _fetch_public_course_subject(cursor, subject_id)
+        except Exception as e:
+            print(f"course_detail: {e}")
+        finally:
+            connection.close()
+    if not course:
+        flash('This course is not available or may have been removed.', 'error')
+        return redirect(url_for('courses'))
+
+    school_name = (get_school_settings().get('school_name') or 'Our school').strip()
+    subject_name = course.get('subject_name') or 'Course'
+    return render_template(
+        'course_detail.html',
+        course=course,
+        course_page_title=f'{subject_name} — Courses — {school_name}',
+        course_meta_description=(
+            f'Scheme of work and learning overview for {subject_name} at {school_name}. '
+            f'Topics, sub-topics, outcomes, activities, and assessment methods.'
+        ),
+    )
 
 
 @app.route('/features')
@@ -17516,6 +18513,7 @@ def news():
     category_counts = {}
     this_month_count = 0
     branch_tree = None
+    photo_highlights = []
 
     connection = get_db_connection()
     if connection:
@@ -17530,6 +18528,7 @@ def news():
                             selected_year = y
                             break
                     raw = _fetch_academic_calendar_activities(cursor, selected_year_id, term_id=None)
+                    raw = _merge_term_dates_into_calendar_activities(cursor, selected_year_id, raw)
                     raw = _attach_calendar_activity_levels(cursor, raw)
                     news_payload = _prepare_public_calendar_news(raw, selected_year)
                     calendar_activities = news_payload['activities']
@@ -17543,6 +18542,7 @@ def news():
                     spotlight = news_payload['spotlight']
                     category_counts = news_payload['category_counts']
                     this_month_count = news_payload['this_month_count']
+                    photo_highlights = news_payload.get('photo_highlights') or []
                     branch_tree = news_payload.get('branch_tree')
         except Exception as e:
             print(f"news calendar: {e}")
@@ -17564,6 +18564,7 @@ def news():
         past_count=past_count,
         total_count=total_count,
         spotlight=spotlight,
+        photo_highlights=photo_highlights,
         category_counts=category_counts,
         this_month_count=this_month_count,
         branch_tree=branch_tree,
@@ -20196,319 +21197,479 @@ def terms_and_conditions():
 @login_required
 def dashboard_student():
     """Student dashboard - accessible to students and technicians"""
-    user_role = session.get('role', '').lower()
-    viewing_as = session.get('viewing_as_role', '')
-    
-    # Allow access if user is student OR if technician is viewing as student
-    if user_role != 'student' and not (user_role == 'technician' and viewing_as == 'student'):
-        if user_role != 'technician':
-            flash('You do not have permission to access this page.', 'error')
-            return redirect(url_for('home'))
-    
-    # Check if technician is viewing as student
-    is_technician = user_role == 'technician'
-    current_view_role = viewing_as if is_technician and viewing_as else user_role
-    
-    # Get student ID - either from session or selected by technician
-    student_id = None
-    student_email = session.get('email', '')
-    
-    # For technicians, fetch all students for selection
-    all_students = []
-    selected_student_id = request.args.get('student_id', '') or session.get('student_view_student_id', '')
-    
-    if is_technician and viewing_as == 'student':
-        connection = get_db_connection()
-        if connection:
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    return _render_student_dashboard_page(ctx)
+
+
+def _render_student_dashboard_page(ctx):
+    """Render student portal home — fees, pocket money, class analytics, notifications."""
+    hub = _fetch_student_dashboard_hub_bundle(ctx)
+    return render_template(
+        'dashboards/dashboard_student.html',
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'] if ctx.get('is_technician') and ctx.get('current_view_role') == 'student' else [],
+        selected_student_id=ctx['selected_student_id'],
+        portal_mode='student',
+        mpesa_daraja_enabled=_get_daraja_settings_from_flag(),
+        mpesa_sandbox_confirm=_mpesa_sandbox_manual_confirm_enabled(),
+        **hub,
+    )
+
+
+def _fetch_student_dashboard_hub_bundle(ctx):
+    """Spotlight cards + class progress + notifications for the student home dashboard."""
+    student_id = (ctx.get('student_id') or '').strip()
+    user_id = session.get('user_id')
+    student_info = None
+    spotlight_fee = {'has_structure': False}
+    spotlight_pocket_money = {'has_account': False, 'balance': 0, 'total_topped_up': 0, 'total_spent': 0, 'transaction_count': 0}
+    parent_class_progress = {
+        'grade': '',
+        'term_label': '',
+        'subject_count': 0,
+        'subjects_with_data': 0,
+        'avg_curriculum_pct': None,
+        'total_sessions_done': 0,
+        'total_sessions_planned': 0,
+        'subjects': [],
+    }
+    current_term_name = None
+    current_term_id = None
+    student_hub_notifications = []
+
+    if not student_id:
+        return {
+            'student_info': student_info,
+            'spotlight_fee': spotlight_fee,
+            'spotlight_pocket_money': spotlight_pocket_money,
+            'parent_class_progress': parent_class_progress,
+            'current_term_name': current_term_name,
+            'student_hub_notifications': student_hub_notifications,
+        }
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT s.id, s.student_id, s.full_name, s.current_grade, s.status, s.student_category
+                    FROM students s
+                    WHERE s.student_id = %s AND s.status = 'in session'
+                    LIMIT 1
+                    """,
+                    (student_id,),
+                )
+                student_result = cursor.fetchone()
+                if student_result:
+                    student_info = {
+                        'id': student_result.get('id') if isinstance(student_result, dict) else student_result[0],
+                        'student_id': student_result.get('student_id') if isinstance(student_result, dict) else student_result[1],
+                        'full_name': student_result.get('full_name') if isinstance(student_result, dict) else student_result[2],
+                        'current_grade': student_result.get('current_grade') if isinstance(student_result, dict) else student_result[3],
+                        'status': student_result.get('status') if isinstance(student_result, dict) else student_result[4],
+                        'student_category': student_result.get('student_category') if isinstance(student_result, dict) else (student_result[5] if len(student_result) > 5 else None),
+                    }
+
+                _yid, _yname, current_term_id, current_term_name = _get_current_academic_year_and_term(cursor)
+
+                try:
+                    spotlight_fee = _spotlight_fee_balance_for_student(cursor, student_id)
+                except Exception as fe:
+                    print(f"student dashboard spotlight fee: {fe}")
+                    spotlight_fee = {'has_structure': False}
+
+                try:
+                    spotlight_pocket_money = _spotlight_pocket_money_for_student(cursor, student_id)
+                except Exception as pme:
+                    print(f"student dashboard spotlight pocket money: {pme}")
+                    spotlight_pocket_money = {'has_account': False}
+
+                try:
+                    parent_class_progress = _parent_class_subject_progress_bundle(
+                        cursor, student_id, current_term_id, current_term_name,
+                    )
+                except Exception as se:
+                    print(f"student dashboard class progress: {se}")
+
+                try:
+                    ensure_academic_calendar_activities_table(cursor)
+                    ensure_academic_calendar_activity_levels_table(cursor)
+                    connection.commit()
+                    student_hub_notifications = _fetch_student_hub_notifications(
+                        cursor, student_id, user_id=user_id,
+                    )
+                except Exception as nfe:
+                    print(f"student dashboard notifications: {nfe}")
+        except Exception as e:
+            print(f"_fetch_student_dashboard_hub_bundle: {e}")
+        finally:
             try:
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT DISTINCT s.id, s.student_id, s.full_name, s.current_grade, s.status
-                        FROM students s
-                        WHERE s.status = 'in session'
-                        ORDER BY s.full_name ASC
-                    """)
-                    all_students = cursor.fetchall()
-            except Exception as e:
-                print(f"Error fetching students for technician: {e}")
-            finally:
-                if connection:
-                    try:
-                        connection.close()
-                    except:
-                        pass
-        
-        # If a student is selected, use that student's ID
-        if selected_student_id:
-            session['student_view_student_id'] = selected_student_id
-            student_id = selected_student_id
-    else:
-        # For actual students, get their student_id from users table or session
-        connection = get_db_connection()
-        if connection:
-            try:
-                with connection.cursor() as cursor:
-                    # Try to get student_id from users table
-                    user_id = session.get('user_id')
-                    if user_id:
-                        cursor.execute("""
-                            SELECT student_id FROM users WHERE id = %s
-                        """, (user_id,))
-                        user_result = cursor.fetchone()
-                        if user_result:
-                            student_id = user_result.get('student_id', '') if isinstance(user_result, dict) else user_result[0]
-            except Exception as e:
-                print(f"Error fetching student ID: {e}")
-            finally:
-                if connection:
-                    try:
-                        connection.close()
-                    except:
-                        pass
-    
-    # Fetch student's fee information
+                connection.close()
+            except Exception:
+                pass
+
+    return {
+        'student_info': student_info,
+        'spotlight_fee': spotlight_fee,
+        'spotlight_pocket_money': spotlight_pocket_money,
+        'parent_class_progress': parent_class_progress,
+        'current_term_name': current_term_name,
+        'student_hub_notifications': student_hub_notifications,
+    }
+
+
+def _render_student_fees_page(ctx):
+    """Render student fees detail (structure, items, payment history)."""
+    student_id = (ctx.get('student_id') or '').strip()
+    fee_bundle = _fetch_student_portal_fee_bundle(student_id)
+    return render_template(
+        'dashboards/student_fees_detail.html',
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'] if ctx.get('is_technician') and ctx.get('current_view_role') == 'student' else [],
+        selected_student_id=ctx['selected_student_id'],
+        portal_mode='student',
+        **fee_bundle,
+    )
+
+
+def _fetch_student_portal_fee_bundle(student_id):
+    """Load fee structure, items, and payment history for one in-session student."""
     fee_structure = None
     fee_items = []
     payments = []
     total_paid = 0.0
     balance = 0.0
     student_info = None
-    
-    if student_id:
-        connection = get_db_connection()
-        if connection:
-            try:
-                with connection.cursor() as cursor:
-                    # Get student information
-                    cursor.execute("""
-                        SELECT s.id, s.student_id, s.full_name, s.current_grade, s.status, s.student_category
-                        FROM students s
-                        WHERE s.student_id = %s AND s.status = 'in session'
-                        LIMIT 1
-                    """, (student_id,))
-                    student_result = cursor.fetchone()
-                    
-                    if student_result:
-                        student_info = {
-                            'id': student_result.get('id') if isinstance(student_result, dict) else student_result[0],
-                            'student_id': student_result.get('student_id') if isinstance(student_result, dict) else student_result[1],
-                            'full_name': student_result.get('full_name') if isinstance(student_result, dict) else student_result[2],
-                            'current_grade': student_result.get('current_grade') if isinstance(student_result, dict) else student_result[3],
-                            'status': student_result.get('status') if isinstance(student_result, dict) else student_result[4],
-                            'student_category': student_result.get('student_category') if isinstance(student_result, dict) else (student_result[5] if len(student_result) > 5 else None)
-                        }
-                        
-                        student_grade = student_info.get('current_grade', '')
-                        student_category = student_info.get('student_category', '').lower().strip() if student_info.get('student_category') else ''
-                        
-                        if student_grade:
-                            # Get academic level
-                            cursor.execute("""
-                                SELECT al.id, al.level_category, al.level_name
-                                FROM academic_levels al
-                                WHERE al.level_name = %s AND al.level_status = 'active'
-                                LIMIT 1
-                            """, (student_grade,))
-                            level_result = cursor.fetchone()
-                            
-                            if level_result:
-                                academic_level_id = level_result.get('id') if isinstance(level_result, dict) else level_result[0]
-                                
-                                # Get fee structure matching student category
-                                if student_category == 'self sponsored':
-                                    cursor.execute("""
-                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                        FROM fee_structures fs
-                                        WHERE fs.academic_level_id = %s 
-                                          AND fs.status = 'active'
-                                          AND (fs.category = 'self sponsored' OR fs.category = 'both')
-                                        ORDER BY 
-                                          CASE 
-                                            WHEN fs.category = 'self sponsored' THEN 1
-                                            WHEN fs.category = 'both' THEN 2
-                                            ELSE 3
-                                          END,
-                                          fs.created_at DESC
-                                        LIMIT 1
-                                    """, (academic_level_id,))
-                                elif student_category == 'sponsored':
-                                    cursor.execute("""
-                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                        FROM fee_structures fs
-                                        WHERE fs.academic_level_id = %s 
-                                          AND fs.status = 'active'
-                                          AND (fs.category = 'sponsored' OR fs.category = 'both')
-                                        ORDER BY 
-                                          CASE 
-                                            WHEN fs.category = 'sponsored' THEN 1
-                                            WHEN fs.category = 'both' THEN 2
-                                            ELSE 3
-                                          END,
-                                          fs.created_at DESC
-                                        LIMIT 1
-                                    """, (academic_level_id,))
-                                elif student_category == 'both':
-                                    cursor.execute("""
-                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                        FROM fee_structures fs
-                                        WHERE fs.academic_level_id = %s 
-                                          AND fs.status = 'active'
-                                        ORDER BY 
-                                          CASE 
-                                            WHEN fs.category = 'both' THEN 1
-                                            WHEN fs.category = 'self sponsored' THEN 2
-                                            WHEN fs.category = 'sponsored' THEN 3
-                                            ELSE 4
-                                          END,
-                                          fs.created_at DESC
-                                        LIMIT 1
-                                    """, (academic_level_id,))
+
+    if not student_id:
+        return {
+            'student_info': student_info,
+            'fee_structure': fee_structure,
+            'fee_items': fee_items,
+            'payments': payments,
+            'total_paid': total_paid,
+            'balance': balance,
+        }
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT s.id, s.student_id, s.full_name, s.current_grade, s.status, s.student_category
+                    FROM students s
+                    WHERE s.student_id = %s AND s.status = 'in session'
+                    LIMIT 1
+                """, (student_id,))
+                student_result = cursor.fetchone()
+
+                if student_result:
+                    student_info = {
+                        'id': student_result.get('id') if isinstance(student_result, dict) else student_result[0],
+                        'student_id': student_result.get('student_id') if isinstance(student_result, dict) else student_result[1],
+                        'full_name': student_result.get('full_name') if isinstance(student_result, dict) else student_result[2],
+                        'current_grade': student_result.get('current_grade') if isinstance(student_result, dict) else student_result[3],
+                        'status': student_result.get('status') if isinstance(student_result, dict) else student_result[4],
+                        'student_category': student_result.get('student_category') if isinstance(student_result, dict) else (student_result[5] if len(student_result) > 5 else None)
+                    }
+
+                    student_grade = student_info.get('current_grade', '')
+                    student_category = student_info.get('student_category', '').lower().strip() if student_info.get('student_category') else ''
+
+                    if student_grade:
+                        cursor.execute("""
+                            SELECT al.id, al.level_category, al.level_name
+                            FROM academic_levels al
+                            WHERE al.level_name = %s AND al.level_status = 'active'
+                            LIMIT 1
+                        """, (student_grade,))
+                        level_result = cursor.fetchone()
+
+                        if level_result:
+                            academic_level_id = level_result.get('id') if isinstance(level_result, dict) else level_result[0]
+
+                            if student_category == 'self sponsored':
+                                cursor.execute("""
+                                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                    FROM fee_structures fs
+                                    WHERE fs.academic_level_id = %s
+                                      AND fs.status = 'active'
+                                      AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                                    ORDER BY
+                                      CASE
+                                        WHEN fs.category = 'self sponsored' THEN 1
+                                        WHEN fs.category = 'both' THEN 2
+                                        ELSE 3
+                                      END,
+                                      fs.created_at DESC
+                                    LIMIT 1
+                                """, (academic_level_id,))
+                            elif student_category == 'sponsored':
+                                cursor.execute("""
+                                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                    FROM fee_structures fs
+                                    WHERE fs.academic_level_id = %s
+                                      AND fs.status = 'active'
+                                      AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                    ORDER BY
+                                      CASE
+                                        WHEN fs.category = 'sponsored' THEN 1
+                                        WHEN fs.category = 'both' THEN 2
+                                        ELSE 3
+                                      END,
+                                      fs.created_at DESC
+                                    LIMIT 1
+                                """, (academic_level_id,))
+                            elif student_category == 'both':
+                                cursor.execute("""
+                                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                    FROM fee_structures fs
+                                    WHERE fs.academic_level_id = %s
+                                      AND fs.status = 'active'
+                                    ORDER BY
+                                      CASE
+                                        WHEN fs.category = 'both' THEN 1
+                                        WHEN fs.category = 'self sponsored' THEN 2
+                                        WHEN fs.category = 'sponsored' THEN 3
+                                        ELSE 4
+                                      END,
+                                      fs.created_at DESC
+                                    LIMIT 1
+                                """, (academic_level_id,))
+                            else:
+                                cursor.execute("""
+                                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                    FROM fee_structures fs
+                                    WHERE fs.academic_level_id = %s
+                                      AND fs.status = 'active'
+                                      AND fs.category = 'both'
+                                    ORDER BY fs.created_at DESC
+                                    LIMIT 1
+                                """, (academic_level_id,))
+                            fee_structure_result = cursor.fetchone()
+
+                            if fee_structure_result:
+                                payment_deadline = fee_structure_result.get('payment_deadline') if isinstance(fee_structure_result, dict) else fee_structure_result[4]
+                                if payment_deadline and hasattr(payment_deadline, 'strftime'):
+                                    payment_deadline_formatted = payment_deadline.strftime('%B %d, %Y')
+                                elif payment_deadline:
+                                    payment_deadline_formatted = str(payment_deadline)
                                 else:
-                                    cursor.execute("""
-                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                        FROM fee_structures fs
-                                        WHERE fs.academic_level_id = %s 
-                                          AND fs.status = 'active'
-                                          AND fs.category = 'both'
-                                        ORDER BY fs.created_at DESC
-                                        LIMIT 1
-                                    """, (academic_level_id,))
-                                fee_structure_result = cursor.fetchone()
-                                
-                                if fee_structure_result:
-                                    payment_deadline = fee_structure_result.get('payment_deadline') if isinstance(fee_structure_result, dict) else fee_structure_result[4]
-                                    # Format payment_deadline if it's a date object
-                                    if payment_deadline and hasattr(payment_deadline, 'strftime'):
-                                        payment_deadline_formatted = payment_deadline.strftime('%B %d, %Y')
-                                    elif payment_deadline:
-                                        payment_deadline_formatted = str(payment_deadline)
+                                    payment_deadline_formatted = None
+
+                                fee_structure = {
+                                    'id': fee_structure_result.get('id') if isinstance(fee_structure_result, dict) else fee_structure_result[0],
+                                    'fee_name': fee_structure_result.get('fee_name') if isinstance(fee_structure_result, dict) else fee_structure_result[1],
+                                    'total_amount': float(fee_structure_result.get('total_amount', 0) if isinstance(fee_structure_result, dict) else fee_structure_result[5]),
+                                    'payment_deadline': payment_deadline,
+                                    'payment_deadline_formatted': payment_deadline_formatted,
+                                    'status': fee_structure_result.get('status') if isinstance(fee_structure_result, dict) else fee_structure_result[6]
+                                }
+
+                                cursor.execute("""
+                                    SELECT item_name, item_description, amount
+                                    FROM fee_items
+                                    WHERE fee_structure_id = %s
+                                    ORDER BY id ASC
+                                """, (fee_structure['id'],))
+                                fee_items_results = cursor.fetchall()
+                                fee_items = []
+                                for item in fee_items_results:
+                                    if isinstance(item, dict):
+                                        fee_items.append({
+                                            'item_name': item.get('item_name', '') or '',
+                                            'item_description': item.get('item_description', '') or '',
+                                            'amount': float(item.get('amount', 0) or 0)
+                                        })
                                     else:
-                                        payment_deadline_formatted = None
-                                    
-                                    fee_structure = {
-                                        'id': fee_structure_result.get('id') if isinstance(fee_structure_result, dict) else fee_structure_result[0],
-                                        'fee_name': fee_structure_result.get('fee_name') if isinstance(fee_structure_result, dict) else fee_structure_result[1],
-                                        'total_amount': float(fee_structure_result.get('total_amount', 0) if isinstance(fee_structure_result, dict) else fee_structure_result[5]),
-                                        'payment_deadline': payment_deadline,
-                                        'payment_deadline_formatted': payment_deadline_formatted,
-                                        'status': fee_structure_result.get('status') if isinstance(fee_structure_result, dict) else fee_structure_result[6]
-                                    }
-                                    
-                                    # Get fee items
-                                    cursor.execute("""
-                                        SELECT item_name, item_description, amount
-                                        FROM fee_items
-                                        WHERE fee_structure_id = %s
-                                        ORDER BY id ASC
-                                    """, (fee_structure['id'],))
-                                    fee_items_results = cursor.fetchall()
-                                    fee_items = []
-                                    for item in fee_items_results:
-                                        if isinstance(item, dict):
-                                            fee_items.append({
-                                                'item_name': item.get('item_name', '') or '',
-                                                'item_description': item.get('item_description', '') or '',
-                                                'amount': float(item.get('amount', 0) or 0)
-                                            })
+                                        fee_items.append({
+                                            'item_name': item[0] if len(item) > 0 else '',
+                                            'item_description': item[1] if len(item) > 1 else '',
+                                            'amount': float(item[2] if len(item) > 2 and item[2] else 0)
+                                        })
+
+                                cursor.execute("""
+                                    SELECT amount_paid, payment_date, payment_method, reference_number, notes, created_at
+                                    FROM student_payments
+                                    WHERE student_id = %s
+                                    ORDER BY payment_date DESC, created_at DESC
+                                """, (student_id,))
+                                payments_results = cursor.fetchall()
+                                payments = []
+                                for payment in payments_results:
+                                    if isinstance(payment, dict):
+                                        payment_date = payment.get('payment_date')
+                                        if payment_date and hasattr(payment_date, 'strftime'):
+                                            payment_date_formatted = payment_date.strftime('%B %d, %Y')
+                                        elif payment_date:
+                                            payment_date_formatted = str(payment_date)
                                         else:
-                                            fee_items.append({
-                                                'item_name': item[0] if len(item) > 0 else '',
-                                                'item_description': item[1] if len(item) > 1 else '',
-                                                'amount': float(item[2] if len(item) > 2 and item[2] else 0)
-                                            })
-                                    
-                                    # Get payments
-                                    cursor.execute("""
-                                        SELECT amount_paid, payment_date, payment_method, reference_number, notes, created_at
-                                        FROM student_payments
-                                        WHERE student_id = %s
-                                        ORDER BY payment_date DESC, created_at DESC
-                                    """, (student_id,))
-                                    payments_results = cursor.fetchall()
-                                    payments = []
-                                    for payment in payments_results:
-                                        if isinstance(payment, dict):
-                                            payment_date = payment.get('payment_date')
+                                            payment_date_formatted = None
+
+                                        payments.append({
+                                            'amount_paid': float(payment.get('amount_paid', 0) or 0),
+                                            'payment_date': payment_date,
+                                            'payment_date_formatted': payment_date_formatted,
+                                            'payment_method': payment.get('payment_method', '') or '',
+                                            'reference_number': payment.get('reference_number', '') or '',
+                                            'notes': payment.get('notes', '') or '',
+                                            'created_at': payment.get('created_at')
+                                        })
+                                    else:
+                                        try:
+                                            payment_date = payment[1] if len(payment) > 1 else None
                                             if payment_date and hasattr(payment_date, 'strftime'):
                                                 payment_date_formatted = payment_date.strftime('%B %d, %Y')
                                             elif payment_date:
                                                 payment_date_formatted = str(payment_date)
                                             else:
                                                 payment_date_formatted = None
-                                            
+
                                             payments.append({
-                                                'amount_paid': float(payment.get('amount_paid', 0) or 0),
+                                                'amount_paid': float(payment[0] if len(payment) > 0 and payment[0] else 0),
                                                 'payment_date': payment_date,
                                                 'payment_date_formatted': payment_date_formatted,
-                                                'payment_method': payment.get('payment_method', '') or '',
-                                                'reference_number': payment.get('reference_number', '') or '',
-                                                'notes': payment.get('notes', '') or '',
-                                                'created_at': payment.get('created_at')
+                                                'payment_method': payment[2] if len(payment) > 2 else '',
+                                                'reference_number': payment[3] if len(payment) > 3 else '',
+                                                'notes': payment[4] if len(payment) > 4 else '',
+                                                'created_at': payment[5] if len(payment) > 5 else None
                                             })
-                                        else:
-                                            try:
-                                                payment_date = payment[1] if len(payment) > 1 else None
-                                                if payment_date and hasattr(payment_date, 'strftime'):
-                                                    payment_date_formatted = payment_date.strftime('%B %d, %Y')
-                                                elif payment_date:
-                                                    payment_date_formatted = str(payment_date)
-                                                else:
-                                                    payment_date_formatted = None
-                                                
-                                                payments.append({
-                                                    'amount_paid': float(payment[0] if len(payment) > 0 and payment[0] else 0),
-                                                    'payment_date': payment_date,
-                                                    'payment_date_formatted': payment_date_formatted,
-                                                    'payment_method': payment[2] if len(payment) > 2 else '',
-                                                    'reference_number': payment[3] if len(payment) > 3 else '',
-                                                    'notes': payment[4] if len(payment) > 4 else '',
-                                                    'created_at': payment[5] if len(payment) > 5 else None
-                                                })
-                                            except (IndexError, KeyError):
-                                                continue
-                                    
-                                    # Calculate total paid
-                                    cursor.execute("""
-                                        SELECT COALESCE(SUM(amount_paid), 0) as total_paid
-                                        FROM student_payments
-                                        WHERE student_id = %s
-                                    """, (student_id,))
-                                    payment_result = cursor.fetchone()
-                                    total_paid = float(payment_result.get('total_paid', 0) if payment_result else 0)
-                                    balance = fee_structure['total_amount'] - total_paid
-            except Exception as e:
-                print(f"Error fetching student fees: {e}")
-                import traceback
-                traceback.print_exc()
-                flash('Error loading fee information. Please try again.', 'error')
-            finally:
-                if connection:
-                    try:
-                        connection.close()
-                    except:
-                        pass
-    
-    return render_template('dashboards/dashboard_student.html', 
-                         is_technician=is_technician,
-                         current_view_role=current_view_role,
-                         all_students=all_students if is_technician and viewing_as == 'student' else [],
-                         selected_student_id=selected_student_id,
-                         student_info=student_info,
-                         fee_structure=fee_structure,
-                         fee_items=fee_items,
-                         payments=payments,
-                         total_paid=total_paid,
-                         balance=balance)
+                                        except (IndexError, KeyError):
+                                            continue
+
+                                cursor.execute("""
+                                    SELECT COALESCE(SUM(amount_paid), 0) as total_paid
+                                    FROM student_payments
+                                    WHERE student_id = %s
+                                """, (student_id,))
+                                payment_result = cursor.fetchone()
+                                total_paid = float(payment_result.get('total_paid', 0) if payment_result else 0)
+                                balance = fee_structure['total_amount'] - total_paid
+        except Exception as e:
+            print(f"Error fetching student fees: {e}")
+            import traceback
+            traceback.print_exc()
+            flash('Error loading fee information. Please try again.', 'error')
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    return {
+        'student_info': student_info,
+        'fee_structure': fee_structure,
+        'fee_items': fee_items,
+        'payments': payments,
+        'total_paid': total_paid,
+        'balance': balance,
+    }
+
 
 @app.route('/dashboard/student/fees')
+@app.route('/student/fees')
 @login_required
 def student_fees_view():
-    """Student fees view page - redirects to dashboard with fees"""
-    return redirect(student_dashboard_path())
+    """Student fees detail — structure, items, and payment history."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    return _render_student_fees_page(ctx)
+
+
+@app.route('/dashboard/student/pocket-money')
+@app.route('/student/pocket-money')
+@login_required
+def student_portal_pocket_money():
+    """Student portal — pocket money balance and transactions."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_portal_access(student_id):
+        flash('You cannot view pocket money for this student.', 'error')
+        return redirect(student_dashboard_path())
+
+    student = None
+    pocket_data = None
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT student_id, full_name, current_grade
+                    FROM students
+                    WHERE LOWER(TRIM(student_id)) = LOWER(TRIM(%s))
+                      AND status = 'in session'
+                    LIMIT 1
+                    """,
+                    (student_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    if isinstance(row, dict):
+                        student = {
+                            'student_id': (row.get('student_id') or '').strip(),
+                            'full_name': (row.get('full_name') or '').strip(),
+                            'current_grade': (row.get('current_grade') or '').strip(),
+                        }
+                    else:
+                        student = {
+                            'student_id': (row[0] or '').strip(),
+                            'full_name': (row[1] or '').strip(),
+                            'current_grade': (row[2] or '').strip(),
+                        }
+                    pocket_data = _fetch_parent_student_pocket_money(cursor, student_id)
+        except Exception as e:
+            print(f"student_portal_pocket_money: {e}")
+            flash('Error loading pocket money.', 'error')
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not student or pocket_data is None:
+        flash('Student not found.', 'error')
+        return redirect(student_dashboard_path())
+
+    transactions = pocket_data.get('transactions') or []
+    credit_count = sum(1 for t in transactions if t.get('direction') == 'credit')
+
+    return render_template(
+        'dashboards/parent_student_pocket_money.html',
+        student=student,
+        balance_display=pocket_data.get('balance_display', '0.00'),
+        balance=pocket_data.get('balance', 0.0),
+        transactions=transactions,
+        credit_count=credit_count,
+        parent_student_id=student.get('student_id') or student_id,
+        pocket_money_student_id=student.get('student_id') or student_id,
+        mpesa_daraja_enabled=_get_daraja_settings_from_flag(),
+        mpesa_sandbox_confirm=_mpesa_sandbox_manual_confirm_enabled(),
+        **_student_portal_template_kwargs(ctx),
+    )
 
 
 def _teacher_dashboard_analytics_empty():
@@ -38216,8 +39377,8 @@ def _student_portal_auth():
     }
 
 
-def _student_exam_progress_access(student_id):
-    """Return True when the logged-in student may view this student's gazetted results."""
+def _student_portal_access(student_id):
+    """Return True when the signed-in user may view this in-session student's portal data."""
     sid = (student_id or '').strip()
     if not sid:
         return False
@@ -38230,6 +39391,61 @@ def _student_exam_progress_access(student_id):
     if ctx.get('is_technician') and ctx.get('current_view_role') == 'student':
         return True
     return False
+
+
+def _student_exam_progress_access(student_id):
+    """Return True when the logged-in student may view this student's gazetted results."""
+    return _student_portal_access(student_id)
+
+
+def _student_portal_template_kwargs(ctx):
+    """Common template context for student portal sub-pages."""
+    return {
+        'is_technician': ctx['is_technician'],
+        'current_view_role': ctx['current_view_role'],
+        'all_students': ctx['all_students'],
+        'selected_student_id': ctx['selected_student_id'],
+        'show_sibling_nav': False,
+        'portal_mode': 'student',
+        'portal_page_variant': 'student',
+    }
+
+
+def _student_resolve_level_for_timetables(cursor, student_id):
+    """Resolve in-session student academic level for timetable views."""
+    if not student_id:
+        return None
+    cursor.execute(
+        """
+        SELECT s.student_id, s.full_name, s.current_grade,
+               al.id AS academic_level_id, al.level_name AS resolved_level_name
+        FROM students s
+        LEFT JOIN academic_levels al
+            ON TRIM(LOWER(s.current_grade)) = TRIM(LOWER(al.level_name))
+            AND COALESCE(al.level_status, 'active') = 'active'
+        WHERE LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s)) AND s.status = 'in session'
+        LIMIT 1
+        """,
+        (student_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return {
+            'student_id': row.get('student_id'),
+            'full_name': row.get('full_name'),
+            'current_grade': row.get('current_grade'),
+            'academic_level_id': row.get('academic_level_id'),
+            'resolved_level_name': row.get('resolved_level_name') or row.get('current_grade'),
+        }
+    return {
+        'student_id': row[0] if len(row) > 0 else None,
+        'full_name': row[1] if len(row) > 1 else None,
+        'current_grade': row[2] if len(row) > 2 else None,
+        'academic_level_id': row[3] if len(row) > 3 else None,
+        'resolved_level_name': (row[4] if len(row) > 4 else None) or (row[2] if len(row) > 2 else None),
+    }
 
 
 def _render_student_exam_progress_detail(student_id, ctx):
@@ -38350,6 +39566,190 @@ def student_exam_progress_data():
     except Exception as e:
         print(f"student_exam_progress_data: {e}")
         return jsonify({'success': False, 'message': 'Error loading exam data'}), 500
+
+
+@app.route('/dashboard/student/class-timetable')
+@app.route('/student/class-timetable')
+@login_required
+def student_portal_class_timetable():
+    """Student portal — weekly class timetable for the signed-in student."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_portal_access(student_id):
+        flash('You cannot view this timetable.', 'error')
+        return redirect(student_dashboard_path())
+
+    stu = None
+    term_options = []
+    year_id = year_name = term_id = term_name = None
+    timetable_sections = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                stu = _student_resolve_level_for_timetables(cursor, student_id)
+                term_options = _parent_term_options_for_timetables(cursor)
+                year_id, year_name, term_id, term_name = _school_current_term_bundle(cursor)
+                try:
+                    req_tid = int((request.args.get('term_id') or '').strip() or 0)
+                except (TypeError, ValueError):
+                    req_tid = 0
+                if req_tid > 0 and any(int(o['id']) == req_tid for o in term_options):
+                    term_id = req_tid
+                    for o in term_options:
+                        if int(o['id']) == term_id:
+                            term_name = o.get('term_name')
+                            year_name = o.get('year_name')
+                            break
+                if stu and stu.get('academic_level_id') and term_id:
+                    timetable_sections = _parent_weekly_timetable_sections(
+                        cursor, int(stu['academic_level_id']), int(term_id)
+                    )
+        except Exception as e:
+            print(f"student_portal_class_timetable: {e}")
+            flash('Error loading class timetable.', 'error')
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not stu:
+        flash('Student not found or not in session.', 'error')
+        return redirect(student_dashboard_path())
+
+    return render_template(
+        'dashboards/parent_student_class_timetable.html',
+        student=stu,
+        timetable_sections=timetable_sections,
+        term_options=term_options,
+        selected_term_id=term_id,
+        term_label=term_name,
+        year_label=year_name,
+        sibling_count=0,
+        **_student_portal_template_kwargs(ctx),
+    )
+
+
+@app.route('/dashboard/student/attendance')
+@app.route('/student/attendance')
+@login_required
+def student_portal_attendance():
+    """Student portal — attendance analytics for the signed-in student."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_portal_access(student_id):
+        flash('You cannot view attendance for this student.', 'error')
+        return redirect(student_dashboard_path())
+
+    analytics = _fetch_parent_attendance_analytics(student_id, request.args)
+    if not analytics.get('student'):
+        flash('Student not found.', 'error')
+        return redirect(student_dashboard_path())
+
+    return render_template(
+        'dashboards/parent_student_attendance_analytics.html',
+        student=analytics['student'],
+        academic_years=analytics['academic_years'],
+        terms=analytics['terms'],
+        selected_term_id=analytics['selected_term_id'],
+        selected_academic_year_id=analytics['selected_academic_year_id'],
+        term_label=analytics['term_label'],
+        summary=analytics['summary'],
+        by_week=analytics['by_week'],
+        daily_points=analytics['daily_points'],
+        recent_days=analytics['recent_days'],
+        parent_student_id=student_id,
+        **_student_portal_template_kwargs(ctx),
+    )
+
+
+@app.route('/dashboard/student/library')
+@app.route('/student/library')
+@login_required
+def student_portal_library():
+    """Student portal — library books issued to the signed-in student."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_portal_access(student_id):
+        flash('You cannot view library books for this student.', 'error')
+        return redirect(student_dashboard_path())
+
+    student = None
+    books = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT student_id, full_name, current_grade
+                    FROM students
+                    WHERE LOWER(TRIM(student_id)) = LOWER(TRIM(%s))
+                      AND status = 'in session'
+                    LIMIT 1
+                    """,
+                    (student_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    if isinstance(row, dict):
+                        student = {
+                            'student_id': (row.get('student_id') or '').strip(),
+                            'full_name': (row.get('full_name') or '').strip(),
+                            'current_grade': (row.get('current_grade') or '').strip(),
+                        }
+                    else:
+                        student = {
+                            'student_id': (row[0] or '').strip(),
+                            'full_name': (row[1] or '').strip(),
+                            'current_grade': (row[2] or '').strip(),
+                        }
+                    books = _parent_student_library_books(cursor, student_id)
+        except Exception as e:
+            print(f"student_portal_library: {e}")
+            flash('Error loading library books.', 'error')
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not student:
+        flash('Student not found.', 'error')
+        return redirect(student_dashboard_path())
+
+    active_count = sum(1 for b in books if b.get('status') == 'issued')
+    returned_count = sum(1 for b in books if b.get('status') == 'returned')
+
+    return render_template(
+        'dashboards/parent_student_library.html',
+        student=student,
+        books=books,
+        active_count=active_count,
+        returned_count=returned_count,
+        parent_student_id=student.get('student_id') or student_id,
+        pocket_money_student_id=student.get('student_id') or student_id,
+        **_student_portal_template_kwargs(ctx),
+    )
 
 
 def _parent_class_exam_level_view_options(cursor, stu):
@@ -42123,6 +43523,7 @@ def system_settings():
     }
     daraja_finance = None
     gallery_items = []
+    about_slideshow_items = []
     if connection:
         try:
             with connection.cursor() as cursor:
@@ -42138,6 +43539,12 @@ def system_settings():
                             'school_phone': result.get('school_phone', '') or '',
                             'school_logo': result.get('school_logo', '') or '',
                             'school_hero_image': result.get('school_hero_image', '') or '',
+                            'about_headline': (result.get('about_headline') or '').strip(),
+                            'about_intro': (result.get('about_intro') or '').strip(),
+                            'about_mission': (result.get('about_mission') or '').strip(),
+                            'about_vision': (result.get('about_vision') or '').strip(),
+                            'about_values': (result.get('about_values') or '').strip(),
+                            'about_promise': (result.get('about_promise') or '').strip(),
                             'twitter_url': result.get('twitter_url', '') or '',
                             'facebook_url': result.get('facebook_url', '') or '',
                             'instagram_url': result.get('instagram_url', '') or '',
@@ -42173,6 +43580,12 @@ def system_settings():
                 except Exception as _gal_load_err:
                     print(f"load school gallery: {_gal_load_err}")
                     gallery_items = []
+
+                try:
+                    about_slideshow_items = load_about_slideshow_items(cursor)
+                except Exception as _about_slide_err:
+                    print(f"load about slideshow: {_about_slide_err}")
+                    about_slideshow_items = []
                 
                 # Get academic levels
                 try:
@@ -42477,7 +43890,8 @@ def system_settings():
                          effective_portal_base_url=get_public_app_base_url(),
                          env_portal_domain=env_portal_domain,
                          daraja_finance=daraja_finance,
-                         gallery_items=gallery_items)
+                         gallery_items=gallery_items,
+                         about_slideshow_items=about_slideshow_items)
 
 
 def _load_schedule_profiles_and_settings(cursor, selected_profile_id: str):
@@ -42813,28 +44227,48 @@ def academic_calendar_manage():
                             else:
                                 cursor.execute(
                                     """
-                                    UPDATE academic_calendar_activities
-                                    SET academic_year_id = %s, term_id = %s, activity_title = %s,
-                                        activity_date = %s, end_date = %s, category = %s,
-                                        activity_about = %s, notify_parents = %s
+                                    SELECT image_path FROM academic_calendar_activities
                                     WHERE id = %s AND COALESCE(status, 'active') = 'active'
+                                    LIMIT 1
                                     """,
-                                    (
-                                        year_id, term_id_raw, parsed['title'], parsed['activity_date'],
-                                        parsed['end_date'], parsed['category'], parsed['activity_about'],
-                                        1 if parsed['notify_parents'] else 0,
-                                        int(activity_id),
-                                    ),
+                                    (int(activity_id),),
                                 )
-                                _save_calendar_activity_levels(
-                                    cursor, activity_id, affects_all, level_ids,
+                                existing_row = cursor.fetchone()
+                                existing_image = (
+                                    existing_row.get('image_path')
+                                    if isinstance(existing_row, dict)
+                                    else (existing_row[0] if existing_row else None)
                                 )
-                                connection.commit()
-                                flash('Activity updated.', 'success')
-                                return redirect(
-                                    employee_dashboard_path('academic-calendar/manage')
-                                    + '?' + _calendar_manage_redirect_query(year_id, filter_term_id),
+                                image_path, image_err = _resolve_calendar_activity_image_path(
+                                    request, existing_image, activity_id,
                                 )
+                                if image_err:
+                                    flash(image_err, 'error')
+                                else:
+                                    cursor.execute(
+                                        """
+                                        UPDATE academic_calendar_activities
+                                        SET academic_year_id = %s, term_id = %s, activity_title = %s,
+                                            activity_date = %s, end_date = %s, category = %s,
+                                            activity_about = %s, notify_parents = %s, image_path = %s
+                                        WHERE id = %s AND COALESCE(status, 'active') = 'active'
+                                        """,
+                                        (
+                                            year_id, term_id_raw, parsed['title'], parsed['activity_date'],
+                                            parsed['end_date'], parsed['category'], parsed['activity_about'],
+                                            1 if parsed['notify_parents'] else 0, image_path,
+                                            int(activity_id),
+                                        ),
+                                    )
+                                    _save_calendar_activity_levels(
+                                        cursor, activity_id, affects_all, level_ids,
+                                    )
+                                    connection.commit()
+                                    flash('Activity updated.', 'success')
+                                    return redirect(
+                                        employee_dashboard_path('academic-calendar/manage')
+                                        + '?' + _calendar_manage_redirect_query(year_id, filter_term_id),
+                                    )
                     else:
                         year_id = parsed['year_id']
                         term_valid, term_id_raw = _validate_calendar_activity_term(
@@ -42843,35 +44277,54 @@ def academic_calendar_manage():
                         if not term_valid:
                             flash('Selected term does not belong to that academic year.', 'error')
                         else:
-                            created_by = session.get('user_id')
-                            cursor.execute(
-                                """
-                                INSERT INTO academic_calendar_activities
-                                    (academic_year_id, term_id, activity_title, activity_date, end_date,
-                                     category, activity_about, notify_parents, created_by)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                                """,
-                                (
-                                    year_id, term_id_raw, parsed['title'], parsed['activity_date'],
-                                    parsed['end_date'], parsed['category'], parsed['activity_about'],
-                                    1 if parsed['notify_parents'] else 0, created_by,
-                                ),
-                            )
-                            new_id = cursor.lastrowid
-                            if new_id:
-                                _save_calendar_activity_levels(
-                                    cursor, new_id, affects_all, level_ids,
+                            image_path, image_err = _resolve_calendar_activity_image_path(request)
+                            if image_err:
+                                flash(image_err, 'error')
+                            else:
+                                created_by = session.get('user_id')
+                                cursor.execute(
+                                    """
+                                    INSERT INTO academic_calendar_activities
+                                        (academic_year_id, term_id, activity_title, activity_date, end_date,
+                                         category, activity_about, notify_parents, image_path, created_by)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    """,
+                                    (
+                                        year_id, term_id_raw, parsed['title'], parsed['activity_date'],
+                                        parsed['end_date'], parsed['category'], parsed['activity_about'],
+                                        1 if parsed['notify_parents'] else 0, image_path, created_by,
+                                    ),
                                 )
-                            connection.commit()
-                            flash('Activity added to the academic calendar.', 'success')
-                            return redirect(
-                                employee_dashboard_path('academic-calendar/manage')
-                                + '?' + _calendar_manage_redirect_query(year_id, filter_term_id or term_id_raw),
-                            )
+                                new_id = cursor.lastrowid
+                                if new_id:
+                                    _save_calendar_activity_levels(
+                                        cursor, new_id, affects_all, level_ids,
+                                    )
+                                connection.commit()
+                                flash('Activity added to the academic calendar.', 'success')
+                                return redirect(
+                                    employee_dashboard_path('academic-calendar/manage')
+                                    + '?' + _calendar_manage_redirect_query(year_id, filter_term_id or term_id_raw),
+                                )
                 elif action == 'delete':
                     activity_id = request.form.get('activity_id', type=int)
                     year_id = request.form.get('academic_year_id', type=int)
                     if activity_id and year_id:
+                        cursor.execute(
+                            """
+                            SELECT image_path FROM academic_calendar_activities
+                            WHERE id = %s AND academic_year_id = %s
+                              AND COALESCE(status, 'active') = 'active'
+                            LIMIT 1
+                            """,
+                            (int(activity_id), int(year_id)),
+                        )
+                        del_row = cursor.fetchone()
+                        del_image = (
+                            del_row.get('image_path')
+                            if isinstance(del_row, dict)
+                            else (del_row[0] if del_row else None)
+                        )
                         cursor.execute(
                             """
                             UPDATE academic_calendar_activities
@@ -42883,6 +44336,8 @@ def academic_calendar_manage():
                         )
                         connection.commit()
                         if cursor.rowcount:
+                            if del_image:
+                                _remove_academic_calendar_image_file(del_image)
                             flash('Activity deleted.', 'success')
                         else:
                             flash('Activity not found or already deleted.', 'error')
@@ -43771,7 +45226,7 @@ def create_subject():
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
     
-    data = request.get_json()
+    data, is_multipart = _subject_registration_payload()
     subject_name = data.get('subject_name', '').strip().upper()
     subject_code = data.get('subject_code', '').strip().upper() if data.get('subject_code') else ''
     description = data.get('description', '').strip().upper() if data.get('description') else ''
@@ -43786,6 +45241,8 @@ def create_subject():
     
     try:
         with connection.cursor() as cursor:
+            ensure_subject_main_photo_column(cursor)
+            ensure_subject_scheme_tables(cursor)
             # Check if subject code already exists (if provided)
             if subject_code:
                 cursor.execute("SELECT id FROM subjects WHERE subject_code = %s", (subject_code,))
@@ -43800,6 +45257,20 @@ def create_subject():
             
             connection.commit()
             subject_id = cursor.lastrowid
+
+            main_photo_path = None
+            if is_multipart:
+                main_photo_path, photo_err = _resolve_subject_main_photo_path(
+                    request, None, subject_id,
+                )
+                if photo_err:
+                    return jsonify({'success': False, 'message': photo_err}), 400
+                if main_photo_path:
+                    cursor.execute(
+                        "UPDATE subjects SET main_photo = %s WHERE id = %s",
+                        (main_photo_path, subject_id),
+                    )
+                    connection.commit()
 
             # Save selected teaching levels for the subject
             cleaned_level_ids = []
@@ -43818,6 +45289,12 @@ def create_subject():
                     """, (subject_id, lid))
                 connection.commit()
             
+            scheme_data = []
+            if _scheme_of_work_provided():
+                scheme_data = _parse_scheme_of_work_payload()
+                _save_subject_scheme_of_work(cursor, subject_id, scheme_data)
+                connection.commit()
+            
             return jsonify({
                 'success': True, 
                 'message': 'Subject created successfully',
@@ -43826,6 +45303,9 @@ def create_subject():
                     'subject_name': subject_name,
                     'subject_code': subject_code,
                     'description': description,
+                    'main_photo': main_photo_path,
+                    'main_photo_url': _subject_course_image_public_url(main_photo_path),
+                    'scheme_of_work': scheme_data,
                     'academic_level_ids': sorted(set(cleaned_level_ids)) if academic_level_ids else []
                 }
             })
@@ -43862,22 +45342,27 @@ def academic_subject_registration():
     if connection:
         try:
             with connection.cursor() as cursor:
+                ensure_subject_main_photo_column(cursor)
+                ensure_subject_scheme_tables(cursor)
                 cursor.execute("""
-                    SELECT id, subject_name, subject_code, description, status, created_at, updated_at
+                    SELECT id, subject_name, subject_code, description, main_photo, status, created_at, updated_at
                     FROM subjects
                     ORDER BY subject_name ASC
                 """)
                 subjects_results = cursor.fetchall()
                 
                 for row in subjects_results:
+                    main_photo = row.get('main_photo') if isinstance(row, dict) else (row[4] if len(row) > 4 else None)
                     subjects.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'subject_name': row.get('subject_name', '') if isinstance(row, dict) else row[1],
                         'subject_code': row.get('subject_code', '') if isinstance(row, dict) else row[2],
                         'description': row.get('description', '') if isinstance(row, dict) else row[3],
-                        'status': row.get('status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active'),
-                        'created_at': row.get('created_at') if isinstance(row, dict) else (row[5] if len(row) > 5 else None),
-                        'updated_at': row.get('updated_at') if isinstance(row, dict) else (row[6] if len(row) > 6 else None)
+                        'main_photo': main_photo,
+                        'main_photo_url': _subject_course_image_public_url(main_photo),
+                        'status': row.get('status', 'active') if isinstance(row, dict) else (row[5] if len(row) > 5 else 'active'),
+                        'created_at': row.get('created_at') if isinstance(row, dict) else (row[6] if len(row) > 6 else None),
+                        'updated_at': row.get('updated_at') if isinstance(row, dict) else (row[7] if len(row) > 7 else None)
                     })
 
                 # Active academic levels for registration form
@@ -43915,6 +45400,12 @@ def academic_subject_registration():
                 for s in subjects:
                     s['academic_levels'] = subject_levels_map.get(s['id'], [])
                     s['academic_level_ids'] = [x['id'] for x in s['academic_levels']]
+
+                scheme_map = _fetch_scheme_of_work_for_subjects(cursor, [s['id'] for s in subjects])
+                for s in subjects:
+                    s['scheme_of_work'] = scheme_map.get(s['id'], [])
+                    s['scheme_topic_count'] = len(s['scheme_of_work'])
+                    s['scheme_subtopic_count'] = sum(len(t.get('subtopics') or []) for t in s['scheme_of_work'])
         except Exception as e:
             print(f"Error fetching subjects: {e}")
         finally:
@@ -43940,7 +45431,7 @@ def update_subject():
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
     
-    data = request.get_json()
+    data, is_multipart = _subject_registration_payload()
     try:
         subject_id = int(data.get('subject_id', 0))
     except (ValueError, TypeError):
@@ -43961,6 +45452,25 @@ def update_subject():
     
     try:
         with connection.cursor() as cursor:
+            ensure_subject_main_photo_column(cursor)
+            ensure_subject_scheme_tables(cursor)
+            cursor.execute("SELECT main_photo FROM subjects WHERE id = %s", (subject_id,))
+            existing_row = cursor.fetchone()
+            if not existing_row:
+                return jsonify({'success': False, 'message': 'Subject not found'}), 404
+            existing_main_photo = (
+                existing_row.get('main_photo')
+                if isinstance(existing_row, dict)
+                else (existing_row[0] if existing_row else None)
+            )
+            main_photo_path = existing_main_photo
+            if is_multipart:
+                main_photo_path, photo_err = _resolve_subject_main_photo_path(
+                    request, existing_main_photo, subject_id,
+                )
+                if photo_err:
+                    return jsonify({'success': False, 'message': photo_err}), 400
+
             # Check if subject code already exists for another subject (if provided)
             if subject_code:
                 cursor.execute("SELECT id FROM subjects WHERE subject_code = %s AND id != %s", (subject_code, subject_id))
@@ -43970,9 +45480,17 @@ def update_subject():
             # Update subject
             cursor.execute("""
                 UPDATE subjects 
-                SET subject_name = %s, subject_code = %s, description = %s, status = %s, updated_at = CURRENT_TIMESTAMP
+                SET subject_name = %s, subject_code = %s, description = %s, main_photo = %s,
+                    status = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
-            """, (subject_name, subject_code if subject_code else None, description if description else None, status, subject_id))
+            """, (
+                subject_name,
+                subject_code if subject_code else None,
+                description if description else None,
+                main_photo_path,
+                status,
+                subject_id,
+            ))
 
             # Replace subject teaching-level mappings
             cursor.execute("DELETE FROM subject_academic_levels WHERE subject_id = %s", (subject_id,))
@@ -43989,6 +45507,11 @@ def update_subject():
                     INSERT IGNORE INTO subject_academic_levels (subject_id, academic_level_id)
                     VALUES (%s, %s)
                 """, (subject_id, lid))
+
+            scheme_data = None
+            if _scheme_of_work_provided():
+                scheme_data = _parse_scheme_of_work_payload()
+                _save_subject_scheme_of_work(cursor, subject_id, scheme_data)
             
             connection.commit()
             return jsonify({
@@ -43999,6 +45522,9 @@ def update_subject():
                     'subject_name': subject_name,
                     'subject_code': subject_code,
                     'description': description,
+                    'main_photo': main_photo_path,
+                    'main_photo_url': _subject_course_image_public_url(main_photo_path),
+                    'scheme_of_work': scheme_data,
                     'status': status,
                     'academic_level_ids': sorted(set(cleaned_level_ids))
                 }
@@ -44051,8 +45577,20 @@ def delete_subject():
                     'message': 'Cannot delete subject. It is currently assigned to teachers. Please remove all assignments first.'
                 }), 400
             
+            cursor.execute("SELECT main_photo FROM subjects WHERE id = %s", (subject_id,))
+            photo_row = cursor.fetchone()
+            main_photo = (
+                photo_row.get('main_photo')
+                if isinstance(photo_row, dict)
+                else (photo_row[0] if photo_row else None)
+            )
+
+            _delete_subject_scheme_of_work(cursor, subject_id)
+
             # Delete subject
             cursor.execute("DELETE FROM subjects WHERE id = %s", (subject_id,))
+            if main_photo:
+                _remove_subject_course_image_file(main_photo)
             connection.commit()
             return jsonify({'success': True, 'message': 'Subject deleted successfully'})
             
@@ -88884,6 +90422,12 @@ def update_school_profile():
     project_name = request.form.get('project_name', 'Elimu Centric').strip()
     student_id_prefix = (request.form.get('student_id_prefix', 'STU') or 'STU').strip().upper()[:10]
     student_id_digits = _parse_student_id_digits(request.form.get('student_id_digits', 3))
+    about_headline = (request.form.get('about_headline') or '').strip()
+    about_intro = (request.form.get('about_intro') or '').strip()
+    about_mission = (request.form.get('about_mission') or '').strip()
+    about_vision = (request.form.get('about_vision') or '').strip()
+    about_values = (request.form.get('about_values') or '').strip()
+    about_promise = (request.form.get('about_promise') or '').strip()
     
     # Handle logo upload
     school_logo = None
@@ -88916,6 +90460,7 @@ def update_school_profile():
     if connection:
         try:
             with connection.cursor() as cursor:
+                ensure_about_page_columns(cursor)
                 # Check if school settings exist
                 cursor.execute("SELECT id FROM school_settings ORDER BY id DESC LIMIT 1")
                 result = cursor.fetchone()

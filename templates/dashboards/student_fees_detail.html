@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}Fees & payments - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+{% endblock %}
+
+{% block sidebar_content %}
+{% set student_nav_scope = 'fees' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set paid_pct = (100 * total_paid / fee_structure.total_amount) if fee_structure and fee_structure.total_amount else 0 %}
+{% set initials = (student_info.full_name.split()[0][0] ~ (student_info.full_name.split()[-1][0] if student_info.full_name.split()|length > 1 else ''))|upper if student_info and student_info.full_name else 'ST' %}
+
+<div class="sp-portal portal-page-root role-page role-page--student page-content max-w-7xl mx-auto p-4 sm:p-5 md:p-6 lg:p-8 space-y-5 sm:space-y-6">
+
+    {% set sp_tech_hint = 'Select a student to preview their fees' %}
+    {% set sp_tech_action = student_dash_url('fees') %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
+
+    <a href="{{ student_dash_url() }}" class="sp-back"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard</a>
+
+    {% set role_theme = 'student' %}
+    {% set role_hero_eyebrow = 'Fees' %}
+    {% set role_hero_title = 'Fees & payments' %}
+    {% if student_info %}
+    {% set role_hero_subtitle = 'Fee structure, breakdown, and payment history for ' ~ student_info.full_name ~ '.' %}
+    {% else %}
+    {% set role_hero_subtitle = 'Your fee balance and payment records.' %}
+    {% endif %}
+    {% set role_hero_icon_class = 'fa-file-invoice-dollar' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    {% if student_info %}
+    <div class="sp-profile">
+        <div class="sp-profile__avatar" aria-hidden="true">{{ initials }}</div>
+        <div class="min-w-0 flex-1">
+            <p class="sp-profile__name">{{ student_info.full_name }}</p>
+            <p class="sp-profile__meta">{{ student_info.student_id }} · {{ student_info.current_grade or 'Grade not set' }}</p>
+        </div>
+    </div>
+
+    {% if fee_structure %}
+    <section class="sp-panel">
+        <header class="sp-panel__head">
+            <h2 class="sp-panel__title">
+                <span class="sp-panel__title-icon"><i class="fas fa-file-invoice-dollar" aria-hidden="true"></i></span>
+                {{ fee_structure.fee_name }}
+            </h2>
+            {% if fee_structure.payment_deadline_formatted %}
+            <span class="sp-chip sp-chip--grade"><i class="fas fa-calendar-alt text-[10px]"></i> Due {{ fee_structure.payment_deadline_formatted }}</span>
+            {% endif %}
+        </header>
+        <div class="sp-panel__body space-y-5">
+            {% if fee_structure.total_amount > 0 %}
+            <div class="sp-progress">
+                <div class="sp-progress__head">
+                    <span>Payment progress</span>
+                    <span class="tabular-nums">{{ [100, paid_pct]|min|round(1) }}% paid</span>
+                </div>
+                <div class="sp-progress__track">
+                    <div class="sp-progress__fill" style="width: {{ [100, paid_pct]|min }}%"></div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="sp-stat-grid">
+                <div class="sp-stat sp-stat--total">
+                    <span class="sp-stat__icon"><i class="fas fa-receipt" aria-hidden="true"></i></span>
+                    <p class="sp-stat__label">Total due</p>
+                    <p class="sp-stat__value">KES {{ "{:,.0f}".format(fee_structure.total_amount) }}</p>
+                </div>
+                <div class="sp-stat sp-stat--paid">
+                    <span class="sp-stat__icon"><i class="fas fa-check-circle" aria-hidden="true"></i></span>
+                    <p class="sp-stat__label">Total paid</p>
+                    <p class="sp-stat__value sp-stat__value--paid">KES {{ "{:,.0f}".format(total_paid) }}</p>
+                </div>
+                <div class="sp-stat sp-stat--balance">
+                    <span class="sp-stat__icon"><i class="fas fa-scale-balanced" aria-hidden="true"></i></span>
+                    <p class="sp-stat__label">Balance</p>
+                    <p class="sp-stat__value {% if balance > 0 %}sp-stat__value--due{% else %}sp-stat__value--paid{% endif %}">
+                        KES {{ "{:,.0f}".format(balance) }}
+                    </p>
+                </div>
+                <div class="sp-stat sp-stat--info">
+                    <span class="sp-stat__icon"><i class="fas fa-list-ol" aria-hidden="true"></i></span>
+                    <p class="sp-stat__label">Line items</p>
+                    <p class="sp-stat__value">{{ fee_items|length }}</p>
+                </div>
+            </div>
+
+            {% if fee_structure.payment_deadline_formatted %}
+            <div class="sp-alert sp-alert--warning">
+                <i class="fas fa-clock mt-0.5 shrink-0" aria-hidden="true"></i>
+                <div>
+                    <strong>Payment deadline:</strong> {{ fee_structure.payment_deadline_formatted }}.
+                    {% if balance > 0 %}Please settle your balance before the deadline.{% else %}Your fees for this structure are fully paid.{% endif %}
+                </div>
+            </div>
+            {% elif balance <= 0 %}
+            <div class="sp-alert sp-alert--info">
+                <i class="fas fa-check-circle mt-0.5 shrink-0" aria-hidden="true"></i>
+                <div><strong>All clear</strong> — no outstanding balance on this fee structure.</div>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if fee_items %}
+    <section class="sp-panel">
+        <header class="sp-panel__head">
+            <h2 class="sp-panel__title">
+                <span class="sp-panel__title-icon"><i class="fas fa-list-ul" aria-hidden="true"></i></span>
+                Fee breakdown
+            </h2>
+        </header>
+        <div class="sp-panel__body sp-panel__body--flush">
+            <div class="sp-table-wrap">
+                <table class="sp-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Description</th>
+                            <th class="text-right">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in fee_items %}
+                        <tr>
+                            <td class="font-semibold">{{ item.item_name }}</td>
+                            <td class="text-gray-500 dark:text-gray-400">{{ item.item_description or '—' }}</td>
+                            <td class="text-right font-semibold tabular-nums">KES {{ "{:,.2f}".format(item.amount) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2" class="text-right">Total</td>
+                            <td class="text-right tabular-nums">KES {{ "{:,.2f}".format(fee_structure.total_amount) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="sp-panel">
+        <header class="sp-panel__head">
+            <h2 class="sp-panel__title">
+                <span class="sp-panel__title-icon"><i class="fas fa-history" aria-hidden="true"></i></span>
+                Payment history
+            </h2>
+            {% if payments %}<span class="text-xs font-semibold text-gray-500 dark:text-gray-400">{{ payments|length }} record{{ 's' if payments|length != 1 else '' }}</span>{% endif %}
+        </header>
+        <div class="sp-panel__body sp-panel__body--flush">
+            {% if payments %}
+            <div class="sp-table-wrap">
+                <table class="sp-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Method</th>
+                            <th>Reference</th>
+                            <th class="text-right">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments %}
+                        <tr>
+                            <td>{{ payment.payment_date_formatted if payment.payment_date_formatted else (payment.payment_date if payment.payment_date else '—') }}</td>
+                            <td>{{ payment.payment_method or '—' }}</td>
+                            <td class="font-mono text-xs">{{ payment.reference_number or '—' }}</td>
+                            <td class="text-right font-bold tabular-nums text-emerald-600 dark:text-emerald-400">KES {{ "{:,.2f}".format(payment.amount_paid) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" class="text-right">Total paid</td>
+                            <td class="text-right tabular-nums text-emerald-600 dark:text-emerald-400">KES {{ "{:,.2f}".format(total_paid) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="sp-empty">
+                <div class="sp-empty__icon"><i class="fas fa-receipt" aria-hidden="true"></i></div>
+                <p class="sp-empty__title">No payments yet</p>
+                <p class="sp-empty__text">When you make a fee payment, it will appear here with date, method, and reference.</p>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    {% else %}
+    <section class="sp-panel">
+        <div class="sp-empty">
+            <div class="sp-empty__icon"><i class="fas fa-file-invoice" aria-hidden="true"></i></div>
+            <p class="sp-empty__title">No fee structure assigned</p>
+            <p class="sp-empty__text">Your school has not linked an active fee structure to your grade yet. Contact the accounts office if you believe this is an error.</p>
+        </div>
+    </section>
+    {% endif %}
+
+    {% else %}
+    <section class="sp-panel">
+        <div class="sp-empty py-12">
+            <div class="sp-empty__icon"><i class="fas fa-user-graduate" aria-hidden="true"></i></div>
+            <p class="sp-empty__title">No student linked</p>
+            <p class="sp-empty__text">
+                {% if is_technician and current_view_role == 'student' %}
+                Select a student above to preview their fee records.
+                {% else %}
+                Your account is not linked to an active student record. Please contact the school office.
+                {% endif %}
+            </p>
+        </div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

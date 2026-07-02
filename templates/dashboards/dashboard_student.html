@@ -2,240 +2,230 @@
 
 {% block title %}Student Dashboard - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block sidebar_content %}
-{% if session.get('role', '').lower() == 'technician' %}
-<a href="{{ employee_dash_url('role-switch') }}" 
-   class="sidebar-item mb-2 border-b border-gray-200 dark:border-gray-700 pb-4">
-    <i class="fas fa-exchange-alt w-5"></i>
-    <span>Role Switch</span>
-</a>
-{% endif %}
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+{% endblock %}
 
-<a href="{{ student_dash_url() }}" class="sidebar-item mb-2 pb-2 border-b border-slate-700/60">
-    <i class="fas fa-gauge w-5"></i><span>Dashboard</span>
-</a>
-{% include 'dashboards/includes/student_sidebar.html' %}
+{% block sidebar_content %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
-<div class="role-page role-page--student p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
-    <!-- Technician Student Selector -->
-    {% if is_technician and current_view_role == 'student' %}
-    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
-        <div class="flex items-center justify-between flex-wrap gap-4">
-            <div class="flex items-center gap-3">
-                <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician Test Mode</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their perspective</p>
-                </div>
-            </div>
-            <form method="GET" action="{{ student_dash_url() }}" class="flex items-center gap-3">
-                <select name="student_id" 
-                        onchange="this.form.submit()"
-                        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[250px]">
-                    <option value="">-- Select a Student --</option>
-                    {% for student in all_students %}
-                    <option value="{{ student.get('student_id', '') or student[1] if student else '' }}" 
-                            {% if (selected_student_id and (student.get('student_id', '') or student[1] if student else '') == selected_student_id) %}selected{% endif %}>
-                        {{ student.get('full_name', '') or student[2] if student else '' }} - {{ student.get('student_id', '') or student[1] if student else '' }}
-                    </option>
-                    {% endfor %}
-                </select>
-                {% if selected_student_id %}
-                <a href="{{ student_dash_url() }}" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-all">
-                    <i class="fas fa-times mr-2"></i>Clear Selection
-                </a>
-                {% endif %}
-            </form>
-        </div>
-    </div>
-    {% endif %}
+{% from 'dashboards/includes/parent_mpesa_pay_macro.html' import mpesa_pay_button %}
+{% set fee = spotlight_fee | default({'has_structure': false}) %}
+{% set pocket = spotlight_pocket_money | default({'has_account': false, 'balance': 0, 'total_topped_up': 0, 'total_spent': 0, 'transaction_count': 0}) %}
+{% set pcp = parent_class_progress | default({}, true) %}
+{% set sid = (student_info.student_id if student_info else '') or selected_student_id %}
+{% set initials = (student_info.full_name.split()[0][0] ~ (student_info.full_name.split()[-1][0] if student_info.full_name.split()|length > 1 else ''))|upper if student_info and student_info.full_name else 'ST' %}
+
+<div class="sp-portal portal-page-root role-page role-page--student page-content max-w-7xl mx-auto p-4 sm:p-5 md:p-6 lg:p-8 space-y-5 sm:space-y-6">
+
+    {% set sp_tech_hint = 'Select a student to preview their portal' %}
+    {% set sp_tech_action = student_dash_url() %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
 
     {% set role_theme = 'student' %}
     {% set role_hero_eyebrow = 'Student portal' %}
-    {% set role_hero_title = 'My fees & payments' %}
+    {% set role_hero_title = 'My school hub' %}
     {% if student_info %}
-    {% set role_hero_subtitle = student_info.full_name ~ ' · ' ~ student_info.student_id %}
+    {% set role_hero_subtitle = 'Fees, pocket money, class progress, and school updates — all in one place for ' ~ student_info.full_name ~ '.' %}
     {% else %}
-    {% set role_hero_subtitle = 'View your fee details and payment history.' %}
+    {% set role_hero_subtitle = 'Your personal dashboard for fees, classes, and academic progress.' %}
     {% endif %}
-    {% set role_hero_icon_class = 'fa-money-bill-wave' %}
+    {% set role_hero_icon_class = 'fa-graduation-cap' %}
     {% include 'dashboards/includes/role_hero.html' %}
 
+    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
+
     {% if student_info %}
-    <!-- Student Info Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <i class="fas fa-user-graduate text-blue-500"></i>
-            Student Information
-        </h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <span class="text-sm text-gray-600 dark:text-gray-400">Full Name:</span>
-                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ student_info.full_name }}</p>
-            </div>
-            <div>
-                <span class="text-sm text-gray-600 dark:text-gray-400">Student ID:</span>
-                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ student_info.student_id }}</p>
-            </div>
-            <div>
-                <span class="text-sm text-gray-600 dark:text-gray-400">Grade:</span>
-                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ student_info.current_grade or 'N/A' }}</p>
-            </div>
-            <div>
-                <span class="text-sm text-gray-600 dark:text-gray-400">Status:</span>
-                <span class="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded-full text-sm font-semibold">
-                    {{ student_info.status|title }}
-                </span>
-            </div>
+    <div class="sp-profile">
+        <div class="sp-profile__avatar" aria-hidden="true">{{ initials }}</div>
+        <div class="min-w-0 flex-1">
+            <p class="sp-profile__name">{{ student_info.full_name }}</p>
+            <p class="sp-profile__meta">{{ student_info.student_id }} · {{ student_info.current_grade or 'Grade not set' }}{% if current_term_name %} · {{ current_term_name }}{% endif %}</p>
+        </div>
+        <div class="sp-profile__chips">
+            <span class="sp-chip sp-chip--grade"><i class="fas fa-layer-group text-[10px]"></i> {{ student_info.current_grade or 'N/A' }}</span>
+            <span class="sp-chip sp-chip--active"><i class="fas fa-circle text-[6px]"></i> {{ student_info.status|title }}</span>
+            {% if student_info.student_category %}
+            <span class="sp-chip sp-chip--grade">{{ student_info.student_category|title }}</span>
+            {% endif %}
         </div>
     </div>
 
-    {% if fee_structure %}
-    <!-- Fee Structure Summary -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <i class="fas fa-file-invoice-dollar text-blue-500"></i>
-            Fee Structure: {{ fee_structure.fee_name }}
-        </h2>
-        
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Amount</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white">KES {{ "{:,.2f}".format(fee_structure.total_amount) }}</p>
-            </div>
-            <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Paid</p>
-                <p class="text-2xl font-bold text-green-600 dark:text-green-400">KES {{ "{:,.2f}".format(total_paid) }}</p>
-            </div>
-            <div class="bg-{% if balance > 0 %}red{% else %}green{% endif %}-50 dark:bg-{% if balance > 0 %}red{% else %}green{% endif %}-900/20 rounded-lg p-4 border border-{% if balance > 0 %}red{% else %}green{% endif %}-200 dark:border-{% if balance > 0 %}red{% else %}green{% endif %}-800">
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Balance</p>
-                <p class="text-2xl font-bold text-{% if balance > 0 %}red{% else %}green{% endif %}-600 dark:text-{% if balance > 0 %}red{% else %}green{% endif %}-400">
-                    KES {{ "{:,.2f}".format(balance) }}
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+        <!-- Fee balance -->
+        <section class="sp-panel overflow-hidden flex flex-col">
+            <header class="sp-panel__head">
+                <h2 class="sp-panel__title m-0">
+                    <span class="sp-panel__title-icon sp-panel__title-icon--fees"><i class="fas fa-wallet" aria-hidden="true"></i></span>
+                    Fee balance
+                </h2>
+                <div class="flex items-center gap-3 shrink-0">
+                    {% if fee.has_structure and fee.balance > 0 %}
+                    {{ mpesa_pay_button('school_fee', sid, student_info.full_name, fee.balance, 'Pay with M-Pesa', 'text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline bg-transparent border-0 p-0 shadow-none min-h-0') }}
+                    {% endif %}
+                    <a href="{{ student_dash_url('fees') }}" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">Details</a>
+                </div>
+            </header>
+            <div class="sp-panel__body flex-1 flex flex-col justify-center">
+                {% if fee.has_structure %}
+                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mb-1">{{ fee.fee_name }}</p>
+                <p class="text-3xl font-extrabold tabular-nums {% if fee.balance > 0 %}text-rose-600 dark:text-rose-400{% else %}text-emerald-600 dark:text-emerald-400{% endif %} m-0">
+                    KES {{ "{:,.0f}".format(fee.balance) }}
                 </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 m-0">
+                    Paid <span class="font-semibold text-gray-800 dark:text-gray-200">KES {{ "{:,.0f}".format(fee.total_paid) }}</span>
+                    of <span class="font-semibold">KES {{ "{:,.0f}".format(fee.total_amount) }}</span>
+                </p>
+                {% if fee.total_amount > 0 %}
+                <div class="sp-progress mt-3">
+                    {% set paid_pct = (100 * fee.total_paid / fee.total_amount) if fee.total_amount else 0 %}
+                    <div class="sp-progress__track">
+                        <div class="sp-progress__fill" style="width: {{ [100, paid_pct]|min }}%"></div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if fee.balance <= 0 %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    <i class="fas fa-check-circle"></i> Fully paid
+                </span>
+                {% elif fee.balance < fee.total_amount %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-amber-700 dark:text-amber-300">
+                    <i class="fas fa-exclamation-circle"></i> Partially paid
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-rose-700 dark:text-rose-300">
+                    <i class="fas fa-clock"></i> Payment due
+                </span>
+                {% endif %}
+                {% else %}
+                <p class="text-sm text-gray-500 dark:text-gray-400 m-0">No active fee structure for your class.</p>
+                {% endif %}
             </div>
-        </div>
-        
-        {% if fee_structure.payment_deadline_formatted %}
-        <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-800">
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                <i class="fas fa-calendar-alt mr-2"></i>
-                <strong>Payment Deadline:</strong> 
-                <span class="font-semibold">{{ fee_structure.payment_deadline_formatted }}</span>
+        </section>
+
+        <!-- Pocket money -->
+        <section class="sp-panel overflow-hidden flex flex-col">
+            <header class="sp-panel__head">
+                <h2 class="sp-panel__title m-0">
+                    <span class="sp-panel__title-icon sp-panel__title-icon--library"><i class="fas fa-coins" aria-hidden="true"></i></span>
+                    Pocket money
+                </h2>
+                <div class="flex items-center gap-3 shrink-0">
+                    {% if pocket.has_account %}
+                    {{ mpesa_pay_button('pocket_money', sid, student_info.full_name, '', 'Top up with M-Pesa', 'text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline bg-transparent border-0 p-0 shadow-none min-h-0') }}
+                    {% endif %}
+                    <a href="{{ student_dash_url('pocket-money') }}" class="text-xs font-semibold text-violet-600 dark:text-violet-400 hover:underline">Details</a>
+                </div>
+            </header>
+            <div class="sp-panel__body flex-1 flex flex-col justify-center">
+                {% if pocket.has_account %}
+                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mb-1">Available balance</p>
+                <p class="text-3xl font-extrabold tabular-nums {% if pocket.balance > 500 %}text-emerald-600 dark:text-emerald-400{% elif pocket.balance > 0 %}text-amber-600 dark:text-amber-400{% else %}text-gray-500 dark:text-gray-400{% endif %} m-0">
+                    KES {{ "{:,.0f}".format(pocket.balance) }}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 m-0">
+                    Topped up <span class="font-semibold text-gray-800 dark:text-gray-200">KES {{ "{:,.0f}".format(pocket.total_topped_up) }}</span>
+                    · Spent <span class="font-semibold">KES {{ "{:,.0f}".format(pocket.total_spent) }}</span>
+                </p>
+                {% if pocket.total_topped_up > 0 %}
+                <div class="sp-progress mt-3">
+                    {% set remaining_pct = (100 * pocket.balance / pocket.total_topped_up) if pocket.total_topped_up else 0 %}
+                    <div class="sp-progress__track">
+                        <div class="sp-progress__fill sp-progress__fill--violet" style="width: {{ [100, remaining_pct]|min }}%"></div>
+                    </div>
+                </div>
+                {% elif pocket.balance > 0 %}
+                <div class="sp-progress mt-3">
+                    <div class="sp-progress__track">
+                        <div class="sp-progress__fill sp-progress__fill--violet" style="width: 100%"></div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if pocket.balance <= 0 and pocket.transaction_count == 0 %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-gray-600 dark:text-gray-400">
+                    <i class="fas fa-info-circle"></i> No transactions yet
+                </span>
+                {% elif pocket.balance <= 0 %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-gray-600 dark:text-gray-400">
+                    <i class="fas fa-wallet"></i> No balance
+                </span>
+                {% elif pocket.balance <= 500 %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-amber-700 dark:text-amber-300">
+                    <i class="fas fa-exclamation-circle"></i> Low balance
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1 mt-3 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    <i class="fas fa-check-circle"></i> Active balance
+                </span>
+                {% endif %}
+                {% else %}
+                <p class="text-sm text-gray-500 dark:text-gray-400 m-0">Pocket money is not available for your account.</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Class analytics -->
+        <section class="sp-panel overflow-hidden flex flex-col" id="class-analytics-summary">
+            <header class="sp-panel__head">
+                <h2 class="sp-panel__title m-0">
+                    <span class="sp-panel__title-icon sp-panel__title-icon--exams"><i class="fas fa-book-open" aria-hidden="true"></i></span>
+                    Class analytics
+                </h2>
+                <a href="#class-subject-progress" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">Full report</a>
+            </header>
+            <div class="sp-panel__body flex-1">
+                {% if pcp.subjects %}
+                <div class="flex items-end justify-between gap-3">
+                    <div>
+                        {% if pcp.avg_curriculum_pct is not none %}
+                        <p class="text-3xl font-extrabold tabular-nums text-gray-900 dark:text-white m-0">~{{ pcp.avg_curriculum_pct }}%</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-0.5">Average curriculum coverage</p>
+                        {% else %}
+                        <p class="text-2xl font-extrabold tabular-nums text-gray-900 dark:text-white m-0">{{ pcp.subject_count }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-0.5">Subject{{ 's' if pcp.subject_count != 1 else '' }} this term</p>
+                        {% endif %}
+                    </div>
+                    <span class="inline-flex items-center gap-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200 px-2.5 py-1 text-xs font-bold shrink-0">
+                        <i class="fas fa-layer-group text-[10px]"></i> {{ pcp.grade or student_info.current_grade or 'Class' }}
+                    </span>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-3">
+                    <span class="font-semibold text-gray-800 dark:text-gray-200">{{ pcp.total_sessions_done }}/{{ pcp.total_sessions_planned or '—' }}</span> class sessions
+                    {% if pcp.term_label %} · {{ pcp.term_label }}{% endif %}
+                </p>
+                {% else %}
+                <p class="text-sm text-gray-500 dark:text-gray-400 m-0 py-4 text-center">No class subject progress recorded this term yet.</p>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+
+    <div id="class-subject-progress">
+        {% include 'dashboards/_parent_class_subject_progress.html' %}
+    </div>
+
+    {% set stu = student_info %}
+    {% set hub_notifications = student_hub_notifications|default([]) %}
+    {% include 'dashboards/_student_notifications_hub.html' %}
+
+    {% include 'dashboards/includes/parent_mpesa_pay.html' %}
+
+    {% else %}
+    <section class="sp-panel">
+        <div class="sp-empty py-12">
+            <div class="sp-empty__icon"><i class="fas fa-user-graduate" aria-hidden="true"></i></div>
+            <p class="sp-empty__title">Welcome to your portal</p>
+            <p class="sp-empty__text">
+                {% if is_technician and current_view_role == 'student' %}
+                Select a student above to preview their fees, timetable, and academic records.
+                {% else %}
+                Your account is not linked to an active student record. Please contact the school office.
+                {% endif %}
             </p>
         </div>
-        {% endif %}
-    </div>
-
-    <!-- Fee Items Breakdown -->
-    {% if fee_items %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <i class="fas fa-list text-blue-500"></i>
-            Fee Items Breakdown
-        </h2>
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Item Name</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
-                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {% for item in fee_items %}
-                    <tr>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                            {{ item.item_name }}
-                        </td>
-                        <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                            {{ item.item_description or 'N/A' }}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white text-right">
-                            KES {{ "{:,.2f}".format(item.amount) }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    <tr class="bg-gray-50 dark:bg-gray-900 font-bold">
-                        <td colspan="2" class="px-6 py-4 text-right text-sm text-gray-900 dark:text-white">Total:</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white text-right">
-                            KES {{ "{:,.2f}".format(fee_structure.total_amount) }}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Payment History -->
-    {% if payments %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <i class="fas fa-history text-blue-500"></i>
-            Payment History
-        </h2>
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Method</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Reference</th>
-                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {% for payment in payments %}
-                    <tr>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                            {{ payment.payment_date_formatted if payment.payment_date_formatted else (payment.payment_date if payment.payment_date else 'N/A') }}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {{ payment.payment_method or 'N/A' }}
-                        </td>
-                        <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                            {{ payment.reference_number or 'N/A' }}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600 dark:text-green-400 text-right">
-                            KES {{ "{:,.2f}".format(payment.amount_paid) }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    <tr class="bg-gray-50 dark:bg-gray-900 font-bold">
-                        <td colspan="3" class="px-6 py-4 text-right text-sm text-gray-900 dark:text-white">Total Paid:</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 dark:text-green-400 text-right">
-                            KES {{ "{:,.2f}".format(total_paid) }}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% else %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 text-center">
-        <i class="fas fa-info-circle text-gray-400 text-2xl mb-2"></i>
-        <p class="text-sm text-gray-600 dark:text-gray-400">No payment history available</p>
-    </div>
-    {% endif %}
-    {% else %}
-    <!-- No Fee Structure -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 text-center">
-        <i class="fas fa-info-circle text-gray-400 text-2xl mb-2"></i>
-        <p class="text-sm text-gray-600 dark:text-gray-400">No fee structure assigned or student not found</p>
-    </div>
-    {% endif %}
-    {% else %}
-    <!-- No Student Selected -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 text-center">
-        <div class="w-24 h-24 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl">
-            <i class="fas fa-user-graduate text-white text-4xl"></i>
-        </div>
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Welcome to Your Dashboard</h2>
-        <p class="text-gray-600 dark:text-gray-400">{% if is_technician and current_view_role == 'student' %}Please select a student to view their fees{% else %}Content will be added here soon{% endif %}</p>
-    </div>
+    </section>
     {% endif %}
 </div>
 {% endblock %}

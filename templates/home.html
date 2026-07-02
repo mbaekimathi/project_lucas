@@ -21,6 +21,7 @@
 {% set img_gallery = 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=900&q=80&auto=format&fit=crop' %}
 {% set img_news = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=900&q=80&auto=format&fit=crop' %}
 {% set img_team = 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=900&q=80&auto=format&fit=crop' %}
+{% set img_courses = 'https://images.unsplash.com/photo-1427504494784-3a09ca0284a5?w=900&q=80&auto=format&fit=crop' %}
 {% set explore_cards = [
     {
         'href': url_for('gallery'),
@@ -53,6 +54,22 @@
             ('School events', 'fa-star'),
         ],
         'cta': 'Read news & calendar',
+    },
+    {
+        'href': url_for('courses'),
+        'slug': 'courses',
+        'label': 'Courses',
+        'icon': 'fa-book-open',
+        'float_icons': ['fa-book', 'fa-chalkboard', 'fa-graduation-cap'],
+        'gradient': 'linear-gradient(135deg, #0d9488, #14b8a6)',
+        'image': img_courses,
+        'desc': 'Browse every active subject registered in our curriculum — with codes, descriptions, and the levels they are taught.',
+        'chips': [
+            ((courses_count|default(0)|string ~ ' active subject' ~ ('s' if courses_count|default(0) != 1 else '')) if courses_count|default(0) else 'CBC subjects', 'fa-book'),
+            ('Learning areas', 'fa-layer-group'),
+            ('Curriculum aligned', 'fa-check-circle'),
+        ],
+        'cta': 'View all courses',
     },
     {
         'href': url_for('team'),
@@ -424,7 +441,7 @@
         <header class="home-site-links__header home-site-links__header--animate">
             <p class="home-site-links__eyebrow"><i class="fas fa-compass" aria-hidden="true"></i> Explore</p>
             <h2 class="home-site-links__title">Discover {{ school_settings.school_name or 'our school' }}</h2>
-            <p class="home-site-links__lead">Learn about us, browse photos, read the latest news, meet our team, or get in touch with the office.</p>
+            <p class="home-site-links__lead">Learn about us, explore courses, browse photos, read the latest news, meet our team, or get in touch with the office.</p>
         </header>
         <nav class="home-site-links__grid" aria-label="School website pages">
             {% for card in explore_cards %}
