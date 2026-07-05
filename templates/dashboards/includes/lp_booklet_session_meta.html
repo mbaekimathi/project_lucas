@@ -1,0 +1,22 @@
+<section class="lp-doc-session-meta" aria-label="Session details">
+    <table class="lp-doc-meta-table">
+        <tbody>
+            <tr>
+                <th scope="row">Learning area</th>
+                <td>{{ row.learning_area|default(row.subject_name, true) }}</td>
+                <th scope="row">Class</th>
+                <td>{{ row.level_name or '—' }}</td>
+            </tr>
+            <tr>
+                <th scope="row">Date</th>
+                <td>{{ row.session_date_display|default(row.session_date, true) }}</td>
+                <th scope="row">Time</th>
+                <td>{{ row.session_time|default('—', true) }}</td>
+            </tr>
+            <tr>
+                <th scope="row">Teacher</th>
+                <td colspan="3">{{ row.teacher_name|default(teacher_name, true) }}</td>
+            </tr>
+        </tbody>
+    </table>
+</section>

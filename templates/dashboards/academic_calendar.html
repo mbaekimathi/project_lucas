@@ -54,10 +54,6 @@
     {% set role_hero_icon_class = 'fa-calendar-alt' %}
     {% include 'dashboards/includes/role_hero.html' %}
 
-    {% if portal == 'student' %}
-    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
-    {% endif %}
-
     <div class="{% if portal == 'student' %}sp-filter{% else %}flex flex-wrap items-end gap-3 mb-6{% endif %}">
         <form method="GET" action="{% if portal == 'parent' %}{{ parent_dash_url('academic-calendar') }}{% elif portal == 'student' %}{{ student_dash_url('academic-calendar') }}{% else %}{{ employee_dash_url('academic-calendar') }}{% endif %}" class="flex flex-wrap items-end gap-2">
             {% if view_month %}<input type="hidden" name="month" value="{{ view_month }}">{% endif %}

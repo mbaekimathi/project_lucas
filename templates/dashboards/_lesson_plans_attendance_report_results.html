@@ -2,24 +2,16 @@
 <div id="lpa-filter-sync" hidden
      data-period-start="{{ selected_period_start|default('', true) }}"
      data-period-end="{{ selected_period_end|default('', true) }}"
-     data-report-type="{{ selected_report_type }}"></div>
+     data-report-type="combined"></div>
 
 <div class="lpa-toolbar no-print">
     <div class="lpa-summary">
-        <span class="lpa-report-pill lpa-report-pill--{{ selected_report_type }}">
-            {% if selected_report_type == 'attendance' %}
-            <i class="fas fa-user-check" aria-hidden="true"></i> Attendance
-            {% else %}
-            <i class="fas fa-book-open" aria-hidden="true"></i> Lesson plans
-            {% endif %}
+        <span class="lpa-report-pill lpa-report-pill--combined">
+            <i class="fas fa-columns" aria-hidden="true"></i> Lesson plan &amp; attendance
         </span>
         <span class="lpa-summary__item"><strong>{{ report_summary.sessions|default(0) }}</strong> session{{ 's' if report_summary.sessions|default(0) != 1 else '' }}</span>
-        {% if selected_report_type == 'lesson_plan' %}
-        <span class="lpa-summary__item"><strong>{{ report_summary.with_lesson_plan|default(0) }}</strong> saved</span>
-        {% else %}
-        <span class="lpa-summary__item"><strong>{{ report_summary.with_attendance|default(0) }}</strong> marked</span>
-        <span class="lpa-summary__item"><strong class="tabular-nums">{{ report_summary.students_present|default(0) }}</strong> present · <strong class="tabular-nums">{{ report_summary.students_absent|default(0) }}</strong> absent</span>
-        {% endif %}
+        <span class="lpa-summary__item"><strong>{{ report_summary.with_lesson_plan|default(0) }}</strong> with plan</span>
+        <span class="lpa-summary__item"><strong>{{ report_summary.with_attendance|default(0) }}</strong> with attendance</span>
         {% if report_rows|length %}
         <span class="lpa-summary__item lpa-summary__item--pick" id="lpa-pick-count" hidden><strong id="lpa-pick-count-num">0</strong> selected</span>
         {% endif %}
@@ -37,120 +29,67 @@
 </div>
 
 {% if report_rows|length %}
-    {% if selected_report_type == 'lesson_plan' %}
-    <section class="lpa-picker-panel no-print" aria-label="Select lesson plans to preview or print">
-        <h2 class="lpa-picker-panel__title"><i class="fas fa-list-check" aria-hidden="true"></i> Lesson plans</h2>
-        <p class="lpa-picker-panel__hint">Select the lesson plans you want. Each prints on its own page.</p>
-        <ul class="lpa-pick-list" role="list">
-            {% for row in report_rows %}
-            <li class="lpa-pick-item lpa-picker-row" data-session-key="{{ row.session_key }}">
-                <label class="lpa-pick-item__label">
-                    <input type="checkbox" class="lpa-pick" name="lpa_pick" value="{{ row.session_key }}" aria-label="Select {{ row.strand }} · {{ row.substrand }} · {{ row.session_date_display }}">
-                    <span class="lpa-pick-ui" aria-hidden="true"></span>
-                    <span class="lpa-pick-item__content">
-                        <span class="lpa-pick-item__line">
-                            <span class="lpa-pick-item__title">Strand</span>
-                            <span class="lpa-pick-item__value">{{ row.strand }}</span>
-                        </span>
-                        <span class="lpa-pick-item__line">
-                            <span class="lpa-pick-item__title">Substrand</span>
-                            <span class="lpa-pick-item__value">{{ row.substrand }}</span>
-                        </span>
-                        <span class="lpa-pick-item__line">
-                            <span class="lpa-pick-item__title">Date</span>
-                            <span class="lpa-pick-item__value">{{ row.session_date_display|default(row.session_date) }}</span>
-                        </span>
-                        <span class="lpa-pick-item__line">
-                            <span class="lpa-pick-item__title">Class · Subject</span>
-                            <span class="lpa-pick-item__value">{{ row.pick_subtitle or '—' }}</span>
-                        </span>
-                    </span>
-                </label>
-            </li>
-            {% endfor %}
-        </ul>
-    </section>
-
-    <div id="lpa-booklet-host" class="lpa-booklet-host" aria-hidden="true">
-        {% for row in report_rows %}
-        {% include 'dashboards/_lesson_plan_booklet_page.html' %}
-        {% endfor %}
+<section class="lpa-picker-panel lpa-picker-panel--combined no-print" aria-label="Select sessions to preview or print">
+    <div class="lpa-picker-panel__head">
+        <h2 class="lpa-picker-panel__title"><i class="fas fa-table-columns" aria-hidden="true"></i> Teaching sessions</h2>
+        <p class="lpa-picker-panel__hint">Lesson plan and attendance print as separate pages, each with the school header and footer.</p>
     </div>
-    {% else %}
-    <section class="lpa-picker-panel lpa-picker-panel--attendance no-print" aria-label="Select attendance days to preview or print">
-        <h2 class="lpa-picker-panel__title lpa-picker-panel__title--attendance"><i class="fas fa-calendar-check" aria-hidden="true"></i> Attendance days</h2>
-        <p class="lpa-picker-panel__hint">Select the days you want. Each prints on its own page.</p>
-        <ul class="lpa-pick-list lpa-pick-list--attendance" role="list">
-            {% for row in report_rows %}
-            <li class="lpa-pick-item lpa-picker-row" data-session-key="{{ row.session_key }}">
-                <label class="lpa-pick-item__label">
-                    <input type="checkbox" class="lpa-pick" name="lpa_pick" value="{{ row.session_key }}" aria-label="Select {{ row.session_date_display }} · {{ row.level_name }} · {{ row.subject_name }}">
-                    <span class="lpa-pick-ui lpa-pick-ui--attendance" aria-hidden="true"></span>
-                    <span class="lpa-pick-item__content">
-                        <span class="lpa-pick-item__line">
-                            <span class="lpa-pick-item__title">Date</span>
-                            <span class="lpa-pick-item__value">{{ row.session_date_display|default(row.session_date) }}</span>
-                        </span>
-                        <span class="lpa-pick-item__line">
-                            <span class="lpa-pick-item__title">Class</span>
-                            <span class="lpa-pick-item__value">{{ row.level_name or '—' }}</span>
-                        </span>
-                        <span class="lpa-pick-item__line">
-                            <span class="lpa-pick-item__title">Subject</span>
-                            <span class="lpa-pick-item__value">{{ row.learning_area|default(row.subject_name, true) }}</span>
-                        </span>
-                        <span class="lpa-pick-item__line lpa-pick-item__line--stats">
-                            <span class="lpa-pick-item__title">Attendance</span>
-                            <span class="lpa-pick-item__value">
-                                <span class="lpa-pick-stat lpa-pick-stat--present">{{ row.att_present|default(0) }} present</span>
-                                <span class="lpa-pick-stat lpa-pick-stat--absent">{{ row.att_absent|default(0) }} absent</span>
-                                {% if row.att_pct is not none %}<span class="lpa-pick-stat">{{ row.att_pct }}% rate</span>{% endif %}
-                            </span>
-                        </span>
-                    </span>
-                </label>
-            </li>
-            {% endfor %}
-        </ul>
-    </section>
-
-    <div id="lpa-booklet-host" class="lpa-booklet-host" aria-hidden="true">
+    <ul class="lpa-pick-list lpa-pick-list--combined" role="list">
         {% for row in report_rows %}
-        {% include 'dashboards/_attendance_booklet_page.html' %}
+        <li class="lpa-pick-item lpa-pick-item--combined lpa-picker-row" data-session-key="{{ row.session_key }}">
+            <label class="lpa-pick-item__label lpa-pick-item__label--combined">
+                <input type="checkbox" class="lpa-pick" name="lpa_pick" value="{{ row.session_key }}" aria-label="Select {{ row.session_date_display }} · {{ row.level_name }} · {{ row.learning_area|default(row.subject_name, true) }}">
+                <span class="lpa-pick-ui" aria-hidden="true"></span>
+                <div class="lpa-session-split">
+                    <div class="lpa-session-col lpa-session-col--plan">
+                        <div class="lpa-session-col__head">
+                            <span class="lpa-session-col__badge lpa-session-col__badge--plan"><i class="fas fa-book-open" aria-hidden="true"></i> Lesson plan</span>
+                            <span class="lpa-session-col__meta">{{ row.session_date_display|default(row.session_date) }} · {{ row.level_name or '—' }} · {{ row.learning_area|default(row.subject_name, true) }}</span>
+                        </div>
+                        {% if row.has_lesson_plan|default(false) %}
+                        <dl class="lpa-session-col__facts">
+                            <div><dt>Strand</dt><dd>{{ row.strand }}</dd></div>
+                            <div><dt>Substrand</dt><dd>{{ row.substrand }}</dd></div>
+                        </dl>
+                        {% else %}
+                        <p class="lpa-session-col__empty">No lesson plan saved</p>
+                        {% endif %}
+                    </div>
+                    <div class="lpa-session-col lpa-session-col--att">
+                        <div class="lpa-session-col__head">
+                            <span class="lpa-session-col__badge lpa-session-col__badge--att"><i class="fas fa-user-check" aria-hidden="true"></i> Attendance</span>
+                        </div>
+                        {% if row.att_total|default(0) > 0 %}
+                        <div class="lpa-session-col__stats">
+                            <span class="lpa-pick-stat lpa-pick-stat--present">{{ row.att_present|default(0) }} present</span>
+                            <span class="lpa-pick-stat lpa-pick-stat--absent">{{ row.att_absent|default(0) }} absent</span>
+                            {% if row.att_pct is not none %}<span class="lpa-pick-stat">{{ row.att_pct }}%</span>{% endif %}
+                        </div>
+                        {% else %}
+                        <p class="lpa-session-col__empty">No attendance marked</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </label>
+        </li>
         {% endfor %}
-    </div>
+    </ul>
+</section>
+
+<div id="lpa-booklet-host" class="lpa-booklet-host" aria-hidden="true">
+    {% for row in report_rows %}
+    {% if row.has_lesson_plan|default(false) %}
+    {% include 'dashboards/_lesson_plan_booklet_page.html' %}
     {% endif %}
+    {% if row.has_attendance|default(false) %}
+    {% include 'dashboards/_attendance_booklet_page.html' %}
+    {% endif %}
+    {% endfor %}
+</div>
 {% else %}
 <div class="lpa-empty no-print">
     <i class="fas fa-inbox" aria-hidden="true"></i>
-    {% if selected_report_type == 'attendance' %}
-    <p>No attendance records match these filters. Mark attendance on the register first.</p>
-    {% else %}
-    <p>No lesson plans match these filters. Save lesson plans when marking subject attendance.</p>
-    {% endif %}
+    <p>No teaching sessions match these filters. Save lesson plans or mark attendance on the subject register first.</p>
     <a href="{{ attendance_register_url }}" class="lpa-empty__link">Go to subject attendance</a>
 </div>
 {% endif %}
-
-<div class="lpa-preview-modal no-print" id="lpa-preview-modal" hidden role="dialog" aria-modal="true" aria-labelledby="lpa-preview-title">
-    <div class="lpa-preview-modal__backdrop" data-lpa-close-preview></div>
-    <div class="lpa-preview-modal__panel">
-        <header class="lpa-preview-modal__head">
-            <div>
-                <h2 class="lpa-preview-modal__title" id="lpa-preview-title"><i class="fas fa-eye" aria-hidden="true"></i> Preview</h2>
-                <p class="lpa-preview-modal__sub" id="lpa-preview-sub">
-                    {% if selected_report_type == 'attendance' %}
-                    One page per selected day.
-                    {% else %}
-                    One page per selected lesson plan.
-                    {% endif %}
-                </p>
-            </div>
-            <div class="lpa-preview-modal__head-actions">
-                <button type="button" class="lpa-print-btn touch-btn" id="lpa-print-from-preview"><i class="fas fa-print" aria-hidden="true"></i><span>Print</span></button>
-                <button type="button" class="lpa-preview-modal__close touch-btn" data-lpa-close-preview aria-label="Close preview"><i class="fas fa-times" aria-hidden="true"></i></button>
-            </div>
-        </header>
-        <div class="lpa-preview-modal__body" id="lpa-preview-body"></div>
-    </div>
-</div>

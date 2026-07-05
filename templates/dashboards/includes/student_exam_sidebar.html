@@ -1,0 +1,19 @@
+<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Exams</p>
+<a href="{{ student_dash_url('exam-progress') }}"
+   class="sidebar-item {% if request.endpoint == 'student_exam_progress' or '/exam-progress' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Check exam progress</span>
+    {% if request.endpoint == 'student_exam_progress' or '/exam-progress' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ student_dash_url('exam-transcript') }}"
+   class="sidebar-item {% if request.endpoint == 'student_exam_transcript' or '/exam-transcript' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-certificate w-5"></i>
+    <span>Apply for exam transcript</span>
+    {% if request.endpoint == 'student_exam_transcript' or '/exam-transcript' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ student_dash_url('exam-apply') }}"
+   class="sidebar-item {% if request.endpoint == 'student_exam_apply' or '/exam-apply' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-pen-to-square w-5"></i>
+    <span>Apply for exams</span>
+    {% if request.endpoint == 'student_exam_apply' or '/exam-apply' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

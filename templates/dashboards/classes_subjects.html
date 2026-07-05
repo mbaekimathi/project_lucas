@@ -147,10 +147,11 @@
 
 {% block content %}
 <div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
-    {% set role_theme = portal_page_variant|default('default') %}
-    {% set role_hero_eyebrow = 'Academic' %}
+    {% set _is_leadership = nav_role in ('head of institution', 'deputy head of institution') %}
+    {% set role_theme = 'deputy' if nav_role == 'deputy head of institution' else ('leadership' if _is_leadership else portal_page_variant|default('default')) %}
+    {% set role_hero_eyebrow = 'Deputy head dashboard' if nav_role == 'deputy head of institution' else ('Head of institution' if _is_leadership else 'Academic') %}
     {% set role_hero_title = 'Classes & subjects' %}
-    {% set role_hero_subtitle = 'Browse classes with their subjects and teachers. Select a class to view progress and attendance.' %}
+    {% set role_hero_subtitle = 'Browse classes with their subjects and teachers. Use the sidebar for timetable, exams, attendance, reports, and other curriculum pages.' if _is_leadership else 'Browse classes with their subjects and teachers. Select a class to view progress and attendance.' %}
     {% set role_hero_icon_class = 'fa-chalkboard' %}
     {% include 'dashboards/includes/role_hero.html' %}
 

@@ -1,0 +1,157 @@
+{% set _mode = portal_mode|default('student') %}
+{% set _read_url = notifications_read_url|default('') %}
+<div class="space-y-3" id="portal-notifications-feed">
+    {% for note in hub_notifications %}
+    <article class="portal-notif-item rounded-xl border transition-all duration-200
+        {% if note.is_read %}border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 opacity-80{% else %}border-violet-200 dark:border-violet-800/60 bg-white dark:bg-gray-800 shadow-sm ring-1 ring-violet-100/80 dark:ring-violet-900/30{% endif %}"
+             data-notification-key="{{ note.notification_key }}"
+             x-data="portalNotificationItem({{ note.is_read|tojson }}, {{ note.notification_key|tojson }}, {{ _read_url|tojson }})">
+        <button type="button"
+                @click="toggle()"
+                class="w-full text-left p-4 flex items-start gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 rounded-xl"
+                :aria-expanded="open">
+            <span class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0
+                {% if note.type == 'fee_deadline' %}
+                    {% if note.urgency == 'overdue' %}bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300
+                    {% elif note.urgency == 'due_soon' %}bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300
+                    {% else %}bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300{% endif %}
+                {% elif note.type == 'exam_results' %}bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300
+                {% elif note.type == 'portal' %}bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-300
+                {% else %}bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300{% endif %}">
+                <i class="fas {% if note.type == 'fee_deadline' %}{% if note.urgency == 'overdue' %}fa-exclamation-triangle{% else %}fa-wallet{% endif %}{% elif note.type == 'exam_results' %}fa-clipboard-check{% elif note.type == 'portal' %}fa-envelope{% else %}fa-bullhorn{% endif %} text-sm" aria-hidden="true"></i>
+            </span>
+            <span class="min-w-0 flex-1">
+                <span class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm font-bold text-gray-900 dark:text-white uppercase">{{ note.title or note.activity_title }}</span>
+                    <span x-show="!read" x-cloak class="inline-flex items-center rounded-full bg-rose-100 dark:bg-rose-900/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-700 dark:text-rose-200">Unread</span>
+                    <span x-show="read" class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">Read</span>
+                </span>
+                <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
+                    {% if note.type == 'fee_deadline' %}
+                    {% if _mode == 'parent' %}{{ note.student_name }} · {% endif %}{{ note.fee_name }} · {{ note.subtitle }}
+                    {% elif note.type == 'exam_results' %}
+                    {% if _mode == 'parent' %}{{ note.student_name }} · {% endif %}{{ note.exam_name }}{% if note.exam_type %} ({{ note.exam_type }}){% endif %}
+                    {% elif note.type == 'portal' %}
+                    {{ note.subtitle or note.body or '' }}
+                    {% else %}
+                    {{ note.activity_date_display }}{% if note.end_date_display and note.end_date_display != note.activity_date_display %} — {{ note.end_date_display }}{% endif %} · {{ note.category_label }}
+                    {% endif %}
+                </span>
+            </span>
+            <i class="fas fa-chevron-down text-xs text-gray-400 shrink-0 mt-1 transition-transform duration-200" :class="open && 'rotate-180'" aria-hidden="true"></i>
+        </button>
+
+        <div x-show="open" x-cloak class="px-4 pb-4 pt-0 border-t border-gray-100 dark:border-gray-700/80 mx-4 mb-1">
+            <div class="pt-3 text-sm text-gray-600 dark:text-gray-300 space-y-2">
+                {% if note.type == 'fee_deadline' %}
+                <p class="m-0">{{ note.subtitle }}</p>
+                {% if note.payment_status_label %}
+                <p class="m-0 text-xs font-semibold text-gray-700 dark:text-gray-200">{{ note.payment_status_label }}</p>
+                {% endif %}
+                <a href="{% if _mode == 'parent' %}{{ parent_dash_url('student-fees') }}?student_id={{ note.student_id }}{% else %}{{ student_dash_url('fees') }}{% endif %}"
+                   class="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:underline">
+                    <i class="fas fa-arrow-right text-[10px]"></i> View fees &amp; pay
+                </a>
+                {% elif note.type == 'exam_results' %}
+                <p class="m-0">
+                    {% if note.gazetted_at_display %}Released {{ note.gazetted_at_display }}{% if note.subtitle %} · {% endif %}{% endif %}{{ note.subtitle }}
+                </p>
+                <a href="{% if _mode == 'parent' %}{{ parent_dash_url('exam-progress/' ~ note.student_id) }}{% else %}{{ student_dash_url('exam-progress') }}{% endif %}"
+                   class="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:underline">
+                    <i class="fas fa-arrow-right text-[10px]"></i> View exam results
+                </a>
+                {% elif note.type == 'portal' %}
+                {% if note.body %}
+                <p class="m-0 leading-relaxed">{{ note.body }}</p>
+                {% elif note.subtitle %}
+                <p class="m-0 leading-relaxed">{{ note.subtitle }}</p>
+                {% endif %}
+                {% if note.gazetted_at_display %}
+                <p class="m-0 text-xs text-gray-500 dark:text-gray-400">{{ note.gazetted_at_display }}</p>
+                {% endif %}
+                {% if note.link_url %}
+                <a href="{{ note.link_url }}"
+                   class="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:underline">
+                    <i class="fas fa-arrow-right text-[10px]"></i> Open link
+                </a>
+                {% endif %}
+                {% else %}
+                {% if not note.affects_all_levels %}
+                <p class="text-[11px] text-violet-600 dark:text-violet-400 m-0">
+                    <i class="fas fa-layer-group mr-0.5"></i>{{ note.levels_affected_label }}
+                </p>
+                {% endif %}
+                {% if note.activity_about %}
+                <p class="m-0 leading-relaxed">{{ note.activity_about }}</p>
+                {% endif %}
+                <a href="{% if _mode == 'parent' %}{{ parent_dash_url('academic-calendar') }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}{% else %}{{ student_dash_url('academic-calendar') }}{% endif %}"
+                   class="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:underline">
+                    <i class="fas fa-arrow-right text-[10px]"></i> View calendar
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+    {% else %}
+    <div class="rounded-xl border border-dashed border-violet-200 dark:border-violet-800/60 bg-violet-50/40 dark:bg-violet-950/15 px-4 sm:px-6 py-10 text-center">
+        <span class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-2xl shadow-md mb-4">
+            <i class="fas fa-inbox" aria-hidden="true"></i>
+        </span>
+        <h3 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white m-0">No notifications right now</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-2 mb-0 max-w-xl mx-auto leading-relaxed">
+            Fee reminders, exam results, and school calendar updates will appear here automatically.
+        </p>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+function portalNotificationItem(initiallyRead, notificationKey, readUrl) {
+    return {
+        open: false,
+        read: !!initiallyRead,
+        marking: false,
+        toggle() {
+            const willOpen = !this.open;
+            this.open = willOpen;
+            if (willOpen && !this.read && !this.marking && readUrl && notificationKey) {
+                this.markRead();
+            }
+        },
+        async markRead() {
+            this.marking = true;
+            try {
+                const res = await fetch(readUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({ notification_key: notificationKey }),
+                });
+                const data = await res.json();
+                if (data && data.success) {
+                    this.read = true;
+                    if (typeof window.portalDecrementNotificationBadge === 'function') {
+                        window.portalDecrementNotificationBadge();
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not mark notification read', e);
+            } finally {
+                this.marking = false;
+            }
+        },
+    };
+}
+
+window.portalDecrementNotificationBadge = window.portalDecrementNotificationBadge || function () {
+    document.querySelectorAll('[data-portal-notif-badge]').forEach(function (el) {
+        var n = parseInt(el.textContent, 10);
+        if (isNaN(n)) return;
+        n = Math.max(0, n - 1);
+        if (n <= 0) {
+            el.remove();
+        } else {
+            el.textContent = n >= 100 ? '99+' : String(n);
+        }
+    });
+};
+</script>

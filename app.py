@@ -15,6 +15,21 @@ import time
 from collections import defaultdict
 from functools import wraps
 from urllib.parse import quote, urlencode
+from student_transcript import build_student_exam_transcripts
+from student_exam_apply import (
+    build_eligibility_for_sittings,
+    build_exam_apply_eligibility,
+    delete_exam_apply_rules,
+    fetch_all_exam_apply_rules_map,
+    fetch_level_exam_apply_overview,
+    fetch_open_exam_sittings,
+    fetch_student_exam_applications,
+    merge_sittings_with_applications,
+    parse_apply_requirements_payload,
+    save_exam_apply_rules,
+    serialize_sittings_for_student_apply,
+    submit_student_exam_application,
+)
 from env_loader import load_project_env, env_file_label
 from portal_public import (
     check_rate_limit,
@@ -687,6 +702,7 @@ UPLOAD_FOLDER = 'static/uploads/profiles'
 STUDENT_PHOTO_FOLDER = 'static/uploads/student_photos'
 PAYMENT_PROOF_FOLDER = 'static/uploads/payment_proofs'
 COMMUNICATION_ATTACHMENT_FOLDER = 'static/uploads/communication'
+TEACHING_RESOURCES_UPLOAD_FOLDER = 'static/uploads/teaching_resources'
 STORE_INVENTORY_FOLDER = 'static/uploads/store_inventory'
 GALLERY_UPLOAD_FOLDER = 'static/uploads/gallery'
 ABOUT_UPLOAD_FOLDER = 'static/uploads/about'
@@ -695,6 +711,7 @@ SUBJECT_COURSE_PHOTO_FOLDER = 'static/uploads/subject_courses'
 BACKUP_FOLDER = 'static/uploads/backups'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 ALLOWED_COMMUNICATION_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'}
+ALLOWED_TEACHING_RESOURCE_EXTENSIONS = ALLOWED_COMMUNICATION_EXTENSIONS | {'ppt', 'pptx', 'zip'}
 
 # Create backup folder if it doesn't exist
 os.makedirs(BACKUP_FOLDER, exist_ok=True)
@@ -708,6 +725,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(STUDENT_PHOTO_FOLDER, exist_ok=True)
 os.makedirs(PAYMENT_PROOF_FOLDER, exist_ok=True)
 os.makedirs(COMMUNICATION_ATTACHMENT_FOLDER, exist_ok=True)
+os.makedirs(TEACHING_RESOURCES_UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(STORE_INVENTORY_FOLDER, exist_ok=True)
 os.makedirs(GALLERY_UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(ABOUT_UPLOAD_FOLDER, exist_ok=True)
@@ -719,6 +737,13 @@ def allowed_communication_attachment(filename):
     if not filename or '.' not in filename:
         return False
     return filename.rsplit('.', 1)[1].lower() in ALLOWED_COMMUNICATION_EXTENSIONS
+
+
+def allowed_teaching_resource_file(filename):
+    """Uploaded files for teacher class/subject learning resources."""
+    if not filename or '.' not in filename:
+        return False
+    return filename.rsplit('.', 1)[1].lower() in ALLOWED_TEACHING_RESOURCE_EXTENSIONS
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -1859,6 +1884,12 @@ def inject_school_settings():
 
 
 @app.context_processor
+def inject_portal_notification_badge():
+    """Bell badge count for student/parent portal headers and sidebars."""
+    return _session_portal_notification_badge()
+
+
+@app.context_processor
 def inject_financial_year_session():
     """Current financial year badge on accountant accounts pages."""
     empty = {
@@ -2000,7 +2031,7 @@ def inject_teacher_class_teacher_context():
     }
     if not _is_teacher_portal_for_class_teacher_nav():
         return empty
-    teacher_id = _subject_progress_teacher_id()
+    teacher_id = _subject_progress_teacher_id() or _teacher_portal_employee_pk() or resolve_session_employee_pk()
     if not teacher_id:
         return empty
     connection = get_db_connection()
@@ -2777,6 +2808,33 @@ def ensure_subject_attendance_lesson_plans_table(cursor):
         print(f"ensure_subject_attendance_lesson_plans_table: {e}")
 
 
+def ensure_teacher_teaching_resources_table(cursor):
+    """Teacher-uploaded files for students by class and subject."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS teacher_teaching_resources (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                teacher_id INT NOT NULL,
+                academic_level_id INT NOT NULL,
+                subject_id INT NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                description TEXT NULL,
+                file_path VARCHAR(500) NOT NULL,
+                original_filename VARCHAR(255) NOT NULL,
+                mime_type VARCHAR(120) NULL,
+                file_size INT NULL,
+                is_published TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_ttr_level_subject (academic_level_id, subject_id),
+                INDEX idx_ttr_teacher (teacher_id),
+                INDEX idx_ttr_published (is_published)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+    except Exception as e:
+        print(f"ensure_teacher_teaching_resources_table: {e}")
+
+
 def ensure_subject_attendance_lesson_plans_teacher_scope(cursor):
     """Per-teacher lesson plans: teacher_id column + unique key includes teacher."""
     ensure_subject_attendance_lesson_plans_table(cursor)
@@ -3344,7 +3402,7 @@ def _fetch_teacher_lesson_plans_attendance_report(
                     sid_st = srow[0]
                     name = srow[1] or ''
                     present = bool(srow[2])
-                item = {'student_id': sid_st, 'full_name': name}
+                item = {'student_id': sid_st, 'full_name': name, 'present': present}
                 if present:
                     present_rows.append(item)
                 else:
@@ -3352,12 +3410,16 @@ def _fetch_teacher_lesson_plans_attendance_report(
         except Exception as ex:
             print(f"_fetch_teacher_lesson_plans_attendance_report students: {ex}")
 
-        total = len(present_rows) + len(absent_rows)
+        student_rows = present_rows + absent_rows
+        student_rows.sort(key=lambda s: (s.get('full_name') or '').lower())
+
+        total = len(student_rows)
         entry['attendance'] = {
             'present': len(present_rows),
             'absent': len(absent_rows),
             'total': total,
             'pct': round(100 * len(present_rows) / total, 1) if total else None,
+            'students': student_rows,
             'present_students': present_rows,
             'absent_students': absent_rows,
         }
@@ -4175,7 +4237,8 @@ def _fetch_parent_hub_notifications(
         )
 
     items.sort(key=_hub_sort_key)
-    return items[:limit]
+    items = items[:limit]
+    return _enrich_hub_notifications_with_read_state(cursor, user_id, items)
 
 
 def _fetch_student_hub_notifications(cursor, student_id=None, user_id=None, limit=12):
@@ -4227,7 +4290,262 @@ def _fetch_student_hub_notifications(cursor, student_id=None, user_id=None, limi
         )
 
     items.sort(key=_hub_sort_key)
-    return items[:limit]
+    items = items[:limit]
+    return _enrich_hub_notifications_with_read_state(cursor, user_id, items)
+
+
+def ensure_portal_hub_notification_reads_table(cursor):
+    """Tracks read/dismissed state for computed hub alerts (fees, exams, calendar)."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS portal_hub_notification_reads (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            notification_key VARCHAR(191) NOT NULL,
+            read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_user_hub_notif (user_id, notification_key),
+            INDEX idx_hub_notif_user (user_id)
+        )
+        """
+    )
+
+
+def _hub_notification_key(note):
+    """Stable key for marking hub notification read state."""
+    if not note:
+        return 'unknown'
+    ntype = note.get('type') or 'unknown'
+    if ntype == 'portal':
+        nid = note.get('id')
+        return f'portal:{nid}' if nid else 'portal:unknown'
+    if ntype == 'fee_deadline':
+        sid = (note.get('student_id') or '').strip()
+        dl = note.get('payment_deadline')
+        if hasattr(dl, 'isoformat'):
+            dl_str = dl.isoformat()
+        else:
+            dl_str = str(dl or '')
+        return f'fee_deadline:{sid}:{dl_str}'
+    if ntype == 'exam_results':
+        sid = (note.get('student_id') or '').strip()
+        exam = (note.get('exam_name') or '').strip()
+        ga = note.get('gazetted_at')
+        if hasattr(ga, 'isoformat'):
+            ga_str = ga.isoformat()[:19]
+        else:
+            ga_str = str(ga or '')[:19]
+        return f'exam_results:{sid}:{exam}:{ga_str}'
+    act_id = note.get('id')
+    if act_id:
+        return f'calendar:{act_id}'
+    title = (note.get('activity_title') or note.get('title') or '')[:48]
+    return f'{ntype}:{title}'
+
+
+def _user_read_hub_notification_keys(cursor, user_id):
+    """Set of notification keys already read by this portal user."""
+    if not user_id:
+        return set()
+    keys = set()
+    ensure_portal_hub_notification_reads_table(cursor)
+    try:
+        cursor.execute(
+            "SELECT notification_key FROM portal_hub_notification_reads WHERE user_id = %s",
+            (int(user_id),),
+        )
+        for row in cursor.fetchall() or []:
+            k = row.get('notification_key') if isinstance(row, dict) else row[0]
+            if k:
+                keys.add(k)
+    except Exception as ex:
+        print(f"_user_read_hub_notification_keys hub: {ex}")
+
+    ensure_portal_notifications_table(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT id FROM portal_notifications
+            WHERE recipient_user_id = %s AND read_at IS NOT NULL
+            """,
+            (int(user_id),),
+        )
+        for row in cursor.fetchall() or []:
+            nid = row.get('id') if isinstance(row, dict) else row[0]
+            if nid:
+                keys.add(f'portal:{nid}')
+    except Exception as ex:
+        print(f"_user_read_hub_notification_keys portal: {ex}")
+    return keys
+
+
+def _enrich_hub_notifications_with_read_state(cursor, user_id, items):
+    if not items:
+        return items
+    read_keys = _user_read_hub_notification_keys(cursor, user_id) if user_id else set()
+    for note in items:
+        key = _hub_notification_key(note)
+        note['notification_key'] = key
+        note['is_read'] = key in read_keys
+    return items
+
+
+def _sort_hub_notifications_for_page(items):
+    """Unread first, then by existing hub priority."""
+
+    def _sort_key(item):
+        read_rank = 1 if item.get('is_read') else 0
+        if item.get('type') == 'fee_deadline':
+            urgency = item.get('urgency') or 'upcoming'
+            prio = {'overdue': 0, 'due_soon': 1, 'upcoming': 2}.get(urgency, 2)
+            return (read_rank, prio, item.get('payment_deadline') or date_cls.max)
+        if item.get('type') == 'exam_results':
+            ga = item.get('gazetted_at')
+            sort_dt = _coerce_to_date(ga) if ga and not hasattr(ga, 'year') else (
+                ga.date() if hasattr(ga, 'date') else ga
+            )
+            return (read_rank, 2, sort_dt or date_cls.min, item.get('exam_name') or '')
+        if item.get('type') == 'portal':
+            return (read_rank, 1, item.get('gazetted_at_display') or '', item.get('id') or 0)
+        return (
+            read_rank,
+            3,
+            _coerce_to_date(item.get('activity_date')) or date_cls.max,
+            item.get('id') or 0,
+        )
+
+    items.sort(key=_sort_key)
+    return items
+
+
+def _mark_hub_notification_read(cursor, user_id, notification_key):
+    """Mark one hub notification read for the signed-in user."""
+    uid = int(user_id)
+    key = (notification_key or '').strip()[:191]
+    if not key:
+        return False
+
+    if key.startswith('portal:'):
+        try:
+            nid = int(key.split(':', 1)[1])
+        except (TypeError, ValueError):
+            nid = None
+        if nid:
+            ensure_portal_notifications_table(cursor)
+            cursor.execute(
+                """
+                UPDATE portal_notifications
+                SET read_at = COALESCE(read_at, NOW())
+                WHERE id = %s
+                  AND (recipient_user_id = %s OR recipient_user_id IS NULL)
+                """,
+                (nid, uid),
+            )
+            ensure_communication_broadcast_tables(cursor)
+            cursor.execute(
+                """
+                UPDATE communication_broadcast_recipients
+                SET read_at = COALESCE(read_at, NOW())
+                WHERE portal_notification_id = %s
+                """,
+                (nid,),
+            )
+
+    ensure_portal_hub_notification_reads_table(cursor)
+    cursor.execute(
+        """
+        INSERT INTO portal_hub_notification_reads (user_id, notification_key, read_at)
+        VALUES (%s, %s, NOW())
+        ON DUPLICATE KEY UPDATE read_at = COALESCE(read_at, NOW())
+        """,
+        (uid, key),
+    )
+    return True
+
+
+def _count_unread_hub_notifications(items):
+    return sum(1 for n in (items or []) if not n.get('is_read'))
+
+
+def _session_portal_notification_badge():
+    """
+    Unread hub notification count + link for the signed-in student/parent portal user.
+    Matches the notifications hub feed (portal alerts, fees, exams, calendar).
+    """
+    empty = {'portal_unread_notification_count': 0, 'portal_notifications_hub_url': '', 'show_portal_notification_badge': False}
+    if not has_request_context() or not session.get('user_id'):
+        return empty
+    path_role = portal_role_from_request_path()
+    if path_role not in ('parent', 'student'):
+        return empty
+    if not school_notifications_enabled() or not notification_mode_enabled('app'):
+        return {**empty, 'show_portal_notification_badge': True}
+
+    user_id = session.get('user_id')
+    user_role = (session.get('role') or '').lower()
+    viewing = (session.get('viewing_as_role') or '').lower()
+    connection = get_db_connection()
+    if not connection:
+        return {**empty, 'show_portal_notification_badge': True}
+
+    count = 0
+    hub_url = student_dashboard_path('notifications') if path_role == 'student' else parent_dashboard_path('notifications')
+    try:
+        with connection.cursor() as cursor:
+            if path_role == 'student':
+                student_id = ''
+                if user_role == 'technician' and viewing == 'student':
+                    student_id = (session.get('student_view_student_id') or '').strip()
+                else:
+                    cursor.execute(
+                        "SELECT student_id FROM users WHERE id = %s LIMIT 1",
+                        (int(user_id),),
+                    )
+                    ur = cursor.fetchone()
+                    if ur:
+                        student_id = str(
+                            ur.get('student_id') if isinstance(ur, dict) else ur[0] or ''
+                        ).strip()
+                items = _fetch_student_hub_notifications(
+                    cursor, student_id=student_id or None, user_id=user_id,
+                )
+                count = _count_unread_hub_notifications(items)
+                hub_url = student_dashboard_path('notifications')
+                if student_id and user_role == 'technician':
+                    hub_url += '?' + urlencode({'student_id': student_id})
+            else:
+                parent_email = session.get('email', '')
+                student_id = (session.get('parent_view_student_id') or '').strip()
+                if user_role == 'technician' and viewing == 'parent' and student_id:
+                    cursor.execute(
+                        "SELECT p.email FROM parents p WHERE p.student_id = %s LIMIT 1",
+                        (student_id,),
+                    )
+                    pr = cursor.fetchone()
+                    if pr:
+                        parent_email = pr.get('email', '') if isinstance(pr, dict) else pr[0]
+                items = _fetch_parent_hub_notifications(
+                    cursor,
+                    parent_email=parent_email,
+                    student_id=student_id or None,
+                    user_id=user_id,
+                )
+                count = _count_unread_hub_notifications(items)
+                hub_url = parent_dashboard_path('notifications')
+                if student_id:
+                    hub_url += '?' + urlencode({'student_id': student_id})
+    except Exception as ex:
+        print(f"_session_portal_notification_badge: {ex}")
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+    return {
+        'portal_unread_notification_count': count,
+        'portal_notifications_hub_url': hub_url,
+        'show_portal_notification_badge': True,
+    }
 
 
 ACADEMIC_CALENDAR_CATEGORY_LABELS = {
@@ -10646,6 +10964,419 @@ def _teacher_library_classes_summary(cursor, teacher_id):
     return rows
 
 
+def _teacher_resources_guard():
+    """Redirect if current user cannot access teacher teaching resources."""
+    return _teacher_library_guard()
+
+
+def _teacher_resources_teacher_can_access_subject(cursor, teacher_id, level_id, subject_id):
+    """True if teacher is assigned to teach this subject at this class."""
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+        subject_id = int(subject_id)
+    except (TypeError, ValueError):
+        return False
+    cursor.execute(
+        """
+        SELECT 1 FROM teacher_subject_assignments
+        WHERE teacher_id = %s AND academic_level_id = %s AND subject_id = %s
+        LIMIT 1
+        """,
+        (teacher_id, level_id, subject_id),
+    )
+    return bool(cursor.fetchone())
+
+
+def _teacher_resources_class_resource_counts(cursor, teacher_id):
+    """Map academic_level_id -> count of resources uploaded by this teacher."""
+    ensure_teacher_teaching_resources_table(cursor)
+    out = {}
+    try:
+        teacher_id = int(teacher_id)
+    except (TypeError, ValueError):
+        return out
+    cursor.execute(
+        """
+        SELECT academic_level_id, COUNT(*) AS resource_count
+        FROM teacher_teaching_resources
+        WHERE teacher_id = %s
+        GROUP BY academic_level_id
+        """,
+        (teacher_id,),
+    )
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            lid = int(row.get('academic_level_id') or 0)
+            out[lid] = int(row.get('resource_count') or 0)
+        else:
+            out[int(row[0] or 0)] = int(row[1] or 0)
+    return out
+
+
+def _teacher_resources_subject_resource_counts(cursor, teacher_id, level_id):
+    """Map subject_id -> count of resources for teacher at a class."""
+    ensure_teacher_teaching_resources_table(cursor)
+    out = {}
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return out
+    cursor.execute(
+        """
+        SELECT subject_id, COUNT(*) AS resource_count
+        FROM teacher_teaching_resources
+        WHERE teacher_id = %s AND academic_level_id = %s
+        GROUP BY subject_id
+        """,
+        (teacher_id, level_id),
+    )
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            sid = int(row.get('subject_id') or 0)
+            out[sid] = int(row.get('resource_count') or 0)
+        else:
+            out[int(row[0] or 0)] = int(row[1] or 0)
+    return out
+
+
+def _teacher_resources_classes_overview(cursor, teacher_id):
+    """Classes assigned to teacher with uploaded resource totals."""
+    classes = _teacher_library_classes_summary(cursor, teacher_id)
+    counts = _teacher_resources_class_resource_counts(cursor, teacher_id)
+    for cls in classes:
+        lid = int(cls.get('level_id') or 0)
+        cls['resource_count'] = counts.get(lid, 0)
+    return classes
+
+
+def _teacher_resources_subjects_for_level(cursor, teacher_id, level_id, with_counts=False):
+    """Subjects the teacher teaches at the given academic level."""
+    rows = []
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return rows
+    cursor.execute(
+        """
+        SELECT DISTINCT s.id, s.subject_name, s.subject_code
+        FROM teacher_subject_assignments tsa
+        INNER JOIN subjects s ON s.id = tsa.subject_id
+        WHERE tsa.teacher_id = %s
+          AND tsa.academic_level_id = %s
+          AND COALESCE(s.status, 'active') = 'active'
+        ORDER BY s.subject_name ASC
+        """,
+        (teacher_id, level_id),
+    )
+    subject_counts = _teacher_resources_subject_resource_counts(cursor, teacher_id, level_id) if with_counts else {}
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            sid = int(row.get('id') or 0)
+            item = {
+                'id': sid,
+                'subject_name': (row.get('subject_name') or '').strip(),
+                'subject_code': (row.get('subject_code') or '').strip(),
+            }
+        else:
+            sid = int(row[0] or 0)
+            item = {
+                'id': sid,
+                'subject_name': (row[1] or '').strip(),
+                'subject_code': (row[2] or '').strip(),
+            }
+        if with_counts:
+            item['resource_count'] = subject_counts.get(sid, 0)
+        rows.append(item)
+    return rows
+
+
+def _teacher_resources_row_to_dict(row):
+    """Normalize DB row for teaching resource JSON/template."""
+    if isinstance(row, dict):
+        return {
+            'id': int(row.get('id') or 0),
+            'teacher_id': int(row.get('teacher_id') or 0),
+            'academic_level_id': int(row.get('academic_level_id') or 0),
+            'subject_id': int(row.get('subject_id') or 0),
+            'title': (row.get('title') or '').strip(),
+            'description': (row.get('description') or '').strip(),
+            'file_path': (row.get('file_path') or '').strip(),
+            'original_filename': (row.get('original_filename') or '').strip(),
+            'mime_type': (row.get('mime_type') or '').strip(),
+            'file_size': int(row.get('file_size') or 0),
+            'is_published': bool(row.get('is_published')),
+            'teacher_name': (row.get('teacher_name') or '').strip(),
+            'subject_name': (row.get('subject_name') or '').strip(),
+            'subject_code': (row.get('subject_code') or '').strip(),
+            'created_at': row.get('created_at'),
+        }
+    return {
+        'id': int(row[0] or 0),
+        'teacher_id': int(row[1] or 0),
+        'academic_level_id': int(row[2] or 0),
+        'subject_id': int(row[3] or 0),
+        'title': (row[4] or '').strip(),
+        'description': (row[5] or '').strip(),
+        'file_path': (row[6] or '').strip(),
+        'original_filename': (row[7] or '').strip(),
+        'mime_type': (row[8] or '').strip() if len(row) > 8 else '',
+        'file_size': int(row[9] or 0) if len(row) > 9 else 0,
+        'is_published': bool(row[10]) if len(row) > 10 else True,
+        'created_at': row[11] if len(row) > 11 else None,
+        'teacher_name': (row[12] or '').strip() if len(row) > 12 else '',
+        'subject_name': (row[13] or '').strip() if len(row) > 13 else '',
+        'subject_code': (row[14] or '').strip() if len(row) > 14 else '',
+    }
+
+
+def _teacher_resources_fetch_list(cursor, level_id, subject_id, teacher_id=None, published_only=False):
+    """List teaching resources for a class and subject."""
+    ensure_teacher_teaching_resources_table(cursor)
+    try:
+        level_id = int(level_id)
+        subject_id = int(subject_id)
+    except (TypeError, ValueError):
+        return []
+    clauses = ['r.academic_level_id = %s', 'r.subject_id = %s']
+    params = [level_id, subject_id]
+    if teacher_id is not None:
+        try:
+            teacher_id = int(teacher_id)
+            clauses.append('r.teacher_id = %s')
+            params.append(teacher_id)
+        except (TypeError, ValueError):
+            return []
+    if published_only:
+        clauses.append('r.is_published = 1')
+    where = ' AND '.join(clauses)
+    cursor.execute(
+        f"""
+        SELECT
+            r.id, r.teacher_id, r.academic_level_id, r.subject_id,
+            r.title, r.description, r.file_path, r.original_filename,
+            r.mime_type, r.file_size, r.is_published, r.created_at,
+            UPPER(TRIM(e.full_name)) AS teacher_name,
+            UPPER(TRIM(s.subject_name)) AS subject_name,
+            UPPER(TRIM(s.subject_code)) AS subject_code
+        FROM teacher_teaching_resources r
+        LEFT JOIN employees e ON e.id = r.teacher_id
+        LEFT JOIN subjects s ON s.id = r.subject_id
+        WHERE {where}
+        ORDER BY r.created_at DESC, r.id DESC
+        """,
+        tuple(params),
+    )
+    out = []
+    for row in cursor.fetchall() or []:
+        item = _teacher_resources_row_to_dict(row)
+        fp = item.get('file_path') or ''
+        if fp and not fp.startswith('/'):
+            item['download_url'] = '/' + fp.lstrip('/')
+        else:
+            item['download_url'] = fp or '#'
+        if item.get('created_at') and hasattr(item['created_at'], 'strftime'):
+            item['created_at_label'] = item['created_at'].strftime('%d %b %Y %H:%M')
+        else:
+            item['created_at_label'] = ''
+        out.append(item)
+    return out
+
+
+def _save_teaching_resource_file(upload_file):
+    """Persist uploaded teaching resource; return (path, original_name, mime) or (None, None, err)."""
+    if not upload_file or not getattr(upload_file, 'filename', None):
+        return None, None, None
+    fn = secure_filename(upload_file.filename)
+    if not fn or not allowed_teaching_resource_file(fn):
+        return None, None, 'Invalid file type. Use PDF, Word, Excel, PowerPoint, image, text, or ZIP.'
+    ext = fn.rsplit('.', 1)[1].lower()
+    if is_image_filename(fn):
+        rel = _save_optimized_image(
+            upload_file,
+            TEACHING_RESOURCES_UPLOAD_FOLDER,
+            f'tr_{secrets.token_hex(8)}',
+            preset='attachment',
+        )
+        if not rel:
+            return None, None, 'Could not save image file.'
+        path = os.path.join('static', rel)
+        mime = 'image/png' if rel.lower().endswith('.png') else 'image/jpeg'
+        return path, fn, mime
+    stored = f"tr_{secrets.token_hex(8)}.{ext}"
+    path = os.path.join(TEACHING_RESOURCES_UPLOAD_FOLDER, stored)
+    upload_file.save(path)
+    mime_map = {
+        'pdf': 'application/pdf',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'ppt': 'application/vnd.ms-powerpoint',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'txt': 'text/plain',
+        'csv': 'text/csv',
+        'zip': 'application/zip',
+    }
+    return path, fn, mime_map.get(ext, 'application/octet-stream')
+
+
+def _student_teaching_resources_by_subject(cursor, student_id, class_subjects=None):
+    """Per-subject learning resource links for a student's class."""
+    level_id = _student_academic_level_id(cursor, student_id)
+    if not level_id:
+        return []
+    ensure_teacher_teaching_resources_table(cursor)
+    counts = {}
+    cursor.execute(
+        """
+        SELECT subject_id, COUNT(*) AS resource_count
+        FROM teacher_teaching_resources
+        WHERE academic_level_id = %s AND is_published = 1
+        GROUP BY subject_id
+        """,
+        (level_id,),
+    )
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            sid = int(row.get('subject_id') or 0)
+            counts[sid] = int(row.get('resource_count') or 0)
+        else:
+            counts[int(row[0] or 0)] = int(row[1] or 0)
+
+    def _append_subject(subjects_out, seen, subj_id, subject_name, subject_code):
+        if not subj_id or subj_id in seen:
+            return
+        seen.add(subj_id)
+        subjects_out.append({
+            'subject_id': int(subj_id),
+            'subject_name': (subject_name or 'Subject').strip(),
+            'subject_code': (subject_code or '').strip(),
+            'resource_count': counts.get(int(subj_id), 0),
+        })
+
+    subjects_out = []
+    seen = set()
+    for subj in class_subjects or []:
+        _append_subject(
+            subjects_out, seen,
+            subj.get('subject_id'),
+            subj.get('subject_name'),
+            subj.get('subject_code'),
+        )
+
+    if not subjects_out:
+        cursor.execute(
+            """
+            SELECT DISTINCT s.id AS subject_id,
+                UPPER(TRIM(s.subject_name)) AS subject_name,
+                UPPER(TRIM(s.subject_code)) AS subject_code
+            FROM subject_academic_levels sal
+            INNER JOIN subjects s ON s.id = sal.subject_id
+            WHERE sal.academic_level_id = %s
+              AND COALESCE(s.status, 'active') = 'active'
+            ORDER BY s.subject_name ASC
+            """,
+            (level_id,),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                _append_subject(
+                    subjects_out, seen,
+                    row.get('subject_id'),
+                    row.get('subject_name'),
+                    row.get('subject_code'),
+                )
+            else:
+                _append_subject(subjects_out, seen, row[0], row[1], row[2])
+
+    if not subjects_out:
+        cursor.execute(
+            """
+            SELECT DISTINCT s.id AS subject_id,
+                UPPER(TRIM(s.subject_name)) AS subject_name,
+                UPPER(TRIM(s.subject_code)) AS subject_code
+            FROM teacher_subject_assignments tsa
+            INNER JOIN subjects s ON s.id = tsa.subject_id
+            WHERE tsa.academic_level_id = %s
+              AND COALESCE(s.status, 'active') = 'active'
+            ORDER BY s.subject_name ASC
+            """,
+            (level_id,),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                _append_subject(
+                    subjects_out, seen,
+                    row.get('subject_id'),
+                    row.get('subject_name'),
+                    row.get('subject_code'),
+                )
+            else:
+                _append_subject(subjects_out, seen, row[0], row[1], row[2])
+
+    for subj_id, cnt in counts.items():
+        if subj_id in seen:
+            continue
+        cursor.execute(
+            """
+            SELECT UPPER(TRIM(subject_name)) AS subject_name,
+                   UPPER(TRIM(subject_code)) AS subject_code
+            FROM subjects WHERE id = %s LIMIT 1
+            """,
+            (subj_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            continue
+        subjects_out.append({
+            'subject_id': subj_id,
+            'subject_name': (row.get('subject_name') if isinstance(row, dict) else row[0] or 'Subject').strip(),
+            'subject_code': (row.get('subject_code') if isinstance(row, dict) else row[1] or '').strip(),
+            'resource_count': cnt,
+        })
+        seen.add(subj_id)
+
+    subjects_out.sort(key=lambda s: (s.get('subject_name') or '').lower())
+    return subjects_out
+
+
+def _student_teaching_resources_bundle(cursor, student_id):
+    """Subjects for student's class with published resource lists per subject."""
+    level_id = _student_academic_level_id(cursor, student_id)
+    if not level_id:
+        return [], {}
+    ensure_teacher_teaching_resources_table(cursor)
+    _yid, _yname, term_id, term_name = _get_current_academic_year_and_term(cursor)
+    try:
+        class_progress = _parent_class_subject_progress_bundle(
+            cursor, student_id, term_id, term_name,
+        )
+    except Exception:
+        class_progress = {'subjects': []}
+    subjects = _student_teaching_resources_by_subject(
+        cursor,
+        student_id,
+        (class_progress or {}).get('subjects') or [],
+    )
+    resources_by_subject = {}
+    for sub in subjects:
+        subj_id = sub.get('subject_id')
+        if not subj_id:
+            continue
+        items = _teacher_resources_fetch_list(
+            cursor, level_id, subj_id, published_only=True,
+        )
+        resources_by_subject[str(subj_id)] = items
+    return subjects, resources_by_subject
+
+
 def _teacher_library_teacher_book_quota(cursor, teacher_id, level_id):
     """Map library_book_id -> total copies allocated to teacher at level."""
     ensure_library_book_teacher_distributions_table(cursor)
@@ -15829,8 +16560,210 @@ def _fetch_parent_guardian_profile(cursor, parent_email, student_id=None):
     }
 
 
+def _attendance_performance_category(pct, total):
+    if not total:
+        return 'none'
+    if pct >= 80:
+        return 'excellent'
+    if pct >= 60:
+        return 'good'
+    if pct >= 40:
+        return 'fair'
+    if pct > 0:
+        return 'poor'
+    return 'none'
+
+
+def _fetch_student_term_attendance_points(cursor, student_id, term_id, *, class_mode=True):
+    """Return normalized attendance points for one student/term (class days or subject sessions)."""
+    from datetime import date as date_type
+
+    sid = (student_id or '').strip()
+    if not sid or not term_id:
+        return []
+    ensure_student_attendance_records_table(cursor)
+    ensure_student_attendance_schema(cursor)
+    try:
+        if class_mode:
+            cursor.execute(
+                """
+                SELECT sar.attendance_date, sar.present
+                FROM student_attendance_records sar
+                WHERE sar.student_id = %s AND sar.term_id = %s
+                  AND COALESCE(sar.subject_id, 0) = 0
+                ORDER BY sar.attendance_date ASC
+                """,
+                (sid, int(term_id)),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT sar.attendance_date, sar.present, sar.subject_id,
+                       COALESCE(s.subject_name, CONCAT('Subject #', sar.subject_id)) AS subject_name
+                FROM student_attendance_records sar
+                LEFT JOIN subjects s ON s.id = sar.subject_id
+                WHERE sar.student_id = %s AND sar.term_id = %s
+                  AND COALESCE(sar.subject_id, 0) > 0
+                ORDER BY sar.attendance_date ASC, subject_name ASC
+                """,
+                (sid, int(term_id)),
+            )
+        raw_rows = cursor.fetchall() or []
+    except Exception as ex:
+        print(f"_fetch_student_term_attendance_points: {ex}")
+        return []
+
+    pts = []
+    for r in raw_rows:
+        dt = r.get('attendance_date') if isinstance(r, dict) else r[0]
+        pres = r.get('present') if isinstance(r, dict) else r[1]
+        d = _coerce_to_date(dt)
+        if not d:
+            continue
+        is_present = bool(int(pres)) if pres is not None else False
+        pt = {'date': d, 'present': is_present}
+        if not class_mode:
+            pt['subject_id'] = r.get('subject_id') if isinstance(r, dict) else (r[2] if len(r) > 2 else 0)
+            pt['subject_name'] = (
+                (r.get('subject_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')) or ''
+            ).strip()
+        pts.append(pt)
+    return pts
+
+
+def _build_attendance_summary_from_points(pts):
+    total = len(pts)
+    present = sum(1 for p in pts if p.get('present'))
+    absent = total - present
+    pct = round(100.0 * present / total, 1) if total else 0.0
+    return {
+        'total_recorded': total,
+        'present': present,
+        'absent': absent,
+        'pct': pct,
+        'category': _attendance_performance_category(pct, total),
+    }
+
+
+def _build_attendance_weekly_from_points(pts):
+    from collections import defaultdict
+
+    week_acc = defaultdict(lambda: [0, 0])
+    for pt in pts:
+        d = pt['date']
+        iso = d.isocalendar()
+        key = (iso[0], iso[1])
+        week_acc[key][1] += 1
+        if pt.get('present'):
+            week_acc[key][0] += 1
+    by_week = []
+    for (y, wnum) in sorted(week_acc.keys()):
+        pr, tot = week_acc[(y, wnum)]
+        pct_w = round(100 * pr / tot, 1) if tot else 0
+        by_week.append({
+            'label': f'Week {wnum}, {y}',
+            'present': pr,
+            'total': tot,
+            'absent': tot - pr,
+            'pct': pct_w,
+        })
+    return by_week
+
+
+def _build_attendance_daily_chart_from_points(pts, *, aggregate_by_date=False):
+    from collections import defaultdict
+
+    if aggregate_by_date:
+        day_acc = defaultdict(lambda: [0, 0])
+        for pt in pts:
+            day_acc[pt['date']][1] += 1
+            if pt.get('present'):
+                day_acc[pt['date']][0] += 1
+        daily_points = []
+        for d in sorted(day_acc.keys()):
+            pr, tot = day_acc[d]
+            daily_points.append({
+                'date_str': d.strftime('%Y-%m-%d'),
+                'label': d.strftime('%d %b'),
+                'value': round(100.0 * pr / tot, 1) if tot else 0.0,
+            })
+        return daily_points
+
+    daily_points = []
+    for pt in pts:
+        d = pt['date']
+        daily_points.append({
+            'date_str': d.strftime('%Y-%m-%d'),
+            'label': d.strftime('%d %b'),
+            'value': 100.0 if pt.get('present') else 0.0,
+        })
+    return daily_points
+
+
+def _build_attendance_recent_from_points(pts, *, limit=45, include_subject=False):
+    recent = []
+    for pt in sorted(pts, key=lambda x: x['date'], reverse=True)[:limit]:
+        d = pt['date']
+        row = {
+            'date_str': d.strftime('%Y-%m-%d'),
+            'weekday': d.strftime('%a'),
+            'display': d.strftime('%a, %d %b %Y'),
+            'present': bool(pt.get('present')),
+        }
+        if include_subject:
+            subj = (pt.get('subject_name') or '').strip()
+            row['subject_name'] = subj
+            row['display'] = d.strftime('%a, %d %b %Y') + (f' · {subj}' if subj else '')
+        recent.append(row)
+    return recent
+
+
+def _build_subject_attendance_by_subject(pts):
+    from collections import defaultdict
+
+    acc = defaultdict(lambda: {'subject_name': '', 'present': 0, 'total': 0})
+    for pt in pts:
+        sid = int(pt.get('subject_id') or 0)
+        if not sid:
+            continue
+        key = sid
+        acc[key]['subject_name'] = (pt.get('subject_name') or f'Subject #{sid}').strip()
+        acc[key]['total'] += 1
+        if pt.get('present'):
+            acc[key]['present'] += 1
+    rows = []
+    for sid in sorted(acc.keys(), key=lambda k: acc[k]['subject_name'].lower()):
+        row = acc[sid]
+        tot = row['total']
+        pr = row['present']
+        rows.append({
+            'subject_id': sid,
+            'subject_name': row['subject_name'],
+            'present': pr,
+            'absent': tot - pr,
+            'total': tot,
+            'pct': round(100.0 * pr / tot, 1) if tot else 0.0,
+        })
+    rows.sort(key=lambda r: (-r['pct'], r['subject_name'].lower()))
+    return rows
+
+
+def _build_attendance_analytics_bundle(pts, *, recent_limit=45, aggregate_daily=False, include_subject_recent=False):
+    summary = _build_attendance_summary_from_points(pts)
+    return {
+        'summary': summary,
+        'by_week': _build_attendance_weekly_from_points(pts),
+        'daily_points': _build_attendance_daily_chart_from_points(
+            pts, aggregate_by_date=aggregate_daily,
+        ),
+        'recent_days': _build_attendance_recent_from_points(
+            pts, limit=recent_limit, include_subject=include_subject_recent,
+        ),
+    }
+
+
 def _spotlight_attendance_summary_for_student(cursor, student_id, term_id=None):
-    """Compact attendance stats for parent home (current term)."""
+    """Compact class-day attendance stats for parent/student home (current term)."""
     empty = {
         'has_data': False,
         'term_label': '',
@@ -15855,72 +16788,72 @@ def _spotlight_attendance_summary_for_student(cursor, student_id, term_id=None):
     if not term_id:
         return empty
     term_label = term_name or 'Current term'
-    try:
-        cursor.execute(
-            """
-            SELECT sar.attendance_date, sar.present
-            FROM student_attendance_records sar
-            WHERE sar.student_id = %s AND sar.term_id = %s
-              AND COALESCE(sar.subject_id, 0) = 0
-            ORDER BY sar.attendance_date ASC
-            """,
-            (sid, int(term_id)),
-        )
-        raw_rows = cursor.fetchall() or []
-    except Exception as ex:
-        print(f"_spotlight_attendance_summary_for_student: {ex}")
-        return empty
-    pts = []
-    for r in raw_rows:
-        dt = r.get('attendance_date') if isinstance(r, dict) else r[0]
-        pres = r.get('present') if isinstance(r, dict) else r[1]
-        d = _coerce_to_date(dt)
-        if not d:
-            continue
-        is_present = bool(int(pres)) if pres is not None else False
-        pts.append({'date': d, 'present': is_present})
-    total = len(pts)
-    present = sum(1 for p in pts if p['present'])
-    absent = total - present
-    pct = round(100.0 * present / total, 1) if total else 0.0
-    if total == 0:
-        category = 'none'
-    elif pct >= 80:
-        category = 'excellent'
-    elif pct >= 60:
-        category = 'good'
-    elif pct >= 40:
-        category = 'fair'
-    elif pct > 0:
-        category = 'poor'
-    else:
-        category = 'none'
-    week_acc = defaultdict(lambda: [0, 0])
-    for pt in pts:
-        iso = pt['date'].isocalendar()
-        key = (iso[0], iso[1])
-        week_acc[key][1] += 1
-        if pt['present']:
-            week_acc[key][0] += 1
+    pts = _fetch_student_term_attendance_points(cursor, sid, term_id, class_mode=True)
+    if not pts:
+        return {**empty, 'term_label': term_label}
+    bundle = _build_attendance_analytics_bundle(pts, recent_limit=6)
+    summary = bundle['summary']
     recent_weeks = []
-    for (y, wnum) in sorted(week_acc.keys())[-6:]:
-        pr, tot = week_acc[(y, wnum)]
+    for w in bundle['by_week'][-6:]:
         recent_weeks.append({
-            'label': f'W{wnum}',
-            'present': pr,
-            'total': tot,
-            'pct': round(100 * pr / tot, 1) if tot else 0,
-            'height_pct': max(8, round(100 * pr / tot)) if tot else 8,
+            'label': w['label'].replace('Week ', 'W').split(',')[0],
+            'present': w['present'],
+            'total': w['total'],
+            'pct': w['pct'],
+            'height_pct': max(8, round(w['pct'])) if w['total'] else 8,
         })
     return {
-        'has_data': total > 0,
+        'has_data': summary['total_recorded'] > 0,
         'term_label': term_label,
-        'total_recorded': total,
-        'present': present,
-        'absent': absent,
-        'pct': pct,
-        'category': category,
+        'total_recorded': summary['total_recorded'],
+        'present': summary['present'],
+        'absent': summary['absent'],
+        'pct': summary['pct'],
+        'category': summary['category'],
         'recent_weeks': recent_weeks,
+    }
+
+
+def _spotlight_subject_attendance_summary_for_student(cursor, student_id, term_id=None):
+    """Compact subject-session attendance stats for parent/student home (current term)."""
+    empty = {
+        'has_data': False,
+        'term_label': '',
+        'total_recorded': 0,
+        'present': 0,
+        'absent': 0,
+        'pct': 0.0,
+        'category': 'none',
+        'subject_count': 0,
+    }
+    sid = (student_id or '').strip()
+    if not sid:
+        return empty
+    if not term_id:
+        _y, _yn, term_id, term_name = _get_current_academic_year_and_term(cursor)
+    else:
+        term_name = ''
+        cursor.execute("SELECT term_name FROM terms WHERE id = %s LIMIT 1", (int(term_id),))
+        tr = cursor.fetchone()
+        if tr:
+            term_name = (tr.get('term_name') if isinstance(tr, dict) else tr[0]) or ''
+    if not term_id:
+        return empty
+    term_label = term_name or 'Current term'
+    pts = _fetch_student_term_attendance_points(cursor, sid, term_id, class_mode=False)
+    if not pts:
+        return {**empty, 'term_label': term_label}
+    summary = _build_attendance_summary_from_points(pts)
+    subject_ids = {int(p.get('subject_id') or 0) for p in pts if int(p.get('subject_id') or 0) > 0}
+    return {
+        'has_data': summary['total_recorded'] > 0,
+        'term_label': term_label,
+        'total_recorded': summary['total_recorded'],
+        'present': summary['present'],
+        'absent': summary['absent'],
+        'pct': summary['pct'],
+        'category': summary['category'],
+        'subject_count': len(subject_ids),
     }
 
 
@@ -21227,6 +22160,14 @@ def _fetch_student_dashboard_hub_bundle(ctx):
     student_info = None
     spotlight_fee = {'has_structure': False}
     spotlight_pocket_money = {'has_account': False, 'balance': 0, 'total_topped_up': 0, 'total_spent': 0, 'transaction_count': 0}
+    class_attendance_summary = {
+        'has_data': False, 'term_label': '', 'total_recorded': 0, 'present': 0, 'absent': 0,
+        'pct': 0.0, 'category': 'none',
+    }
+    subject_attendance_summary = {
+        'has_data': False, 'term_label': '', 'total_recorded': 0, 'present': 0, 'absent': 0,
+        'pct': 0.0, 'category': 'none', 'subject_count': 0,
+    }
     parent_class_progress = {
         'grade': '',
         'term_label': '',
@@ -21240,15 +22181,19 @@ def _fetch_student_dashboard_hub_bundle(ctx):
     current_term_name = None
     current_term_id = None
     student_hub_notifications = []
+    student_teaching_resources = []
 
     if not student_id:
         return {
             'student_info': student_info,
             'spotlight_fee': spotlight_fee,
             'spotlight_pocket_money': spotlight_pocket_money,
+            'class_attendance_summary': class_attendance_summary,
+            'subject_attendance_summary': subject_attendance_summary,
             'parent_class_progress': parent_class_progress,
             'current_term_name': current_term_name,
             'student_hub_notifications': student_hub_notifications,
+            'student_teaching_resources': [],
         }
 
     connection = get_db_connection()
@@ -21297,6 +22242,30 @@ def _fetch_student_dashboard_hub_bundle(ctx):
                     print(f"student dashboard class progress: {se}")
 
                 try:
+                    student_teaching_resources = _student_teaching_resources_by_subject(
+                        cursor,
+                        student_id,
+                        (parent_class_progress or {}).get('subjects') or [],
+                    )
+                except Exception as tre:
+                    print(f"student dashboard teaching resources: {tre}")
+                    student_teaching_resources = []
+
+                try:
+                    class_attendance_summary = _spotlight_attendance_summary_for_student(
+                        cursor, student_id, current_term_id,
+                    )
+                except Exception as ae:
+                    print(f"student dashboard class attendance: {ae}")
+
+                try:
+                    subject_attendance_summary = _spotlight_subject_attendance_summary_for_student(
+                        cursor, student_id, current_term_id,
+                    )
+                except Exception as sae:
+                    print(f"student dashboard subject attendance: {sae}")
+
+                try:
                     ensure_academic_calendar_activities_table(cursor)
                     ensure_academic_calendar_activity_levels_table(cursor)
                     connection.commit()
@@ -21317,9 +22286,12 @@ def _fetch_student_dashboard_hub_bundle(ctx):
         'student_info': student_info,
         'spotlight_fee': spotlight_fee,
         'spotlight_pocket_money': spotlight_pocket_money,
+        'class_attendance_summary': class_attendance_summary,
+        'subject_attendance_summary': subject_attendance_summary,
         'parent_class_progress': parent_class_progress,
         'current_term_name': current_term_name,
         'student_hub_notifications': student_hub_notifications,
+        'student_teaching_resources': student_teaching_resources,
     }
 
 
@@ -26098,6 +27070,341 @@ def teacher_class_books_return():
     if failed:
         msg += f' {len(failed)} could not be saved.'
     return jsonify({'ok': True, 'message': msg, 'results': results, 'success_count': success_count})
+
+
+@app.route('/dashboard/employee/teaching-resources')
+@app.route('/teachers/teaching-resources')
+@login_required
+def teacher_teaching_resources():
+    """Teacher: upload learning resources for a class and subject."""
+    redir = _teacher_resources_guard()
+    if redir:
+        return redir
+    teacher_id = _teacher_library_resolve_employee_id()
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    classes = []
+    teacher_name = None
+    if teacher_id:
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    ensure_teacher_teaching_resources_table(cursor)
+                    connection.commit()
+                    cursor.execute(
+                        "SELECT UPPER(TRIM(full_name)) AS full_name FROM employees WHERE id = %s",
+                        (teacher_id,),
+                    )
+                    tn = cursor.fetchone()
+                    if tn:
+                        teacher_name = tn.get('full_name') if isinstance(tn, dict) else tn[0]
+                    classes = _teacher_resources_classes_overview(cursor, teacher_id)
+            except Exception as e:
+                print(f"teacher_teaching_resources: {e}")
+                flash('Could not load your classes.', 'error')
+            finally:
+                connection.close()
+    return render_template(
+        'dashboards/teacher_teaching_resources.html',
+        role=user_role,
+        is_technician=is_technician,
+        teacher_name=teacher_name,
+        classes=classes,
+    )
+
+
+@app.route('/dashboard/employee/teaching-resources/subjects', methods=['GET'])
+@app.route('/teachers/teaching-resources/subjects', methods=['GET'])
+@login_required
+def teacher_teaching_resources_subjects_api():
+    """JSON: subjects the teacher teaches at a class."""
+    redir = _teacher_resources_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    teacher_id = _teacher_library_resolve_employee_id()
+    if not teacher_id:
+        return jsonify({'ok': False, 'message': 'Teacher profile not found.'}), 400
+    try:
+        level_id = int(request.args.get('academic_level_id') or 0)
+    except (TypeError, ValueError):
+        level_id = 0
+    if not level_id:
+        return jsonify({'ok': False, 'message': 'Class is required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            if not _teacher_library_teacher_assigned_level(cursor, teacher_id, level_id):
+                return jsonify({'ok': False, 'message': 'You are not assigned to this class.'}), 403
+            subjects = _teacher_resources_subjects_for_level(
+                cursor, teacher_id, level_id, with_counts=True,
+            )
+        return jsonify({'ok': True, 'subjects': subjects})
+    except Exception as e:
+        print(f"teacher_teaching_resources_subjects_api: {e}")
+        return jsonify({'ok': False, 'message': 'Could not load subjects.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/teaching-resources/list', methods=['GET'])
+@app.route('/teachers/teaching-resources/list', methods=['GET'])
+@login_required
+def teacher_teaching_resources_list_api():
+    """JSON: resources for a class and subject."""
+    redir = _teacher_resources_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    teacher_id = _teacher_library_resolve_employee_id()
+    if not teacher_id:
+        return jsonify({'ok': False, 'message': 'Teacher profile not found.'}), 400
+    try:
+        level_id = int(request.args.get('academic_level_id') or 0)
+        subject_id = int(request.args.get('subject_id') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Invalid class or subject.'}), 400
+    if not level_id or not subject_id:
+        return jsonify({'ok': False, 'message': 'Class and subject are required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            if not _teacher_resources_teacher_can_access_subject(cursor, teacher_id, level_id, subject_id):
+                return jsonify({'ok': False, 'message': 'You are not assigned to this class and subject.'}), 403
+            resources = _teacher_resources_fetch_list(cursor, level_id, subject_id, teacher_id=teacher_id)
+        return jsonify({'ok': True, 'resources': resources})
+    except Exception as e:
+        print(f"teacher_teaching_resources_list_api: {e}")
+        return jsonify({'ok': False, 'message': 'Could not load resources.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/teaching-resources/upload', methods=['POST'])
+@app.route('/teachers/teaching-resources/upload', methods=['POST'])
+@login_required
+def teacher_teaching_resources_upload():
+    """Upload a teaching resource for a class and subject."""
+    redir = _teacher_resources_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    teacher_id = _teacher_library_resolve_employee_id()
+    if not teacher_id:
+        return jsonify({'ok': False, 'message': 'Teacher profile not found.'}), 400
+    try:
+        level_id = int(request.form.get('academic_level_id') or 0)
+        subject_id = int(request.form.get('subject_id') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Invalid class or subject.'}), 400
+    title = (request.form.get('title') or '').strip()
+    description = (request.form.get('description') or '').strip()
+    upload = request.files.get('file')
+    if not level_id or not subject_id:
+        return jsonify({'ok': False, 'message': 'Class and subject are required.'}), 400
+    if not title:
+        return jsonify({'ok': False, 'message': 'Title is required.'}), 400
+    if not upload or not getattr(upload, 'filename', None):
+        return jsonify({'ok': False, 'message': 'Choose a file to upload.'}), 400
+    path, original_name, mime_or_err = _save_teaching_resource_file(upload)
+    if not path:
+        return jsonify({'ok': False, 'message': mime_or_err or 'Could not save file.'}), 400
+    file_size = 0
+    try:
+        file_size = os.path.getsize(path)
+    except OSError:
+        pass
+    connection = get_db_connection()
+    if not connection:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_teacher_teaching_resources_table(cursor)
+            if not _teacher_resources_teacher_can_access_subject(cursor, teacher_id, level_id, subject_id):
+                connection.rollback()
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+                return jsonify({'ok': False, 'message': 'You are not assigned to this class and subject.'}), 403
+            cursor.execute(
+                """
+                INSERT INTO teacher_teaching_resources (
+                    teacher_id, academic_level_id, subject_id,
+                    title, description, file_path, original_filename,
+                    mime_type, file_size, is_published
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+                """,
+                (
+                    teacher_id, level_id, subject_id,
+                    title, description or None, path, original_name,
+                    mime_or_err, file_size,
+                ),
+            )
+            resource_id = cursor.lastrowid
+            connection.commit()
+            resources = _teacher_resources_fetch_list(cursor, level_id, subject_id, teacher_id=teacher_id)
+            new_item = next((r for r in resources if r.get('id') == resource_id), None)
+        return jsonify({
+            'ok': True,
+            'message': 'Resource uploaded.',
+            'resource': new_item,
+            'resources': resources,
+        })
+    except Exception as e:
+        connection.rollback()
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        print(f"teacher_teaching_resources_upload: {e}")
+        return jsonify({'ok': False, 'message': 'Could not save resource.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/teaching-resources/delete', methods=['POST'])
+@app.route('/teachers/teaching-resources/delete', methods=['POST'])
+@login_required
+def teacher_teaching_resources_delete():
+    """Delete a teaching resource uploaded by the current teacher."""
+    redir = _teacher_resources_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    teacher_id = _teacher_library_resolve_employee_id()
+    if not teacher_id:
+        return jsonify({'ok': False, 'message': 'Teacher profile not found.'}), 400
+    data = request.get_json(silent=True) or {}
+    try:
+        resource_id = int(data.get('id') or request.form.get('id') or 0)
+    except (TypeError, ValueError):
+        resource_id = 0
+    if not resource_id:
+        return jsonify({'ok': False, 'message': 'Resource id is required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_teacher_teaching_resources_table(cursor)
+            cursor.execute(
+                """
+                SELECT id, teacher_id, file_path, academic_level_id, subject_id
+                FROM teacher_teaching_resources
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (resource_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return jsonify({'ok': False, 'message': 'Resource not found.'}), 404
+            if isinstance(row, dict):
+                owner_id = int(row.get('teacher_id') or 0)
+                file_path = (row.get('file_path') or '').strip()
+                level_id = int(row.get('academic_level_id') or 0)
+                subject_id = int(row.get('subject_id') or 0)
+            else:
+                owner_id = int(row[1] or 0)
+                file_path = (row[2] or '').strip()
+                level_id = int(row[3] or 0)
+                subject_id = int(row[4] or 0)
+            if owner_id != int(teacher_id):
+                return jsonify({'ok': False, 'message': 'You can only delete your own uploads.'}), 403
+            cursor.execute("DELETE FROM teacher_teaching_resources WHERE id = %s", (resource_id,))
+            connection.commit()
+            if file_path and os.path.isfile(file_path):
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    pass
+            resources = _teacher_resources_fetch_list(cursor, level_id, subject_id, teacher_id=teacher_id)
+        return jsonify({'ok': True, 'message': 'Resource deleted.', 'resources': resources})
+    except Exception as e:
+        connection.rollback()
+        print(f"teacher_teaching_resources_delete: {e}")
+        return jsonify({'ok': False, 'message': 'Could not delete resource.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/student/teaching-resources')
+@app.route('/student/teaching-resources')
+@login_required
+def student_portal_teaching_resources():
+    """Student portal — learning resources shared by teachers for their class."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_portal_access(student_id):
+        flash('You cannot view teaching resources for this student.', 'error')
+        return redirect(student_dashboard_path())
+
+    student = None
+    subject_list = []
+    resources_map = {}
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT student_id, full_name, current_grade
+                    FROM students
+                    WHERE LOWER(TRIM(student_id)) = LOWER(TRIM(%s))
+                      AND status = 'in session'
+                    LIMIT 1
+                    """,
+                    (student_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    if isinstance(row, dict):
+                        student = {
+                            'student_id': (row.get('student_id') or '').strip(),
+                            'full_name': (row.get('full_name') or '').strip(),
+                            'current_grade': (row.get('current_grade') or '').strip(),
+                        }
+                    else:
+                        student = {
+                            'student_id': (row[0] or '').strip(),
+                            'full_name': (row[1] or '').strip(),
+                            'current_grade': (row[2] or '').strip(),
+                        }
+                if student:
+                    subject_list, resources_map = _student_teaching_resources_bundle(cursor, student_id)
+        except Exception as e:
+            print(f"student_portal_teaching_resources: {e}")
+            flash('Error loading teaching resources.', 'error')
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not student:
+        flash('Student not found.', 'error')
+        return redirect(student_dashboard_path())
+
+    return render_template(
+        'dashboards/student_teaching_resources.html',
+        student=student,
+        subject_list=subject_list,
+        resources_map=resources_map,
+        parent_student_id=student.get('student_id') or student_id,
+        **_student_portal_template_kwargs(ctx),
+    )
 
 
 # Finance Overview / Accounts Reports
@@ -32868,47 +34175,76 @@ def _finance_account_breakdown_row(r):
     """Normalize a finance_accounts fetch row for dashboard breakdown."""
     if isinstance(r, dict):
         bal = float(r.get('current_balance') or 0)
+        revenue = float(r.get('total_revenue') or 0)
+        used = float(r.get('amount_used') or 0)
         return {
             'id': r.get('id'),
             'account_category': (r.get('account_category') or '').strip() or 'Other',
             'account_name': (r.get('account_name') or '').strip(),
             'account_status': (r.get('account_status') or 'active').strip().lower(),
+            'total_revenue': revenue,
+            'total_revenue_display': _format_kes_amount(revenue),
+            'amount_used': used,
+            'amount_used_display': _format_kes_amount(used),
             'balance': bal,
             'balance_display': _format_kes_amount(bal),
         }
     bal = float(r[4] or 0) if len(r) > 4 else 0.0
+    revenue = float(r[5] or 0) if len(r) > 5 else 0.0
+    used = float(r[6] or 0) if len(r) > 6 else 0.0
     return {
         'id': r[0],
         'account_category': (r[1] or '').strip() or 'Other',
         'account_name': (r[2] or '').strip(),
         'account_status': (r[3] or 'active').strip().lower(),
+        'total_revenue': revenue,
+        'total_revenue_display': _format_kes_amount(revenue),
+        'amount_used': used,
+        'amount_used_display': _format_kes_amount(used),
         'balance': bal,
         'balance_display': _format_kes_amount(bal),
     }
 
 
+def _finance_account_breakdown_select_sql():
+    """Ledger accounts with revenue (credits), amount used (debits), and balance."""
+    return """
+        SELECT fa.id, fa.account_category, fa.account_name, fa.account_status,
+               COALESCE(fa.current_balance, 0) AS current_balance,
+               COALESCE(agg.total_revenue, 0) AS total_revenue,
+               COALESCE(agg.amount_used, 0) AS amount_used
+        FROM finance_accounts fa
+        LEFT JOIN (
+            SELECT finance_account_id,
+                   ROUND(SUM(CASE WHEN direction = 'credit' THEN amount ELSE 0 END), 2) AS total_revenue,
+                   ROUND(SUM(CASE WHEN direction = 'debit' THEN amount ELSE 0 END), 2) AS amount_used
+            FROM finance_account_transactions
+            GROUP BY finance_account_id
+        ) agg ON agg.finance_account_id = fa.id
+        ORDER BY fa.account_category ASC, fa.account_name ASC, fa.id ASC
+    """
+
+
 def _fetch_accountant_accounts_breakdown_light(cursor):
     """Finance accounts with stored balances — no mass ledger refresh (reports hot path)."""
     ensure_finance_accounts_table(cursor)
+    ensure_finance_account_transactions_table(cursor)
     all_accounts = []
     total_accounts = 0
     active_accounts = 0
     total_balance = 0.0
+    total_revenue = 0.0
+    total_amount_used = 0.0
     try:
-        cursor.execute(
-            """
-            SELECT id, account_category, account_name, account_status,
-                   COALESCE(current_balance, 0) AS current_balance
-            FROM finance_accounts
-            ORDER BY account_category ASC, account_name ASC, id ASC
-            """
-        )
+        cursor.execute(_finance_account_breakdown_select_sql())
         for r in cursor.fetchall() or []:
             row = _finance_account_breakdown_row(r)
             all_accounts.append(row)
             if row['account_status'] == 'active':
                 active_accounts += 1
             total_balance += row['balance']
+            total_revenue += row['total_revenue']
+            total_amount_used += row['amount_used']
         total_accounts = len(all_accounts)
     except Exception as e:
         print(f"_fetch_accountant_accounts_breakdown_light: {e}")
@@ -32917,6 +34253,10 @@ def _fetch_accountant_accounts_breakdown_light(cursor):
         'active_accounts': active_accounts,
         'total_balance': total_balance,
         'total_balance_display': _format_kes_amount(total_balance),
+        'total_revenue': total_revenue,
+        'total_revenue_display': _format_kes_amount(total_revenue),
+        'total_amount_used': total_amount_used,
+        'total_amount_used_display': _format_kes_amount(total_amount_used),
         'all_accounts': all_accounts,
         'top_accounts': all_accounts[:10],
     }
@@ -32936,22 +34276,19 @@ def _fetch_accountant_accounts_breakdown(cursor):
     total_accounts = 0
     active_accounts = 0
     total_balance = 0.0
+    total_revenue = 0.0
+    total_amount_used = 0.0
 
     try:
-        cursor.execute(
-            """
-            SELECT id, account_category, account_name, account_status,
-                   COALESCE(current_balance, 0) AS current_balance
-            FROM finance_accounts
-            ORDER BY account_category ASC, account_name ASC, id ASC
-            """
-        )
+        cursor.execute(_finance_account_breakdown_select_sql())
         for r in cursor.fetchall() or []:
             row = _finance_account_breakdown_row(r)
             all_accounts.append(row)
             if row['account_status'] == 'active':
                 active_accounts += 1
             total_balance += row['balance']
+            total_revenue += row['total_revenue']
+            total_amount_used += row['amount_used']
         total_accounts = len(all_accounts)
 
         cat_map = {}
@@ -32962,16 +34299,22 @@ def _fetch_accountant_accounts_breakdown(cursor):
                 'count': 0,
                 'active_count': 0,
                 'balance': 0.0,
+                'total_revenue': 0.0,
+                'amount_used': 0.0,
             })
             bucket['count'] += 1
             if row['account_status'] == 'active':
                 bucket['active_count'] += 1
             bucket['balance'] += row['balance']
+            bucket['total_revenue'] += row['total_revenue']
+            bucket['amount_used'] += row['amount_used']
         by_category = sorted(
             [
                 {
                     **v,
                     'balance_display': _format_kes_amount(v['balance']),
+                    'total_revenue_display': _format_kes_amount(v['total_revenue']),
+                    'amount_used_display': _format_kes_amount(v['amount_used']),
                 }
                 for v in cat_map.values()
             ],
@@ -32987,6 +34330,10 @@ def _fetch_accountant_accounts_breakdown(cursor):
         'active_accounts': active_accounts,
         'total_balance': total_balance,
         'total_balance_display': _format_kes_amount(total_balance),
+        'total_revenue': total_revenue,
+        'total_revenue_display': _format_kes_amount(total_revenue),
+        'total_amount_used': total_amount_used,
+        'total_amount_used_display': _format_kes_amount(total_amount_used),
         'by_category': by_category,
         'all_accounts': all_accounts,
         'top_accounts': all_accounts[:10],
@@ -33030,6 +34377,10 @@ def _accountant_dashboard_analytics_empty():
         'active_accounts': 0,
         'total_balance': 0.0,
         'total_balance_display': '0.00',
+        'total_revenue': 0.0,
+        'total_revenue_display': '0.00',
+        'total_amount_used': 0.0,
+        'total_amount_used_display': '0.00',
         'by_category': [],
         'all_accounts': [],
         'top_accounts': [],
@@ -36712,6 +38063,30 @@ def _attendance_register_refresh_html(students_by_level, is_teacher, teacher_id,
     }
 
 
+def _snap_date_to_study_day(d, allowed_weekdays, lo=None, hi=None):
+    """Move a calendar date onto the nearest configured study day within term bounds."""
+    if not d:
+        return d
+    weekdays = set(allowed_weekdays or [])
+    if not weekdays:
+        weekdays = {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}
+    if d.strftime('%A') in weekdays:
+        return d
+    for delta in range(1, 8):
+        candidate = d - timedelta(days=delta)
+        if lo and candidate < lo:
+            break
+        if candidate.strftime('%A') in weekdays:
+            return candidate
+    for delta in range(1, 8):
+        candidate = d + timedelta(days=delta)
+        if hi and candidate > hi:
+            break
+        if candidate.strftime('%A') in weekdays:
+            return candidate
+    return d
+
+
 def _parse_attendance_checkbox_key(key):
     """Parse att_{student_id}_{date}[_subject_id][_{morning|afternoon|evening}]."""
     if not key or not key.startswith('att_'):
@@ -36780,6 +38155,83 @@ def _build_teacher_level_attendance_columns(cursor, teacher_id, term_id, level_i
     return columns
 
 
+def _fetch_level_timetable_session_times(cursor, term_id, level_id, weekday_name):
+    """Map subject_id -> comma-separated time_slot for one class level/day."""
+    out = {}
+    if not term_id or not level_id or not weekday_name:
+        return out
+    try:
+        cursor.execute(
+            """
+            SELECT t.subject_id,
+                   GROUP_CONCAT(DISTINCT t.time_slot ORDER BY t.time_slot SEPARATOR ', ') AS session_times
+            FROM timetables t
+            WHERE t.term_id = %s AND t.academic_level_id = %s
+              AND t.day_of_week = %s AND t.subject_id IS NOT NULL
+            GROUP BY t.subject_id
+            """,
+            (int(term_id), int(level_id), str(weekday_name)),
+        )
+        for row in cursor.fetchall() or []:
+            sid = row.get('subject_id') if isinstance(row, dict) else row[0]
+            times = row.get('session_times') if isinstance(row, dict) else (row[1] if len(row) > 1 else '')
+            if sid:
+                out[int(sid)] = (times or '').strip()
+    except Exception as ex:
+        print(f"_fetch_level_timetable_session_times: {ex}")
+    return out
+
+
+def _build_class_level_subject_attendance_columns(cursor, term_id, level_id, selected_week_days):
+    """One column per subject scheduled on each visible day (full class timetable)."""
+    columns = []
+    if not term_id or not level_id or not selected_week_days:
+        return columns
+    try:
+        for day in selected_week_days:
+            dt = day.get('date')
+            if not dt:
+                try:
+                    dt = datetime.strptime(day.get('date_str', ''), '%Y-%m-%d').date()
+                except Exception:
+                    continue
+            weekday = dt.strftime('%A')
+            time_by_subject = _fetch_level_timetable_session_times(
+                cursor, term_id, int(level_id), weekday,
+            )
+            cursor.execute("""
+                SELECT DISTINCT t.subject_id, s.subject_name, s.subject_code
+                FROM timetables t
+                INNER JOIN subjects s ON s.id = t.subject_id
+                WHERE t.term_id = %s AND t.academic_level_id = %s
+                  AND t.day_of_week = %s AND t.subject_id IS NOT NULL
+                ORDER BY s.subject_name ASC
+            """, (int(term_id), int(level_id), weekday))
+            for row in cursor.fetchall() or []:
+                sid = row.get('subject_id') if isinstance(row, dict) else row[0]
+                if sid is None:
+                    continue
+                sname = (row.get('subject_name', '') if isinstance(row, dict) else (row[1] if len(row) > 1 else '')) or ''
+                scode = (row.get('subject_code', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else '')) or ''
+                short = scode or sname
+                sid_int = int(sid)
+                session_time = time_by_subject.get(sid_int, '')
+                columns.append({
+                    'date_str': day.get('date_str', ''),
+                    'label': day.get('label', ''),
+                    'session_date_display': _attendance_session_date_display(dt),
+                    'subject_id': sid_int,
+                    'subject_name': sname,
+                    'subject_code': scode,
+                    'learning_area': _attendance_learning_area_label(sname, scode),
+                    'session_time': session_time,
+                    'header_label': f"{day.get('label', '')} · {short}",
+                })
+    except Exception as e:
+        print(f"_build_class_level_subject_attendance_columns: {e}")
+    return columns
+
+
 def _credit_subject_progress_from_attendance(cursor, level_id, subject_id, term_id, session_date, employee_id):
     """Mark one class session complete on the next open topic when attendance is saved for that subject/day."""
     if not level_id or not subject_id or not term_id or not session_date:
@@ -36845,11 +38297,15 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
     register_aggregate_analytics = _register_aggregate_analytics_empty()
     if attendance_mode == 'subject':
         use_subject_attendance_columns = bool(is_teacher and teacher_id)
+    elif attendance_mode == 'parent_subject':
+        use_subject_attendance_columns = True
     elif attendance_mode == 'class':
+        use_subject_attendance_columns = False
+    elif attendance_mode == 'parent_class':
         use_subject_attendance_columns = False
     else:
         use_subject_attendance_columns = False
-    use_class_session_slots = attendance_mode == 'class'
+    use_class_session_slots = attendance_mode in ('class', 'parent_class')
     class_day_attendance_only = not use_subject_attendance_columns
     attendance_columns_by_level = {}
     class_session_columns = []
@@ -36976,6 +38432,11 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
                                         d = lo
                                     elif d > hi:
                                         d = hi
+                                    if filter_type == 'day':
+                                        snapped = _snap_date_to_study_day(d, allowed_weekdays, lo, hi)
+                                        if snapped:
+                                            d = snapped
+                                            selected_day = d.strftime('%Y-%m-%d')
                                     range_start = d
                                     range_end = d
                                 except Exception:
@@ -37167,7 +38628,7 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
                         cursor, term_id, selected_week_days, students_by_level
                     )
 
-                if use_subject_attendance_columns and teacher_id and term_id:
+                if use_subject_attendance_columns and teacher_id and term_id and attendance_mode == 'subject':
                     for _lg in students_by_level:
                         lname = str(_lg.get('level_name') or '').strip()
                         lid = _lg.get('id') or level_id_by_name.get(lname)
@@ -37180,6 +38641,16 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
                         attendance_columns_by_level[int(lid)] = cols
                         attendance_lesson_plans_by_level[int(lid)] = _fetch_attendance_lesson_plans_for_columns(
                             cursor, term_id, int(lid), cols, teacher_id=teacher_id,
+                        )
+                elif use_subject_attendance_columns and term_id and attendance_mode == 'parent_subject':
+                    for _lg in students_by_level:
+                        lname = str(_lg.get('level_name') or '').strip()
+                        lid = _lg.get('id') or level_id_by_name.get(lname)
+                        if lid is None:
+                            continue
+                        _lg['id'] = int(lid)
+                        attendance_columns_by_level[int(lid)] = _build_class_level_subject_attendance_columns(
+                            cursor, term_id, int(lid), selected_week_days,
                         )
                 elif use_class_session_slots and selected_week_days and not class_session_columns:
                     class_session_columns = _build_class_session_attendance_columns(selected_week_days)
@@ -37275,6 +38746,16 @@ def _fetch_parent_attendance_analytics(student_id, req_args):
     by_week = []
     daily_points = []
     recent_days = []
+    subject_summary = {
+        'total_recorded': 0, 'present': 0, 'absent': 0, 'pct': 0.0, 'category': 'none',
+    }
+    subject_by_week = []
+    subject_daily_points = []
+    subject_recent_days = []
+    subject_by_subject = []
+    attendance_view = (req_args.get('view') or 'class').strip().lower()
+    if attendance_view not in ('class', 'subject'):
+        attendance_view = 'class'
 
     connection = get_db_connection()
     if connection:
@@ -37428,87 +38909,28 @@ def _fetch_parent_attendance_analytics(student_id, req_args):
                         yn = tl.get('year_name') if isinstance(tl, dict) else (tl[1] if len(tl) > 1 else '')
                         term_label = f"{tn}" + (f" ({yn})" if yn else '')
 
-                    cursor.execute("""
-                        SELECT sar.attendance_date, sar.present
-                        FROM student_attendance_records sar
-                        WHERE sar.student_id = %s AND sar.term_id = %s
-                          AND COALESCE(sar.subject_id, 0) = 0
-                        ORDER BY sar.attendance_date ASC
-                    """, (student_id, term_id))
-                    raw_rows = cursor.fetchall() or []
+                    class_pts = _fetch_student_term_attendance_points(
+                        cursor, student_id, term_id, class_mode=True,
+                    )
+                    class_bundle = _build_attendance_analytics_bundle(class_pts)
+                    summary = class_bundle['summary']
+                    by_week = class_bundle['by_week']
+                    daily_points = class_bundle['daily_points']
+                    recent_days = class_bundle['recent_days']
 
-                    pts = []
-                    for r in raw_rows:
-                        dt = r.get('attendance_date') if isinstance(r, dict) else r[0]
-                        pres = r.get('present') if isinstance(r, dict) else r[1]
-                        if dt is None:
-                            continue
-                        if isinstance(dt, datetime):
-                            d = dt.date()
-                        elif isinstance(dt, date_type):
-                            d = dt
-                        else:
-                            try:
-                                d = datetime.strptime(str(dt)[:10], '%Y-%m-%d').date()
-                            except Exception:
-                                continue
-                        is_present = bool(int(pres)) if pres is not None else False
-                        pts.append({'date': d, 'present': is_present})
-
-                    summary['total_recorded'] = len(pts)
-                    summary['present'] = sum(1 for p in pts if p['present'])
-                    summary['absent'] = summary['total_recorded'] - summary['present']
-                    if summary['total_recorded']:
-                        summary['pct'] = round(100.0 * summary['present'] / summary['total_recorded'], 1)
-                    p = summary['pct']
-                    if summary['total_recorded'] == 0:
-                        summary['category'] = 'none'
-                    elif p >= 80:
-                        summary['category'] = 'excellent'
-                    elif p >= 60:
-                        summary['category'] = 'good'
-                    elif p >= 40:
-                        summary['category'] = 'fair'
-                    elif p > 0:
-                        summary['category'] = 'poor'
-                    else:
-                        summary['category'] = 'none'
-
-                    week_acc = defaultdict(lambda: [0, 0])
-                    for pt in pts:
-                        d = pt['date']
-                        iso = d.isocalendar()
-                        key = (iso[0], iso[1])
-                        week_acc[key][1] += 1
-                        if pt['present']:
-                            week_acc[key][0] += 1
-                    for (y, wnum) in sorted(week_acc.keys()):
-                        pr, tot = week_acc[(y, wnum)]
-                        pct_w = round(100 * pr / tot, 1) if tot else 0
-                        by_week.append({
-                            'label': f'Week {wnum}, {y}',
-                            'present': pr,
-                            'total': tot,
-                            'absent': tot - pr,
-                            'pct': pct_w,
-                        })
-
-                    for pt in pts:
-                        d = pt['date']
-                        daily_points.append({
-                            'date_str': d.strftime('%Y-%m-%d'),
-                            'label': d.strftime('%d %b'),
-                            'value': 100.0 if pt['present'] else 0.0,
-                        })
-
-                    for pt in sorted(pts, key=lambda x: x['date'], reverse=True)[:45]:
-                        d = pt['date']
-                        recent_days.append({
-                            'date_str': d.strftime('%Y-%m-%d'),
-                            'weekday': d.strftime('%a'),
-                            'display': d.strftime('%a, %d %b %Y'),
-                            'present': pt['present'],
-                        })
+                    subject_pts = _fetch_student_term_attendance_points(
+                        cursor, student_id, term_id, class_mode=False,
+                    )
+                    subject_bundle = _build_attendance_analytics_bundle(
+                        subject_pts,
+                        aggregate_daily=True,
+                        include_subject_recent=True,
+                    )
+                    subject_summary = subject_bundle['summary']
+                    subject_by_week = subject_bundle['by_week']
+                    subject_daily_points = subject_bundle['daily_points']
+                    subject_recent_days = subject_bundle['recent_days']
+                    subject_by_subject = _build_subject_attendance_by_subject(subject_pts)
         except Exception as e:
             print(f"Error in _fetch_parent_attendance_analytics: {e}")
         finally:
@@ -37529,6 +38951,12 @@ def _fetch_parent_attendance_analytics(student_id, req_args):
         'by_week': by_week,
         'daily_points': daily_points,
         'recent_days': recent_days,
+        'subject_summary': subject_summary,
+        'subject_by_week': subject_by_week,
+        'subject_daily_points': subject_daily_points,
+        'subject_recent_days': subject_recent_days,
+        'subject_by_subject': subject_by_subject,
+        'attendance_view': attendance_view,
     }
 
 
@@ -37559,9 +38987,7 @@ def lesson_plans_attendance_report():
     period_start = (request.args.get('period_start') or '').strip()
     period_end = (request.args.get('period_end') or '').strip()
     print_mode = (request.args.get('print') or '').strip() == '1'
-    report_type = (request.args.get('report_type') or 'lesson_plan').strip().lower()
-    if report_type not in ('lesson_plan', 'attendance'):
-        report_type = 'lesson_plan'
+    report_type = 'combined'
 
     class_level_options = _get_attendance_class_level_options(True, teacher_id)
     level_id = None
@@ -37648,17 +39074,13 @@ def lesson_plans_attendance_report():
         finally:
             connection.close()
 
-    if report_type == 'lesson_plan':
-        report_rows = [r for r in report_rows if r.get('has_lesson_plan')]
-    else:
-        report_rows = [r for r in report_rows if r.get('has_attendance')]
+    report_rows = [r for r in report_rows if r.get('has_lesson_plan') or r.get('has_attendance')]
     report_rows = _enrich_teacher_report_rows_for_ui(report_rows)
     report_summary = dict(report_summary or {})
     report_summary['sessions'] = len(report_rows)
 
     report_type_labels = {
-        'lesson_plan': 'Lesson plan report',
-        'attendance': 'Attendance report',
+        'combined': 'Lesson plans & attendance',
     }
 
     template_ctx = dict(
@@ -38378,6 +39800,14 @@ def _compute_progress_aggregates(progress_data):
         'by_exam': by_exam,
         'summary': summary,
     }
+
+
+def _load_student_portal_grade_bands(cursor, student_id):
+    """Default/class grade bands for transcript grade codes."""
+    stu = _student_resolve_level_for_timetables(cursor, student_id)
+    level_id = (stu or {}).get('academic_level_id')
+    default_bands, _, class_bands = load_grade_bands_from_db(cursor)
+    return grade_bands_for_level(level_id, class_bands, default_bands)
 
 
 def _parent_children_exam_summaries(student_ids):
@@ -39568,6 +40998,198 @@ def student_exam_progress_data():
         return jsonify({'success': False, 'message': 'Error loading exam data'}), 500
 
 
+def _render_student_exam_transcript(student_id, ctx):
+    """Student portal — official gazetted exam transcript."""
+    try:
+        payload = _fetch_student_progress_payload(
+            student_id, None, use_implicit_school_defaults=False, gazetted_only=True,
+        )
+    except Exception:
+        flash('Error loading your exam transcript.', 'error')
+        return redirect(student_dashboard_path())
+
+    student = payload.get('student')
+    if not student:
+        flash('Student not found.', 'error')
+        return redirect(student_dashboard_path())
+
+    grade_bands = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                grade_bands = _load_student_portal_grade_bands(cursor, student_id)
+        except Exception as e:
+            print(f"_render_student_exam_transcript grade bands: {e}")
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    transcript_bundle = build_student_exam_transcripts(
+        payload.get('progress_data') or [],
+        grade_bands,
+        grade_from_pct=grade_code_and_points_from_pct,
+    )
+    all_transcripts = transcript_bundle.get('transcripts') or []
+    exam_options = [{'sitting_id': t['sitting_id'], 'label': t['label']} for t in all_transcripts]
+
+    selected_sitting_id = (request.args.get('sitting') or '').strip()
+    selected_transcript = None
+    if selected_sitting_id:
+        for t in all_transcripts:
+            if t.get('sitting_id') == selected_sitting_id:
+                selected_transcript = t
+                break
+        if not selected_transcript:
+            selected_sitting_id = ''
+
+    return render_template(
+        'dashboards/student_exam_transcript.html',
+        student=student,
+        transcript_bundle=transcript_bundle,
+        exam_options=exam_options,
+        selected_sitting_id=selected_sitting_id,
+        selected_transcript=selected_transcript,
+        has_transcripts=bool(all_transcripts),
+        grade_bands_available=bool(grade_bands),
+        generated_at=datetime.now(),
+        **_student_portal_template_kwargs(ctx),
+    )
+
+
+@app.route('/dashboard/student/exam-transcript')
+@app.route('/student/exam-transcript')
+@login_required
+def student_exam_transcript():
+    """Student portal — official gazetted exam transcript."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_exam_progress_access(student_id):
+        flash('You cannot view exam transcripts for this student.', 'error')
+        return redirect(student_dashboard_path())
+    return _render_student_exam_transcript(student_id, ctx)
+
+
+def _render_student_exam_apply(student_id, ctx):
+    """Student portal — apply for scheduled examinations."""
+    stu = None
+    open_sittings = []
+    applications = []
+    student_meta = {}
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                stu = _student_resolve_level_for_timetables(cursor, student_id)
+                if stu:
+                    cursor.execute(
+                        """
+                        SELECT LOWER(TRIM(COALESCE(student_category, ''))) AS student_category
+                        FROM students WHERE student_id = %s LIMIT 1
+                        """,
+                        (student_id,),
+                    )
+                    cat_row = cursor.fetchone()
+                    student_category = ''
+                    if cat_row:
+                        student_category = (
+                            cat_row.get('student_category') if isinstance(cat_row, dict) else cat_row[0]
+                        ) or ''
+                    student_meta = {
+                        'academic_level_id': stu.get('academic_level_id'),
+                        'student_category': student_category,
+                    }
+                if stu and stu.get('academic_level_id'):
+                    open_sittings = fetch_open_exam_sittings(cursor, stu['academic_level_id'])
+                    open_sittings, _, _ = build_eligibility_for_sittings(
+                        cursor, student_id, student_meta, open_sittings,
+                    )
+                applications = fetch_student_exam_applications(cursor, student_id)
+        except Exception as e:
+            print(f"_render_student_exam_apply: {e}")
+            flash('Error loading exam applications.', 'error')
+            return redirect(student_dashboard_path())
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not stu:
+        flash('Student not found or not in session.', 'error')
+        return redirect(student_dashboard_path())
+
+    if request.method == 'POST':
+        sitting_key = (request.form.get('sitting_key') or '').strip()
+        connection = get_db_connection()
+        if not connection:
+            flash('Could not submit application. Try again later.', 'error')
+        else:
+            try:
+                with connection.cursor() as cursor:
+                    if stu.get('academic_level_id'):
+                        open_sittings = fetch_open_exam_sittings(cursor, stu['academic_level_id'])
+                        open_sittings, _, _ = build_eligibility_for_sittings(
+                            cursor, student_id, student_meta, open_sittings,
+                        )
+                    ok, msg = submit_student_exam_application(
+                        cursor, student_id, sitting_key, open_sittings, '', student_meta,
+                    )
+                    if ok:
+                        connection.commit()
+                        flash(msg, 'success')
+                    else:
+                        flash(msg, 'error')
+            except Exception as e:
+                print(f"student_exam_apply submit: {e}")
+                flash('Could not submit your application.', 'error')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+        return redirect(student_dashboard_path('exam-apply'))
+
+    exam_sittings = merge_sittings_with_applications(open_sittings, applications)
+    exam_sittings_json = serialize_sittings_for_student_apply(exam_sittings)
+    return render_template(
+        'dashboards/student_exam_apply.html',
+        student=stu,
+        exam_sittings=exam_sittings,
+        exam_sittings_json=exam_sittings_json,
+        applications=applications,
+        has_open_exams=bool(exam_sittings_json),
+        **_student_portal_template_kwargs(ctx),
+    )
+
+
+@app.route('/dashboard/student/exam-apply', methods=['GET', 'POST'])
+@app.route('/student/exam-apply', methods=['GET', 'POST'])
+@login_required
+def student_exam_apply():
+    """Student portal — apply for scheduled examinations."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_exam_progress_access(student_id):
+        flash('You cannot apply for exams on this account.', 'error')
+        return redirect(student_dashboard_path())
+    return _render_student_exam_apply(student_id, ctx)
+
+
 @app.route('/dashboard/student/class-timetable')
 @app.route('/student/class-timetable')
 @login_required
@@ -39671,6 +41293,12 @@ def student_portal_attendance():
         by_week=analytics['by_week'],
         daily_points=analytics['daily_points'],
         recent_days=analytics['recent_days'],
+        subject_summary=analytics['subject_summary'],
+        subject_by_week=analytics['subject_by_week'],
+        subject_daily_points=analytics['subject_daily_points'],
+        subject_recent_days=analytics['subject_recent_days'],
+        subject_by_subject=analytics['subject_by_subject'],
+        attendance_view=analytics['attendance_view'],
         parent_student_id=student_id,
         **_student_portal_template_kwargs(ctx),
     )
@@ -39750,6 +41378,169 @@ def student_portal_library():
         pocket_money_student_id=student.get('student_id') or student_id,
         **_student_portal_template_kwargs(ctx),
     )
+
+
+def _fetch_student_portal_notifications(ctx, limit=30):
+    student_id = (ctx.get('student_id') or '').strip()
+    user_id = session.get('user_id')
+    items = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_academic_calendar_activities_table(cursor)
+                ensure_academic_calendar_activity_levels_table(cursor)
+                connection.commit()
+                items = _fetch_student_hub_notifications(
+                    cursor, student_id=student_id or None, user_id=user_id, limit=limit,
+                )
+                items = _sort_hub_notifications_for_page(items)
+        except Exception as ex:
+            print(f"_fetch_student_portal_notifications: {ex}")
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+    return items
+
+
+def _fetch_parent_portal_notifications(auth, limit=30):
+    user_id = session.get('user_id')
+    parent_email = auth.get('parent_email') or session.get('email', '')
+    student_id = (auth.get('selected_student_id') or '').strip() or None
+    items = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_academic_calendar_activities_table(cursor)
+                ensure_academic_calendar_activity_levels_table(cursor)
+                connection.commit()
+                items = _fetch_parent_hub_notifications(
+                    cursor,
+                    parent_email=parent_email,
+                    student_id=student_id,
+                    user_id=user_id,
+                    limit=limit,
+                )
+                items = _sort_hub_notifications_for_page(items)
+        except Exception as ex:
+            print(f"_fetch_parent_portal_notifications: {ex}")
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+    return items
+
+
+@app.route('/dashboard/student/notifications')
+@app.route('/student/notifications')
+@login_required
+def student_portal_notifications():
+    """Student portal — notifications inbox with read/unread state."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    hub_notifications = _fetch_student_portal_notifications(ctx)
+    unread_count = _count_unread_hub_notifications(hub_notifications)
+    return render_template(
+        'dashboards/portal_notifications_page.html',
+        hub_notifications=hub_notifications,
+        portal_unread_notification_count=unread_count,
+        notifications_read_url=student_dashboard_path('notifications/read'),
+        student_id=student_id,
+        **_student_portal_template_kwargs(ctx),
+    )
+
+
+@app.route('/dashboard/student/notifications/read', methods=['POST'])
+@app.route('/student/notifications/read', methods=['POST'])
+@login_required
+def student_portal_notification_read():
+    ctx = _student_portal_auth()
+    if ctx is None:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    payload = request.get_json(silent=True) or {}
+    notification_key = (payload.get('notification_key') or request.form.get('notification_key') or '').strip()
+    if not notification_key:
+        return jsonify({'success': False, 'message': 'Missing notification_key'}), 400
+    user_id = session.get('user_id')
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 503
+    try:
+        with connection.cursor() as cursor:
+            _mark_hub_notification_read(cursor, user_id, notification_key)
+            connection.commit()
+        return jsonify({'success': True, 'notification_key': notification_key})
+    except Exception as ex:
+        print(f"student_portal_notification_read: {ex}")
+        return jsonify({'success': False, 'message': 'Could not mark notification as read'}), 500
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+@app.route('/dashboard/parent/notifications')
+@app.route('/parent/notifications')
+@login_required
+def parent_portal_notifications():
+    """Parent portal — notifications inbox with read/unread state."""
+    auth = _parent_dashboard_auth()
+    if auth is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    hub_notifications = _fetch_parent_portal_notifications(auth)
+    unread_count = _count_unread_hub_notifications(hub_notifications)
+    return render_template(
+        'dashboards/portal_notifications_page.html',
+        hub_notifications=hub_notifications,
+        portal_unread_notification_count=unread_count,
+        notifications_read_url=parent_dashboard_path('notifications/read'),
+        portal_mode='parent',
+        portal_page_variant='parent',
+        selected_student_id=auth.get('selected_student_id'),
+        is_technician=auth.get('is_technician'),
+        is_technician_parent_preview=auth.get('is_technician'),
+        current_view_role=auth.get('current_view_role'),
+        all_students=auth.get('all_students') or [],
+    )
+
+
+@app.route('/dashboard/parent/notifications/read', methods=['POST'])
+@app.route('/parent/notifications/read', methods=['POST'])
+@login_required
+def parent_portal_notification_read():
+    auth = _parent_dashboard_auth()
+    if auth is None:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    payload = request.get_json(silent=True) or {}
+    notification_key = (payload.get('notification_key') or request.form.get('notification_key') or '').strip()
+    if not notification_key:
+        return jsonify({'success': False, 'message': 'Missing notification_key'}), 400
+    user_id = session.get('user_id')
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 503
+    try:
+        with connection.cursor() as cursor:
+            _mark_hub_notification_read(cursor, user_id, notification_key)
+            connection.commit()
+        return jsonify({'success': True, 'notification_key': notification_key})
+    except Exception as ex:
+        print(f"parent_portal_notification_read: {ex}")
+        return jsonify({'success': False, 'message': 'Could not mark notification as read'}), 500
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
 
 
 def _parent_class_exam_level_view_options(cursor, stu):
@@ -40920,6 +42711,7 @@ def parent_portal_exam_timetable_student(student_id):
 
 
 @app.route('/dashboard/parent/attendance')
+@app.route('/parent/attendance')
 @login_required
 def parent_attendance():
     """List linked children; single child redirects to their attendance view."""
@@ -40970,7 +42762,81 @@ def parent_attendance():
     )
 
 
+def _parent_attendance_register_page(student_id, sibling_count, parent_ctx, student_row=None):
+    """Read-only class/subject attendance register for one linked child."""
+    grade = (student_row or {}).get('current_grade') or ''
+    grade = str(grade).strip()
+    students_by_level = []
+    attendance_list_meta = {}
+    if grade:
+        conn_lv = get_db_connection()
+        if conn_lv:
+            try:
+                with conn_lv.cursor() as cur:
+                    level_id_by_name = {}
+                    cur.execute("SELECT id, level_name FROM academic_levels")
+                    for r in cur.fetchall() or []:
+                        lid = r.get('id') if isinstance(r, dict) else r[0]
+                        lname = r.get('level_name') if isinstance(r, dict) else r[1]
+                        if lid and lname:
+                            level_id_by_name[str(lname)] = int(lid)
+                    students_by_level = _students_by_level_for_attendance(
+                        cur, grade, 1, 50, '', level_id_by_name,
+                    )
+                    _, attendance_list_meta = _fetch_attendance_students_page(cur, grade, 1, 50, '')
+                    sid_norm = str(student_id or '').strip()
+                    if sid_norm and students_by_level:
+                        for lg in students_by_level:
+                            lg['students'] = [
+                                st for st in (lg.get('students') or [])
+                                if str(st.get('student_id') or '').strip() == sid_norm
+                            ]
+                        students_by_level = [lg for lg in students_by_level if lg.get('students')]
+                        attendance_list_meta = dict(attendance_list_meta or {})
+                        attendance_list_meta['total'] = 1
+                        attendance_list_meta['pages'] = 1
+                        attendance_list_meta['page'] = 1
+            except Exception as e:
+                print(f"_parent_attendance_register_page students: {e}")
+            finally:
+                try:
+                    conn_lv.close()
+                except Exception:
+                    pass
+
+    register_view = (request.args.get('view') or 'class').strip().lower()
+    if register_view not in ('class', 'subject'):
+        register_view = 'class'
+    attendance_mode = 'parent_subject' if register_view == 'subject' else 'parent_class'
+
+    ctx = _attendance_register_get_context(
+        students_by_level, False, request.args,
+        teacher_id=None, attendance_list_meta=attendance_list_meta, attendance_mode=attendance_mode,
+    )
+    merged = {
+        **ctx,
+        'is_parent_view': True,
+        'is_teacher_view': False,
+        'is_class_teacher_view': register_view == 'class',
+        'is_subject_teacher_view': register_view == 'subject',
+        'attendance_mode': attendance_mode,
+        'parent_register_view': register_view,
+        'parent_student_id': student_id,
+        'student': student_row,
+        'show_sibling_nav': sibling_count > 1,
+        'class_level_options': [grade] if grade else [],
+        'selected_class_level': grade,
+        'is_technician': parent_ctx.get('is_technician'),
+        'current_view_role': parent_ctx.get('current_view_role'),
+        'all_students': parent_ctx.get('all_students') or [],
+        'selected_student_id': parent_ctx.get('selected_student_id'),
+        'portal_page_variant': 'parent',
+    }
+    return render_template('dashboards/student_attendance.html', **merged)
+
+
 @app.route('/dashboard/parent/attendance/<student_id>')
+@app.route('/parent/attendance/<student_id>')
 @login_required
 def parent_attendance_detail(student_id):
     """Parent read-only attendance for one linked child."""
@@ -40980,32 +42846,41 @@ def parent_attendance_detail(student_id):
         return redirect(url_for('home'))
 
     parent_email = ctx['parent_email']
-    if not parent_email:
+    is_tech_as_parent = ctx['is_technician'] and (ctx.get('current_view_role') or '').lower().strip() == 'parent'
+    if not parent_email and not is_tech_as_parent:
         flash('No linked parent account.', 'error')
         return redirect(parent_dashboard_path())
 
-    allowed = False
+    allowed = is_tech_as_parent
     sibling_count = 0
     connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT COUNT(DISTINCT s.student_id) AS cnt
-                    FROM students s
-                    INNER JOIN parents p ON s.student_id = p.student_id
-                    WHERE p.email = %s AND s.status = 'in session'
-                """, (parent_email,))
-                r = cursor.fetchone()
-                sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+                if parent_email:
+                    cursor.execute("""
+                        SELECT COUNT(DISTINCT s.student_id) AS cnt
+                        FROM students s
+                        INNER JOIN parents p ON s.student_id = p.student_id
+                        WHERE p.email = %s AND s.status = 'in session'
+                    """, (parent_email,))
+                    r = cursor.fetchone()
+                    sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
 
-                cursor.execute("""
-                    SELECT 1 FROM students s
-                    INNER JOIN parents p ON s.student_id = p.student_id
-                    WHERE p.email = %s AND s.student_id = %s AND s.status = 'in session'
-                    LIMIT 1
-                """, (parent_email, student_id))
-                allowed = cursor.fetchone() is not None
+                    cursor.execute("""
+                        SELECT 1 FROM students s
+                        INNER JOIN parents p ON s.student_id = p.student_id
+                        WHERE p.email = %s AND s.student_id = %s AND s.status = 'in session'
+                        LIMIT 1
+                    """, (parent_email, student_id))
+                    allowed = cursor.fetchone() is not None
+                elif is_tech_as_parent:
+                    cursor.execute(
+                        "SELECT 1 FROM students WHERE student_id = %s AND status = 'in session' LIMIT 1",
+                        (student_id,),
+                    )
+                    allowed = cursor.fetchone() is not None
+                    sibling_count = len(ctx.get('all_students') or [])
         except Exception as e:
             print(f"Error verifying parent attendance access: {e}")
         finally:
@@ -41019,30 +42894,69 @@ def parent_attendance_detail(student_id):
         flash('You cannot view attendance for this student.', 'error')
         return redirect(parent_dashboard_path('attendance'))
 
-    analytics = _fetch_parent_attendance_analytics(student_id, request.args)
-    if not analytics.get('student'):
+    panel = (request.args.get('panel') or 'register').strip().lower()
+    if panel == 'analytics':
+        analytics = _fetch_parent_attendance_analytics(student_id, request.args)
+        if not analytics.get('student'):
+            flash('Student not found.', 'error')
+            return redirect(parent_dashboard_path('attendance'))
+
+        return render_template(
+            'dashboards/parent_student_attendance_analytics.html',
+            student=analytics['student'],
+            academic_years=analytics['academic_years'],
+            terms=analytics['terms'],
+            selected_term_id=analytics['selected_term_id'],
+            selected_academic_year_id=analytics['selected_academic_year_id'],
+            term_label=analytics['term_label'],
+            summary=analytics['summary'],
+            by_week=analytics['by_week'],
+            daily_points=analytics['daily_points'],
+            recent_days=analytics['recent_days'],
+            subject_summary=analytics['subject_summary'],
+            subject_by_week=analytics['subject_by_week'],
+            subject_daily_points=analytics['subject_daily_points'],
+            subject_recent_days=analytics['subject_recent_days'],
+            subject_by_subject=analytics['subject_by_subject'],
+            attendance_view=analytics['attendance_view'],
+            parent_student_id=student_id,
+            show_sibling_nav=sibling_count > 1,
+            is_technician=ctx['is_technician'],
+            current_view_role=ctx['current_view_role'],
+            all_students=ctx['all_students'],
+            selected_student_id=ctx['selected_student_id'],
+        )
+
+    student_row = None
+    conn_st = get_db_connection()
+    if conn_st:
+        try:
+            with conn_st.cursor() as cur:
+                cur.execute(
+                    "SELECT student_id, full_name, current_grade, status FROM students WHERE student_id = %s LIMIT 1",
+                    (student_id,),
+                )
+                row = cur.fetchone()
+                if row:
+                    student_row = {
+                        'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
+                        'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+                        'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+                        'status': row.get('status') if isinstance(row, dict) else row[3],
+                    }
+        except Exception as e:
+            print(f"parent_attendance_detail student row: {e}")
+        finally:
+            try:
+                conn_st.close()
+            except Exception:
+                pass
+
+    if not student_row:
         flash('Student not found.', 'error')
         return redirect(parent_dashboard_path('attendance'))
 
-    return render_template(
-        'dashboards/parent_student_attendance_analytics.html',
-        student=analytics['student'],
-        academic_years=analytics['academic_years'],
-        terms=analytics['terms'],
-        selected_term_id=analytics['selected_term_id'],
-        selected_academic_year_id=analytics['selected_academic_year_id'],
-        term_label=analytics['term_label'],
-        summary=analytics['summary'],
-        by_week=analytics['by_week'],
-        daily_points=analytics['daily_points'],
-        recent_days=analytics['recent_days'],
-        parent_student_id=student_id,
-        show_sibling_nav=sibling_count > 1,
-        is_technician=ctx['is_technician'],
-        current_view_role=ctx['current_view_role'],
-        all_students=ctx['all_students'],
-        selected_student_id=ctx['selected_student_id'],
-    )
+    return _parent_attendance_register_page(student_id, sibling_count, ctx, student_row=student_row)
 
 
 @app.route('/dashboard/parent/library')
@@ -44800,7 +46714,7 @@ def class_teacher_allocation():
                 cursor.execute("""
                     SELECT id, employee_id, full_name, email, phone
                     FROM employees
-                    WHERE role = 'teachers' AND status = 'active'
+                    WHERE role IN ('teachers', 'teacher') AND status = 'active'
                     ORDER BY full_name ASC
                 """)
                 for row in cursor.fetchall() or []:
@@ -44863,7 +46777,7 @@ def save_class_teacher_allocation():
             ensure_class_teacher_assignments_table(cursor)
             if teacher_id > 0:
                 cursor.execute(
-                    "SELECT id FROM employees WHERE id = %s AND status = 'active' AND role = 'teachers'",
+                    "SELECT id FROM employees WHERE id = %s AND status = 'active' AND role IN ('teachers', 'teacher')",
                     (teacher_id,),
                 )
                 if not cursor.fetchone():
@@ -45601,6 +47515,88 @@ def delete_subject():
         if connection:
             connection.close()
 
+
+def _can_access_exam_applications():
+    """Curriculum coordinator, leadership, and technician (view-as) exam applications."""
+    user_role = (session.get('role') or '').lower()
+    viewing_as_role = (session.get('viewing_as_employee_role') or '').lower()
+    allowed = (
+        'curriculum coordinator', 'technician',
+        'head of institution', 'deputy head of institution',
+    )
+    return user_role in allowed or viewing_as_role in allowed
+
+
+@app.route('/dashboard/employee/exam-applications')
+@login_required
+def exam_applications():
+    """Review student exam application eligibility and submissions by class."""
+    if not _can_access_exam_applications():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    academic_levels = []
+    overview = None
+    selected_level_id = None
+    try:
+        selected_level_id = int((request.args.get('level_id') or '').strip() or 0)
+    except (TypeError, ValueError):
+        selected_level_id = 0
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, level_category, level_name
+                    FROM academic_levels
+                    WHERE level_status = 'active'
+                    ORDER BY level_category, level_name ASC
+                    """
+                )
+                for row in cursor.fetchall() or []:
+                    if isinstance(row, dict):
+                        academic_levels.append({
+                            'id': row.get('id'),
+                            'level_category': row.get('level_category') or '',
+                            'level_name': row.get('level_name') or '',
+                        })
+                    else:
+                        academic_levels.append({
+                            'id': row[0],
+                            'level_category': row[1] or '',
+                            'level_name': row[2] or '',
+                        })
+                if selected_level_id > 0 and any(int(l['id']) == selected_level_id for l in academic_levels):
+                    overview = fetch_level_exam_apply_overview(cursor, selected_level_id)
+                elif academic_levels and not selected_level_id:
+                    selected_level_id = int(academic_levels[0]['id'])
+                    overview = fetch_level_exam_apply_overview(cursor, selected_level_id)
+        except Exception as e:
+            print(f"exam_applications: {e}")
+            flash('Error loading exam applications.', 'error')
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    user_role = (session.get('role') or '').lower()
+    viewing_as_role = (session.get('viewing_as_employee_role') or '').lower()
+    is_curriculum_coordinator = (
+        user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    )
+
+    return render_template(
+        'dashboards/exam_applications.html',
+        academic_levels=academic_levels,
+        selected_level_id=selected_level_id,
+        overview=overview,
+        is_curriculum_coordinator=is_curriculum_coordinator,
+    )
+
+
 @app.route('/dashboard/employee/exam-evaluation')
 @login_required
 def exam_evaluation():
@@ -45615,8 +47611,9 @@ def exam_evaluation():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
     
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_academic_coordinator or is_technician or is_principal or is_deputy):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     
@@ -45631,6 +47628,7 @@ def exam_evaluation():
     teachers = []
     exams = []
     registered_current_exam = None
+    exam_apply_rules_map = {}
     level_combinations = []
 
     if connection:
@@ -45898,6 +47896,7 @@ def exam_evaluation():
                     print(f"Note: exams table may not exist yet: {e}")
                     exams = []
                 registered_current_exam = load_registered_current_exam_dict(cursor)
+                exam_apply_rules_map = fetch_all_exam_apply_rules_map(cursor)
                 ensure_academic_level_combination_tables(cursor)
                 level_by_id = {
                     int(l['id']): l for l in academic_levels if l.get('id') is not None
@@ -45967,6 +47966,7 @@ def exam_evaluation():
     return render_template('dashboards/exam_evaluation.html', 
                          role=user_role,
                          is_curriculum_coordinator=is_academic_coordinator,
+                         is_deputy=is_deputy,
                          academic_years=academic_years,
                          default_academic_year_id=default_academic_year_id,
                          default_term_id=default_term_id,
@@ -45979,7 +47979,8 @@ def exam_evaluation():
                          exams=exams,
                          open_edit_id=open_edit_id,
                          session_presets=session_presets_ui,
-                         registered_current_exam=registered_current_exam)
+                         registered_current_exam=registered_current_exam,
+                         exam_apply_rules_map=exam_apply_rules_map)
 
 
 @app.route('/dashboard/employee/exam-subject-settings', methods=['GET', 'POST'])
@@ -48638,6 +50639,21 @@ def save_exam():
                 ))
                 inserted_ids.append(cursor.lastrowid)
 
+            apply_raw = data.get('apply_requirements') or {}
+            apply_rules = parse_apply_requirements_payload(apply_raw)
+            save_exam_apply_rules(
+                cursor,
+                exam_name,
+                exam_type,
+                academic_year_id,
+                term_id,
+                {
+                    'class_attendance_min_pct': apply_rules['class_min'],
+                    'subject_attendance_min_pct': apply_rules['subject_min'],
+                    'fee_payment_min_pct': apply_rules['fee_min'],
+                },
+            )
+
             connection.commit()
             return jsonify({
                 'success': True,
@@ -49450,6 +51466,7 @@ def update_exam_registration():
 
     data = request.get_json() or {}
     old_exam_name = (data.get('old_exam_name') or '').strip().upper()
+    old_exam_type = (data.get('old_exam_type') or '').strip().upper()
     try:
         old_academic_year_id = int(data.get('old_academic_year_id', 0))
         old_term_id = int(data.get('old_term_id', 0))
@@ -49485,6 +51502,22 @@ def update_exam_registration():
             if _exam_group_is_submitted(cursor, old_exam_name, old_academic_year_id, old_term_id):
                 return jsonify({'success': False, 'message': 'This exam has been submitted for release and cannot be edited.'}), 400
 
+            if not old_exam_type:
+                cursor.execute(
+                    """
+                    SELECT UPPER(TRIM(COALESCE(exam_type, ''))) AS exam_type
+                    FROM exams
+                    WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+                    LIMIT 1
+                    """,
+                    (old_exam_name, old_academic_year_id, old_term_id),
+                )
+                tr = cursor.fetchone()
+                if tr:
+                    old_exam_type = (
+                        tr.get('exam_type') if isinstance(tr, dict) else (tr[0] if len(tr) > 0 else '')
+                    ) or ''
+
             cursor.execute("""
                 UPDATE exams
                 SET exam_name = %s,
@@ -49499,6 +51532,31 @@ def update_exam_registration():
                 old_exam_name, old_academic_year_id, old_term_id
             ))
             updated = cursor.rowcount or 0
+
+            apply_rules = parse_apply_requirements_payload(data.get('apply_requirements') or {})
+            if (
+                old_exam_name != exam_name
+                or old_exam_type != exam_type
+                or old_academic_year_id != academic_year_id
+                or old_term_id != term_id
+            ):
+                delete_exam_apply_rules(
+                    cursor, old_exam_name, old_exam_type,
+                    old_academic_year_id, old_term_id,
+                )
+            save_exam_apply_rules(
+                cursor,
+                exam_name,
+                exam_type,
+                academic_year_id,
+                term_id,
+                {
+                    'class_attendance_min_pct': apply_rules['class_min'],
+                    'subject_attendance_min_pct': apply_rules['subject_min'],
+                    'fee_payment_min_pct': apply_rules['fee_min'],
+                },
+            )
+
             connection.commit()
             return jsonify({'success': True, 'message': f'Registration updated for {updated} allocation(s).'})
     except Exception as e:
@@ -49558,6 +51616,23 @@ def delete_exam_registration():
             if _exam_group_is_submitted(cursor, exam_name, academic_year_id, term_id):
                 return jsonify({'success': False, 'message': 'This exam has been submitted for release and cannot be deleted.'}), 400
 
+            exam_type = (data.get('exam_type') or '').strip().upper()
+            if not exam_type:
+                cursor.execute(
+                    """
+                    SELECT UPPER(TRIM(COALESCE(exam_type, ''))) AS exam_type
+                    FROM exams
+                    WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+                    LIMIT 1
+                    """,
+                    (exam_name, academic_year_id, term_id),
+                )
+                tr = cursor.fetchone()
+                if tr:
+                    exam_type = (
+                        tr.get('exam_type') if isinstance(tr, dict) else (tr[0] if len(tr) > 0 else '')
+                    ) or ''
+
             cursor.execute("""
                 DELETE FROM exams
                 WHERE exam_name = %s
@@ -49565,6 +51640,7 @@ def delete_exam_registration():
                   AND term_id = %s
             """, (exam_name, academic_year_id, term_id))
             deleted = cursor.rowcount or 0
+            delete_exam_apply_rules(cursor, exam_name, exam_type, academic_year_id, term_id)
             connection.commit()
             return jsonify({'success': True, 'message': f'Registration deleted ({deleted} allocation row(s)).'})
     except Exception as e:
@@ -54084,12 +56160,38 @@ def _finance_account_category_is_income(category):
     return False
 
 
-def _finance_account_category_is_legacy_income(category):
-    """Legacy chart category used only for revenue ledgers (not fund categories)."""
-    return (category or '').strip().lower() == 'income'
+def _finance_account_name_indicates_fund(
+    category=None, account_name=None, account_description=None,
+):
+    """True when the account is a school fund ledger, not a pure revenue collection account."""
+    cat = (category or '').strip().lower()
+    if cat and cat != 'income':
+        for fund_cat in FINANCE_ACCOUNT_CATEGORIES:
+            if cat == fund_cat.lower():
+                return True
+    blob = f'{(account_name or "")} {(account_description or "")}'.lower()
+    fund_markers = (
+        'operation fund', 'operational', 'imprest',
+        'administrative fund', 'capitation', 'development fund',
+        'trust fund', 'trust &', 'liabilit',
+    )
+    return any(marker in blob for marker in fund_markers)
 
 
-def _finance_account_supports_disbursement_mode(payment_modes, mode):
+def _finance_account_category_is_legacy_income(
+    category, account_name=None, account_description=None,
+):
+    """Legacy chart category used only for pure revenue ledgers (not fund accounts)."""
+    if (category or '').strip().lower() != 'income':
+        return False
+    if _finance_account_name_indicates_fund(category, account_name, account_description):
+        return False
+    return True
+
+
+def _finance_account_supports_disbursement_mode(
+    payment_modes, mode, category=None, account_name=None, account_description=None,
+):
     """True when account has no configured modes or includes the payment mode."""
     if not mode:
         return True
@@ -54098,7 +56200,15 @@ def _finance_account_supports_disbursement_mode(payment_modes, mode):
         for m in (payment_modes or [])
         if (m or '').strip()
     ]
-    return not configured or mode in configured
+    if not configured:
+        return True
+    if mode in configured:
+        return True
+    if 'bank' in configured and mode in ('cheque', 'mpesa'):
+        return True
+    if _finance_account_name_indicates_fund(category, account_name, account_description):
+        return mode in ('cash', 'cheque', 'mpesa')
+    return False
 
 
 def _finance_account_is_revenue_eligible(
@@ -54498,7 +56608,16 @@ def _fetch_finance_accounts_for_disbursement_picker(cursor):
             ]
             row['payment_modes'] = modes
             row['expense_votes'] = votes_map.get(int(aid), []) if aid is not None else []
-            if _finance_account_category_is_legacy_income(row.get('account_category')):
+            row['flexible_payment_modes'] = _finance_account_name_indicates_fund(
+                row.get('account_category'),
+                row.get('account_name'),
+                row.get('account_description'),
+            )
+            if _finance_account_category_is_legacy_income(
+                row.get('account_category'),
+                row.get('account_name'),
+                row.get('account_description'),
+            ):
                 row['payment_modes'] = []
             if _finance_account_is_disbursement_eligible(
                 row.get('account_category'),
@@ -54637,8 +56756,10 @@ def _validate_disbursement_finance_account(cursor, finance_account_id, payment_m
         for pm in (payments_map.get(fid) or [])
         if pm.get('payment_mode')
     ]
-    if mode and not _finance_account_supports_disbursement_mode(configured, mode):
-        if _finance_account_category_is_legacy_income(category):
+    if mode and not _finance_account_supports_disbursement_mode(
+        configured, mode, category, name, description,
+    ):
+        if _finance_account_category_is_legacy_income(category, name, description):
             return False, None, (
                 f'{name} is an income ledger and cannot be used for supplier payments.'
             )
@@ -60086,6 +62207,8 @@ def _fetch_account_fee_votes_meta_for_cash_book(cursor, account_id):
                 key = raw_name.upper()
                 if not key or key in seen:
                     continue
+                if key in ('CONTIGENCIES', 'CONTINGENCIES'):
+                    continue
                 seen.add(key)
                 votes.append({
                     'key': key,
@@ -60224,6 +62347,7 @@ def _finance_account_report_helpers():
         'load_expense_vote_descriptions': _expense_vote_description_map,
         'load_student_payment_vote_context': _cash_book_student_payment_vote_context,
         'is_petty_cash_ledger': _finance_account_is_petty_cash_ledger,
+        'load_account_payables_balance': lambda cursor, account_id: 0.0,
     }
 
 
@@ -85617,8 +87741,10 @@ def _user_can_access_communication():
 def _communication_recipient_rows(
     cursor, audience, q=None, role_filter=None, level_filter=None, page=1, per_page=50,
 ):
-    """Load employees or parents for the communication centre (paginated, optional search/filters)."""
-    audience = (audience or 'employees').lower().strip()
+    """Load employees, parents, or students for the communication centre (paginated, optional search/filters)."""
+    audience = (audience or 'parents').lower().strip()
+    if audience not in ('employees', 'parents', 'students'):
+        audience = 'parents'
     q_norm = (q or '').strip().lower()
     like = f'%{q_norm}%' if q_norm else None
     per_page = max(1, min(int(per_page or 50), 100))
@@ -85669,6 +87795,59 @@ def _communication_recipient_rows(
                 'email': em or '',
                 'role': (rl or '').lower(),
                 'search': f"{fn} {ph} {em} {eid} {rl}".lower(),
+            })
+    elif audience == 'students':
+        params = []
+        where = ["s.status = 'in session'"]
+        if level_filter:
+            where.append('TRIM(s.current_grade) = %s')
+            params.append(str(level_filter).strip())
+        if like:
+            where.append(
+                "(LOWER(s.full_name) LIKE %s OR LOWER(COALESCE(s.student_id,'')) LIKE %s"
+                " OR LOWER(COALESCE(u.email,'')) LIKE %s OR LOWER(COALESCE(s.sponsor_email,'')) LIKE %s"
+                " OR LOWER(COALESCE(s.sponsor_phone,'')) LIKE %s OR LOWER(COALESCE(p.phone,'')) LIKE %s)"
+            )
+            params.extend([like, like, like, like, like, like])
+        base_from = """
+            FROM students s
+            LEFT JOIN users u ON u.role = 'student'
+                AND UPPER(TRIM(CAST(u.student_id AS CHAR(64)))) = UPPER(TRIM(CAST(s.student_id AS CHAR(64))))
+            LEFT JOIN parents p ON UPPER(TRIM(CAST(p.student_id AS CHAR(64)))) = UPPER(TRIM(CAST(s.student_id AS CHAR(64))))
+        """
+        where_sql = ' WHERE ' + ' AND '.join(where)
+        count_sql = 'SELECT COUNT(DISTINCT s.id) AS c ' + base_from + where_sql
+        list_sql = (
+            """
+            SELECT s.id, s.student_id, s.full_name, s.current_grade,
+                   MAX(COALESCE(NULLIF(TRIM(u.email), ''), NULLIF(TRIM(s.sponsor_email), ''))) AS email,
+                   MAX(COALESCE(NULLIF(TRIM(s.sponsor_phone), ''), NULLIF(TRIM(p.phone), ''))) AS phone
+            """
+            + base_from
+            + where_sql
+            + ' GROUP BY s.id, s.student_id, s.full_name, s.current_grade'
+            + ' ORDER BY s.full_name ASC LIMIT %s OFFSET %s'
+        )
+        cursor.execute(count_sql, tuple(params))
+        crow = cursor.fetchone()
+        total = int((crow.get('c') if isinstance(crow, dict) else crow[0]) or 0)
+        cursor.execute(list_sql, tuple(params) + (per_page, offset))
+        for row in cursor.fetchall() or []:
+            rid = row.get('id') if isinstance(row, dict) else row[0]
+            sid = row.get('student_id') if isinstance(row, dict) else row[1]
+            fn = row.get('full_name') if isinstance(row, dict) else row[2]
+            grade = row.get('current_grade') if isinstance(row, dict) else row[3]
+            em = row.get('email') if isinstance(row, dict) else row[4]
+            ph = row.get('phone') if isinstance(row, dict) else row[5]
+            out.append({
+                'id': rid,
+                'kind': 'student',
+                'student_id': sid or '',
+                'name': fn or '',
+                'phone': ph or '',
+                'email': em or '',
+                'grade': grade or '',
+                'search': f"{fn} {sid} {ph} {em} {grade}".lower(),
             })
     else:
         params = []
@@ -85742,13 +87921,38 @@ def _communication_recipient_rows(
 
 def _communication_resolve_targets(cursor, audience, recipient_ids, send_to_all, role_filter=None, level_filter=None):
     """Resolve recipient rows for sending (by ids or entire filtered audience)."""
-    audience = (audience or 'employees').lower().strip()
+    audience = (audience or 'parents').lower().strip()
+    if audience not in ('employees', 'parents', 'students'):
+        audience = 'parents'
+    kind_map = {'employees': 'employee', 'parents': 'parent', 'students': 'student'}
+    kind = kind_map.get(audience, 'parent')
+
+    def _row_to_target(r):
+        target = {
+            'id': r.get('id'),
+            'kind': r.get('kind') or kind,
+            'name': r.get('name') or '',
+            'phone': r.get('phone') or '',
+            'email': r.get('email') or '',
+        }
+        if r.get('student_id'):
+            target['student_id'] = r.get('student_id')
+        return target
+
     if send_to_all:
-        rows = _communication_recipient_rows(cursor, audience, role_filter=role_filter, level_filter=level_filter)
-        return [
-            {'name': r.get('name'), 'phone': r.get('phone'), 'email': r.get('email')}
-            for r in rows
-        ]
+        all_rows = []
+        page = 1
+        while True:
+            batch = _communication_recipient_rows(
+                cursor, audience, role_filter=role_filter, level_filter=level_filter,
+                page=page, per_page=100,
+            )
+            all_rows.extend(batch.get('recipients') or [])
+            meta = batch.get('meta') or {}
+            if page >= int(meta.get('pages') or 1):
+                break
+            page += 1
+        return [_row_to_target(r) for r in all_rows]
     ids = []
     for x in recipient_ids or []:
         try:
@@ -85764,18 +87968,580 @@ def _communication_resolve_targets(cursor, audience, recipient_ids, send_to_all,
             f"SELECT id, full_name, phone, email FROM employees WHERE id IN ({ph}) AND status = 'active'",
             ids,
         )
+    elif audience == 'students':
+        cursor.execute(
+            f"""
+            SELECT s.id, s.student_id, s.full_name,
+                   MAX(COALESCE(NULLIF(TRIM(u.email), ''), NULLIF(TRIM(s.sponsor_email), ''))) AS email,
+                   MAX(COALESCE(NULLIF(TRIM(s.sponsor_phone), ''), NULLIF(TRIM(p.phone), ''))) AS phone
+            FROM students s
+            LEFT JOIN users u ON u.role = 'student'
+                AND UPPER(TRIM(CAST(u.student_id AS CHAR(64)))) = UPPER(TRIM(CAST(s.student_id AS CHAR(64))))
+            LEFT JOIN parents p ON UPPER(TRIM(CAST(p.student_id AS CHAR(64)))) = UPPER(TRIM(CAST(s.student_id AS CHAR(64))))
+            WHERE s.id IN ({ph}) AND s.status = 'in session'
+            GROUP BY s.id, s.student_id, s.full_name
+            """,
+            ids,
+        )
     else:
         cursor.execute(
             f"SELECT id, full_name, phone, email FROM parents WHERE id IN ({ph})",
             ids,
         )
     for row in cursor.fetchall() or []:
-        targets.append({
-            'name': row.get('full_name') if isinstance(row, dict) else row[1],
-            'phone': row.get('phone') if isinstance(row, dict) else row[2],
-            'email': row.get('email') if isinstance(row, dict) else row[3],
-        })
+        if audience == 'students':
+            targets.append({
+                'id': row.get('id') if isinstance(row, dict) else row[0],
+                'kind': kind,
+                'student_id': row.get('student_id') if isinstance(row, dict) else row[1],
+                'name': row.get('full_name') if isinstance(row, dict) else row[2],
+                'email': row.get('email') if isinstance(row, dict) else row[3],
+                'phone': row.get('phone') if isinstance(row, dict) else row[4],
+            })
+        else:
+            targets.append({
+                'id': row.get('id') if isinstance(row, dict) else row[0],
+                'kind': kind,
+                'name': row.get('full_name') if isinstance(row, dict) else row[1],
+                'phone': row.get('phone') if isinstance(row, dict) else row[2],
+                'email': row.get('email') if isinstance(row, dict) else row[3],
+            })
     return targets
+
+
+def _communication_build_audiences_config(payload):
+    """Normalize send payload into per-audience config rows."""
+    send_to_all = bool(payload.get('send_to_all'))
+    raw_list = payload.get('audiences')
+    if isinstance(raw_list, list) and raw_list:
+        configs = []
+        for item in raw_list:
+            if not isinstance(item, dict):
+                continue
+            aud = (item.get('audience') or '').lower().strip()
+            if aud not in ('employees', 'parents', 'students'):
+                continue
+            cfg = {
+                'audience': aud,
+                'role_filter': (item.get('role_filter') or '').strip().lower() or None,
+                'level_filter': (item.get('level_filter') or '').strip() or None,
+                'recipient_ids': item.get('recipient_ids') or [],
+            }
+            if aud != 'employees':
+                cfg['role_filter'] = None
+            if aud not in ('parents', 'students'):
+                cfg['level_filter'] = None
+            configs.append(cfg)
+        if configs:
+            return send_to_all, configs
+
+    aud = (payload.get('audience') or 'parents').lower().strip()
+    if aud not in ('employees', 'parents', 'students', 'multi'):
+        aud = 'parents'
+    if aud == 'multi':
+        aud = 'parents'
+    return send_to_all, [{
+        'audience': aud,
+        'role_filter': (payload.get('role_filter') or '').strip().lower() or None,
+        'level_filter': (payload.get('level_filter') or '').strip() or None,
+        'recipient_ids': payload.get('recipient_ids') or [],
+    }]
+
+
+def _communication_resolve_multi_targets(cursor, audiences_config, send_to_all):
+    """Resolve recipients across one or more audiences."""
+    all_targets = []
+    for cfg in audiences_config or []:
+        aud = cfg.get('audience')
+        ids = cfg.get('recipient_ids') or []
+        if send_to_all:
+            batch = _communication_resolve_targets(
+                cursor,
+                aud,
+                [],
+                True,
+                role_filter=cfg.get('role_filter'),
+                level_filter=cfg.get('level_filter'),
+            )
+        else:
+            if not ids:
+                continue
+            batch = _communication_resolve_targets(
+                cursor,
+                aud,
+                ids,
+                False,
+                role_filter=cfg.get('role_filter'),
+                level_filter=cfg.get('level_filter'),
+            )
+        if batch is None:
+            return None
+        for t in batch or []:
+            tagged = dict(t)
+            tagged['audience'] = aud
+            all_targets.append(tagged)
+    return all_targets
+
+
+def ensure_communication_broadcast_tables(cursor):
+    """Log communication centre broadcasts and per-recipient delivery/read state."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS communication_broadcasts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            sender_user_id INT NULL,
+            sender_name VARCHAR(255) NULL,
+            audience VARCHAR(20) NOT NULL DEFAULT 'employees',
+            department VARCHAR(120) NULL,
+            subject VARCHAR(255) NOT NULL,
+            message TEXT NULL,
+            attachment_name VARCHAR(255) NULL,
+            channels_json TEXT NULL,
+            send_to_all TINYINT(1) NOT NULL DEFAULT 0,
+            role_filter VARCHAR(80) NULL,
+            level_filter VARCHAR(120) NULL,
+            recipient_count INT NOT NULL DEFAULT 0,
+            delivered_count INT NOT NULL DEFAULT 0,
+            read_count INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_comm_broadcast_created (created_at),
+            INDEX idx_comm_broadcast_sender (sender_user_id)
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS communication_broadcast_recipients (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            broadcast_id INT NOT NULL,
+            recipient_kind VARCHAR(20) NOT NULL DEFAULT 'employee',
+            recipient_ref_id INT NULL,
+            recipient_name VARCHAR(255) NULL,
+            email VARCHAR(255) NULL,
+            phone VARCHAR(80) NULL,
+            email_status VARCHAR(20) NOT NULL DEFAULT 'none',
+            sms_status VARCHAR(20) NOT NULL DEFAULT 'none',
+            whatsapp_status VARCHAR(20) NOT NULL DEFAULT 'none',
+            app_status VARCHAR(20) NOT NULL DEFAULT 'none',
+            portal_notification_id INT NULL,
+            delivered_at TIMESTAMP NULL DEFAULT NULL,
+            read_at TIMESTAMP NULL DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_comm_recip_broadcast (broadcast_id),
+            INDEX idx_comm_recip_portal (portal_notification_id),
+            CONSTRAINT fk_comm_recip_broadcast
+                FOREIGN KEY (broadcast_id) REFERENCES communication_broadcasts(id) ON DELETE CASCADE
+        )
+        """
+    )
+    try:
+        cursor.execute(
+            """
+            ALTER TABLE communication_broadcast_recipients
+            ADD COLUMN app_status VARCHAR(20) NOT NULL DEFAULT 'none' AFTER whatsapp_status
+            """
+        )
+    except Exception:
+        pass
+
+
+def _communication_student_portal_user_id(cursor, student_id_str):
+    sid = (student_id_str or '').strip()
+    if not sid:
+        return None
+    cursor.execute(
+        """
+        SELECT id FROM users
+        WHERE role = 'student'
+          AND UPPER(TRIM(CAST(student_id AS CHAR(64)))) = UPPER(TRIM(CAST(%s AS CHAR(64))))
+        LIMIT 1
+        """,
+        (sid,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return row.get('id') if isinstance(row, dict) else row[0]
+
+
+def _communication_portal_user_id(cursor, email):
+    em = (email or '').strip().lower()
+    if not em:
+        return None
+    cursor.execute(
+        "SELECT id FROM users WHERE LOWER(TRIM(email)) = %s LIMIT 1",
+        (em,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return row.get('id') if isinstance(row, dict) else row[0]
+
+
+def _communication_create_broadcast_log(
+    cursor, *, sender_user_id, sender_name, audience, department, subject, message,
+    attachment_name, channels, send_to_all, role_filter, level_filter, targets,
+):
+    ensure_communication_broadcast_tables(cursor)
+    ensure_portal_notifications_table(cursor)
+    cursor.execute(
+        """
+        INSERT INTO communication_broadcasts
+            (sender_user_id, sender_name, audience, department, subject, message,
+             attachment_name, channels_json, send_to_all, role_filter, level_filter, recipient_count)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            int(sender_user_id) if sender_user_id else None,
+            (sender_name or '')[:255] or None,
+            (audience or 'employees')[:20],
+            (department or '')[:120] or None,
+            (subject or '')[:255],
+            (message or '').strip() or None,
+            (attachment_name or '')[:255] or None,
+            json.dumps(channels or {}),
+            1 if send_to_all else 0,
+            (role_filter or '')[:80] or None,
+            (level_filter or '')[:120] or None,
+            len(targets or []),
+        ),
+    )
+    broadcast_id = cursor.lastrowid
+    recipient_rows = []
+    app_enabled = bool((channels or {}).get('app')) and notification_mode_active('app')
+    aud = (audience or 'parents').lower().strip()
+    if aud == 'employees':
+        portal_type = 'employee'
+    elif aud == 'students':
+        portal_type = 'student'
+    else:
+        portal_type = 'parent'
+    preview_body = (message or '')[:500]
+
+    for t in targets or []:
+        em = (t.get('email') or '').strip()
+        ph = (t.get('phone') or '').strip()
+        app_status = 'none'
+        cursor.execute(
+            """
+            INSERT INTO communication_broadcast_recipients
+                (broadcast_id, recipient_kind, recipient_ref_id, recipient_name, email, phone,
+                 email_status, sms_status, whatsapp_status, app_status)
+            VALUES (%s, %s, %s, %s, %s, %s, 'none', 'none', 'none', %s)
+            """,
+            (
+                broadcast_id,
+                (t.get('kind') or portal_type)[:20],
+                int(t['id']) if t.get('id') else None,
+                (t.get('name') or '')[:255] or None,
+                em[:255] if em else None,
+                ph[:80] if ph else None,
+                app_status,
+            ),
+        )
+        recip_id = cursor.lastrowid
+        portal_notif_id = None
+        if app_enabled:
+            target_aud = (t.get('audience') or aud or 'parents').lower().strip()
+            if target_aud == 'students':
+                uid = _communication_student_portal_user_id(cursor, t.get('student_id'))
+            else:
+                uid = _communication_portal_user_id(cursor, em)
+            if target_aud == 'employees':
+                recip_portal_type = 'employee'
+            elif target_aud == 'students':
+                recip_portal_type = 'student'
+            else:
+                recip_portal_type = 'parent'
+            if uid:
+                _insert_portal_notification(
+                    cursor,
+                    recipient_type=recip_portal_type,
+                    recipient_email=em or None,
+                    recipient_user_id=int(uid),
+                    title=subject,
+                    body=preview_body,
+                    link_url=None,
+                )
+                portal_notif_id = cursor.lastrowid
+                app_status = 'sent'
+                cursor.execute(
+                    "UPDATE communication_broadcast_recipients SET portal_notification_id = %s, app_status = %s WHERE id = %s",
+                    (portal_notif_id, app_status, recip_id),
+                )
+                cursor.execute(
+                    """
+                    UPDATE communication_broadcast_recipients
+                    SET delivered_at = COALESCE(delivered_at, NOW())
+                    WHERE id = %s
+                    """,
+                    (recip_id,),
+                )
+            else:
+                app_status = 'skipped'
+                cursor.execute(
+                    "UPDATE communication_broadcast_recipients SET app_status = %s WHERE id = %s",
+                    (app_status, recip_id),
+                )
+        recipient_rows.append({
+            'db_id': recip_id,
+            'target': t,
+            'portal_notification_id': portal_notif_id,
+        })
+    return broadcast_id, recipient_rows
+
+
+def _communication_update_recipient_channel(cursor, recip_db_id, channel, status):
+    col = {
+        'email': 'email_status',
+        'sms': 'sms_status',
+        'whatsapp': 'whatsapp_status',
+        'app': 'app_status',
+    }.get(channel)
+    if not col:
+        return
+    cursor.execute(
+        f"UPDATE communication_broadcast_recipients SET {col} = %s WHERE id = %s",
+        ((status or 'none')[:20], int(recip_db_id)),
+    )
+    if status == 'sent':
+        cursor.execute(
+            """
+            UPDATE communication_broadcast_recipients
+            SET delivered_at = COALESCE(delivered_at, NOW())
+            WHERE id = %s
+            """,
+            (int(recip_db_id),),
+        )
+
+
+def _communication_finalize_broadcast_counts(cursor, broadcast_id):
+    ensure_communication_broadcast_tables(cursor)
+    ensure_portal_notifications_table(cursor)
+    cursor.execute(
+        """
+        UPDATE communication_broadcast_recipients cbr
+        INNER JOIN portal_notifications pn ON pn.id = cbr.portal_notification_id
+        SET cbr.read_at = COALESCE(cbr.read_at, pn.read_at)
+        WHERE cbr.broadcast_id = %s AND pn.read_at IS NOT NULL
+        """,
+        (int(broadcast_id),),
+    )
+    cursor.execute(
+        """
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN delivered_at IS NOT NULL THEN 1 ELSE 0 END) AS delivered,
+            SUM(CASE WHEN read_at IS NOT NULL THEN 1 ELSE 0 END) AS read_cnt
+        FROM communication_broadcast_recipients
+        WHERE broadcast_id = %s
+        """,
+        (int(broadcast_id),),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return
+    total = int(row.get('total') if isinstance(row, dict) else row[0] or 0)
+    delivered = int(row.get('delivered') if isinstance(row, dict) else row[1] or 0)
+    read_cnt = int(row.get('read_cnt') if isinstance(row, dict) else row[2] or 0)
+    cursor.execute(
+        """
+        UPDATE communication_broadcasts
+        SET recipient_count = %s, delivered_count = %s, read_count = %s
+        WHERE id = %s
+        """,
+        (total, delivered, read_cnt, int(broadcast_id)),
+    )
+
+
+def _communication_fetch_sent_broadcasts(cursor, page=1, per_page=20):
+    ensure_communication_broadcast_tables(cursor)
+    page = max(1, int(page or 1))
+    per_page = max(1, min(int(per_page or 20), 50))
+    offset = (page - 1) * per_page
+    cursor.execute("SELECT COUNT(*) AS c FROM communication_broadcasts")
+    crow = cursor.fetchone()
+    total = int((crow.get('c') if isinstance(crow, dict) else crow[0]) or 0)
+    cursor.execute(
+        """
+        SELECT id, sender_name, audience, department, subject, attachment_name,
+               channels_json, recipient_count, delivered_count, read_count, created_at
+        FROM communication_broadcasts
+        ORDER BY created_at DESC
+        LIMIT %s OFFSET %s
+        """,
+        (per_page, offset),
+    )
+    items = []
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            items.append({
+                'id': row.get('id'),
+                'sender_name': row.get('sender_name') or '',
+                'audience': row.get('audience') or '',
+                'department': row.get('department') or '',
+                'subject': row.get('subject') or '',
+                'attachment_name': row.get('attachment_name') or '',
+                'channels': json.loads(row.get('channels_json') or '{}'),
+                'recipient_count': int(row.get('recipient_count') or 0),
+                'delivered_count': int(row.get('delivered_count') or 0),
+                'read_count': int(row.get('read_count') or 0),
+                'created_at': row.get('created_at'),
+            })
+        else:
+            items.append({
+                'id': row[0],
+                'sender_name': row[1] or '',
+                'audience': row[2] or '',
+                'department': row[3] or '',
+                'subject': row[4] or '',
+                'attachment_name': row[5] or '',
+                'channels': json.loads(row[6] or '{}'),
+                'recipient_count': int(row[7] or 0),
+                'delivered_count': int(row[8] or 0),
+                'read_count': int(row[9] or 0),
+                'created_at': row[10],
+            })
+    for item in items:
+        ca = item.get('created_at')
+        if ca and hasattr(ca, 'strftime'):
+            item['created_at_display'] = ca.strftime('%d %b %Y, %H:%M')
+        elif ca:
+            item['created_at_display'] = str(ca)[:16]
+        else:
+            item['created_at_display'] = ''
+        ch = item.get('channels') or {}
+        labels = []
+        if ch.get('email'):
+            labels.append('Email')
+        if ch.get('sms'):
+            labels.append('SMS')
+        if ch.get('whatsapp'):
+            labels.append('WhatsApp')
+        if ch.get('app'):
+            labels.append('App')
+        aud_meta = ch.get('_audiences') or []
+        if aud_meta:
+            aud_names = {'parents': 'Parents', 'students': 'Students', 'employees': 'Staff'}
+            labels.extend([aud_names.get(a, a) for a in aud_meta if a in aud_names])
+        elif (item.get('audience') or '').lower() == 'multi':
+            labels.append('Mixed groups')
+        item['channel_labels'] = labels
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    return {'items': items, 'meta': {'page': page, 'per_page': per_page, 'total': total, 'pages': pages}}
+
+
+def _communication_fetch_broadcast_detail(cursor, broadcast_id):
+    ensure_communication_broadcast_tables(cursor)
+    ensure_portal_notifications_table(cursor)
+    bid = int(broadcast_id)
+    _communication_finalize_broadcast_counts(cursor, bid)
+    cursor.execute(
+        """
+        SELECT id, sender_name, audience, department, subject, message, attachment_name,
+               channels_json, recipient_count, delivered_count, read_count, created_at
+        FROM communication_broadcasts WHERE id = %s LIMIT 1
+        """,
+        (bid,),
+    )
+    brow = cursor.fetchone()
+    if not brow:
+        return None
+    if isinstance(brow, dict):
+        broadcast = {
+            'id': brow.get('id'),
+            'sender_name': brow.get('sender_name') or '',
+            'audience': brow.get('audience') or '',
+            'department': brow.get('department') or '',
+            'subject': brow.get('subject') or '',
+            'message': brow.get('message') or '',
+            'attachment_name': brow.get('attachment_name') or '',
+            'channels': json.loads(brow.get('channels_json') or '{}'),
+            'recipient_count': int(brow.get('recipient_count') or 0),
+            'delivered_count': int(brow.get('delivered_count') or 0),
+            'read_count': int(brow.get('read_count') or 0),
+            'created_at': brow.get('created_at'),
+        }
+    else:
+        broadcast = {
+            'id': brow[0],
+            'sender_name': brow[1] or '',
+            'audience': brow[2] or '',
+            'department': brow[3] or '',
+            'subject': brow[4] or '',
+            'message': brow[5] or '',
+            'attachment_name': brow[6] or '',
+            'channels': json.loads(brow[7] or '{}'),
+            'recipient_count': int(brow[8] or 0),
+            'delivered_count': int(brow[9] or 0),
+            'read_count': int(brow[10] or 0),
+            'created_at': brow[11],
+        }
+    ca = broadcast.get('created_at')
+    if ca and hasattr(ca, 'strftime'):
+        broadcast['created_at_display'] = ca.strftime('%d %b %Y, %H:%M')
+    elif ca:
+        broadcast['created_at_display'] = str(ca)[:16]
+    else:
+        broadcast['created_at_display'] = ''
+
+    cursor.execute(
+        """
+        SELECT cbr.id, cbr.recipient_kind, cbr.recipient_ref_id, cbr.recipient_name,
+               cbr.email, cbr.phone, cbr.email_status, cbr.sms_status, cbr.whatsapp_status,
+               cbr.app_status, cbr.delivered_at, cbr.read_at, cbr.portal_notification_id,
+               pn.read_at AS portal_read_at
+        FROM communication_broadcast_recipients cbr
+        LEFT JOIN portal_notifications pn ON pn.id = cbr.portal_notification_id
+        WHERE cbr.broadcast_id = %s
+        ORDER BY cbr.recipient_name ASC
+        """,
+        (bid,),
+    )
+    recipients = []
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            r = {
+                'id': row.get('id'),
+                'kind': row.get('recipient_kind') or '',
+                'ref_id': row.get('recipient_ref_id'),
+                'name': row.get('recipient_name') or '',
+                'email': row.get('email') or '',
+                'phone': row.get('phone') or '',
+                'email_status': row.get('email_status') or 'none',
+                'sms_status': row.get('sms_status') or 'none',
+                'whatsapp_status': row.get('whatsapp_status') or 'none',
+                'app_status': row.get('app_status') or 'none',
+                'delivered_at': row.get('delivered_at'),
+                'read_at': row.get('read_at') or row.get('portal_read_at'),
+                'has_portal': bool(row.get('portal_notification_id')),
+            }
+        else:
+            r = {
+                'id': row[0],
+                'kind': row[1] or '',
+                'ref_id': row[2],
+                'name': row[3] or '',
+                'email': row[4] or '',
+                'phone': row[5] or '',
+                'email_status': row[6] or 'none',
+                'sms_status': row[7] or 'none',
+                'whatsapp_status': row[8] or 'none',
+                'app_status': row[9] or 'none',
+                'delivered_at': row[10],
+                'read_at': row[11] or row[13],
+                'has_portal': bool(row[12]),
+            }
+        r['delivered'] = (
+            r['email_status'] == 'sent'
+            or r['sms_status'] == 'sent'
+            or r['whatsapp_status'] == 'sent'
+            or r.get('app_status') == 'sent'
+        )
+        r['read'] = bool(r.get('read_at'))
+        recipients.append(r)
+    broadcast['recipients'] = recipients
+    return broadcast
 
 
 def _save_communication_attachment(upload_file):
@@ -85864,7 +88630,7 @@ def _communication_channel_flags(integ):
     wa_ok = bool(wa.get('enabled')) and bool(
         (wa.get('api_key') or wa.get('access_token') or '').strip()
     ) and bool((wa.get('phone_number_id') or wa.get('phone_number') or '').strip())
-    return {'email': email_ok, 'sms': sms_ok, 'whatsapp': wa_ok}
+    return {'email': email_ok, 'sms': sms_ok, 'whatsapp': wa_ok, 'app': notification_mode_active('app')}
 
 
 def _render_communication_centre(tpad_mode=False):
@@ -85925,6 +88691,8 @@ def _render_communication_centre(tpad_mode=False):
         academic_levels=academic_levels,
         departments=departments,
         tpad_mode=tpad_mode,
+        communication_sent_list_url='/api/employee/communication/sent',
+        communication_sent_detail_base='/api/employee/communication/sent',
     )
 
 
@@ -85949,7 +88717,9 @@ def api_communication_recipients():
     if not _user_can_access_communication():
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
-    audience = (request.args.get('audience') or 'employees').lower().strip()
+    audience = (request.args.get('audience') or 'parents').lower().strip()
+    if audience not in ('employees', 'parents', 'students'):
+        audience = 'parents'
     q = (request.args.get('q') or '').strip()
     role_filter = (request.args.get('role') or '').strip().lower() or None
     level_filter = (request.args.get('level') or '').strip() or None
@@ -86011,29 +88781,45 @@ def api_communication_send():
     subject = (payload.get('subject') or '').strip()
     body = (payload.get('message') or '').strip()
     dept = (payload.get('department') or '').strip()
-    audience = (payload.get('audience') or 'employees').lower().strip()
+    audience = (payload.get('audience') or 'parents').lower().strip()
     recipient_ids = payload.get('recipient_ids') or []
     channels = payload.get('channels') or {}
     send_to_all = bool(payload.get('send_to_all'))
     role_filter = (payload.get('role_filter') or '').strip().lower() or None
     level_filter = (payload.get('level_filter') or '').strip() or None
+    send_to_all, audiences_config = _communication_build_audiences_config(payload)
+    if not audiences_config:
+        return jsonify({'success': False, 'message': 'Select at least one group to send to.'}), 400
+
+    aud_list = [c['audience'] for c in audiences_config]
+    log_audience = aud_list[0] if len(aud_list) == 1 else 'multi'
+    if len(aud_list) == 1:
+        log_role_filter = audiences_config[0].get('role_filter')
+        log_level_filter = audiences_config[0].get('level_filter')
+    else:
+        log_role_filter = None
+        log_level_filter = None
 
     if not subject or not body:
         return jsonify({'success': False, 'message': 'Subject and message are required.'}), 400
-    if not send_to_all and (not isinstance(recipient_ids, list) or len(recipient_ids) == 0):
-        return jsonify({'success': False, 'message': 'Select at least one recipient, or choose send to all.'}), 400
+    if not send_to_all:
+        has_ids = any(isinstance(c.get('recipient_ids'), list) and len(c.get('recipient_ids')) for c in audiences_config)
+        if not has_ids:
+            return jsonify({'success': False, 'message': 'Select at least one recipient, or choose send to all.'}), 400
     if not school_notifications_enabled():
         return jsonify({
             'success': False,
             'message': 'School notifications are turned off in System Settings → General.',
         }), 400
-    for ch in ('email', 'sms', 'whatsapp'):
+    if channels.get('app') is None:
+        channels['app'] = True
+    for ch in ('email', 'sms', 'whatsapp', 'app'):
         if channels.get(ch) and not notification_mode_active(ch):
             channels[ch] = False
-    if not any(channels.get(k) for k in ('email', 'sms', 'whatsapp')):
+    if not any(channels.get(k) for k in ('email', 'sms', 'whatsapp', 'app')):
         return jsonify({
             'success': False,
-            'message': 'No enabled notification channels are configured. Check System Settings → General and Communication Integration.',
+            'message': 'Select at least one delivery channel.',
         }), 400
 
     attach_path, attach_name, attach_mime_or_err = _save_communication_attachment(attachment_file)
@@ -86044,21 +88830,36 @@ def api_communication_send():
     integ = _load_integration_data_communication()
     flags = _communication_channel_flags(integ)
 
+    targets = []
+    broadcast_id = None
+    recip_log = []
     connection = get_db_connection()
     if not connection:
         return jsonify({'success': False, 'message': 'Database error'}), 500
 
-    targets = []
+    channels_to_store = dict(channels or {})
+    channels_to_store['_audiences'] = aud_list
+
     try:
         with connection.cursor() as cursor:
-            targets = _communication_resolve_targets(
-                cursor,
-                audience,
-                recipient_ids,
-                send_to_all,
-                role_filter=role_filter,
-                level_filter=level_filter,
-            )
+            targets = _communication_resolve_multi_targets(cursor, audiences_config, send_to_all)
+            if targets:
+                broadcast_id, recip_log = _communication_create_broadcast_log(
+                    cursor,
+                    sender_user_id=session.get('user_id'),
+                    sender_name=session.get('full_name', ''),
+                    audience=log_audience,
+                    department=dept,
+                    subject=subject,
+                    message=body,
+                    attachment_name=attach_name,
+                    channels=channels_to_store,
+                    send_to_all=send_to_all,
+                    role_filter=log_role_filter,
+                    level_filter=log_level_filter,
+                    targets=targets,
+                )
+                connection.commit()
     except Exception as e:
         print(f"api_communication_send load targets: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -86070,13 +88871,42 @@ def api_communication_send():
     if not targets:
         return jsonify({'success': False, 'message': 'No matching recipients found.'}), 400
 
+    def _recip_db_id(idx):
+        if idx < len(recip_log):
+            return recip_log[idx].get('db_id')
+        return None
+
+    def _log_channel(recip_db_id, channel, status):
+        if not recip_db_id or not broadcast_id:
+            return
+        conn = get_db_connection()
+        if not conn:
+            return
+        try:
+            with conn.cursor() as cur:
+                _communication_update_recipient_channel(cur, recip_db_id, channel, status)
+                conn.commit()
+        except Exception as ex:
+            print(f"_log_channel: {ex}")
+        finally:
+            conn.close()
+
     results = {
         'email': {'sent': 0, 'failed': []},
         'sms': {'sent': 0, 'skipped': 0, 'notes': []},
         'whatsapp': {'sent': 0, 'skipped': 0, 'notes': []},
+        'app': {'sent': 0, 'skipped': 0},
         'attachment': attach_name or None,
         'recipient_count': len(targets),
+        'broadcast_id': broadcast_id,
     }
+
+    if channels.get('app') and recip_log:
+        for entry in recip_log:
+            if entry.get('portal_notification_id'):
+                results['app']['sent'] += 1
+            else:
+                results['app']['skipped'] += 1
 
     if attach_path and (channels.get('sms') or channels.get('whatsapp')):
         if channels.get('sms'):
@@ -86112,10 +88942,12 @@ def api_communication_send():
                 school = get_school_settings()
                 from_name = (school.get('school_name') or 'School').strip()
                 sender_email = (app.config.get('MAIL_DEFAULT_SENDER') or '').strip() or 'noreply@localhost'
-                for t in targets:
+                for idx, t in enumerate(targets):
                     em = (t.get('email') or '').strip()
+                    rid = _recip_db_id(idx)
                     if not em:
                         results['email']['failed'].append(f"{t.get('name')}: no email")
+                        _log_channel(rid, 'email', 'skipped')
                         continue
                     try:
                         msg = Message(
@@ -86129,8 +88961,10 @@ def api_communication_send():
                             msg.attach(attach_name, attach_mime, attach_bytes)
                         mail.send(msg)
                         results['email']['sent'] += 1
+                        _log_channel(rid, 'email', 'sent')
                     except Exception as ex:
                         results['email']['failed'].append(f"{em}: {ex}")
+                        _log_channel(rid, 'email', 'failed')
 
     if channels.get('sms'):
         sm = integ.get('sms') or {}
@@ -86143,10 +88977,12 @@ def api_communication_send():
             prov = (sm.get('provider') or '').lower()
             api_key = (sm.get('api_key') or '').strip()
             sender_id = (sm.get('sender_id') or '').strip() or 'INFO'
-            for t in targets:
+            for idx, t in enumerate(targets):
                 phone = (t.get('phone') or '').strip()
+                rid = _recip_db_id(idx)
                 if not phone:
                     results['sms']['skipped'] += 1
+                    _log_channel(rid, 'sms', 'skipped')
                     continue
                 txt = f"{subject}\n{full_text}"[:480]
                 try:
@@ -86177,11 +89013,14 @@ def api_communication_send():
                             with urllib.request.urlopen(req, timeout=25) as resp:
                                 _ = resp.read()
                             results['sms']['sent'] += 1
+                            _log_channel(rid, 'sms', 'sent')
                         else:
                             results['sms']['skipped'] += 1
+                            _log_channel(rid, 'sms', 'skipped')
                             results['sms']['notes'].append('Africa\'s Talking: set username + API key in SMS settings.')
                     else:
                         results['sms']['skipped'] += 1
+                        _log_channel(rid, 'sms', 'skipped')
                         if not results['sms']['notes']:
                             results['sms']['notes'].append(
                                 'SMS provider not supported in app yet; use Africa\'s Talking or extend integration.'
@@ -86189,6 +89028,7 @@ def api_communication_send():
                 except Exception as ex:
                     results['sms']['notes'].append(str(ex))
                     results['sms']['skipped'] += 1
+                    _log_channel(rid, 'sms', 'failed')
 
     if channels.get('whatsapp'):
         wa = integ.get('whatsapp') or {}
@@ -86200,10 +89040,12 @@ def api_communication_send():
         else:
             token = (wa.get('api_key') or wa.get('access_token') or '').strip()
             phone_id = (wa.get('phone_number_id') or wa.get('phone_number') or '').strip()
-            for t in targets:
+            for idx, t in enumerate(targets):
                 phone = (t.get('phone') or '').strip().replace('+', '').replace(' ', '')
+                rid = _recip_db_id(idx)
                 if not phone:
                     results['whatsapp']['skipped'] += 1
+                    _log_channel(rid, 'whatsapp', 'skipped')
                     continue
                 if token and phone_id and len(phone) > 6:
                     try:
@@ -86232,17 +89074,77 @@ def api_communication_send():
                         with urllib.request.urlopen(req, timeout=25) as resp:
                             _ = resp.read()
                         results['whatsapp']['sent'] += 1
+                        _log_channel(rid, 'whatsapp', 'sent')
                     except Exception as ex:
                         results['whatsapp']['notes'].append(str(ex))
                         results['whatsapp']['skipped'] += 1
+                        _log_channel(rid, 'whatsapp', 'failed')
                 else:
                     results['whatsapp']['skipped'] += 1
+                    _log_channel(rid, 'whatsapp', 'skipped')
                     if not results['whatsapp']['notes']:
                         results['whatsapp']['notes'].append(
                             'WhatsApp Cloud API: set access token and phone_number_id in Integration Settings.'
                         )
 
+    if broadcast_id:
+        fin_conn = get_db_connection()
+        if fin_conn:
+            try:
+                with fin_conn.cursor() as cur:
+                    _communication_finalize_broadcast_counts(cur, broadcast_id)
+                    fin_conn.commit()
+            except Exception as ex:
+                print(f"api_communication_send finalize: {ex}")
+            finally:
+                fin_conn.close()
+
     return jsonify({'success': True, 'results': results})
+
+
+@app.route('/api/employee/communication/sent', methods=['GET'])
+@login_required
+def api_communication_sent_list():
+    if not _user_can_access_communication():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database error'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _communication_fetch_sent_broadcasts(cursor, page=page, per_page=per_page)
+    except Exception as ex:
+        print(f"api_communication_sent_list: {ex}")
+        return jsonify({'success': False, 'message': str(ex)}), 500
+    finally:
+        connection.close()
+    return jsonify({'success': True, **payload})
+
+
+@app.route('/api/employee/communication/sent/<int:broadcast_id>', methods=['GET'])
+@login_required
+def api_communication_sent_detail(broadcast_id):
+    if not _user_can_access_communication():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database error'}), 500
+    try:
+        with connection.cursor() as cursor:
+            detail = _communication_fetch_broadcast_detail(cursor, broadcast_id)
+            if detail:
+                connection.commit()
+    except Exception as ex:
+        print(f"api_communication_sent_detail: {ex}")
+        return jsonify({'success': False, 'message': str(ex)}), 500
+    finally:
+        connection.close()
+    if not detail:
+        return jsonify({'success': False, 'message': 'Communication not found.'}), 404
+    return jsonify({'success': True, 'broadcast': detail})
+
 
 # Notifications Route (academic coordinators, accountant pending requisitions)
 @app.route('/dashboard/employee/notifications')
@@ -87876,6 +90778,7 @@ def record_supplier_pay_all():
     wants_ajax = _payments_invoices_wants_ajax()
 
     def _pay_fail(message):
+        print(f"record_supplier_pay_all: {message}")
         if wants_ajax:
             return jsonify({'success': False, 'message': message}), 400
         flash(message, 'error')

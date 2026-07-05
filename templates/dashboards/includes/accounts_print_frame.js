@@ -277,14 +277,7 @@
   }
 
   function collectPcbPrintHtml() {
-    var parts = [];
-    var letterhead = document.getElementById('acr-print-letterhead');
-    if (letterhead) parts.push(letterhead.outerHTML);
-    var section = document.getElementById('acr-pcb-book-section');
-    if (section) parts.push('<div id="acr-report-body">' + section.outerHTML + '</div>');
-    var footer = document.querySelector('.acr-print-footer');
-    if (footer) parts.push(footer.outerHTML);
-    return parts.join('');
+    return collectAcrAccountReportHtml();
   }
 
   window.printAccountsInFrame = printAccountsInFrame;

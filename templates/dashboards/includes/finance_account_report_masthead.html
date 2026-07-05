@@ -1,23 +1,19 @@
 {# Expects: account, report_title, report_description, report_icon, account_id, date_from, date_to, report_period_label, show_filters, filter_action_url, is_summary #}
 {% include 'dashboards/includes/finance_account_report_print_letterhead.html' %}
+<div class="acr-masthead-sync" hidden aria-hidden="true">
+    <span class="acr-masthead__title">{{ report_title }}</span>
+    <span id="acr-masthead-account">{{ account.account_name }}</span>
+    <span id="acr-masthead-period">{{ report_period_label|default('All dates') }}</span>
+    <span id="acr-masthead-generated">{{ report_generated_at|default('—') }}</span>
+</div>
+{% set _show_masthead_panel = (
+    (show_filters|default(true) and filter_action_url)
+    or (report_description and not compact_masthead|default(false))
+    or not compact_masthead|default(false)
+) %}
+{% if _show_masthead_panel %}
 <div class="acr-masthead{% if compact_masthead|default(false) %} acr-masthead--compact{% endif %}">
-    <div class="acr-masthead__band">
-        <div class="acr-masthead__inner">
-            <div class="min-w-0 flex-1">
-                <p class="acr-masthead__school">{{ school_settings.school_name or 'School' }}</p>
-                <h1 class="acr-masthead__title">{{ report_title }}</h1>
-                <p class="acr-masthead__account" id="acr-masthead-account">{{ account.account_name }}</p>
-            </div>
-            <div class="acr-masthead__meta">
-                <div><strong>Period:</strong> <span id="acr-masthead-period">{{ report_period_label|default('All dates') }}</span></div>
-                <div><strong>Generated:</strong> <span id="acr-masthead-generated">{{ report_generated_at|default('—') }}</span></div>
-                {% if account.account_category and not compact_masthead|default(false) %}
-                <div><strong>Category:</strong> {{ account.account_category }}</div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="acr-masthead__body">
+    <div class="acr-masthead__body acr-masthead__body--solo">
         {% if report_description and not compact_masthead|default(false) %}
         <p class="acr-masthead__desc">{{ report_description }}</p>
         {% endif %}
@@ -156,3 +152,4 @@
         {% endif %}
     </div>
 </div>
+{% endif %}

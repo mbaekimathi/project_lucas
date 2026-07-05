@@ -348,9 +348,16 @@ document.addEventListener('alpine:init', function () {
         var list = this.financeAccounts || [];
         if (!mode) return list;
         return list.filter(function (acc) {
-          var modes = acc.payment_modes || [];
-          return !modes.length || modes.indexOf(mode) >= 0;
-        });
+          return this.accountSupportsPaymentMode(acc, mode);
+        }.bind(this));
+      },
+      accountSupportsPaymentMode: function (acc, mode) {
+        if (!mode) return true;
+        if (acc && acc.flexible_payment_modes) return true;
+        var modes = (acc && acc.payment_modes) || [];
+        if (!modes.length) return true;
+        if (modes.indexOf(mode) >= 0) return true;
+        return modes.indexOf('bank') >= 0 && (mode === 'cheque' || mode === 'mpesa');
       },
       get selectedFinanceAccount() {
         var id = String(this.financeAccountId || '');
@@ -1401,7 +1408,8 @@ document.addEventListener('alpine:init', function () {
                  aria-labelledby="pay-modal-title"
                  class="accounts-modal pay-settle-shell relative z-10 rounded-xl bg-white dark:bg-slate-900 overflow-hidden"
                  @click.stop>
-                <div class="shrink-0 border-b border-slate-700 px-4 py-3 sm:px-5 flex items-start justify-between gap-2 bg-gradient-to-r from-slate-800 to-teal-900">
+                <div class="shrink-0 border-b border-slate-700 px-4 py-3 sm:px-5 flex items-start justify-between gap-2 bg-gradient-to-r from-slate-800 to-teal-900"
+                     @click="invoiceDropdownOpen = false">
                     <div class="min-w-0 flex-1">
                         <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-200">Settle payable</p>
                         <template x-if="selectedSupplier">
@@ -1432,9 +1440,9 @@ document.addEventListener('alpine:init', function () {
                     </button>
                 </div>
 
-                <form method="post" :action="payPostUrl" @submit="submitPay($event)" class="flex flex-col flex-1 min-h-0">
+                <form method="post" :action="payPostUrl" @submit="submitPay($event)" @click="invoiceDropdownOpen = false" class="flex flex-col flex-1 min-h-0">
                     <div class="pay-settle-body px-4 py-3 sm:px-5 sm:py-4 space-y-3">
-                        <div x-show="selectedSupplier" x-cloak class="relative" @click.outside="invoiceDropdownOpen = false">
+                        <div x-show="selectedSupplier" x-cloak class="relative" @click.stop>
                             <div class="mb-1 flex items-center justify-between gap-2">
                                 <label for="pay_invoices_trigger" class="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-400">Invoices</label>
                                 <div class="flex gap-2 text-[10px] font-semibold uppercase" x-show="supplierInvoiceOptions.length && invoiceDropdownOpen">

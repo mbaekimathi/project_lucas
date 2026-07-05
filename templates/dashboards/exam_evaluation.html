@@ -662,15 +662,22 @@
 {% endblock %}
 
 {% block content %}
-{% set role_theme = portal_page_variant|default('default') %}
+{% set role_theme = 'deputy' if is_deputy|default(false) else portal_page_variant|default('default') %}
 {% set role_hero_title = 'Exam & Evaluation' %}
+{% if is_deputy|default(false) %}
+{% set role_hero_eyebrow = 'Deputy head dashboard' %}
+{% set role_hero_subtitle = 'Review exams submitted by the curriculum coordinator and officially release (gazette) results to parents and students.' %}
+{% elif is_curriculum_coordinator|default(false) %}
+{% set role_hero_subtitle = 'Register exams, build timetables, authorize release, and manage allocations.' %}
+{% else %}
 {% set role_hero_subtitle = 'Register exams, build timetables, and manage allocations.' %}
+{% endif %}
 {% set role_hero_icon_class = 'fa-clipboard-check' %}
 <div class="exam-eval-page p-4 sm:p-6 lg:p-8 min-h-screen bg-gray-50 dark:bg-gray-950 max-w-[100vw] overflow-x-hidden portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="examEvaluation()" x-init="init()">
     {% include 'dashboards/includes/role_hero.html' %}
 
-    <!-- Register Exam + Allocations -->
-    <div class="dashboard-card p-4 sm:p-6 mb-4 sm:mb-6">
+    <!-- Register Exam + Allocations (curriculum coordinator only) -->
+    <div class="dashboard-card p-4 sm:p-6 mb-4 sm:mb-6" x-show="isCurriculumCoordinator" x-cloak>
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
                 <h2 class="exam-eval-section-title">Register exam</h2>
@@ -763,6 +770,61 @@
             <p x-show="!isHeaderValid" class="text-sm text-gray-500 dark:text-gray-400">
                 Select year, term, and exam type to continue.
             </p>
+
+            <!-- Student application requirements (optional — off by default) -->
+            <div class="exam-eval-divider rounded-xl border border-indigo-200/80 dark:border-indigo-800/50 bg-indigo-50/40 dark:bg-indigo-950/20 p-4"
+                 x-show="isHeaderValid" x-cloak>
+                <p class="exam-eval-field-label mb-1">
+                    <i class="fas fa-user-check text-brand-primary mr-1"></i>Student application requirements
+                </p>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400 mb-3 leading-snug">
+                    Optional. Leave all unchecked to allow <strong>every student</strong> to apply. Enable any rule and set the minimum % required in the student portal.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <label class="flex items-start gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 p-3 cursor-pointer hover:border-brand-primary/40 transition">
+                        <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                               x-model="applyRequirements.classEnabled">
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-xs font-semibold text-gray-800 dark:text-gray-200">Class attendance</span>
+                            <span class="flex items-center gap-1.5 mt-1.5">
+                                <input type="number" min="0" max="100" step="1"
+                                       x-model.number="applyRequirements.classPct"
+                                       :disabled="!applyRequirements.classEnabled"
+                                       class="modern-input w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-50">
+                                <span class="text-xs text-gray-500">% min</span>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 p-3 cursor-pointer hover:border-brand-primary/40 transition">
+                        <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                               x-model="applyRequirements.subjectEnabled">
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-xs font-semibold text-gray-800 dark:text-gray-200">Subject attendance</span>
+                            <span class="flex items-center gap-1.5 mt-1.5">
+                                <input type="number" min="0" max="100" step="1"
+                                       x-model.number="applyRequirements.subjectPct"
+                                       :disabled="!applyRequirements.subjectEnabled"
+                                       class="modern-input w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-50">
+                                <span class="text-xs text-gray-500">% min</span>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 p-3 cursor-pointer hover:border-brand-primary/40 transition">
+                        <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                               x-model="applyRequirements.feeEnabled">
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-xs font-semibold text-gray-800 dark:text-gray-200">Term fees paid</span>
+                            <span class="flex items-center gap-1.5 mt-1.5">
+                                <input type="number" min="0" max="100" step="1"
+                                       x-model.number="applyRequirements.feePct"
+                                       :disabled="!applyRequirements.feeEnabled"
+                                       class="modern-input w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-50">
+                                <span class="text-xs text-gray-500">% min</span>
+                            </span>
+                        </span>
+                    </label>
+                </div>
+            </div>
 
             <div x-show="isHeaderValid" x-cloak class="space-y-5">
             <!-- Registration mode -->
@@ -1456,7 +1518,10 @@
         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
             <div>
                 <h2 class="exam-eval-section-title">Registered exams</h2>
-                <p class="exam-eval-section-hint mt-1">
+                <p class="exam-eval-section-hint mt-1" x-show="isDeputy">
+                    Submitted exams ready for official release appear below. Use <strong>Release results</strong> to gazette marks for parents and students.
+                </p>
+                <p class="exam-eval-section-hint mt-1" x-show="!isDeputy">
                     <i class="fas fa-star text-amber-500 text-[10px]"></i> current exam for marks sheets ·
                     <i class="fas fa-clock text-emerald-600 dark:text-emerald-400 text-[10px]"></i> marks entry deadline · open a row for timetable
                 </p>
@@ -1540,7 +1605,7 @@
                                 <i class="fas fa-calendar-alt text-[10px] sm:text-xs"></i>
                                 <span>Open timetable</span>
                             </a>
-                            <div class="flex flex-wrap gap-1.5 sm:gap-2">
+                            <div class="flex flex-wrap gap-1.5 sm:gap-2" x-show="isCurriculumCoordinator">
                                 <button type="button"
                                         @click="editRegistration(exam)"
                                         :disabled="!exam.id || exam.is_locked || exam.is_submitted || savingExam"
@@ -1554,7 +1619,7 @@
                                     <i class="fas fa-trash mr-1"></i>Delete
                                 </button>
                             </div>
-                            <div class="flex flex-col gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop x-show="!exam.is_submitted">
+                            <div class="flex flex-col gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop x-show="!exam.is_submitted && isCurriculumCoordinator">
                                 <button type="button"
                                         @click.stop="openMarksLockModal(exam)"
                                         :disabled="lockingExam || savingMarksLockKey === exam._key"
@@ -1575,7 +1640,24 @@
                             </div>
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
                                 <span class="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Release</span>
-                                <template x-if="exam.is_submitted">
+                                <template x-if="exam.is_gazetted">
+                                    <span class="text-xs font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                                        <i class="fas fa-bullhorn mr-0.5"></i>Gazetted
+                                    </span>
+                                </template>
+                                <template x-if="exam.can_gazette && isDeputy">
+                                    <button type="button"
+                                            @click="gazetteExamResults(exam)"
+                                            :disabled="gazettingKey === exam._key"
+                                            class="modern-btn w-full sm:w-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all disabled:opacity-50 bg-violet-600 hover:bg-violet-700 text-white">
+                                        <i class="fas fa-bullhorn mr-1"></i>
+                                        <span x-text="gazettingKey === exam._key ? 'Releasing…' : 'Release results'"></span>
+                                    </button>
+                                </template>
+                                <template x-if="exam.is_submitted && !exam.is_gazetted && !exam.can_gazette && isDeputy">
+                                    <span class="text-xs font-semibold text-gray-500 dark:text-gray-400">Awaiting full CC submission</span>
+                                </template>
+                                <template x-if="exam.is_submitted && !exam.is_gazetted && !isDeputy">
                                     <span class="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
                                         <i class="fas fa-check-circle mr-0.5"></i>Submitted — view only
                                     </span>
@@ -1589,8 +1671,17 @@
                                         <span>Authorize release</span>
                                     </button>
                                 </template>
+                                <template x-if="exam.can_return && isDeputy">
+                                    <button type="button"
+                                            @click="returnExamForEditing(exam)"
+                                            :disabled="returningKey === exam._key"
+                                            class="modern-btn w-full sm:w-auto px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all disabled:opacity-50 bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-600 dark:text-white dark:hover:bg-gray-500">
+                                        <i class="fas fa-undo mr-1"></i>
+                                        <span>Return for editing</span>
+                                    </button>
+                                </template>
                             </div>
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1" x-show="!exam.is_submitted">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1" x-show="!exam.is_submitted && isCurriculumCoordinator">
                                 <span class="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Allocation lock</span>
                                 <span x-show="exam.is_locked"
                                       class="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
@@ -1687,7 +1778,7 @@
                                         <span>Allocation</span>
                                     </a>
                                 </td>
-                                <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
+                                <td class="p-3 sm:p-4 align-middle text-center" @click.stop x-show="isCurriculumCoordinator">
                                     <div class="inline-flex items-center gap-2">
                                         <button type="button"
                                                 @click="editRegistration(exam)"
@@ -1705,7 +1796,7 @@
                                         </button>
                                     </div>
                                 </td>
-                                <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
+                                <td class="p-3 sm:p-4 align-middle text-center" @click.stop x-show="isCurriculumCoordinator">
                                     <div class="inline-flex flex-col items-center gap-1 min-w-[7rem]" x-show="!exam.is_submitted">
                                         <button type="button"
                                                 @click="openMarksLockModal(exam)"
@@ -1728,7 +1819,25 @@
                                     <span x-show="exam.is_submitted" class="text-xs text-gray-400">—</span>
                                 </td>
                                 <td class="p-3 sm:p-4 align-middle text-right" @click.stop>
-                                    <template x-if="exam.is_submitted">
+                                    <template x-if="exam.is_gazetted">
+                                        <span class="text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300 whitespace-nowrap">
+                                            <i class="fas fa-bullhorn mr-0.5"></i>Gazetted
+                                        </span>
+                                    </template>
+                                    <template x-if="exam.can_gazette && isDeputy">
+                                        <button type="button"
+                                                @click="gazetteExamResults(exam)"
+                                                :disabled="gazettingKey === exam._key"
+                                                class="modern-btn whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 bg-violet-600 hover:bg-violet-700 text-white"
+                                                title="Officially release results to parents and students">
+                                            <i class="fas fa-bullhorn mr-1"></i>
+                                            <span x-text="gazettingKey === exam._key ? 'Releasing…' : 'Release results'"></span>
+                                        </button>
+                                    </template>
+                                    <template x-if="exam.is_submitted && !exam.is_gazetted && !exam.can_gazette && isDeputy">
+                                        <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Awaiting CC</span>
+                                    </template>
+                                    <template x-if="exam.is_submitted && !exam.is_gazetted && !isDeputy">
                                         <span class="text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                                             <i class="fas fa-check-circle mr-0.5"></i>Submitted
                                         </span>
@@ -1742,11 +1851,20 @@
                                             <i class="fas fa-paper-plane mr-1"></i>Authorize
                                         </button>
                                     </template>
-                                    <span x-show="!exam.is_submitted && !isCurriculumCoordinator" class="text-xs text-gray-400">—</span>
+                                    <span x-show="!exam.is_submitted && !isCurriculumCoordinator && !isDeputy" class="text-xs text-gray-400">—</span>
+                                    <template x-if="exam.can_return && isDeputy">
+                                        <button type="button"
+                                                @click="returnExamForEditing(exam)"
+                                                :disabled="returningKey === exam._key"
+                                                class="modern-btn whitespace-nowrap mt-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-600 dark:text-white dark:hover:bg-gray-500"
+                                                title="Return to curriculum coordinator for editing">
+                                            <i class="fas fa-undo mr-1"></i>Return
+                                        </button>
+                                    </template>
                                 </td>
                                 <td class="p-3 sm:p-4 align-middle text-right" @click.stop>
-                                    <span x-show="exam.is_submitted" class="text-xs font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">View only</span>
-                                    <div class="flex flex-col items-end gap-1" x-show="!exam.is_submitted">
+                                    <span x-show="exam.is_submitted || exam.is_gazetted" class="text-xs font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">View only</span>
+                                    <div class="flex flex-col items-end gap-1" x-show="!exam.is_submitted && isCurriculumCoordinator">
                                         <span x-show="exam.is_locked"
                                               class="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
                                             <i class="fas fa-lock mr-0.5"></i>Locked
@@ -1951,6 +2069,59 @@
                        x-model="editingRegistration.exam_name"
                        readonly
                        class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white uppercase font-semibold">
+            </div>
+
+            <div class="rounded-xl border border-indigo-200/80 dark:border-indigo-800/50 bg-indigo-50/40 dark:bg-indigo-950/20 p-4">
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                    <i class="fas fa-user-check text-brand-primary mr-1"></i>Student application requirements
+                </p>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400 mb-3 leading-snug">
+                    Optional. Unchecked = all students may apply for this exam in the student portal.
+                </p>
+                <div class="grid grid-cols-1 gap-3">
+                    <label class="flex items-start gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 p-3 cursor-pointer">
+                        <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-brand-primary"
+                               x-model="editingApplyRequirements.classEnabled">
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-xs font-semibold text-gray-800 dark:text-gray-200">Class attendance</span>
+                            <span class="flex items-center gap-1.5 mt-1.5">
+                                <input type="number" min="0" max="100" step="1"
+                                       x-model.number="editingApplyRequirements.classPct"
+                                       :disabled="!editingApplyRequirements.classEnabled"
+                                       class="modern-input w-16 px-2 py-1 text-sm rounded-lg disabled:opacity-50">
+                                <span class="text-xs text-gray-500">% min</span>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 p-3 cursor-pointer">
+                        <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-brand-primary"
+                               x-model="editingApplyRequirements.subjectEnabled">
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-xs font-semibold text-gray-800 dark:text-gray-200">Subject attendance</span>
+                            <span class="flex items-center gap-1.5 mt-1.5">
+                                <input type="number" min="0" max="100" step="1"
+                                       x-model.number="editingApplyRequirements.subjectPct"
+                                       :disabled="!editingApplyRequirements.subjectEnabled"
+                                       class="modern-input w-16 px-2 py-1 text-sm rounded-lg disabled:opacity-50">
+                                <span class="text-xs text-gray-500">% min</span>
+                            </span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 p-3 cursor-pointer">
+                        <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-brand-primary"
+                               x-model="editingApplyRequirements.feeEnabled">
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-xs font-semibold text-gray-800 dark:text-gray-200">Term fees paid</span>
+                            <span class="flex items-center gap-1.5 mt-1.5">
+                                <input type="number" min="0" max="100" step="1"
+                                       x-model.number="editingApplyRequirements.feePct"
+                                       :disabled="!editingApplyRequirements.feeEnabled"
+                                       class="modern-input w-16 px-2 py-1 text-sm rounded-lg disabled:opacity-50">
+                                <span class="text-xs text-gray-500">% min</span>
+                            </span>
+                        </span>
+                    </label>
+                </div>
             </div>
             </div>
             <div class="shrink-0 flex flex-col-reverse sm:flex-row sm:justify-end gap-3 p-5 pt-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -2205,6 +2376,7 @@
 <script type="application/json" id="exam-data-subjects">{{ subjects|tojson|safe }}</script>
 <script type="application/json" id="exam-data-teachers">{{ teachers|tojson|safe }}</script>
 <script type="application/json" id="exam-data-exams">{{ exams|tojson|safe }}</script>
+<script type="application/json" id="exam-apply-rules-map">{{ exam_apply_rules_map|default({})|tojson|safe }}</script>
 <script type="application/json" id="exam-open-edit-id">{{ open_edit_id|default(none)|tojson|safe }}</script>
 <script type="application/json" id="exam-data-session-presets">{{ session_presets|default({})|tojson|safe }}</script>
 <script type="application/json" id="exam-registered-current">{{ registered_current_exam|tojson|safe }}</script>
@@ -2224,7 +2396,10 @@ function examEvaluation() {
         savingExam: false,
         lockingExam: false,
         authorizingRelease: false,
+        gazettingKey: '',
+        returningKey: '',
         isCurriculumCoordinator: {{ is_curriculum_coordinator|default(false)|tojson }},
+        isDeputy: {{ is_deputy|default(false)|tojson }},
         savingMarksLockKey: '',
         marksLockDrafts: {},
         marksLockModalExam: null,
@@ -2273,6 +2448,24 @@ function examEvaluation() {
         levelCombinations: [],
         comboShareEnabled: {},
 
+        applyRequirements: {
+            classEnabled: false,
+            classPct: 50,
+            subjectEnabled: false,
+            subjectPct: 50,
+            feeEnabled: false,
+            feePct: 100,
+        },
+        editingApplyRequirements: {
+            classEnabled: false,
+            classPct: 50,
+            subjectEnabled: false,
+            subjectPct: 50,
+            feeEnabled: false,
+            feePct: 100,
+        },
+        examApplyRulesMap: {},
+
         init() {
             this.academicYears = JSON.parse(document.getElementById('exam-data-academic-years')?.textContent || '[]');
             this.termsAll = JSON.parse(document.getElementById('exam-data-terms')?.textContent || '[]');
@@ -2286,6 +2479,11 @@ function examEvaluation() {
                 this.teacherSubjectPairs = [];
             }
             this.exams = JSON.parse(document.getElementById('exam-data-exams')?.textContent || '[]');
+            try {
+                this.examApplyRulesMap = JSON.parse(document.getElementById('exam-apply-rules-map')?.textContent || '{}');
+            } catch (e) {
+                this.examApplyRulesMap = {};
+            }
 
             try {
                 this.levelCombinations = JSON.parse(document.getElementById('exam-data-level-combinations')?.textContent || '[]');
@@ -3000,11 +3198,11 @@ function examEvaluation() {
                     if (m && (!maxMla || String(m) > String(maxMla))) maxMla = m;
                 }
                 const rep = arr[0];
-                const isGazetted = arr.some((x) => String(x.status || '').toLowerCase() === 'gazetted');
-                const isSubmitted = arr.some((x) => {
-                    const st = String(x.status || '').toLowerCase();
-                    return st === 'submitted' || st === 'gazetted';
-                });
+                const statuses = arr.map((x) => String(x.status || '').toLowerCase());
+                const isGazetted = statuses.length > 0 && statuses.every((s) => s === 'gazetted');
+                const isSubmitted = statuses.some((s) => s === 'submitted' || s === 'gazetted');
+                const can_gazette = statuses.length > 0 && statuses.every((s) => s === 'submitted');
+                const can_return = statuses.length > 0 && (statuses.every((s) => s === 'submitted') || isGazetted);
                 out.push({
                     id: rep.id,
                     exam_name: rep.exam_name,
@@ -3027,6 +3225,8 @@ function examEvaluation() {
                     is_locked: arr.some((x) => !!x.is_locked),
                     is_gazetted: isGazetted,
                     is_submitted: isSubmitted,
+                    can_gazette: can_gazette,
+                    can_return: can_return,
                     status: isGazetted ? 'gazetted' : (isSubmitted ? 'submitted' : (rep.status || 'scheduled')),
                     marks_lock_at: maxMla,
                     _key: key
@@ -3547,6 +3747,45 @@ function examEvaluation() {
             }
         },
 
+        buildApplyRequirementsPayload(source) {
+            const src = source || this.applyRequirements;
+            const clamp = (v) => {
+                const n = parseFloat(v);
+                if (Number.isNaN(n)) return null;
+                return Math.max(0, Math.min(100, Math.round(n)));
+            };
+            return {
+                class_attendance_min_pct: src.classEnabled ? clamp(src.classPct) : null,
+                subject_attendance_min_pct: src.subjectEnabled ? clamp(src.subjectPct) : null,
+                fee_payment_min_pct: src.feeEnabled ? clamp(src.feePct) : null,
+            };
+        },
+
+        emptyApplyRequirementsForm() {
+            return {
+                classEnabled: false,
+                classPct: 50,
+                subjectEnabled: false,
+                subjectPct: 50,
+                feeEnabled: false,
+                feePct: 100,
+            };
+        },
+
+        applyFormFromRules(form, rules) {
+            const r = rules || {};
+            form.classEnabled = !!(r.class_enabled || r.class_min != null);
+            form.classPct = r.class_min != null ? Number(r.class_min) : 50;
+            form.subjectEnabled = !!(r.subject_enabled || r.subject_min != null);
+            form.subjectPct = r.subject_min != null ? Number(r.subject_min) : 50;
+            form.feeEnabled = !!(r.fee_enabled || r.fee_min != null);
+            form.feePct = r.fee_min != null ? Number(r.fee_min) : 100;
+        },
+
+        examRulesForKey(key) {
+            return (this.examApplyRulesMap && this.examApplyRulesMap[key]) || {};
+        },
+
         async saveExam() {
             this.errorMessage = '';
             this.successMessage = '';
@@ -3561,6 +3800,7 @@ function examEvaluation() {
             }
 
             let payload;
+            const applyReq = this.buildApplyRequirementsPayload();
             if (this.registrationMode === 'auto') {
                 const shareGroups = this.buildShareGroupsPayload();
                 payload = {
@@ -3579,7 +3819,8 @@ function examEvaluation() {
                         start_time: this.autoCustomStartTime,
                         duration_minutes: parseInt(this.autoCustomDurationMinutes || 0),
                     } : null,
-                    allocations: []
+                    allocations: [],
+                    apply_requirements: applyReq,
                 };
             } else {
                 const shareGroups = this.buildShareGroupsPayload();
@@ -3593,6 +3834,7 @@ function examEvaluation() {
                     share_timetable: sharedManual,
                     share_groups: shareGroups,
                     level_ids: this.selectedLevelIds.map(id => parseInt(id, 10)),
+                    apply_requirements: applyReq,
                     allocations: this.allocations.map(r => {
                         const base = {
                             subject_id: parseInt(r.subject_id),
@@ -3680,6 +3922,7 @@ function examEvaluation() {
             this.successMessage = '';
             this.errorMessage = '';
             this.clientConflictMessage = '';
+            this.applyRequirements = this.emptyApplyRequirementsForm();
             this.initFromLevelCombinations();
             if (this.registrationMode === 'auto') {
                 this.selectAllLevels();
@@ -3771,6 +4014,76 @@ function examEvaluation() {
                 this.errorMessage = 'Could not authorize release. Please try again.';
             } finally {
                 this.authorizingRelease = false;
+            }
+        },
+
+        async gazetteExamResults(exam) {
+            if (!this.isDeputy || !exam || !exam.can_gazette) return;
+            const msg = 'Release results for “' + (exam.exam_name || 'this exam') + '”?\n\nThis officially gazettes the results for parents and students. This action cannot be undone.';
+            if (!confirm(msg)) return;
+
+            this.gazettingKey = exam._key;
+            this.errorMessage = '';
+            this.successMessage = '';
+            try {
+                const body = {
+                    exam_name: exam.exam_name,
+                    academic_year_id: parseInt(exam.academic_year_id, 10),
+                    term_id: parseInt(exam.term_id, 10),
+                };
+                if (exam.exam_type) body.exam_type = exam.exam_type;
+                const response = await fetch('{{ employee_dash_url('exams-overview/gazette-results') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Results released successfully.';
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not release results.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not release results. Please try again.';
+            } finally {
+                this.gazettingKey = '';
+            }
+        },
+
+        async returnExamForEditing(exam) {
+            if (!this.isDeputy || !exam || !exam.can_return) return;
+            const msg = 'Return “' + (exam.exam_name || 'this exam') + '” to the curriculum coordinator?\n\nThis unlocks the exam so marks can be edited again. It must be re-submitted before results can be released.';
+            if (!confirm(msg)) return;
+
+            this.returningKey = exam._key;
+            this.errorMessage = '';
+            this.successMessage = '';
+            try {
+                const body = {
+                    exam_name: exam.exam_name,
+                    academic_year_id: parseInt(exam.academic_year_id, 10),
+                    term_id: parseInt(exam.term_id, 10),
+                };
+                if (exam.exam_type) body.exam_type = exam.exam_type;
+                const response = await fetch('{{ employee_dash_url('exams-overview/return-exam') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Exam returned for editing.';
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not return exam.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not return exam. Please try again.';
+            } finally {
+                this.returningKey = '';
             }
         },
 
@@ -4075,6 +4388,7 @@ function examEvaluation() {
             this.successMessage = '';
             this.editingRegistration = {
                 old_exam_name: exam.exam_name || '',
+                old_exam_type: exam.exam_type || '',
                 old_academic_year_id: exam.academic_year_id || '',
                 old_term_id: exam.term_id || '',
                 academic_year_id: exam.academic_year_id || '',
@@ -4082,6 +4396,8 @@ function examEvaluation() {
                 exam_type: exam.exam_type || '',
                 exam_name: exam.exam_name || '',
             };
+            this.editingApplyRequirements = this.emptyApplyRequirementsForm();
+            this.applyFormFromRules(this.editingApplyRequirements, this.examRulesForKey(exam._key));
             this.syncRegistrationExamName();
         },
 
@@ -4121,12 +4437,14 @@ function examEvaluation() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         old_exam_name: reg.old_exam_name,
+                        old_exam_type: reg.old_exam_type,
                         old_academic_year_id: parseInt(reg.old_academic_year_id, 10),
                         old_term_id: parseInt(reg.old_term_id, 10),
                         exam_name: reg.exam_name.trim().toUpperCase(),
                         exam_type: reg.exam_type.trim().toUpperCase(),
                         academic_year_id: parseInt(reg.academic_year_id, 10),
                         term_id: parseInt(reg.term_id, 10),
+                        apply_requirements: this.buildApplyRequirementsPayload(this.editingApplyRequirements),
                     })
                 });
                 const result = await response.json();

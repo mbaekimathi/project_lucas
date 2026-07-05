@@ -1,0 +1,21 @@
+{# Combined booklet page — lesson plan beside student attendance #}
+<div class="lp-booklet-page lp-booklet-page--combined" data-session-key="{{ row.session_key }}" id="lp-combined-{{ row.session_key|replace('__', '-') }}">
+    <div class="lp-booklet-page__frame">
+        {% with doc_title='Lesson plan & attendance' %}
+        {% include 'dashboards/includes/lp_booklet_letterhead.html' %}
+        {% endwith %}
+
+        {% include 'dashboards/includes/lp_booklet_session_meta.html' %}
+
+        <div class="lp-combined-split" aria-label="Lesson plan and student attendance">
+            {% include 'dashboards/includes/lp_lesson_plan_column.html' %}
+            {% include 'dashboards/includes/lp_attendance_column.html' %}
+        </div>
+
+        <footer class="lp-booklet-page__footer lp-booklet-page__footer--combined">
+            <span class="lp-booklet-page__footer-school">{{ school_settings.school_name or 'School' }}</span>
+            <span class="lp-booklet-page__footer-doc">Lesson plan &amp; attendance</span>
+            <span class="lp-booklet-page__footer-page" data-lp-footer-page></span>
+        </footer>
+    </div>
+</div>

@@ -701,7 +701,7 @@ document.addEventListener('alpine:init', function () {
 {% set filter_data_url = employee_dash_url('accounts/petty-cash-book/data') %}
 
 <div x-data="pettyCashBookPage" x-init="init()">
-<div class="acr-page page-content acr-pcb-page">
+<div class="acr-page page-content acr-pcb-page acr-report-page">
     <div class="acr-inner">
         {% include 'dashboards/includes/portal_page_flash.html' %}
 
@@ -732,14 +732,7 @@ document.addEventListener('alpine:init', function () {
                 <button type="button" class="acr-btn" onclick="printPettyCashBook()">
                     <i class="fas fa-print" aria-hidden="true"></i> Print
                 </button>
-                <a href="{{ employee_dash_url('accounts/' ~ account_id) }}" class="acr-btn">
-                    <i class="fas fa-chart-pie" aria-hidden="true"></i> Account summary
-                </a>
                 {% endif %}
-                <button type="button" class="acr-btn" @click="openRegisterModal()">
-                    <i class="fas fa-plus-circle" aria-hidden="true"></i>
-                    {% if petty_cash_empty %}Register petty cash account{% else %}New account{% endif %}
-                </button>
             </div>
         </div>
 

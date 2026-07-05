@@ -258,6 +258,27 @@
           return null;
         },
 
+        formatExamDate: function (dateStr) {
+          if (!dateStr) return '';
+          var m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (!m) return dateStr;
+          var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          return parseInt(m[3], 10) + ' ' + months[parseInt(m[2], 10) - 1] + ' ' + m[1];
+        },
+
+        examDateLabel: function (exam) {
+          if (!exam || !exam.exam_date_note) return '';
+          var note = String(exam.exam_date_note);
+          if (note.indexOf('Sittings:') === 0) {
+            var range = note.slice(9).trim();
+            var parts = range.split(/\s*[–-]\s*/);
+            if (parts.length === 2) {
+              return 'Multiple sittings · ' + this.formatExamDate(parts[0]) + ' – ' + this.formatExamDate(parts[1]);
+            }
+          }
+          return note;
+        },
+
         hasResults: function () {
           return this.live.summary && this.live.summary.total_entries > 0;
         },

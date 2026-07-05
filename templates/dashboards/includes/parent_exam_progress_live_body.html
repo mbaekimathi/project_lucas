@@ -41,25 +41,44 @@
         <template x-if="live.by_exam && live.by_exam.length">
             <div class="modern-card p-4 sm:p-6 mb-6">
                 <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1 flex items-center">
-                    <i class="fas fa-table text-brand-primary mr-2"></i>Raw marks data
+                    <i class="fas fa-table text-brand-primary mr-2"></i>Marks by subject &amp; exam
                 </h3>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Every exam and subject mark for {{ student.full_name }} (scaled to %). Columns use short codes — see the key below.</p>
-                <div class="mb-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/40 p-3 sm:p-4">
-                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5">
-                        <i class="fas fa-key text-brand-primary text-xs"></i>Exam reference key
-                    </p>
-                    <ol class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-1.5 text-sm">
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">{% if portal_mode|default('parent') == 'student' %}All your marks by subject and exam, shown as percentages.{% else %}All marks for {{ student.full_name }}, shown as percentages.{% endif %} Each exam column in the table uses a short code — match it to the list below.</p>
+                <div class="mb-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/40 overflow-hidden">
+                    <div class="px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-200/80 dark:border-gray-700/60 bg-white/70 dark:bg-gray-900/40">
+                        <p class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                            <i class="fas fa-key text-brand-primary text-xs" aria-hidden="true"></i>
+                            Exam column codes
+                        </p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-relaxed">
+                            Find the code from the table header (E1, E2, …) in this list to see the full exam name, term, and date.
+                        </p>
+                    </div>
+                    <ul class="divide-y divide-gray-200/80 dark:divide-gray-700/60" role="list">
                         <template x-for="ex in live.by_exam" :key="ex.ref">
-                            <li class="flex items-start gap-2 min-w-0">
-                                <span class="inline-flex shrink-0 items-center justify-center min-w-[2rem] px-1.5 py-0.5 rounded-md bg-brand-primary/10 text-brand-primary dark:text-brand-secondary font-mono text-xs font-bold" x-text="ex.ref"></span>
-                                <span class="text-gray-700 dark:text-gray-300 leading-snug min-w-0">
-                                    <span class="block truncate" x-text="ex.label"></span>
-                                    <span class="text-[11px] text-gray-500 dark:text-gray-400" x-show="ex.exam_date_note" x-text="ex.exam_date_note"></span>
-                                    <span class="text-[11px] text-gray-500 dark:text-gray-400" x-show="!ex.exam_date_note && ex.exam_date_str" x-text="ex.exam_date_str"></span>
-                                </span>
+                            <li class="flex items-start gap-3 px-3 sm:px-4 py-2.5 sm:py-3 hover:bg-white/60 dark:hover:bg-gray-800/30 transition-colors">
+                                <span class="inline-flex shrink-0 items-center justify-center w-9 h-8 rounded-lg bg-brand-primary text-white font-mono text-xs font-bold shadow-sm" x-text="ex.ref" :aria-label="'Code ' + ex.ref"></span>
+                                <div class="min-w-0 flex-1 pt-0.5">
+                                    <p class="text-sm font-medium text-gray-900 dark:text-white leading-snug" x-text="ex.exam_name || ex.label"></p>
+                                    <dl class="mt-1 space-y-0.5">
+                                        <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5" x-show="ex.year_name || ex.term_name">
+                                            <dt class="text-[11px] font-medium text-gray-500 dark:text-gray-400 shrink-0">Period</dt>
+                                            <dd class="text-[11px] text-gray-700 dark:text-gray-300">
+                                                <span x-show="ex.year_name" x-text="ex.year_name"></span><span x-show="ex.year_name && ex.term_name"> · </span><span x-show="ex.term_name" x-text="ex.term_name"></span>
+                                            </dd>
+                                        </div>
+                                        <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5" x-show="ex.exam_date_note || ex.exam_date_str">
+                                            <dt class="text-[11px] font-medium text-gray-500 dark:text-gray-400 shrink-0">Date</dt>
+                                            <dd class="text-[11px] text-gray-700 dark:text-gray-300">
+                                                <span x-show="ex.exam_date_note" x-text="examDateLabel(ex)"></span>
+                                                <span x-show="!ex.exam_date_note && ex.exam_date_str" x-text="formatExamDate(ex.exam_date_str)"></span>
+                                            </dd>
+                                        </div>
+                                    </dl>
+                                </div>
                             </li>
                         </template>
-                    </ol>
+                    </ul>
                 </div>
                 <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
                     <table class="w-full text-sm">
@@ -68,7 +87,9 @@
                                 <th class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider sticky left-0 z-[2] bg-gray-50 dark:bg-gray-800/90 min-w-[8rem]">Subject</th>
                                 <template x-for="ex in live.by_exam" :key="'h-' + ex.ref">
                                     <th class="px-2 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider w-12 min-w-[2.75rem]">
-                                        <abbr class="font-mono no-underline cursor-help text-brand-primary dark:text-brand-secondary" x-text="ex.ref" :title="ex.label"></abbr>
+                                        <abbr class="font-mono no-underline cursor-help text-brand-primary dark:text-brand-secondary border-b border-dotted border-brand-primary/40 dark:border-brand-secondary/40"
+                                              x-text="ex.ref"
+                                              :title="(ex.exam_name || ex.label) + (ex.year_name ? ' · ' + ex.year_name : '') + (ex.term_name ? ' · ' + ex.term_name : '')"></abbr>
                                     </th>
                                 </template>
                                 <th class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap w-16 min-w-[3.5rem]">Avg</th>

@@ -593,55 +593,6 @@ document.addEventListener('alpine:init', function () {
 <div class="accounts-page min-h-screen bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
      x-data="pocketMoneyPage">
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14">
-    <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
-        <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
-                    <i class="fas fa-landmark opacity-80"></i>
-                    <span>Accounts · Student fees</span>
-                </div>
-                <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Students pocket money</h1>
-                <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
-                    View pocket money balances, top up, withdraw, and audit each student’s ledger.
-                </p>
-                <nav class="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-black/20 mt-4" aria-label="Student fees sections">
-                    <a href="{{ employee_dash_url('student-fees') }}"
-                       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5">
-                        <i class="fas fa-user-graduate"></i> Students &amp; payments
-                    </a>
-                    <a href="{{ employee_dash_url('student-fees/pocket-money') }}"
-                       class="accounts-tab-link is-active rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5">
-                        <i class="fas fa-wallet"></i> Pocket money
-                    </a>
-                    <a href="{{ employee_dash_url('student-fees/fee-structures') }}"
-                       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5">
-                        <i class="fas fa-list-alt"></i> Fee structures
-                    </a>
-                </nav>
-            </div>
-            <a href="{{ employee_dash_url('student-fees') }}"
-               class="accounts-btn-ghost inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shrink-0">
-                <i class="fas fa-arrow-left"></i> Student fees
-            </a>
-        </div>
-        <div class="px-4 sm:px-6 pb-4 border-t border-white/10 bg-black/15">
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                <div class="accounts-stat rounded-lg px-2.5 py-2">
-                    <p class="text-[9px] font-medium uppercase tracking-wide text-teal-200/90">In session</p>
-                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="summary.student_count"></p>
-                </div>
-                <div class="accounts-stat rounded-lg px-2.5 py-2">
-                    <p class="text-[9px] font-medium uppercase tracking-wide text-emerald-200/90">With balance</p>
-                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="summary.with_balance_count"></p>
-                </div>
-                <div class="accounts-stat rounded-lg px-2.5 py-2 col-span-2 sm:col-span-1">
-                    <p class="text-[9px] font-medium uppercase tracking-wide text-amber-200/90">Total pocket money</p>
-                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white"
-                       x-text="'KES ' + (summary.total_balance_display || '0.00')"></p>
-                </div>
-            </div>
-        </div>
-    </header>
 
     <div class="sf-panel rounded-xl p-4 sm:p-5 mb-5 space-y-3">
         <div class="flex flex-col lg:flex-row gap-3 lg:items-end">

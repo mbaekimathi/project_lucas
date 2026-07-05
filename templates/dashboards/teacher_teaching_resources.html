@@ -1,0 +1,554 @@
+{% extends "base.html" %}
+
+{% block title %}Teaching resources - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tr-teaching-resources.css') }}">
+{% endblock %}
+
+{% block sidebar_content %}
+{% set teacher_nav_scope = 'teaching' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Teaching resources' %}
+{% if teacher_name %}
+{% set role_hero_subtitle = teacher_name ~ ' — share notes, worksheets, and files with students by class and subject.' %}
+{% else %}
+{% set role_hero_subtitle = 'Upload learning materials for students in your assigned classes.' %}
+{% endif %}
+{% set role_hero_icon_class = 'fa-folder-open' %}
+
+{% if classes and teacher_name %}
+{% set ns_tr = namespace(total=0) %}
+{% for cls in classes %}{% set ns_tr.total = ns_tr.total + (cls.resource_count|default(0)) %}{% endfor %}
+{% set role_hero_chips = [
+    {'icon': 'fa-chalkboard', 'text': classes|length ~ ' class' ~ ('es' if classes|length != 1 else '')},
+    {'icon': 'fa-file-alt', 'text': ns_tr.total ~ ' file' ~ ('s' if ns_tr.total != 1 else '') ~ ' shared'}
+] %}
+{% endif %}
+
+<script type="application/json" id="teaching-resources-data">{{ {
+    'classes': classes|default([]),
+    'subjectsUrl': employee_dash_url('teaching-resources/subjects'),
+    'listUrl': employee_dash_url('teaching-resources/list'),
+    'uploadUrl': employee_dash_url('teaching-resources/upload'),
+    'deleteUrl': employee_dash_url('teaching-resources/delete'),
+    'pageUrl': employee_dash_url('teaching-resources')
+}|tojson }}</script>
+
+<div class="tr-page page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+     x-data="teacherTeachingResources()" x-init="init()">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+
+        {% include 'dashboards/includes/portal_page_flash.html' %}
+        {% include 'dashboards/includes/role_hero.html' %}
+
+        {% if is_technician and not teacher_name %}
+        <div class="modern-card rounded-2xl p-5 sm:p-6 mb-6 border border-amber-200/80 dark:border-amber-800/60 bg-gradient-to-br from-amber-50 to-orange-50/90 dark:from-amber-950/40 dark:to-orange-950/30 shadow-sm" role="status">
+            <div class="flex flex-col sm:flex-row sm:items-start gap-4">
+                <div class="w-12 h-12 shrink-0 rounded-xl bg-amber-500 flex items-center justify-center shadow-md">
+                    <i class="fas fa-user-tie text-white text-lg" aria-hidden="true"></i>
+                </div>
+                <div class="min-w-0">
+                    <h2 class="text-lg font-bold text-amber-950 dark:text-amber-100">Select a teacher</h2>
+                    <p class="mt-1 text-sm text-amber-900/85 dark:text-amber-200/90 leading-relaxed">
+                        Use the <strong>View as</strong> dropdown in the header to pick a teacher profile, then return here to upload resources.
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% elif not teacher_name and not is_technician %}
+        <div class="modern-card rounded-2xl p-5 sm:p-6 mb-6 border border-red-200/80 dark:border-red-800/60 bg-red-50/90 dark:bg-red-950/30 shadow-sm" role="alert">
+            <div class="flex gap-4">
+                <div class="w-12 h-12 shrink-0 rounded-xl bg-red-500 flex items-center justify-center">
+                    <i class="fas fa-exclamation text-white" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold text-red-950 dark:text-red-100">Could not load your profile</h2>
+                    <p class="mt-1 text-sm text-red-900/85 dark:text-red-200/90">Sign out and sign in again. Contact the school office if this continues.</p>
+                </div>
+            </div>
+        </div>
+        {% elif classes %}
+
+        <div class="tr-hint" role="note">
+            <i class="fas fa-info-circle mt-0.5 shrink-0" aria-hidden="true"></i>
+            <p class="m-0 leading-relaxed">
+                Choose a <strong>class</strong>, then a <strong>subject</strong>, and upload files. Students in that class see them under <strong>Teaching resources</strong> in the student portal, grouped by subject.
+            </p>
+        </div>
+
+        <nav class="tr-steps" aria-label="Progress">
+            <button type="button" class="tr-steps__link" @click="goToClasses()" :class="!levelId ? 'tr-steps__current !text-gray-900 dark:!text-white !no-underline' : ''">All classes</button>
+            <template x-if="levelId">
+                <span class="tr-steps__sep" aria-hidden="true">›</span>
+            </template>
+            <template x-if="levelId">
+                <button type="button" class="tr-steps__link" @click="goToSubjects()" :class="levelId && !subjectId ? 'tr-steps__current !text-gray-900 dark:!text-white !no-underline' : ''" x-text="selectedClassName || 'Class'"></button>
+            </template>
+            <template x-if="subjectId">
+                <span class="tr-steps__sep" aria-hidden="true">›</span>
+            </template>
+            <template x-if="subjectId">
+                <span class="tr-steps__current" x-text="selectedSubjectName || 'Subject'"></span>
+            </template>
+        </nav>
+
+        <!-- Step 1: pick class -->
+        <section x-show="!levelId" aria-labelledby="tr-classes-heading">
+            <div class="mb-4">
+                <h2 id="tr-classes-heading" class="text-lg font-bold text-gray-900 dark:text-white m-0">Your classes</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5 m-0">Open a class to manage resources per subject</p>
+            </div>
+            <div class="tr-grid tr-grid--classes">
+                <template x-for="cls in classes" :key="cls.level_id">
+                    <button type="button" class="tr-card" @click="selectClass(cls)">
+                        <div class="tr-card__top">
+                            <span class="tr-card__icon"><i class="fas fa-graduation-cap" aria-hidden="true"></i></span>
+                            <span class="tr-card__badge" :class="(cls.resource_count || 0) > 0 ? '' : 'tr-card__badge--muted'">
+                                <i class="fas fa-file-alt text-[9px]"></i>
+                                <span x-text="(cls.resource_count || 0) + ' file' + ((cls.resource_count || 0) === 1 ? '' : 's')"></span>
+                            </span>
+                        </div>
+                        <p class="tr-card__title" x-text="cls.level_name"></p>
+                        <p class="tr-card__meta">
+                            <span x-text="cls.level_category || ''"></span>
+                            <span x-show="cls.subject_count"> · <span x-text="cls.subject_count"></span> subject<span x-show="cls.subject_count !== 1">s</span></span>
+                        </p>
+                        <p class="tr-card__meta line-clamp-2 normal-case" x-show="cls.subjects_label" x-text="cls.subjects_label"></p>
+                    </button>
+                </template>
+            </div>
+        </section>
+
+        <!-- Step 2: pick subject -->
+        <section x-show="levelId && !subjectId" x-cloak aria-labelledby="tr-subjects-heading">
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 id="tr-subjects-heading" class="text-lg font-bold text-gray-900 dark:text-white m-0">
+                        Subjects — <span x-text="selectedClassName"></span>
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5 m-0">Pick a subject to upload or manage files</p>
+                </div>
+                <button type="button" @click="goToClasses()" class="text-sm font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
+                    <i class="fas fa-arrow-left text-xs mr-1"></i> All classes
+                </button>
+            </div>
+            <p x-show="subjectsLoading" class="text-sm text-gray-500 mb-4"><i class="fas fa-spinner fa-spin mr-1"></i> Loading subjects…</p>
+            <p x-show="subjectsError" x-text="subjectsError" class="text-sm text-red-600 dark:text-red-400 mb-4" x-cloak></p>
+            <div class="tr-grid" x-show="!subjectsLoading && subjects.length">
+                <template x-for="sub in subjects" :key="sub.id">
+                    <button type="button" class="tr-card" @click="selectSubject(sub)">
+                        <div class="tr-card__top">
+                            <span class="tr-card__icon"><i class="fas fa-bookmark" aria-hidden="true"></i></span>
+                            <span class="tr-card__badge" :class="(sub.resource_count || 0) > 0 ? '' : 'tr-card__badge--muted'">
+                                <span x-text="(sub.resource_count || 0) > 0 ? ((sub.resource_count || 0) + ' shared') : 'None yet'"></span>
+                            </span>
+                        </div>
+                        <p class="tr-card__title" x-text="sub.subject_name"></p>
+                        <p class="tr-card__meta font-mono" x-show="sub.subject_code" x-text="sub.subject_code"></p>
+                    </button>
+                </template>
+            </div>
+            <div x-show="!subjectsLoading && !subjects.length && !subjectsError" class="tr-empty modern-card rounded-2xl border border-dashed border-gray-300 dark:border-gray-600">
+                <i class="fas fa-book-open text-3xl text-gray-300 dark:text-gray-600 mb-3"></i>
+                <p class="font-medium text-gray-700 dark:text-gray-300 m-0">No subjects assigned for this class</p>
+            </div>
+        </section>
+
+        <!-- Step 3: upload + list -->
+        <section x-show="levelId && subjectId" x-cloak aria-labelledby="tr-manage-heading">
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 id="tr-manage-heading" class="text-lg font-bold text-gray-900 dark:text-white m-0">
+                        <span x-text="selectedSubjectName"></span>
+                        <span class="text-gray-400 font-semibold mx-1">·</span>
+                        <span class="text-base font-semibold text-gray-600 dark:text-gray-300" x-text="selectedClassName"></span>
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5 m-0">Files here are visible to students in this class for this subject</p>
+                </div>
+                <button type="button" @click="goToSubjects()" class="text-sm font-semibold text-emerald-600 dark:text-emerald-400 hover:underline shrink-0">
+                    <i class="fas fa-arrow-left text-xs mr-1"></i> Change subject
+                </button>
+            </div>
+
+            <div class="tr-manage">
+                <div class="tr-upload-panel">
+                    <div class="tr-panel-head">
+                        <h2><i class="fas fa-cloud-upload-alt text-emerald-600 mr-1.5"></i> Upload file</h2>
+                    </div>
+                    <div class="tr-panel-body">
+                        <form @submit.prevent="uploadResource()" class="space-y-4">
+                            <div class="tr-field">
+                                <label for="tr-title">Title <span class="text-red-500">*</span></label>
+                                <input id="tr-title" type="text" x-model="uploadTitle" maxlength="255"
+                                       placeholder="e.g. Term 2 revision notes">
+                            </div>
+                            <div class="tr-field">
+                                <label for="tr-desc">Description</label>
+                                <textarea id="tr-desc" x-model="uploadDescription" rows="2"
+                                          placeholder="Optional note for students"></textarea>
+                            </div>
+                            <div class="tr-field">
+                                <label>File <span class="text-red-500">*</span></label>
+                                <div class="tr-drop"
+                                     :class="dragOver ? 'tr-drop--active' : ''"
+                                     @click="$refs.fileInput.click()"
+                                     @dragover.prevent="dragOver = true"
+                                     @dragleave.prevent="dragOver = false"
+                                     @drop.prevent="onFileDrop($event)">
+                                    <input type="file" x-ref="fileInput" class="sr-only" @change="onFileChange($event)"
+                                           accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.zip">
+                                    <template x-if="uploadFile">
+                                        <div>
+                                            <i class="fas fa-file-alt text-2xl text-emerald-600 mb-2"></i>
+                                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 m-0" x-text="uploadFile.name"></p>
+                                            <p class="text-xs text-gray-500 mt-1 m-0">Click or drop to replace</p>
+                                        </div>
+                                    </template>
+                                    <template x-if="!uploadFile">
+                                        <div>
+                                            <i class="fas fa-cloud-upload-alt text-2xl text-gray-400 mb-2"></i>
+                                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 m-0">Drop file or click to browse</p>
+                                            <p class="text-[11px] text-gray-500 mt-1 m-0">PDF, Office, images, ZIP — max 10 MB</p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                            <p x-show="uploadError" x-text="uploadError" class="text-xs text-red-600 dark:text-red-400 m-0" x-cloak></p>
+                            <p x-show="uploadSuccess" x-text="uploadSuccess" class="text-xs text-emerald-600 dark:text-emerald-400 m-0" x-cloak></p>
+                            <button type="submit" class="tr-btn-primary" :disabled="uploading">
+                                <i class="fas fa-upload" :class="uploading ? 'fa-spin' : ''" aria-hidden="true"></i>
+                                <span x-text="uploading ? 'Uploading…' : 'Share with students'"></span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="tr-list-panel overflow-hidden min-h-[14rem]">
+                    <div class="tr-panel-head flex items-center justify-between gap-3">
+                        <h2><i class="fas fa-folder-open text-sky-600 mr-1.5"></i> Shared files</h2>
+                        <span x-show="resourcesLoading" class="text-xs text-gray-500"><i class="fas fa-spinner fa-spin"></i></span>
+                    </div>
+                    <div x-show="!resourcesLoading && resources.length === 0" class="tr-empty">
+                        <i class="fas fa-inbox text-3xl text-gray-300 dark:text-gray-600 mb-3"></i>
+                        <p class="text-sm font-medium text-gray-700 dark:text-gray-300 m-0">No files yet</p>
+                        <p class="text-xs text-gray-500 mt-1 m-0">Upload your first resource using the form.</p>
+                    </div>
+                    <div x-show="resources.length > 0">
+                        <template x-for="item in resources" :key="item.id">
+                            <div class="tr-resource-row hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                                <div class="flex items-start gap-3 min-w-0 flex-1">
+                                    <span class="w-10 h-10 shrink-0 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200 flex items-center justify-center">
+                                        <i class="fas" :class="fileIcon(item.original_filename)" aria-hidden="true"></i>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <p class="font-semibold text-gray-900 dark:text-white m-0 truncate" x-text="item.title"></p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 m-0 truncate" x-text="item.original_filename"></p>
+                                        <p x-show="item.description" class="text-sm text-gray-600 dark:text-gray-300 mt-1 m-0" x-text="item.description"></p>
+                                        <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5 m-0" x-text="item.created_at_label || ''"></p>
+                                    </div>
+                                </div>
+                                <div class="tr-resource-actions">
+                                    <a :href="item.download_url" target="_blank" rel="noopener"
+                                       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-200 hover:bg-sky-100">
+                                        <i class="fas fa-download"></i> Preview
+                                    </a>
+                                    <button type="button" @click="deleteResource(item)"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-200 hover:bg-red-100">
+                                        <i class="fas fa-trash-alt"></i> Delete
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {% else %}
+        <div class="modern-card rounded-2xl border border-dashed border-gray-300 dark:border-gray-600 px-6 py-14 sm:py-16 text-center shadow-sm">
+            <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-primary/15 to-brand-secondary/15 flex items-center justify-center mb-5">
+                <i class="fas fa-chalkboard-teacher text-3xl text-brand-primary" aria-hidden="true"></i>
+            </div>
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white">No classes assigned yet</h2>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
+                Your classes appear here after <strong>Subject &amp; Class Allocation</strong> assigns you to teach.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function teacherTeachingResources() {
+    var cfg = {};
+    try {
+        cfg = JSON.parse(document.getElementById('teaching-resources-data').textContent || '{}');
+    } catch (e) { cfg = {}; }
+    return {
+        classes: cfg.classes || [],
+        subjectsUrl: cfg.subjectsUrl || '',
+        listUrl: cfg.listUrl || '',
+        uploadUrl: cfg.uploadUrl || '',
+        deleteUrl: cfg.deleteUrl || '',
+        pageUrl: cfg.pageUrl || '',
+        levelId: '',
+        subjectId: '',
+        selectedClassName: '',
+        selectedSubjectName: '',
+        subjects: [],
+        subjectsLoading: false,
+        subjectsError: '',
+        resources: [],
+        resourcesLoading: false,
+        uploadTitle: '',
+        uploadDescription: '',
+        uploadFile: null,
+        dragOver: false,
+        uploading: false,
+        uploadError: '',
+        uploadSuccess: '',
+        init: function () {
+            var params = new URLSearchParams(window.location.search);
+            var lid = params.get('level_id') || '';
+            var sid = params.get('subject_id') || '';
+            if (!lid) return;
+            var cls = this.classes.find(function (c) { return String(c.level_id) === String(lid); });
+            if (!cls) return;
+            this.selectClass(cls, false);
+            if (sid) {
+                var self = this;
+                var trySelect = function () {
+                    var sub = self.subjects.find(function (s) { return String(s.id) === String(sid); });
+                    if (sub) {
+                        self.selectSubject(sub, false);
+                    }
+                };
+                if (this.subjects.length) {
+                    trySelect();
+                } else {
+                    var iv = setInterval(function () {
+                        if (!self.subjectsLoading && self.subjects.length) {
+                            clearInterval(iv);
+                            trySelect();
+                        }
+                    }, 80);
+                    setTimeout(function () { clearInterval(iv); }, 5000);
+                }
+            }
+        },
+        syncUrl: function () {
+            if (!this.pageUrl || !window.history || !window.history.replaceState) return;
+            var url = this.pageUrl;
+            var q = [];
+            if (this.levelId) q.push('level_id=' + encodeURIComponent(this.levelId));
+            if (this.subjectId) q.push('subject_id=' + encodeURIComponent(this.subjectId));
+            if (q.length) url += '?' + q.join('&');
+            window.history.replaceState({}, '', url);
+        },
+        resetUploadForm: function () {
+            this.uploadTitle = '';
+            this.uploadDescription = '';
+            this.uploadFile = null;
+            this.uploadError = '';
+            this.uploadSuccess = '';
+            if (this.$refs.fileInput) this.$refs.fileInput.value = '';
+        },
+        goToClasses: function () {
+            this.levelId = '';
+            this.subjectId = '';
+            this.selectedClassName = '';
+            this.selectedSubjectName = '';
+            this.subjects = [];
+            this.resources = [];
+            this.resetUploadForm();
+            this.syncUrl();
+        },
+        goToSubjects: function () {
+            this.subjectId = '';
+            this.selectedSubjectName = '';
+            this.resources = [];
+            this.resetUploadForm();
+            this.syncUrl();
+        },
+        selectClass: function (cls, updateUrl) {
+            if (!cls) return;
+            this.levelId = String(cls.level_id);
+            this.subjectId = '';
+            this.selectedClassName = cls.level_name || '';
+            this.selectedSubjectName = '';
+            this.subjects = [];
+            this.resources = [];
+            this.resetUploadForm();
+            if (updateUrl !== false) this.syncUrl();
+            this.loadSubjects();
+        },
+        selectSubject: function (sub, updateUrl) {
+            if (!sub) return;
+            this.subjectId = String(sub.id);
+            this.selectedSubjectName = sub.subject_name || '';
+            this.resetUploadForm();
+            if (updateUrl !== false) this.syncUrl();
+            this.loadResources();
+        },
+        loadSubjects: function () {
+            if (!this.levelId) return;
+            var self = this;
+            this.subjectsLoading = true;
+            this.subjectsError = '';
+            fetch(this.subjectsUrl + '?academic_level_id=' + encodeURIComponent(this.levelId), {
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    self.subjectsLoading = false;
+                    if (data && data.ok) {
+                        self.subjects = data.subjects || [];
+                    } else {
+                        self.subjects = [];
+                        self.subjectsError = (data && data.message) || 'Could not load subjects.';
+                    }
+                })
+                .catch(function () {
+                    self.subjectsLoading = false;
+                    self.subjectsError = 'Could not load subjects.';
+                });
+        },
+        loadResources: function () {
+            if (!this.levelId || !this.subjectId) return;
+            var self = this;
+            this.resourcesLoading = true;
+            fetch(this.listUrl + '?academic_level_id=' + encodeURIComponent(this.levelId)
+                + '&subject_id=' + encodeURIComponent(this.subjectId), {
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    self.resourcesLoading = false;
+                    if (data && data.ok) {
+                        self.resources = data.resources || [];
+                    }
+                })
+                .catch(function () {
+                    self.resourcesLoading = false;
+                });
+        },
+        onFileChange: function (ev) {
+            var files = ev.target && ev.target.files;
+            this.uploadFile = files && files.length ? files[0] : null;
+        },
+        onFileDrop: function (ev) {
+            this.dragOver = false;
+            var files = ev.dataTransfer && ev.dataTransfer.files;
+            if (files && files.length) {
+                this.uploadFile = files[0];
+                if (this.$refs.fileInput) {
+                    try {
+                        var dt = new DataTransfer();
+                        dt.items.add(files[0]);
+                        this.$refs.fileInput.files = dt.files;
+                    } catch (e) { /* ignore */ }
+                }
+            }
+        },
+        fileIcon: function (name) {
+            var ext = (name || '').split('.').pop().toLowerCase();
+            if (ext === 'pdf') return 'fa-file-pdf';
+            if (['doc', 'docx'].indexOf(ext) >= 0) return 'fa-file-word';
+            if (['xls', 'xlsx', 'csv'].indexOf(ext) >= 0) return 'fa-file-excel';
+            if (['ppt', 'pptx'].indexOf(ext) >= 0) return 'fa-file-powerpoint';
+            if (['png', 'jpg', 'jpeg', 'gif', 'webp'].indexOf(ext) >= 0) return 'fa-file-image';
+            if (ext === 'zip') return 'fa-file-archive';
+            return 'fa-file-alt';
+        },
+        refreshClassCounts: function () {
+            var self = this;
+            var total = 0;
+            this.classes.forEach(function (cls) {
+                if (String(cls.level_id) !== String(self.levelId)) return;
+                var sum = 0;
+                self.subjects.forEach(function (s) { sum += (s.resource_count || 0); });
+                cls.resource_count = sum;
+            });
+            this.classes.forEach(function (c) { total += (c.resource_count || 0); });
+        },
+        uploadResource: function () {
+            if (!this.levelId || !this.subjectId || !this.uploadTitle.trim() || !this.uploadFile) {
+                this.uploadError = 'Enter a title and choose a file.';
+                return;
+            }
+            var self = this;
+            var fd = new FormData();
+            fd.append('academic_level_id', this.levelId);
+            fd.append('subject_id', this.subjectId);
+            fd.append('title', this.uploadTitle.trim());
+            fd.append('description', this.uploadDescription.trim());
+            fd.append('file', this.uploadFile);
+            this.uploading = true;
+            this.uploadError = '';
+            this.uploadSuccess = '';
+            fetch(this.uploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    self.uploading = false;
+                    if (data && data.ok) {
+                        self.resources = data.resources || self.resources;
+                        var sub = self.subjects.find(function (s) { return String(s.id) === String(self.subjectId); });
+                        if (sub) sub.resource_count = self.resources.length;
+                        var cls = self.classes.find(function (c) { return String(c.level_id) === String(self.levelId); });
+                        if (cls) {
+                            var sum = 0;
+                            self.subjects.forEach(function (s) { sum += (s.resource_count || 0); });
+                            cls.resource_count = sum;
+                        }
+                        self.resetUploadForm();
+                        self.uploadSuccess = data.message || 'Shared with students.';
+                    } else {
+                        self.uploadError = (data && data.message) || 'Upload failed.';
+                    }
+                })
+                .catch(function () {
+                    self.uploading = false;
+                    self.uploadError = 'Upload failed.';
+                });
+        },
+        deleteResource: function (item) {
+            if (!item || !item.id) return;
+            if (!window.confirm('Delete “' + (item.title || 'this file') + '”? Students will no longer see it.')) return;
+            var self = this;
+            fetch(this.deleteUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ id: item.id }),
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data && data.ok) {
+                        self.resources = data.resources || [];
+                        var sub = self.subjects.find(function (s) { return String(s.id) === String(self.subjectId); });
+                        if (sub) sub.resource_count = self.resources.length;
+                        var cls = self.classes.find(function (c) { return String(c.level_id) === String(self.levelId); });
+                        if (cls) {
+                            var sum = 0;
+                            self.subjects.forEach(function (s) { sum += (s.resource_count || 0); });
+                            cls.resource_count = sum;
+                        }
+                    } else {
+                        window.alert((data && data.message) || 'Could not delete.');
+                    }
+                })
+                .catch(function () {
+                    window.alert('Could not delete resource.');
+                });
+        },
+    };
+}
+</script>
+{% endblock %}

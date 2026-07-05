@@ -1,0 +1,36 @@
+{# Attendance register — name, admission no., present/absent mark #}
+{% set students = att.students|default([], true) %}
+{% if students|length %}
+<div class="lp-att-register-wrap">
+    <p class="lp-att-register__legend" aria-hidden="true">
+        <span class="lp-att-mark lp-att-mark--present">✓</span> Present
+        <span class="lp-att-mark lp-att-mark--absent">✗</span> Absent
+    </p>
+    <table class="lp-att-register">
+        <thead>
+            <tr>
+                <th class="lp-att-register__col-name" scope="col">Name</th>
+                <th class="lp-att-register__col-adm" scope="col">Admission</th>
+                <th class="lp-att-register__col-mark" scope="col"><span class="sr-only">Attendance</span>P / A</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for st in students %}
+            <tr class="lp-att-register__row{% if st.present %} lp-att-register__row--present{% else %} lp-att-register__row--absent{% endif %}">
+                <td class="lp-att-register__name"><span class="lp-att-register__num">{{ loop.index }}</span>{{ st.full_name }}</td>
+                <td class="lp-att-register__adm">{{ st.student_id }}</td>
+                <td class="lp-att-register__mark">
+                    {% if st.present %}
+                    <span class="lp-att-mark lp-att-mark--present" role="img" aria-label="Present" title="Present">✓</span>
+                    {% else %}
+                    <span class="lp-att-mark lp-att-mark--absent" role="img" aria-label="Absent" title="Absent">✗</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="lp-att-booklet__empty">No students in this attendance register.</p>
+{% endif %}

@@ -1,6 +1,11 @@
 {% set _stu_nav = student_nav_scope|default('all') %}
+{% set _show_hub_links = _stu_nav == 'all' %}
 
-{% if _stu_nav == 'all' %}
+{% if _stu_nav == 'exams' %}
+{% include 'dashboards/includes/student_exam_sidebar.html' %}
+{% endif %}
+
+{% if _show_hub_links and _stu_nav == 'all' %}
 <p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Schedule</p>
 {% set acal_href = student_dash_url('academic-calendar') %}
 {% set acal_hide_manage = true %}
@@ -17,20 +22,31 @@
     <span>Attendance</span>
     {% if request.endpoint == 'student_portal_attendance' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ student_dash_url('teaching-resources') }}"
+   class="sidebar-item {% if request.endpoint == 'student_portal_teaching_resources' or '/teaching-resources' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-folder-open w-5"></i>
+    <span>Teaching resources</span>
+    {% if request.endpoint == 'student_portal_teaching_resources' or '/teaching-resources' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 <a @click.prevent="comingSoonTitle = 'Assignments / Homework'; comingSoonModalOpen = true"
    class="sidebar-item">
     <i class="fas fa-tasks w-5"></i>
     <span>Assignments</span>
 </a>
+<a @click.prevent="comingSoonTitle = 'E-Learning'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-laptop w-5"></i>
+    <span>E-Learning</span>
+</a>
 <a href="{{ student_dash_url('exam-progress') }}"
    class="sidebar-item {% if '/exam-progress' in request.path %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-check w-5"></i>
-    <span>Exam results</span>
+    <span>Exams</span>
     {% if '/exam-progress' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}
 
-{% if _stu_nav in ('all', 'fees') %}
+{% if _show_hub_links and _stu_nav in ('all', 'fees') %}
 <p class="px-3 {% if _stu_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees</p>
 <a href="{{ student_dash_url('pocket-money') }}"
    class="sidebar-item {% if request.endpoint == 'student_portal_pocket_money' %}sidebar-item-active{% endif %}">
@@ -46,7 +62,7 @@
 </a>
 {% endif %}
 
-{% if _stu_nav == 'all' %}
+{% if _show_hub_links and _stu_nav == 'all' %}
 <p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
 <a href="{{ student_dash_url('library') }}"
    class="sidebar-item {% if request.endpoint == 'student_portal_library' %}sidebar-item-active{% endif %}">
@@ -54,9 +70,12 @@
     <span>Library</span>
     {% if request.endpoint == 'student_portal_library' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
-<a href="{{ student_dash_url() }}#notifications-hub"
-   class="sidebar-item {% if request.endpoint == 'dashboard_student' and '#notifications' in (request.url|default('')) %}sidebar-item-active{% endif %}">
+<a href="{{ portal_notifications_hub_url|default(student_dash_url('notifications')) }}"
+   class="sidebar-item {% if request.endpoint == 'student_portal_notifications' %}sidebar-item-active{% endif %}">
     <i class="fas fa-bell w-5"></i>
     <span>Notifications</span>
+    {% if portal_unread_notification_count|default(0) > 0 %}
+    <span data-portal-notif-badge class="ml-auto inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold tabular-nums">{{ portal_unread_notification_count if portal_unread_notification_count < 100 else '99+' }}</span>
+    {% elif request.endpoint == 'student_portal_notifications' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}

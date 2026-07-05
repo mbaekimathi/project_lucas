@@ -376,6 +376,7 @@
   window.addEventListener('beforeprint', function () {
     if (window.__acrIframePrintActive) return;
     if (!document.querySelector('.acr-report-page')) return;
+    if (document.querySelector('.acr-pcb-page')) return;
     if (document.documentElement.classList.contains('acr-pcb-print-doc')) return;
     syncPrintLetterhead();
     document.documentElement.classList.add('acr-report-print-doc', 'acr-accounts-print');

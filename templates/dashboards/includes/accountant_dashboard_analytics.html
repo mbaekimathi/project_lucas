@@ -154,11 +154,20 @@
             </div>
             <div class="accounts-metrics-band px-4 sm:px-5 py-4">
                 <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-[var(--acc-line)]">
-                    <a href="{{ _accounts_home_href }}"
-                       class="group rounded-lg -m-1 p-1 transition hover:bg-teal-50/80 dark:hover:bg-teal-950/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500">
-                        <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition">Total ledger balance</p>
-                        <p class="text-lg font-bold tabular-nums text-teal-800 dark:text-teal-300 group-hover:text-teal-900 dark:group-hover:text-teal-200 transition">KES {{ acct.total_balance_display|default('0.00') }}</p>
-                    </a>
+                    <div class="flex flex-wrap gap-6">
+                        <div>
+                            <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total revenue</p>
+                            <p class="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-400">KES {{ acct.total_revenue_display|default('0.00') }}</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Amount used</p>
+                            <p class="text-lg font-bold tabular-nums text-amber-700 dark:text-amber-400">KES {{ acct.total_amount_used_display|default('0.00') }}</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total balance</p>
+                            <p class="text-lg font-bold tabular-nums text-teal-800 dark:text-teal-300">KES {{ acct.total_balance_display|default('0.00') }}</p>
+                        </div>
+                    </div>
                 </div>
 
                 {% if acct.total_accounts|default(0) == 0 %}
@@ -188,13 +197,15 @@
 
                 <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">All accounts</p>
                 <div class="acct-breakdown-table-wrap rounded-lg border border-[var(--acc-line)] overflow-x-auto">
-                    <table class="acct-breakdown-table w-full text-sm min-w-[32rem]">
+                    <table class="acct-breakdown-table w-full text-sm min-w-[44rem]">
                         <thead>
                             <tr>
                                 <th>Account name</th>
                                 <th>Category</th>
                                 <th>Status</th>
-                                <th class="text-right">Balance (KES)</th>
+                                <th class="text-right">Total revenue (KES)</th>
+                                <th class="text-right">Amount used (KES)</th>
+                                <th class="text-right">Total balance (KES)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -218,7 +229,13 @@
                                     <span class="acct-status">{{ a.account_status|upper }}</span>
                                     {% endif %}
                                 </td>
-                                <td class="text-right tabular-nums font-semibold{% if a.balance < 0 %} text-red-600 dark:text-red-400{% elif a.balance > 0 %} text-emerald-700 dark:text-emerald-400{% else %} text-slate-500{% endif %}">
+                                <td class="text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">
+                                    {{ a.total_revenue_display|default('0.00') }}
+                                </td>
+                                <td class="text-right tabular-nums font-semibold text-amber-700 dark:text-amber-400">
+                                    {{ a.amount_used_display|default('0.00') }}
+                                </td>
+                                <td class="text-right tabular-nums font-semibold{% if a.balance < 0 %} text-red-600 dark:text-red-400{% elif a.balance > 0 %} text-teal-700 dark:text-teal-400{% else %} text-slate-500{% endif %}">
                                     {{ a.balance_display }}
                                 </td>
                             </tr>
@@ -229,8 +246,14 @@
                                 <td colspan="3" class="font-bold">
                                     <a href="{{ _accounts_home_href }}" class="acct-breakdown-link">Total ({{ acct.total_accounts|default(0) }} accounts)</a>
                                 </td>
+                                <td class="text-right font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link">{{ acct.total_revenue_display|default('0.00') }}</a>
+                                </td>
+                                <td class="text-right font-bold tabular-nums text-amber-700 dark:text-amber-400">
+                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link">{{ acct.total_amount_used_display|default('0.00') }}</a>
+                                </td>
                                 <td class="text-right font-bold tabular-nums">
-                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link">KES {{ acct.total_balance_display|default('0.00') }}</a>
+                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link">{{ acct.total_balance_display|default('0.00') }}</a>
                                 </td>
                             </tr>
                         </tfoot>

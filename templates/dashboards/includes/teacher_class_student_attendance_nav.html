@@ -1,34 +1,48 @@
-{% macro class_student_attendance_link(link_class='', is_active=false, layout='sidebar') %}
-{% set _levels = teacher_class_teacher_levels|default([]) %}
+{% macro class_student_attendance_link(link_class='', is_active=false, layout='sidebar', class_teacher_levels=none) %}
+{% set _levels = class_teacher_levels if class_teacher_levels is not none else [] %}
 {% set _url = employee_dash_url('student-management/class-student-attendance') %}
 {% set _notice_title = 'No class assigned as class teacher' %}
 {% set _notice_msg = 'You are not allocated any class as class teacher for the current academic year. Ask your curriculum coordinator to assign you under Class teacher allocation.' %}
+{% set _label = 'Class attendance' %}
+{% set _hint = '' %}
+{% if _levels|length == 1 %}
+    {% set _hint = _levels[0] %}
+{% elif _levels|length > 1 %}
+    {% set _hint = (_levels|length)|string ~ ' classes' %}
+{% endif %}
+{% set _tip = ('Daily class register for ' ~ (_levels|join(', ') if _levels else 'your class') ~ ' — morning, afternoon and evening checks parents see in their portal.') if _levels else 'You need a class teacher allocation before you can open the daily class register.' %}
+
 {% if layout == 'tile' %}
     {% if _levels %}
-    <a href="{{ _url }}" class="{{ link_class }}">
+    <a href="{{ _url }}" class="{{ link_class }}" title="{{ _tip }}">
         <i class="fas fa-user-check text-sky-600 text-lg mb-1"></i>
-        <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Student attendance register</p>
+        <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">{{ _label }}</p>
+        {% if _hint %}<p class="text-[10px] text-gray-500 dark:text-gray-400 m-0 mt-0.5 truncate">{{ _hint }}</p>{% endif %}
     </a>
     {% else %}
     <button type="button"
+            title="{{ _tip }}"
             @click="noticeModalTitle = {{ _notice_title|tojson }}; noticeModalMessage = {{ _notice_msg|tojson }}; noticeModalOpen = true"
             class="{{ link_class }}">
-        <i class="fas fa-user-check text-sky-600 text-lg mb-1"></i>
-        <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">Student attendance register</p>
+        <i class="fas fa-user-check text-sky-600 text-lg mb-1" aria-hidden="true"></i>
+        <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 m-0">{{ _label }}</p>
+        <p class="text-[10px] text-gray-400 dark:text-gray-500 m-0 mt-0.5"><i class="fas fa-lock" aria-hidden="true"></i></p>
     </button>
     {% endif %}
 {% else %}
-    {% if _levels %}
-    <a href="{{ _url }}"
-       class="sidebar-item {% if is_active %}sidebar-item-active{% endif %}">
-    {% else %}
-    <a href="#"
-       @click.prevent="noticeModalTitle = {{ _notice_title|tojson }}; noticeModalMessage = {{ _notice_msg|tojson }}; noticeModalOpen = true"
-       class="sidebar-item {% if is_active %}sidebar-item-active{% endif %}">
+<a href="{{ _url }}"
+   title="{{ _tip }}"
+   class="sidebar-item {% if is_active %}sidebar-item-active{% endif %}"
+   {% if not _levels %}@click.prevent="noticeModalTitle = {{ _notice_title|tojson }}; noticeModalMessage = {{ _notice_msg|tojson }}; noticeModalOpen = true"{% endif %}>
+    <i class="fas fa-user-check w-5"></i>
+    <span>{{ _label }}</span>
+    {% if is_active %}
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+    {% elif _hint %}
+    <span class="ml-auto text-[10px] font-semibold shrink-0 max-w-[5rem] truncate sidebar-item__meta">{{ _hint }}</span>
+    {% elif not _levels %}
+    <i class="fas fa-lock ml-auto sidebar-item__meta-icon" aria-hidden="true" title="Not assigned as class teacher"></i>
     {% endif %}
-        <i class="fas fa-user-check w-5"></i>
-        <span>Student attendance register</span>
-        {% if is_active %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-    </a>
+</a>
 {% endif %}
 {% endmacro %}

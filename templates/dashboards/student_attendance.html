@@ -143,7 +143,40 @@
         </div>
     </div>
     {% else %}
-    <h1 class="text-lg font-bold text-gray-900 dark:text-white mb-3">Attendance</h1>
+    <h1 class="text-lg font-bold text-gray-900 dark:text-white mb-1">Attendance</h1>
+    {% if student|default(none) %}
+    <p class="text-sm text-gray-600 dark:text-gray-400 mb-3 m-0">
+        <span class="font-semibold">{{ student.full_name }}</span>
+        <span class="mx-1">·</span>
+        <span class="font-mono">{{ student.student_id }}</span>
+        {% if student.current_grade %}<span class="mx-1">·</span>{{ student.current_grade }}{% endif %}
+        — read-only register
+    </p>
+    {% endif %}
+    {% set _preg_view = parent_register_view|default('class') %}
+    {% set _preg_base = parent_dash_url('attendance/' ~ parent_student_id) %}
+    {% set _preg_qs = '' %}
+    {% if selected_academic_year_id %}{% set _preg_qs = _preg_qs ~ '&academic_year_id=' ~ selected_academic_year_id %}{% endif %}
+    {% if selected_term_id %}{% set _preg_qs = _preg_qs ~ '&term_id=' ~ selected_term_id %}{% endif %}
+    {% if selected_filter_type %}{% set _preg_qs = _preg_qs ~ '&filter_type=' ~ selected_filter_type %}{% endif %}
+    {% if selected_day %}{% set _preg_qs = _preg_qs ~ '&day=' ~ selected_day %}{% endif %}
+    {% if selected_month %}{% set _preg_qs = _preg_qs ~ '&month=' ~ selected_month %}{% endif %}
+    {% if selected_period_start %}{% set _preg_qs = _preg_qs ~ '&period_start=' ~ selected_period_start %}{% endif %}
+    {% if selected_period_end %}{% set _preg_qs = _preg_qs ~ '&period_end=' ~ selected_period_end %}{% endif %}
+    <div class="flex flex-wrap gap-2 mb-4">
+        <a href="{{ _preg_base }}?view=class{{ _preg_qs }}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition {% if _preg_view == 'class' %}bg-teal-600 border-teal-600 text-white{% else %}border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400{% endif %}">
+            <i class="fas fa-user-check" aria-hidden="true"></i>Class attendance
+        </a>
+        <a href="{{ _preg_base }}?view=subject{{ _preg_qs }}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition {% if _preg_view == 'subject' %}bg-sky-600 border-sky-600 text-white{% else %}border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-sky-400{% endif %}">
+            <i class="fas fa-clipboard-list" aria-hidden="true"></i>Subject attendance
+        </a>
+        <a href="{{ _preg_base }}?panel=analytics&amp;view={{ _preg_view }}{% if selected_academic_year_id %}&amp;academic_year_id={{ selected_academic_year_id }}{% endif %}{% if selected_term_id %}&amp;term_id={{ selected_term_id }}{% endif %}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-orange-400 ml-auto">
+            <i class="fas fa-chart-pie" aria-hidden="true"></i>Analytics
+        </a>
+    </div>
     {% endif %}
 
     <form method="GET" action="{% if is_parent_view|default(false) %}{{ parent_dash_url('attendance/' ~ parent_student_id) }}{% else %}{{ attendance_form_action|default(employee_dash_url('student-management/student-attendance')) }}{% endif %}" id="{% if not is_parent_view|default(false) %}student-attendance-filter-form{% endif %}" class="att-filter-toolbar" aria-label="{% if is_class_teacher_view|default(false) %}Student attendance filters{% elif is_teacher_view|default(false) %}Subject attendance filters{% else %}Attendance register filters{% endif %}">
@@ -166,7 +199,7 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="att-filter-field att-filter-field--class">
+            <div class="att-filter-field att-filter-field--class{% if is_parent_view|default(false) %} hidden{% endif %}">
                 <label for="class_level" class="att-filter-label">Class</label>
                 <select name="class_level" id="class_level" class="att-filter-control">
                     <option value="">Class…</option>
@@ -175,6 +208,9 @@
                     {% endfor %}
                 </select>
             </div>
+            {% if is_parent_view|default(false) and selected_class_level %}
+            <input type="hidden" name="class_level" value="{{ selected_class_level }}">
+            {% endif %}
             <div class="att-filter-field att-filter-field--narrow">
                 <label for="filter_type" class="att-filter-label">Range</label>
                 <select name="filter_type" id="filter_type" class="att-filter-control">
@@ -207,8 +243,11 @@
                        {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
                        class="att-filter-control">
             </div>
-            <input type="hidden" name="page" id="att-page" value="{{ attendance_list_meta.page|default(1) }}">
-            {% if not is_teacher_view|default(false) or is_parent_view|default(false) %}
+        <input type="hidden" name="page" id="att-page" value="{{ attendance_list_meta.page|default(1) }}">
+        {% if is_parent_view|default(false) %}
+        <input type="hidden" name="view" value="{{ parent_register_view|default('class') }}">
+        {% endif %}
+        {% if not is_teacher_view|default(false) or is_parent_view|default(false) %}
             <div class="att-filter-field att-filter-field--action">
                 <span class="att-filter-label att-filter-label--spacer" aria-hidden="true">&nbsp;</span>
                 <button type="submit" class="att-filter-apply-btn touch-btn" title="Apply filters">

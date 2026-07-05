@@ -94,10 +94,12 @@
 
 {% if _par_nav == 'all' %}
 <p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
-<a href="{{ parent_dash_url() }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}#notifications-hub"
-   class="sidebar-item {% if request.endpoint == 'dashboard_parent' %}sidebar-item-active{% endif %}">
+<a href="{{ portal_notifications_hub_url|default(parent_dash_url('notifications') ~ (('?student_id=' ~ selected_student_id) if selected_student_id else '')) }}"
+   class="sidebar-item {% if request.endpoint == 'parent_portal_notifications' %}sidebar-item-active{% endif %}">
     <i class="fas fa-bell w-5"></i>
     <span>Notifications</span>
-    {% if request.endpoint == 'dashboard_parent' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if portal_unread_notification_count|default(0) > 0 %}
+    <span data-portal-notif-badge class="ml-auto inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold tabular-nums">{{ portal_unread_notification_count if portal_unread_notification_count < 100 else '99+' }}</span>
+    {% elif request.endpoint == 'parent_portal_notifications' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}

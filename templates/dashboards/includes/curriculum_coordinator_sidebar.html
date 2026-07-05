@@ -87,10 +87,16 @@
 {% if _cc_nav in ('all', 'exams') and not cc_hide_exams_section %}
 <p class="px-3 {% if _cc_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Exams</p>
 <a href="{{ employee_dash_url('exam-evaluation') }}"
-   class="sidebar-item {% if request.endpoint in ('exam_evaluation', 'exam_evaluation_registered_detail') or '/exam-evaluation' in request.path %}sidebar-item-active{% endif %}">
+   class="sidebar-item {% if request.endpoint in ('exam_evaluation', 'exam_evaluation_registered_detail') or ('/exam-evaluation' in request.path and '/exam-applications' not in request.path) %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam registration</span>
-    {% if request.endpoint in ('exam_evaluation', 'exam_evaluation_registered_detail') or '/exam-evaluation' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint in ('exam_evaluation', 'exam_evaluation_registered_detail') or ('/exam-evaluation' in request.path and '/exam-applications' not in request.path) %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('exam-applications') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_applications' or '/exam-applications' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-signature w-5"></i>
+    <span>Exam applications</span>
+    {% if request.endpoint == 'exam_applications' or '/exam-applications' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('exams-assessments') }}"
    class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments') or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">

@@ -20,8 +20,20 @@
 {% endblock %}
 
 {% block content %}
-<div class="{% if portal_mode|default('parent') == 'student' %}sp-portal {% endif %}p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }} space-y-5 sm:space-y-6">
-    {% if portal_mode|default('parent') == 'student' %}
+{% set att_view = attendance_view|default('class') %}
+{% if att_view == 'subject' %}
+    {% set active_summary = subject_summary|default({'total_recorded': 0, 'present': 0, 'absent': 0, 'pct': 0.0, 'category': 'none'}) %}
+    {% set active_by_week = subject_by_week|default([]) %}
+    {% set active_daily_points = subject_daily_points|default([]) %}
+    {% set active_recent = subject_recent_days|default([]) %}
+{% else %}
+    {% set active_summary = summary|default({'total_recorded': 0, 'present': 0, 'absent': 0, 'pct': 0.0, 'category': 'none'}) %}
+    {% set active_by_week = by_week|default([]) %}
+    {% set active_daily_points = daily_points|default([]) %}
+    {% set active_recent = recent_days|default([]) %}
+{% endif %}
+{% set att_base_url = student_dash_url('attendance') if portal_mode|default('parent') == 'student' else parent_dash_url('attendance/' ~ parent_student_id) %}
+<div class="{% if portal_mode|default('parent') == 'student' %}sp-portal {% endif %}p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('parent') }} space-y-5 sm:space-y-6">    {% if portal_mode|default('parent') == 'student' %}
     {% set sp_tech_hint = 'Select a student to view their attendance' %}
     {% set sp_tech_action = student_dash_url('attendance') %}
     {% set sp_selected_id = parent_student_id %}
@@ -31,10 +43,9 @@
     {% set role_theme = 'student' %}
     {% set role_hero_eyebrow = 'Student portal' %}
     {% set role_hero_title = 'My attendance' %}
-    {% set role_hero_subtitle = student.full_name ~ ' · ' ~ student.student_id ~ ((' · ' ~ student.current_grade) if student.current_grade else '') ~ ' — daily presence tracked by your class teacher.' %}
+    {% set role_hero_subtitle = student.full_name ~ ' · ' ~ student.student_id ~ ((' · ' ~ student.current_grade) if student.current_grade else '') ~ ' — class register and subject lesson attendance for this term.' %}
     {% set role_hero_icon_class = 'fa-chart-pie' %}
     {% include 'dashboards/includes/role_hero.html' %}
-    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
 
     {% elif is_technician and current_view_role == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
@@ -82,7 +93,7 @@
                 </div>
                 <div>
                     <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white">Attendance analytics</h1>
-                    <p class="text-white/80 text-sm mt-1 m-0">Daily class attendance marked by your child&apos;s class teacher.</p>
+                    <p class="text-white/80 text-sm mt-1 m-0">Class register and subject lesson attendance for your child.</p>
                     <p class="text-white/90 text-sm sm:text-base mt-1">
                         <span class="font-semibold">{{ student.full_name }}</span>
                         <span class="mx-2">•</span>
@@ -120,24 +131,46 @@
                 {% endfor %}
             </select>
         </div>
+        <input type="hidden" name="view" value="{{ att_view }}">
         <button type="submit" class="{% if portal_mode|default('parent') == 'student' %}sp-btn sp-btn--primary{% else %}touch-btn px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold hover:opacity-95 shadow-md{% endif %}">
             <i class="fas fa-sync-alt mr-2" aria-hidden="true"></i>Apply
         </button>
     </form>
 
+    <div class="flex flex-wrap gap-2 mb-2">
+        <a href="{{ att_base_url }}?panel=register&amp;view=class{% if selected_academic_year_id %}&amp;academic_year_id={{ selected_academic_year_id }}{% endif %}{% if selected_term_id %}&amp;term_id={{ selected_term_id }}{% endif %}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400 transition">
+            <i class="fas fa-list-check" aria-hidden="true"></i>Register
+        </a>
+        <a href="{{ att_base_url }}?panel=analytics&amp;view=class{% if selected_academic_year_id %}&amp;academic_year_id={{ selected_academic_year_id }}{% endif %}{% if selected_term_id %}&amp;term_id={{ selected_term_id }}{% endif %}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition {% if att_view == 'class' %}bg-teal-600 border-teal-600 text-white{% else %}border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400{% endif %}">
+            <i class="fas fa-user-check" aria-hidden="true"></i>Class attendance
+        </a>
+        <a href="{{ att_base_url }}?panel=analytics&amp;view=subject{% if selected_academic_year_id %}&amp;academic_year_id={{ selected_academic_year_id }}{% endif %}{% if selected_term_id %}&amp;term_id={{ selected_term_id }}{% endif %}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition {% if att_view == 'subject' %}bg-sky-600 border-sky-600 text-white{% else %}border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-sky-400{% endif %}">
+            <i class="fas fa-clipboard-list" aria-hidden="true"></i>Subject attendance
+        </a>
+    </div>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 m-0">
+        {% if att_view == 'subject' %}
+        Per-lesson attendance marked by subject teachers during timetable periods.
+        {% else %}
+        Daily whole-class register marked by your class teacher (morning, afternoon, evening).
+        {% endif %}
+    </p>
     {% if term_label %}
     <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
         <i class="fas fa-calendar-alt mr-1 text-brand-primary"></i>Showing data for <strong>{{ term_label }}</strong>
     </p>
     {% endif %}
 
-    {% if summary.total_recorded > 0 %}
+    {% if active_summary.total_recorded > 0 %}
     <div class="responsive-grid-1 mb-6">
         <div class="stat-card modern-card p-4">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Attendance rate</p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ summary.pct }}%</p>
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ active_summary.pct }}%</p>
                 </div>
                 <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                     <i class="fas fa-percentage text-blue-600 dark:text-blue-400 text-xl"></i>
@@ -147,8 +180,8 @@
         <div class="stat-card modern-card p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Days present</p>
-                    <p class="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">{{ summary.present }}</p>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{% if att_view == 'subject' %}Sessions present{% else %}Days present{% endif %}</p>
+                    <p class="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">{{ active_summary.present }}</p>
                 </div>
                 <div class="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                     <i class="fas fa-check text-green-600 dark:text-green-400 text-xl"></i>
@@ -158,8 +191,8 @@
         <div class="stat-card modern-card p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Days absent</p>
-                    <p class="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">{{ summary.absent }}</p>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{% if att_view == 'subject' %}Sessions absent{% else %}Days absent{% endif %}</p>
+                    <p class="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">{{ active_summary.absent }}</p>
                 </div>
                 <div class="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
                     <i class="fas fa-times text-red-600 dark:text-red-400 text-xl"></i>
@@ -171,24 +204,53 @@
                 <div>
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Performance band</p>
                     <p class="text-sm font-bold text-gray-900 dark:text-white mt-1 capitalize">
-                        {% if summary.category == 'excellent' %}Excellent (80%+){% elif summary.category == 'good' %}Good (60–79%){% elif summary.category == 'fair' %}Fair (40–59%){% elif summary.category == 'poor' %}Needs attention (below 40%){% else %}—{% endif %}
+                        {% if active_summary.category == 'excellent' %}Excellent (80%+){% elif active_summary.category == 'good' %}Good (60–79%){% elif active_summary.category == 'fair' %}Fair (40–59%){% elif active_summary.category == 'poor' %}Needs attention (below 40%){% else %}—{% endif %}
                     </p>
                 </div>
-                <div class="w-12 h-12 rounded-xl {% if summary.category == 'excellent' %}bg-green-100 dark:bg-green-900/30{% elif summary.category == 'good' %}bg-blue-100 dark:bg-blue-900/30{% elif summary.category == 'fair' %}bg-amber-100 dark:bg-amber-900/30{% elif summary.category == 'poor' %}bg-red-100 dark:bg-red-900/30{% else %}bg-gray-100 dark:bg-gray-700{% endif %} flex items-center justify-center">
-                    <i class="fas fa-signal text-xl {% if summary.category == 'excellent' %}text-green-600{% elif summary.category == 'good' %}text-blue-600{% elif summary.category == 'fair' %}text-amber-600{% elif summary.category == 'poor' %}text-red-600{% else %}text-gray-500{% endif %}"></i>
+                <div class="w-12 h-12 rounded-xl {% if active_summary.category == 'excellent' %}bg-green-100 dark:bg-green-900/30{% elif active_summary.category == 'good' %}bg-blue-100 dark:bg-blue-900/30{% elif active_summary.category == 'fair' %}bg-amber-100 dark:bg-amber-900/30{% elif active_summary.category == 'poor' %}bg-red-100 dark:bg-red-900/30{% else %}bg-gray-100 dark:bg-gray-700{% endif %} flex items-center justify-center">
+                    <i class="fas fa-signal text-xl {% if active_summary.category == 'excellent' %}text-green-600{% elif active_summary.category == 'good' %}text-blue-600{% elif active_summary.category == 'fair' %}text-amber-600{% elif active_summary.category == 'poor' %}text-red-600{% else %}text-gray-500{% endif %}"></i>
                 </div>
             </div>
         </div>
     </div>
 
+    {% if att_view == 'subject' and subject_by_subject|default([]) %}
+    <div class="modern-card p-4 sm:p-6 mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+            <i class="fas fa-book text-brand-primary mr-2"></i>
+            By subject
+        </h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-gray-600 dark:text-gray-400">
+                        <th class="py-2 pr-4">Subject</th>
+                        <th class="py-2 pr-4">Present</th>
+                        <th class="py-2 pr-4">Absent</th>
+                        <th class="py-2">Rate</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    {% for row in subject_by_subject %}
+                    <tr>
+                        <td class="py-2.5 pr-4 font-medium text-gray-900 dark:text-white">{{ row.subject_name }}</td>
+                        <td class="py-2.5 pr-4 text-green-700 dark:text-green-400">{{ row.present }}</td>
+                        <td class="py-2.5 pr-4 text-red-700 dark:text-red-400">{{ row.absent }}</td>
+                        <td class="py-2.5 font-semibold tabular-nums">{{ row.pct }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
     <div class="grid lg:grid-cols-2 gap-6 mb-6">
         <div class="modern-card p-4 sm:p-6">
             <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
                 <i class="fas fa-chart-bar text-brand-primary mr-2"></i>
                 Weekly attendance %
             </h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Each bar is the share of recorded days marked present in that calendar week.</p>
-            <div class="h-64 sm:h-72">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">{% if att_view == 'subject' %}Each bar is the share of recorded subject sessions marked present in that calendar week.{% else %}Each bar is the share of recorded days marked present in that calendar week.{% endif %}</p>            <div class="h-64 sm:h-72">
                 <canvas id="weekChart"></canvas>
             </div>
         </div>
@@ -206,10 +268,9 @@
     <div class="modern-card p-4 sm:p-6 mb-6">
         <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
             <i class="fas fa-chart-line text-brand-primary mr-2"></i>
-            Day-by-day presence (this term)
+            {% if att_view == 'subject' %}Session presence by day (this term){% else %}Day-by-day presence (this term){% endif %}
         </h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">100% = present, 0% = absent for each recorded school day.</p>
-        <div class="h-56 sm:h-64">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">{% if att_view == 'subject' %}Each point is the share of subject sessions marked present on that school day.{% else %}100% = present, 0% = absent for each recorded school day.{% endif %}</p>        <div class="h-56 sm:h-64">
             <canvas id="dailyChart"></canvas>
         </div>
     </div>
@@ -217,19 +278,18 @@
     <div class="modern-card p-4 sm:p-6">
         <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
             <i class="fas fa-list text-brand-primary mr-2"></i>
-            Recent recorded days
+            {% if att_view == 'subject' %}Recent recorded sessions{% else %}Recent recorded days{% endif %}
         </h3>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
                     <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-gray-600 dark:text-gray-400">
-                        <th class="py-2 pr-4">Date</th>
+                        <th class="py-2 pr-4">{% if att_view == 'subject' %}Date · Subject{% else %}Date{% endif %}</th>
                         <th class="py-2">Status</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                    {% for d in recent_days %}
-                    <tr>
+                    {% for d in active_recent %}                    <tr>
                         <td class="py-2.5 pr-4 text-gray-900 dark:text-white">{{ d.display }}</td>
                         <td class="py-2.5">
                             {% if d.present %}
@@ -253,8 +313,7 @@
         const gridColor = isDark ? 'rgba(75, 85, 99, 0.3)' : 'rgba(209, 213, 219, 0.5)';
         const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#800020';
 
-        const weekData = {{ by_week|tojson }};
-        if (weekData.length > 0 && document.getElementById('weekChart')) {
+        const weekData = {{ active_by_week|tojson }};        if (weekData.length > 0 && document.getElementById('weekChart')) {
             new Chart(document.getElementById('weekChart'), {
                 type: 'bar',
                 data: {
@@ -278,9 +337,8 @@
             });
         }
 
-        const present = {{ summary.present|default(0) }};
-        const absent = {{ summary.absent|default(0) }};
-        if ((present > 0 || absent > 0) && document.getElementById('donutChart')) {
+        const present = {{ active_summary.present|default(0) }};
+        const absent = {{ active_summary.absent|default(0) }};        if ((present > 0 || absent > 0) && document.getElementById('donutChart')) {
             new Chart(document.getElementById('donutChart'), {
                 type: 'doughnut',
                 data: {
@@ -301,8 +359,7 @@
             });
         }
 
-        const dailyData = {{ daily_points|tojson }};
-        if (dailyData.length > 0 && document.getElementById('dailyChart')) {
+        const dailyData = {{ active_daily_points|tojson }};        if (dailyData.length > 0 && document.getElementById('dailyChart')) {
             new Chart(document.getElementById('dailyChart'), {
                 type: 'line',
                 data: {
@@ -335,9 +392,8 @@
     <div class="{% if portal_mode|default('parent') == 'student' %}sp-panel{% else %}empty-state modern-card{% endif %}">
         <div class="sp-empty">
             <div class="sp-empty__icon"><i class="fas fa-chart-line" aria-hidden="true"></i></div>
-            <p class="sp-empty__title">No attendance recorded yet</p>
-            <p class="sp-empty__text">When teachers record attendance for this term, you will see rates, weekly breakdown, and day-by-day status here.</p>
-        </div>
+            <p class="sp-empty__title">No {% if att_view == 'subject' %}subject {% endif %}attendance recorded yet</p>
+            <p class="sp-empty__text">When {% if att_view == 'subject' %}subject teachers mark lesson attendance{% else %}your class teacher records the daily register{% endif %} for this term, you will see rates, weekly breakdown, and recent records here.</p>        </div>
     </div>
     {% endif %}
 </div>

@@ -1,0 +1,13 @@
+{# Header bell icon with unread count — student/parent portals only #}
+<a href="{{ portal_notifications_hub_url }}"
+   class="site-header__icon-btn app-chrome-btn relative p-2.5 rounded-lg transition-colors touch-manipulation shrink-0"
+   title="{% if portal_unread_notification_count %}Notifications — {{ portal_unread_notification_count }} unread{% else %}Notifications — up to date{% endif %}"
+   aria-label="{% if portal_unread_notification_count %}{{ portal_unread_notification_count }} unread notifications{% else %}Notifications, up to date{% endif %}">
+    <i class="fas fa-bell text-lg" aria-hidden="true"></i>
+    {% if portal_unread_notification_count > 0 %}
+    <span data-portal-notif-badge class="absolute -top-0.5 -right-0.5 min-w-[1.125rem] h-[1.125rem] px-1 flex items-center justify-center rounded-full bg-rose-500 text-white text-[10px] font-bold leading-none border-2 border-white dark:border-slate-900 shadow-sm tabular-nums"
+          aria-hidden="true">
+        {{ portal_unread_notification_count if portal_unread_notification_count < 100 else '99+' }}
+    </span>
+    {% endif %}
+</a>

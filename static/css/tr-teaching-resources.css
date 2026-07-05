@@ -1,0 +1,333 @@
+/* Teacher teaching resources — class / subject picker + upload */
+.tr-page {
+    --tr-accent: #059669;
+    --tr-accent-soft: rgba(5, 150, 105, 0.1);
+}
+
+.tr-steps {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    font-size: 0.8125rem;
+    color: #64748b;
+    margin-bottom: 1.25rem;
+}
+
+.tr-steps__sep {
+    opacity: 0.45;
+    user-select: none;
+}
+
+.tr-steps__link {
+    font-weight: 600;
+    color: #059669;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+.tr-steps__link:hover {
+    text-decoration: underline;
+}
+
+.tr-steps__current {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.dark .tr-steps__current {
+    color: #f8fafc;
+}
+
+.tr-grid {
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    gap: 0.875rem;
+}
+
+@media (min-width: 640px) {
+    .tr-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1024px) {
+    .tr-grid--classes {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.tr-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: left;
+    width: 100%;
+    padding: 1rem 1.125rem;
+    border-radius: 1rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.dark .tr-card {
+    border-color: #374151;
+    background: #1f2937;
+}
+
+.tr-card:hover {
+    border-color: #34d399;
+    box-shadow: 0 4px 14px rgba(5, 150, 105, 0.12);
+    transform: translateY(-1px);
+}
+
+.tr-card__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.tr-card__icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--tr-accent-soft);
+    color: var(--tr-accent);
+    flex-shrink: 0;
+}
+
+.tr-card__title {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.dark .tr-card__title {
+    color: #f8fafc;
+}
+
+.tr-card__meta {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin: 0;
+    line-height: 1.45;
+}
+
+.tr-card__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    background: #ecfdf5;
+    color: #047857;
+}
+
+.dark .tr-card__badge {
+    background: rgba(5, 150, 105, 0.2);
+    color: #6ee7b7;
+}
+
+.tr-card__badge--muted {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.dark .tr-card__badge--muted {
+    background: #374151;
+    color: #94a3b8;
+}
+
+.tr-manage {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+}
+
+@media (min-width: 1280px) {
+    .tr-manage {
+        grid-template-columns: minmax(17rem, 22rem) minmax(0, 1fr);
+    }
+}
+
+.tr-upload-panel,
+.tr-list-panel {
+    border-radius: 1rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.dark .tr-upload-panel,
+.dark .tr-list-panel {
+    border-color: #374151;
+    background: #1f2937;
+}
+
+.tr-panel-head {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.dark .tr-panel-head {
+    border-bottom-color: #374151;
+}
+
+.tr-panel-head h2 {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.dark .tr-panel-head h2 {
+    color: #f8fafc;
+}
+
+.tr-panel-body {
+    padding: 1rem 1.25rem;
+}
+
+.tr-field label {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    margin-bottom: 0.375rem;
+}
+
+.tr-field input[type="text"],
+.tr-field textarea {
+    width: 100%;
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #0f172a;
+}
+
+.dark .tr-field input[type="text"],
+.dark .tr-field textarea {
+    border-color: #4b5563;
+    background: #111827;
+    color: #f8fafc;
+}
+
+.tr-drop {
+    border: 2px dashed #cbd5e1;
+    border-radius: 0.75rem;
+    padding: 1rem;
+    text-align: center;
+    background: #f8fafc;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.dark .tr-drop {
+    border-color: #4b5563;
+    background: #111827;
+}
+
+.tr-drop:hover,
+.tr-drop--active {
+    border-color: #34d399;
+    background: #ecfdf5;
+}
+
+.dark .tr-drop:hover,
+.dark .tr-drop--active {
+    background: rgba(5, 150, 105, 0.12);
+}
+
+.tr-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    border: 0;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #fff;
+    background: #059669;
+    cursor: pointer;
+}
+
+.tr-btn-primary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.tr-btn-primary:not(:disabled):hover {
+    background: #047857;
+}
+
+.tr-resource-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.dark .tr-resource-row {
+    border-bottom-color: #374151;
+}
+
+@media (min-width: 640px) {
+    .tr-resource-row {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+}
+
+.tr-resource-row:last-child {
+    border-bottom: 0;
+}
+
+.tr-resource-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.tr-empty {
+    padding: 3rem 1.5rem;
+    text-align: center;
+    color: #64748b;
+}
+
+.tr-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    font-size: 0.8125rem;
+    color: #1e40af;
+    margin-bottom: 1.25rem;
+}
+
+.dark .tr-hint {
+    background: rgba(30, 64, 175, 0.15);
+    border-color: rgba(59, 130, 246, 0.35);
+    color: #93c5fd;
+}

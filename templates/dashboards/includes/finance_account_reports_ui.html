@@ -168,7 +168,9 @@
 }
 .acr-masthead__body {
     padding: 1rem clamp(1rem, 3vw, 1.5rem);
-    border-top: 1px solid var(--acr-line);
+}
+.acr-masthead__body--solo {
+    border-top: none;
 }
 .acr-masthead__desc {
     margin: 0;
@@ -781,6 +783,25 @@
     background: var(--acr-teal-soft) !important;
 }
 
+.acr-bs-section-row td {
+    font-weight: 700;
+    background: #f1f5f9 !important;
+    color: #0f766e;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+}
+.dark .acr-bs-section-row td {
+    background: #1e293b !important;
+    color: #5eead4;
+}
+.acr-bs-focus-row td {
+    background: #f0fdfa !important;
+}
+.dark .acr-bs-focus-row td {
+    background: rgba(13, 148, 136, 0.12) !important;
+}
+
 .acr-report-state {
     display: flex;
     align-items: center;
@@ -867,7 +888,9 @@
         box-shadow: none !important;
     }
     html.acr-report-print-doc .acr-report-page .acr-masthead,
-    html.acr-report-print-doc .acr-report-page .acr-inner > *:not(#acr-print-letterhead):not(#acr-report-body) {
+    html.acr-report-print-doc .acr-pcb-page .acr-masthead,
+    html.acr-report-print-doc .acr-report-page .acr-inner > *:not(#acr-print-letterhead):not(#acr-report-body),
+    html.acr-report-print-doc .acr-pcb-page .acr-inner > *:not(#acr-print-letterhead):not(#acr-report-body) {
         display: none !important;
     }
     html.acr-report-print-doc .acr-print-only {
@@ -1034,6 +1057,35 @@
     }
     html.acr-report-print-doc .acr-mono {
         font-size: 7.5pt;
+    }
+    html.acr-report-print-doc .acr-pcb-table table {
+        table-layout: fixed !important;
+        width: 100% !important;
+    }
+    html.acr-report-print-doc .acr-pcb-table col.acr-pcb-col-date { width: 9% !important; }
+    html.acr-report-print-doc .acr-pcb-table col.acr-pcb-col-vote { width: 9% !important; }
+    html.acr-report-print-doc .acr-pcb-table col.acr-pcb-col-desc { width: 26% !important; }
+    html.acr-report-print-doc .acr-pcb-table col.acr-pcb-col-company { width: 11% !important; }
+    html.acr-report-print-doc .acr-pcb-table col.acr-pcb-col-ref { width: 12% !important; }
+    html.acr-report-print-doc .acr-pcb-table col.acr-pcb-col-debit { width: 11.5% !important; }
+    html.acr-report-print-doc .acr-pcb-table col.acr-pcb-col-credit { width: 11.5% !important; }
+    html.acr-report-print-doc .acr-th-screen {
+        display: none !important;
+    }
+    html.acr-report-print-doc .acr-th-print {
+        display: inline !important;
+    }
+    html.acr-report-print-doc .acr-pcb-table .acr-table--stack tbody td.acr-num,
+    html.acr-report-print-doc .acr-pcb-table .acr-table--stack thead th.acr-num {
+        white-space: nowrap;
+        font-size: 6pt;
+        font-variant-numeric: tabular-nums;
+    }
+    html.acr-report-print-doc .acr-pcb-table .acr-table--stack tbody td.acr-mono {
+        font-size: 5.5pt;
+        letter-spacing: -0.02em;
+        word-break: break-all;
+        white-space: normal;
     }
 }
 

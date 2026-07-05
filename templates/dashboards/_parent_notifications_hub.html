@@ -14,8 +14,9 @@
                             Notifications Hub
                         </h2>
                         {% if hub_notifications %}
+                        {% set _unread = hub_notifications|rejectattr('is_read')|list|length %}
                         <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/40 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-800 dark:text-violet-200">
-                            {{ hub_notifications|length }} update{{ '' if hub_notifications|length == 1 else 's' }}
+                            {% if _unread %}{{ _unread }} unread{% else %}Up to date{% endif %}
                         </span>
                         {% else %}
                         <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">
@@ -29,6 +30,10 @@
                 </div>
             </div>
             <div class="flex flex-wrap items-center gap-3 shrink-0">
+                <a href="{{ parent_dash_url('notifications') }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}"
+                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:underline">
+                    <i class="fas fa-bell"></i> All notifications
+                </a>
                 <a href="{{ parent_dash_url('student-fees') }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}"
                    class="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-700 dark:text-orange-300 hover:underline">
                     <i class="fas fa-wallet"></i> View fees

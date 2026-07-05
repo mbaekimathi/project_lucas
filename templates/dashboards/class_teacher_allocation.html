@@ -13,7 +13,7 @@
 {% set role_hero_icon_class = 'fa-chalkboard-teacher' %}
 {% include 'dashboards/includes/role_hero.html' %}
 
-<div class="px-3 py-4 sm:px-5 md:px-6 lg:px-8 max-w-5xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+<div class="px-3 py-4 sm:px-5 md:px-6 lg:px-8 max-w-6xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
      x-data="classTeacherAllocation()" x-init="init()">
     <div class="mb-4 flex flex-col sm:flex-row sm:items-end gap-3 sm:justify-between">
         <div>
@@ -41,7 +41,8 @@
                     <tr>
                         <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Class</th>
                         <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Category</th>
-                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 min-w-[14rem]">Class teacher</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 min-w-[14rem]">Assign teacher</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 min-w-[12rem]">Assigned teacher</th>
                         <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 w-24">Status</th>
                     </tr>
                 </thead>
@@ -52,19 +53,27 @@
                             <td class="px-4 py-3 text-gray-600 dark:text-gray-400" x-text="level.level_category || '—'"></td>
                             <td class="px-4 py-3">
                                 <select class="w-full min-w-[12rem] px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
-                                        :value="getTeacherId(level.id)"
+                                        :value="selections[String(level.id)] || ''"
                                         @change="saveAssignment(level.id, $event.target.value)"
-                                        :disabled="savingLevelId === String(level.id)">
+                                        :class="savingLevelId === String(level.id) ? 'opacity-70 pointer-events-none' : ''">
                                     <option value="">— Not assigned —</option>
                                     <template x-for="t in teachers" :key="t.id">
                                         <option :value="String(t.id)" x-text="t.full_name + (t.employee_id ? ' (' + t.employee_id + ')' : '')"></option>
                                     </template>
                                 </select>
                             </td>
+                            <td class="px-4 py-3">
+                                <div x-show="getTeacherName(level.id)" x-cloak>
+                                    <div class="font-medium text-gray-900 dark:text-white" x-text="getTeacherName(level.id)"></div>
+                                    <div x-show="getTeacherEmployeeId(level.id)" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-text="'Staff ID: ' + getTeacherEmployeeId(level.id)"></div>
+                                </div>
+                                <span x-show="!getTeacherName(level.id)" class="text-gray-400">— Not assigned —</span>
+                            </td>
                             <td class="px-4 py-3 text-xs">
                                 <span x-show="savingLevelId === String(level.id)" class="text-emerald-600 dark:text-emerald-400"><i class="fas fa-spinner fa-spin mr-1"></i>Saving</span>
-                                <span x-show="savingLevelId !== String(level.id) && getTeacherId(level.id)" class="text-green-700 dark:text-green-400 font-semibold">Assigned</span>
-                                <span x-show="savingLevelId !== String(level.id) && !getTeacherId(level.id)" class="text-gray-400">—</span>
+                                <span x-show="savingLevelId !== String(level.id) && wasRecentlySaved(level.id)" class="text-emerald-700 dark:text-emerald-400 font-semibold"><i class="fas fa-check mr-1"></i>Saved</span>
+                                <span x-show="savingLevelId !== String(level.id) && !wasRecentlySaved(level.id) && getTeacherId(level.id)" class="text-green-700 dark:text-green-400 font-semibold">Assigned</span>
+                                <span x-show="savingLevelId !== String(level.id) && !wasRecentlySaved(level.id) && !getTeacherId(level.id)" class="text-gray-400">—</span>
                             </td>
                         </tr>
                     </template>
@@ -83,8 +92,10 @@ function classTeacherAllocation() {
         academicYears: {{ academic_years|tojson }},
         academicYearId: String({{ selected_academic_year_id|default('null')|tojson }} || ''),
         assignments: {{ assignments_by_level|tojson }},
-        saveUrl: {{ url_for('save_class_teacher_allocation')|tojson }},
-        pageUrl: {{ url_for('class_teacher_allocation')|tojson }},
+        selections: {},
+        recentlySavedLevels: {},
+        saveUrl: {{ employee_dash_url('class-teacher-allocation/save')|tojson }},
+        pageUrl: {{ employee_dash_url('class-teacher-allocation')|tojson }},
         savingLevelId: '',
         successMessage: '',
         errorMessage: '',
@@ -93,6 +104,26 @@ function classTeacherAllocation() {
                 const cur = this.academicYears.find(y => y.is_current);
                 this.academicYearId = String((cur || this.academicYears[0]).id);
             }
+            this.syncSelectionsFromAssignments();
+        },
+        syncSelectionsFromAssignments() {
+            const next = {};
+            for (const level of this.academicLevels) {
+                next[String(level.id)] = this.getTeacherId(level.id);
+            }
+            this.selections = next;
+        },
+        wasRecentlySaved(levelId) {
+            return !!this.recentlySavedLevels[String(levelId)];
+        },
+        markLevelSaved(levelId) {
+            const key = String(levelId);
+            this.recentlySavedLevels[key] = true;
+            setTimeout(() => {
+                if (this.recentlySavedLevels[key]) {
+                    delete this.recentlySavedLevels[key];
+                }
+            }, 1800);
         },
         onYearChange() {
             if (!this.academicYearId) return;
@@ -102,37 +133,93 @@ function classTeacherAllocation() {
             const row = this.assignments[String(levelId)] || this.assignments[levelId];
             return row && row.teacher_id ? String(row.teacher_id) : '';
         },
+        getTeacherName(levelId) {
+            const row = this.assignments[String(levelId)] || this.assignments[levelId];
+            if (row && row.teacher_name) return row.teacher_name;
+            const tid = this.getTeacherId(levelId);
+            if (!tid) return '';
+            const teacher = this.teachers.find(t => String(t.id) === String(tid));
+            return teacher ? teacher.full_name : '';
+        },
+        getTeacherEmployeeId(levelId) {
+            const row = this.assignments[String(levelId)] || this.assignments[levelId];
+            if (row && row.employee_id) return row.employee_id;
+            const tid = this.getTeacherId(levelId);
+            if (!tid) return '';
+            const teacher = this.teachers.find(t => String(t.id) === String(tid));
+            return teacher ? (teacher.employee_id || '') : '';
+        },
         async saveAssignment(levelId, teacherId) {
-            this.savingLevelId = String(levelId);
+            const key = String(levelId);
+            if (this.savingLevelId === key) return;
+
+            teacherId = teacherId != null ? String(teacherId) : '';
+            const previousTeacherId = this.getTeacherId(levelId);
+            if (teacherId === previousTeacherId) {
+                this.selections[key] = teacherId;
+                return;
+            }
+
+            const yearId = parseInt(this.academicYearId, 10);
+            if (!yearId) {
+                this.errorMessage = 'Select an academic year first.';
+                this.selections[key] = previousTeacherId;
+                setTimeout(() => { this.errorMessage = ''; }, 4000);
+                return;
+            }
+
+            this.selections[key] = teacherId;
+            this.savingLevelId = key;
             this.errorMessage = '';
             this.successMessage = '';
+
+            if (teacherId) {
+                const teacher = this.teachers.find(t => String(t.id) === String(teacherId));
+                this.assignments[key] = {
+                    academic_level_id: parseInt(levelId, 10),
+                    teacher_id: parseInt(teacherId, 10),
+                    teacher_name: teacher ? teacher.full_name : '',
+                    employee_id: teacher ? (teacher.employee_id || '') : ''
+                };
+            } else {
+                delete this.assignments[key];
+            }
+
             try {
                 const res = await fetch(this.saveUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     body: JSON.stringify({
                         academic_level_id: parseInt(levelId, 10),
-                        academic_year_id: parseInt(this.academicYearId, 10),
+                        academic_year_id: yearId,
                         teacher_id: teacherId ? parseInt(teacherId, 10) : 0
                     })
                 });
-                const data = await res.json();
+                let data = {};
+                try {
+                    data = await res.json();
+                } catch (parseErr) {
+                    throw new Error('Unexpected server response. Please refresh and try again.');
+                }
                 if (!res.ok || !data.success) {
                     throw new Error(data.message || 'Save failed');
                 }
-                if (teacherId) {
-                    const teacher = this.teachers.find(t => String(t.id) === String(teacherId));
-                    this.assignments[String(levelId)] = {
-                        academic_level_id: parseInt(levelId, 10),
-                        teacher_id: parseInt(teacherId, 10),
-                        teacher_name: teacher ? teacher.full_name : ''
-                    };
-                } else {
-                    delete this.assignments[String(levelId)];
-                }
+                this.markLevelSaved(levelId);
                 this.successMessage = 'Class teacher saved.';
                 setTimeout(() => { this.successMessage = ''; }, 2500);
             } catch (err) {
+                if (previousTeacherId) {
+                    const teacher = this.teachers.find(t => String(t.id) === String(previousTeacherId));
+                    this.assignments[key] = {
+                        academic_level_id: parseInt(levelId, 10),
+                        teacher_id: parseInt(previousTeacherId, 10),
+                        teacher_name: teacher ? teacher.full_name : '',
+                        employee_id: teacher ? (teacher.employee_id || '') : ''
+                    };
+                } else {
+                    delete this.assignments[key];
+                }
+                this.selections[key] = previousTeacherId;
                 this.errorMessage = err.message || 'Could not save.';
                 setTimeout(() => { this.errorMessage = ''; }, 4000);
             } finally {

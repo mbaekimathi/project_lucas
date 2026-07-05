@@ -1,0 +1,32 @@
+{# Student attendance column — compact preview in session picker #}
+{% set att = row.attendance|default({}) %}
+<div class="lp-col lp-col--att">
+    <h3 class="lp-col__title"><i class="fas fa-user-check" aria-hidden="true"></i> Student attendance</h3>
+    {% if att.total|default(0) > 0 %}
+    <section class="lp-att-booklet__summary lp-att-booklet__summary--compact" aria-label="Attendance summary">
+        <div class="lp-att-booklet__stat lp-att-booklet__stat--present">
+            <span class="lp-att-booklet__stat-label">Present</span>
+            <span class="lp-att-booklet__stat-value">{{ att.present|default(0) }}</span>
+        </div>
+        <div class="lp-att-booklet__stat lp-att-booklet__stat--absent">
+            <span class="lp-att-booklet__stat-label">Absent</span>
+            <span class="lp-att-booklet__stat-value">{{ att.absent|default(0) }}</span>
+        </div>
+        <div class="lp-att-booklet__stat">
+            <span class="lp-att-booklet__stat-label">Total</span>
+            <span class="lp-att-booklet__stat-value">{{ att.total|default(0) }}</span>
+        </div>
+        {% if att.pct is not none %}
+        <div class="lp-att-booklet__stat">
+            <span class="lp-att-booklet__stat-label">Rate</span>
+            <span class="lp-att-booklet__stat-value">{{ att.pct }}%</span>
+        </div>
+        {% endif %}
+    </section>
+    <div class="lp-col__body lp-col__body--att">
+        {% include 'dashboards/includes/lp_attendance_register_table.html' %}
+    </div>
+    {% else %}
+    <p class="lp-col__empty">No attendance marked for this session.</p>
+    {% endif %}
+</div>

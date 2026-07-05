@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Exam applications — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set cc_nav_scope = 'exams' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="portal-page-root role-page role-page--curriculum max-w-7xl mx-auto p-4 sm:p-5 md:p-6 lg:p-8 space-y-5 sm:space-y-6">
+
+    {% set role_hero_eyebrow = 'Exams' %}
+    {% set role_hero_title = 'Exam applications' %}
+    {% set role_hero_subtitle = 'Review class attendance, subject attendance, and fee payment for each student. See who is eligible to apply and who has already submitted an application.' %}
+    {% set role_hero_icon_class = 'fa-file-signature' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-4 sm:p-5">
+        <form method="get" action="{{ employee_dash_url('exam-applications') }}" class="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-4">
+            <div class="flex-1 min-w-[12rem] sm:max-w-md">
+                <label for="level-id-select" class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Academic level</label>
+                <select id="level-id-select" name="level_id"
+                        class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm px-3 py-2.5 text-gray-900 dark:text-white"
+                        onchange="this.form.submit()">
+                    {% for lvl in academic_levels %}
+                    <option value="{{ lvl.id }}" {% if selected_level_id == lvl.id %}selected{% endif %}>
+                        {{ lvl.level_name }}{% if lvl.level_category %} ({{ lvl.level_category }}){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if overview and overview.term_label %}
+            <div class="text-sm text-gray-600 dark:text-gray-400 pb-1">
+                <i class="fas fa-calendar-alt mr-1 text-brand-primary"></i>
+                Current term: <strong>{{ overview.term_label }}</strong>
+            </div>
+            {% endif %}
+        </form>
+
+        {% if overview and overview.summary %}
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t border-gray-100 dark:border-gray-700">
+            <div class="rounded-lg bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 m-0">Students</p>
+                <p class="text-xl font-extrabold tabular-nums text-gray-900 dark:text-white m-0 mt-0.5">{{ overview.summary.total }}</p>
+            </div>
+            <div class="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2.5">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300 m-0">Eligible</p>
+                <p class="text-xl font-extrabold tabular-nums text-emerald-800 dark:text-emerald-200 m-0 mt-0.5">{{ overview.summary.eligible }}</p>
+            </div>
+            <div class="rounded-lg bg-indigo-50 dark:bg-indigo-950/30 px-3 py-2.5">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300 m-0">Applied</p>
+                <p class="text-xl font-extrabold tabular-nums text-indigo-800 dark:text-indigo-200 m-0 mt-0.5">{{ overview.summary.applied }}</p>
+            </div>
+            <div class="rounded-lg bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5 col-span-2 lg:col-span-1">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300 m-0">Requirements</p>
+                {% if overview.requirements_enabled %}
+                <p class="text-[11px] text-amber-900 dark:text-amber-100 m-0 mt-1 leading-snug">
+                    {% if overview.summary.class_required %}Class ≥ {{ overview.summary.class_min_pct|int }}%{% endif %}
+                    {% if overview.summary.subject_required %}{% if overview.summary.class_required %} · {% endif %}Subject ≥ {{ overview.summary.subject_min_pct|int }}%{% endif %}
+                    {% if overview.summary.fee_required %}{% if overview.summary.class_required or overview.summary.subject_required %} · {% endif %}Fees {{ overview.summary.fee_min_pct|int }}%{% endif %}
+                </p>
+                {% else %}
+                <p class="text-[11px] text-amber-900 dark:text-amber-100 m-0 mt-1 leading-snug">Not set — all students may apply</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+
+    {% if overview and overview.students %}
+    <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+        <div class="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-sm font-bold text-gray-900 dark:text-white m-0">
+                {% if overview.level %}{{ overview.level.level_name }}{% else %}Students{% endif %}
+            </h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400 m-0">{{ overview.students|length }} in session</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-[960px] w-full text-sm">
+                <thead class="bg-gray-50 dark:bg-gray-900/60">
+                    <tr>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 w-10">#</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 min-w-[10rem]">Student</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Class att.</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Subject att.</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Fees</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Eligible</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 min-w-[12rem]">Applied</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    {% for row in overview.students %}
+                    <tr class="hover:bg-gray-50/80 dark:hover:bg-gray-900/30">
+                        <td class="px-4 py-3 text-gray-400 tabular-nums">{{ loop.index }}</td>
+                        <td class="px-4 py-3">
+                            <p class="font-semibold text-gray-900 dark:text-white m-0">{{ row.full_name }}</p>
+                            <p class="text-[11px] text-gray-500 dark:text-gray-400 m-0 mt-0.5">{{ row.student_id }}</p>
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            {% if row.class_attendance_pct is not none and overview.summary.class_required %}
+                            <span class="font-bold tabular-nums {% if row.class_attendance_pct >= overview.summary.class_min_pct %}text-emerald-700 dark:text-emerald-300{% else %}text-amber-700 dark:text-amber-300{% endif %}">{{ row.class_attendance_pct }}%</span>
+                            <span class="text-[11px] text-gray-500 dark:text-gray-400 block">{{ row.class_attendance_detail }}</span>
+                            {% elif row.class_attendance_pct is not none %}
+                            <span class="font-bold tabular-nums text-gray-800 dark:text-gray-200">{{ row.class_attendance_pct }}%</span>
+                            <span class="text-[11px] text-gray-500 dark:text-gray-400 block">{{ row.class_attendance_detail }}</span>
+                            {% else %}
+                            <span class="text-gray-400">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            {% if row.subject_attendance_pct is not none and overview.summary.subject_required %}
+                            <span class="font-bold tabular-nums {% if row.subject_attendance_pct >= overview.summary.subject_min_pct %}text-emerald-700 dark:text-emerald-300{% else %}text-amber-700 dark:text-amber-300{% endif %}">{{ row.subject_attendance_pct }}%</span>
+                            <span class="text-[11px] text-gray-500 dark:text-gray-400 block">{{ row.subject_attendance_detail }}</span>
+                            {% elif row.subject_attendance_pct is not none %}
+                            <span class="font-bold tabular-nums text-gray-800 dark:text-gray-200">{{ row.subject_attendance_pct }}%</span>
+                            <span class="text-[11px] text-gray-500 dark:text-gray-400 block">{{ row.subject_attendance_detail }}</span>
+                            {% else %}
+                            <span class="text-gray-400">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            {% if row.fee_pct is not none and overview.summary.fee_required %}
+                            <span class="font-bold tabular-nums {% if row.fee_pct >= overview.summary.fee_min_pct %}text-emerald-700 dark:text-emerald-300{% else %}text-amber-700 dark:text-amber-300{% endif %}">{{ row.fee_pct }}%</span>
+                            <span class="text-[11px] text-gray-500 dark:text-gray-400 block">{{ row.fee_detail }}</span>
+                            {% elif row.fee_pct is not none %}
+                            <span class="font-bold tabular-nums text-gray-800 dark:text-gray-200">{{ row.fee_pct }}%</span>
+                            <span class="text-[11px] text-gray-500 dark:text-gray-400 block">{{ row.fee_detail }}</span>
+                            {% else %}
+                            <span class="text-gray-400">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if overview.requirements_enabled %}
+                            {% if row.eligible %}
+                            <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+                                <i class="fas fa-check text-[10px]"></i> Yes
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200">
+                                <i class="fas fa-xmark text-[10px]"></i> No
+                            </span>
+                            {% endif %}
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-300">
+                                Open
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if row.has_applied %}
+                            <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200 mb-1">
+                                Yes
+                            </span>
+                            {% for app in row.active_applications %}
+                            <p class="text-[11px] text-gray-600 dark:text-gray-400 m-0 {% if not loop.first %}mt-1{% endif %}">
+                                <span class="font-semibold text-gray-800 dark:text-gray-200">{{ app.exam_name or 'Exam' }}</span>
+                                · {{ app.status|default('pending')|capitalize }}
+                                {% if app.applied_at_str %}<span class="text-gray-400">· {{ app.applied_at_str }}</span>{% endif %}
+                            </p>
+                            {% endfor %}
+                            {% else %}
+                            <span class="text-gray-400 text-xs">Not applied</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% elif overview %}
+    <section class="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30 p-10 text-center">
+        <p class="text-sm text-gray-500 dark:text-gray-400 m-0">No in-session students found for this academic level.</p>
+    </section>
+    {% elif not academic_levels %}
+    <section class="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30 p-10 text-center">
+        <p class="text-sm text-gray-500 dark:text-gray-400 m-0">No active academic levels configured.</p>
+    </section>
+    {% endif %}
+
+    {% if overview and overview.summary and overview.requirements_enabled %}
+    <p class="text-[11px] text-gray-400 dark:text-gray-500 text-center max-w-2xl mx-auto">
+        Eligibility uses requirements set on registered exams for the current term.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}

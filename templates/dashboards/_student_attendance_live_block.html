@@ -66,7 +66,13 @@
             </div>
             {% if use_subject_attendance_columns|default(false) and register_columns is not none and register_columns|length == 0 %}
             <p class="px-4 py-4 text-sm text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 border-t border-amber-200/60 dark:border-amber-800/40 m-0">
-                No subject periods in this range for your timetable. <a href="{{ employee_dash_url('timetable-management') }}" class="font-semibold underline">Timetable</a>
+                {% if selected_week_days|default([])|length == 0 %}
+                Choose a term and a study day (Mon–Fri) within the term to mark subject attendance.
+                {% elif is_parent_view|default(false) %}
+                No subject periods on {{ selected_week_days[0].label }} on the class timetable. Pick another study day.
+                {% else %}
+                No subject periods on {{ selected_week_days[0].label }} for your timetable. Pick another study day or check <a href="{{ employee_dash_url('timetable-management') }}" class="font-semibold underline">Timetable</a>.
+                {% endif %}
             </p>
             {% elif use_class_session_slots|default(false) and register_columns is not none and register_columns|length == 0 %}
             <p class="px-4 py-4 text-sm text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 border-t border-amber-200/60 dark:border-amber-800/40 m-0">

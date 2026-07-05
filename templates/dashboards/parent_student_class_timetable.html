@@ -32,11 +32,13 @@
     {% set role_theme = 'student' %}
     {% set role_hero_eyebrow = 'Student portal' %}
     {% set role_hero_title = 'My timetable' %}
-    {% set role_hero_subtitle = student.full_name ~ ' · ' ~ (student.resolved_level_name or student.current_grade or 'Class') ~ ((' · ' ~ year_label ~ ' · ' ~ term_label) if year_label and term_label else ((' · ' ~ term_label) if term_label else '')) %}
+    {% set role_hero_subtitle = student.full_name ~ ' — weekly class schedule for your grade.' %}
     {% set role_hero_icon_class = 'fa-calendar-week' %}
+    {% set role_hero_chips = [
+        {'icon': 'fa-layer-group', 'text': student.resolved_level_name or student.current_grade or 'Class'},
+        {'icon': 'fa-calendar-alt', 'text': (year_label ~ ' · ' ~ term_label) if year_label and term_label else (term_label or 'Current term')}
+    ] %}
     {% include 'dashboards/includes/role_hero.html' %}
-
-    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
 
     {% else %}
     {% if is_technician and current_view_role == 'parent' %}
@@ -95,7 +97,7 @@
                 {% endfor %}
             </select>
         </div>
-        <button type="submit" class="{% if portal_mode|default('parent') == 'student' %}sp-btn sp-btn--primary{% else %}inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-sm{% endif %}">
+        <button type="submit" class="{% if portal_mode|default('parent') == 'student' %}sp-btn sp-btn--primary sp-filter__submit{% else %}inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-sm{% endif %}">
             <i class="fas fa-sync-alt text-xs" aria-hidden="true"></i> Show term
         </button>
     </form>
@@ -112,6 +114,28 @@
     </div>
     {% else %}
     {% include 'dashboards/includes/parent_portal_timetable_grids.html' %}
+    {% endif %}
+
+    {% if portal_mode|default('parent') == 'student' and student.academic_level_id %}
+    <script>
+    (function () {
+        var dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        var today = dayNames[new Date().getDay()];
+        document.querySelectorAll('.parent-tt-table tbody tr').forEach(function (row) {
+            var dayCell = row.querySelector('.parent-tt-day');
+            if (!dayCell) return;
+            var label = (dayCell.querySelector('.hidden.sm\\:inline') || dayCell).textContent.trim();
+            if (label === today) {
+                row.classList.add('parent-tt-row--today');
+                dayCell.classList.add('parent-tt-day--today');
+            }
+        });
+        var termSel = document.getElementById('term_id_tt');
+        if (termSel && termSel.form) {
+            termSel.addEventListener('change', function () { termSel.form.submit(); });
+        }
+    })();
+    </script>
     {% endif %}
 </div>
 {% endblock %}

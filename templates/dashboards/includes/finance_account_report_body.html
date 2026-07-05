@@ -2,7 +2,7 @@
 {% set kpi_accents = ['acr-kpi--teal', 'acr-kpi--sky', 'acr-kpi--violet', 'acr-kpi--amber'] %}
 
 {% if p.summary %}
-<div class="acr-kpis acr-print-summary {% if p.summary|length == 3 %}acr-kpis--3{% endif %}{% if p.report_type == 'petty-cash-book' %} no-print{% endif %}" aria-label="Report summary">
+<div class="acr-kpis acr-print-summary {% if p.summary|length == 3 %}acr-kpis--3{% endif %}" aria-label="Report summary">
     {% for card in p.summary %}
     <div class="acr-kpi {{ kpi_accents[loop.index0 % kpi_accents|length] }}">
         <p class="acr-kpi__label">{{ card.label }}</p>
@@ -59,9 +59,9 @@
         <div>
             <h2 class="acr-section__title">
                 <i class="fas fa-file-invoice-dollar acr-icon--default" aria-hidden="true"></i>
-                Balance sheet position
+                Balance sheet
             </h2>
-            <p class="acr-section__sub">Single-account view — consolidated statements include all accounts</p>
+            <p class="acr-section__sub">Assets, liabilities and equity for this account only</p>
         </div>
     </div>
     <div class="acr-table-scroll acr-table-scroll--stack">
@@ -69,15 +69,15 @@
             <thead>
                 <tr>
                     <th>Section</th>
-                    <th>Account</th>
+                    <th>Account / item</th>
                     <th class="acr-num">Amount (KES)</th>
                 </tr>
             </thead>
             <tbody>
                 {% for line in p.balance_sheet_lines %}
-                <tr>
-                    <td data-label="Section">{{ line.section }}</td>
-                    <td data-label="Account" class="font-semibold">{{ line.name }}</td>
+                <tr class="{% if line._row_type == 'section' %}acr-bs-section-row{% elif line._row_type == 'total' %}acr-row-total{% elif line.is_focus %}acr-bs-focus-row{% endif %}">
+                    <td data-label="Section">{% if line._row_type == 'line' %}{{ line.section }}{% else %}<span class="font-semibold">{{ line.section }}</span>{% endif %}</td>
+                    <td data-label="Account" class="{% if line._row_type != 'section' %}font-semibold{% endif %}">{{ line.name }}</td>
                     <td class="acr-num" data-label="Amount">{{ line.amount_display }}</td>
                 </tr>
                 {% endfor %}
@@ -85,6 +85,12 @@
         </table>
     </div>
 </section>
+{% elif p.report_type == 'balance-sheet' %}
+<div class="acr-empty">
+    <i class="fas fa-file-invoice-dollar" aria-hidden="true"></i>
+    <p class="acr-empty__title">No balance sheet items</p>
+    <p>No assets, liabilities or equity balances to report for the selected period.</p>
+</div>
 {% endif %}
 
 {% if p.report_type == 'income-expenditure' %}

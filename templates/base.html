@@ -1061,6 +1061,9 @@
                         <span id="header-live-time" class="font-semibold"></span>
                     </div>
                     {% endif %}
+                    {% if show_portal_notification_badge|default(false) %}
+                    {% include 'dashboards/includes/portal_notification_bell.html' %}
+                    {% endif %}
                     <!-- Dark Mode Toggle -->
                     <button type="button" @click.prevent="darkMode = !darkMode" 
                             class="site-header__icon-btn app-chrome-btn p-2.5 rounded-lg transition-colors touch-manipulation"

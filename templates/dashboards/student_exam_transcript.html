@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}Exam transcript — {{ student.full_name }} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/store-document-print.css') }}">
+{% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
+<style>
+.sp-transcript-doc.sd-doc-page {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+}
+.sp-transcript-doc .sd-doc-wrap {
+    max-width: 52rem;
+    margin: 0 auto;
+}
+.sp-transcript-doc .sd-doc-body {
+    margin-top: 0;
+}
+.sp-transcript-doc .sd-doc-banner--warn {
+    background: #fffbeb;
+    border-color: #fcd34d;
+    color: #92400e;
+    text-align: left;
+}
+.dark .sp-transcript-doc .sd-doc-banner--warn {
+    background: rgba(120, 53, 15, 0.2);
+    border-color: rgba(251, 191, 36, 0.35);
+    color: #fde68a;
+}
+</style>
+{% endblock %}
+
+{% block sidebar_content %}
+{% set student_nav_scope = 'exams' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set generated_label = generated_at.strftime('%d %b %Y, %H:%M') if generated_at else '—' %}
+{% set exam_date_display -%}
+    {%- if selected_transcript -%}
+        {%- if selected_transcript.exam_date_note -%}
+            {{- selected_transcript.exam_date_note -}}
+        {%- elif selected_transcript.exam_date_str -%}
+            {{- selected_transcript.exam_date_str -}}
+        {%- else -%}—{%- endif -%}
+    {%- else -%}—{%- endif -%}
+{%- endset %}
+
+<div class="sp-portal portal-page-root role-page role-page--student page-content max-w-7xl mx-auto p-4 sm:p-5 md:p-6 lg:p-8 space-y-5 sm:space-y-6">
+
+    {% set sp_tech_hint = 'Select a student to view their exam transcript' %}
+    {% set sp_tech_action = student_dash_url('exam-transcript') %}
+    {% set sp_selected_id = student.student_id %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
+
+    <a href="{{ student_dash_url() }}" class="sp-back no-print"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard</a>
+
+    {% set role_theme = 'student' %}
+    {% set role_hero_eyebrow = 'Student portal' %}
+    {% set role_hero_title = 'Exam transcript' %}
+    {% set role_hero_subtitle = 'Select a released exam to generate an unofficial transcript copy. Collect signed originals from the school office.' %}
+    {% set role_hero_icon_class = 'fa-file-certificate' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    {% if has_transcripts %}
+    <div class="rounded-xl border border-amber-200 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 no-print" role="note">
+        <div class="flex items-start gap-3">
+            <span class="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                <i class="fas fa-building-columns" aria-hidden="true"></i>
+            </span>
+            <div>
+                <p class="text-sm font-semibold text-amber-900 dark:text-amber-100 m-0">Portal copy only — collect originals from the office</p>
+                <p class="text-xs text-amber-800/90 dark:text-amber-200/90 m-0 mt-1 leading-relaxed">
+                    The document generated here is for reference. Signed, stamped <strong>original transcripts</strong> must be collected from the school office (examinations / registry).
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <section class="sp-panel no-print">
+        <header class="sp-panel__head">
+            <h2 class="sp-panel__title m-0">
+                <span class="sp-panel__title-icon"><i class="fas fa-list-check" aria-hidden="true"></i></span>
+                Select an exam
+            </h2>
+        </header>
+        <div class="sp-panel__body">
+            <form method="get" action="{{ student_dash_url('exam-transcript') }}" class="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
+                <div class="flex-1 min-w-[14rem]">
+                    <label for="transcript-exam-select" class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Released exam sitting</label>
+                    <select id="transcript-exam-select" name="sitting" required
+                            class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-2.5 text-gray-900 dark:text-white">
+                        <option value="" disabled {% if not selected_sitting_id %}selected{% endif %}>— Choose an exam —</option>
+                        {% for opt in exam_options %}
+                        <option value="{{ opt.sitting_id }}" {% if selected_sitting_id == opt.sitting_id %}selected{% endif %}>{{ opt.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition">
+                    <i class="fas fa-file-export text-xs" aria-hidden="true"></i>
+                    Generate transcript copy
+                </button>
+            </form>
+            <p class="text-[11px] text-gray-500 dark:text-gray-400 m-0 mt-3">Only officially gazetted (released) exams appear in this list.</p>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if selected_transcript %}
+    <div class="sd-doc-page sd-doc-page--compact sp-transcript-doc">
+        <div class="sd-doc-print-root">
+            <div class="sd-doc-actions no-print">
+                <button type="button" class="sd-doc-btn-print" onclick="printStudentExamTranscript()">
+                    <i class="fas fa-print"></i> Print transcript copy
+                </button>
+            </div>
+
+            <div class="sd-doc-wrap">
+                <article class="sd-doc sd-doc-body">
+                    {% with
+                        report_title='Exam Transcript (Copy)',
+                        print_meta_extra='Student: ' ~ student.full_name ~ ' · ' ~ student.student_id,
+                        report_period_label=selected_transcript.label,
+                        report_generated_at=generated_label,
+                        letterhead_id='st-exam-transcript-letterhead',
+                        print_title_id='st-exam-transcript-title',
+                        print_period_id='st-exam-transcript-period',
+                        print_generated_id='st-exam-transcript-generated',
+                        letterhead_always_visible=true,
+                        letterhead_sync_mode=false,
+                        hide_print_meta_primary=true,
+                        with_print_footer=false
+                    %}
+                    {% include 'dashboards/includes/accounts_print_letterhead.html' %}
+                    {% endwith %}
+
+                    <p class="sd-doc-banner sd-doc-banner--warn no-print">
+                        <strong>Unofficial copy.</strong> This document is generated from the student portal for reference only.
+                        Please collect signed, stamped original transcripts from the school office for official use.
+                    </p>
+
+                    <p class="sd-doc-lead sd-doc-lead--warn">
+                        Results for <strong>{{ selected_transcript.exam_name or selected_transcript.label }}</strong>
+                        {% if selected_transcript.term_name %} · {{ selected_transcript.term_name }}{% endif %}
+                        {% if selected_transcript.year_name %} · {{ selected_transcript.year_name }}{% endif %}
+                        — gazetted examination record.
+                    </p>
+
+                    <table class="ar-rc-meta-table">
+                        <tbody>
+                            <tr>
+                                <th>Student</th>
+                                <td>{{ student.full_name }}</td>
+                                <th>Student ID</th>
+                                <td>{{ student.student_id }}</td>
+                            </tr>
+                            <tr>
+                                <th>Class / grade</th>
+                                <td>{{ student.current_grade or '—' }}</td>
+                                <th>Exam date</th>
+                                <td>{{ exam_date_display }}</td>
+                            </tr>
+                            <tr>
+                                <th>Exam type</th>
+                                <td>{{ selected_transcript.exam_type|title if selected_transcript.exam_type else '—' }}</td>
+                                <th>Subjects</th>
+                                <td>{{ selected_transcript.subjects_count }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <table class="ar-rc-table">
+                        <thead>
+                            <tr>
+                                <th class="ar-rc-th-left" style="width:2.5rem">#</th>
+                                <th class="ar-rc-th-left">Subject</th>
+                                <th>Mark %</th>
+                                {% if grade_bands_available %}
+                                <th>Grade</th>
+                                <th>Points</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for subj in selected_transcript.subjects %}
+                            <tr>
+                                <td class="ar-rc-td-center">{{ loop.index }}</td>
+                                <td class="ar-rc-td-subj">{{ subj.subject_name }}</td>
+                                <td class="ar-rc-td-num">{% if subj.marks_pct is not none %}{{ subj.marks_pct }}%{% else %}—{% endif %}</td>
+                                {% if grade_bands_available %}
+                                <td class="ar-rc-td-center">{{ subj.grade_code }}</td>
+                                <td class="ar-rc-td-num">{% if subj.points is not none %}{{ subj.points }}{% else %}—{% endif %}</td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2" class="ar-rc-tfoot-label">Summary</td>
+                                {% if grade_bands_available %}
+                                <td class="ar-rc-tfoot-value">{% if selected_transcript.mean_pct is not none %}Mean {{ selected_transcript.mean_pct }}%{% else %}—{% endif %}</td>
+                                <td class="ar-rc-tfoot-value" colspan="2">Pass rate {{ selected_transcript.pass_rate|int }}%</td>
+                                {% else %}
+                                <td class="ar-rc-tfoot-value">
+                                    {%- if selected_transcript.mean_pct is not none -%}Mean {{ selected_transcript.mean_pct }}% · {%- endif -%}Pass rate {{ selected_transcript.pass_rate|int }}%
+                                </td>
+                                {% endif %}
+                            </tr>
+                        </tfoot>
+                    </table>
+
+                    <div class="sd-doc-footer">
+                        This is a computer-generated copy from the student portal — not an official signed transcript.
+                        Collect original documents from the school office (examinations / registry).
+                        {% if grade_bands_available %} Grades follow the school grading settings for your class.{% endif %}
+                    </div>
+                </article>
+            </div>
+        </div>
+
+        <div id="st-exam-transcript-print-footer-wrap">
+            {% with report_title='Exam Transcript (Copy)', print_footer_id='st-exam-transcript-footer', print_footer_title_id='st-exam-transcript-footer-title', footer_always_visible=false %}
+            {% include 'dashboards/includes/accounts_print_footer.html' %}
+            {% endwith %}
+        </div>
+    </div>
+
+    {% elif has_transcripts %}
+    <section class="sp-panel no-print">
+        <div class="sp-empty py-10">
+            <div class="sp-empty__icon"><i class="fas fa-hand-pointer" aria-hidden="true"></i></div>
+            <p class="sp-empty__title">Choose an exam above</p>
+            <p class="sp-empty__text">Select a released exam sitting and click <strong>Generate transcript copy</strong> to view and print your unofficial transcript.</p>
+        </div>
+    </section>
+
+    {% else %}
+    <section class="sp-panel no-print">
+        <div class="sp-empty py-12">
+            <div class="sp-empty__icon"><i class="fas fa-file-certificate" aria-hidden="true"></i></div>
+            <p class="sp-empty__title">No transcript records yet</p>
+            <p class="sp-empty__text">Your exam transcript will be available here after the school gazettes and releases your exam results.</p>
+            <a href="{{ student_dash_url('exam-progress') }}" class="inline-block mt-4 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">Check exam progress</a>
+        </div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  function syncStudentTranscriptPrintFooter() {
+    var footerTitle = document.getElementById('st-exam-transcript-footer-title');
+    if (footerTitle) footerTitle.textContent = 'Exam Transcript (Copy)';
+  }
+  window.syncStudentTranscriptPrintFooter = syncStudentTranscriptPrintFooter;
+  syncStudentTranscriptPrintFooter();
+
+  window.printStudentExamTranscript = function () {
+    syncStudentTranscriptPrintFooter();
+    var root = document.querySelector('.sp-transcript-doc .sd-doc-print-root');
+    if (!root || typeof window.printAccountsInFrame !== 'function') {
+      window.print();
+      return;
+    }
+    var clone = root.cloneNode(true);
+    clone.querySelectorAll('.no-print, .sd-doc-actions, .sd-doc-banner').forEach(function (node) {
+      if (node.parentNode) node.parentNode.removeChild(node);
+    });
+    var footer = document.getElementById('st-exam-transcript-footer');
+    var html = clone.innerHTML;
+    if (footer && !clone.querySelector('#st-exam-transcript-footer')) {
+      html += footer.outerHTML;
+    }
+    window.printAccountsInFrame({
+      title: {{ ('Exam Transcript — ' ~ student.full_name)|tojson }},
+      html: html,
+      htmlClass: 'acr-accounts-print sd-doc-print',
+      bodyClass: 'acr-accounts-print sd-doc-page sd-doc-page--compact',
+    });
+  };
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Notifications - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% if portal_mode|default('student') == 'student' %}
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+{% endblock %}
+{% endif %}
+
+{% block sidebar_content %}
+{% if portal_mode|default('student') == 'student' %}
+{% set student_nav_scope = 'all' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
+{% else %}
+{% include 'dashboards/includes/parent_page_sidebar.html' %}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="{% if portal_mode|default('student') == 'student' %}sp-portal {% endif %}p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-3xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('student') }} space-y-5 sm:space-y-6">
+
+    {% if portal_mode|default('student') == 'student' %}
+    {% set sp_tech_hint = 'Select a student to view their notifications' %}
+    {% set sp_tech_action = student_dash_url('notifications') %}
+    {% set sp_selected_id = selected_student_id %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
+    <a href="{{ student_dash_url() }}" class="sp-back"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard</a>
+    {% else %}
+    <a href="{{ parent_dash_url() }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}" class="inline-flex items-center gap-2 text-sm font-semibold text-orange-700 dark:text-orange-300 hover:underline mb-1">
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard
+    </a>
+    {% endif %}
+
+    <header class="flex flex-wrap items-start justify-between gap-4">
+        <div class="flex items-start gap-3 min-w-0">
+            <span class="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <i class="fas fa-bell" aria-hidden="true"></i>
+            </span>
+            <div>
+                <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white m-0">Notifications</h1>
+                <p class="text-sm text-gray-500 dark:text-gray-400 m-0 mt-1">
+                    Tap a notification to open it. Unread items are marked as read when you open them.
+                </p>
+            </div>
+        </div>
+        {% if portal_unread_notification_count|default(0) > 0 %}
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-rose-100 dark:bg-rose-900/40 px-3 py-1 text-xs font-bold text-rose-800 dark:text-rose-200 shrink-0">
+            <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse" aria-hidden="true"></span>
+            <span data-portal-notif-badge>{{ portal_unread_notification_count if portal_unread_notification_count < 100 else '99+' }}</span> unread
+        </span>
+        {% endif %}
+    </header>
+
+    {% include 'dashboards/includes/portal_notifications_feed.html' %}
+</div>
+{% endblock %}

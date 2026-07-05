@@ -219,29 +219,60 @@
 
 {# Weekly class timetable grid (pass timetable_sections from the route). #}
 {% if timetable_sections is defined %}
-<div class="parent-tt-shell space-y-5 sm:space-y-6">
+{% set sp_tt = portal_mode|default('parent') == 'student' %}
+<div class="parent-tt-shell {% if sp_tt %}sp-tt-shell{% endif %} space-y-5 sm:space-y-6">
     {% if timetable_sections and timetable_sections|length > 0 %}
     {% for sec in timetable_sections %}
     {% set tt = sec.timetable %}
-    <article class="parent-tt-card">
+    {% if sp_tt and tt and tt.days and tt.slots %}
+    {% set legend_ns = namespace(codes=[], items=[]) %}
+    {% for day in tt.days %}
+        {% for slot in tt.slots %}
+            {% for item in tt.cells[day][slot] %}
+                {% set code = item.badge or item.primary %}
+                {% if code and code not in legend_ns.codes %}
+                    {% set _ = legend_ns.codes.append(code) %}
+                    {% set _ = legend_ns.items.append({'code': code, 'name': item.primary, 'idx': (code|length) % 6}) %}
+                {% endif %}
+            {% endfor %}
+        {% endfor %}
+    {% endfor %}
+    {% endif %}
+    <article class="parent-tt-card {% if sp_tt %}sp-tt-card{% endif %}">
         <header class="parent-tt-head flex flex-wrap items-center justify-between gap-2">
             <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                    <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-primary/15 text-brand-primary dark:text-brand-secondary">
+                    <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {% if sp_tt %}sp-tt-card__icon{% else %}bg-brand-primary/15 text-brand-primary dark:text-brand-secondary{% endif %}">
                         <i class="fas fa-calendar-week text-sm" aria-hidden="true"></i>
                     </span>
                     <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white truncate">{{ sec.level_name }}</h2>
                 </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-10">Weekly schedule · subject codes by period</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 {% if sp_tt %}ml-10{% else %}ml-10{% endif %}">
+                    {% if sp_tt %}Your weekly schedule · hover a code for subject &amp; teacher{% else %}Weekly schedule · subject codes by period{% endif %}
+                </p>
             </div>
             {% if tt and tt.days and tt.slots %}
-            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/80 dark:bg-gray-900/50 border border-gray-200/80 dark:border-gray-600/80 px-2.5 py-1 text-[11px] font-semibold text-gray-600 dark:text-gray-300 shrink-0">
-                <i class="fas fa-clock text-brand-primary text-[10px]" aria-hidden="true"></i>
+            <span class="inline-flex items-center gap-1.5 rounded-full {% if sp_tt %}sp-tt-badge{% else %}bg-white/80 dark:bg-gray-900/50 border border-gray-200/80 dark:border-gray-600/80 px-2.5 py-1 text-[11px] font-semibold text-gray-600 dark:text-gray-300{% endif %} shrink-0">
+                <i class="fas fa-clock text-[10px]" aria-hidden="true"></i>
                 {{ tt.days|length }} days · {{ tt.slots|length }} periods
             </span>
             {% endif %}
         </header>
+        {% if sp_tt and legend_ns is defined and legend_ns.items|length > 0 %}
+        <div class="sp-tt-legend" aria-label="Subject key">
+            <span class="sp-tt-legend__label"><i class="fas fa-book-open" aria-hidden="true"></i> Subjects</span>
+            <div class="sp-tt-legend__chips">
+                {% for sub in legend_ns.items|sort(attribute='code') %}
+                <span class="parent-tt-code parent-tt-code--{{ sub.idx }} sp-tt-legend__chip" title="{{ sub.name }}">{{ sub.code }}</span>
+                <span class="sp-tt-legend__name">{{ sub.name }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
         {% if tt and tt.days and tt.slots %}
+        {% if sp_tt %}
+        <p class="sp-tt-scroll-hint" aria-hidden="true"><i class="fas fa-arrows-alt-h"></i> Swipe sideways to see all periods</p>
+        {% endif %}
         <div class="parent-tt-grid">
             <div class="parent-tt-scroll" role="region" aria-label="Weekly timetable grid" tabindex="0">
                 <table class="parent-tt-table">
@@ -249,7 +280,9 @@
                         <tr>
                             <th scope="col" class="parent-tt-corner">Day</th>
                             {% for slot in tt.slots %}
-                            <th scope="col" class="parent-tt-time">{{ slot }}</th>
+                            <th scope="col" class="parent-tt-time">
+                                <span class="parent-tt-time__label">{{ slot }}</span>
+                            </th>
                             {% endfor %}
                         </tr>
                     </thead>
@@ -291,6 +324,13 @@
     </article>
     {% endfor %}
     {% else %}
+    {% if sp_tt %}
+    <div class="sp-empty sp-panel">
+        <div class="sp-empty__icon"><i class="fas fa-calendar-alt" aria-hidden="true"></i></div>
+        <p class="sp-empty__title">No timetable published yet</p>
+        <p class="sp-empty__text">There are no weekly periods for your class in the selected term. Check back later or contact the school office.</p>
+    </div>
+    {% else %}
     <div class="modern-card p-8 sm:p-10 text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-xl">
         <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800 mb-4">
             <i class="fas fa-calendar-alt text-2xl text-gray-300 dark:text-gray-600" aria-hidden="true"></i>
@@ -298,6 +338,7 @@
         <p class="font-semibold text-gray-700 dark:text-gray-300">No weekly periods for this class in the selected term.</p>
         <p class="text-sm mt-2 max-w-md mx-auto">The school may still be building the timetable, or there may be no rows assigned for this term yet.</p>
     </div>
+    {% endif %}
     {% endif %}
 </div>
 {% endif %}

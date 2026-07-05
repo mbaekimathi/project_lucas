@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block title %}Teaching resources - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tr-teaching-resources.css') }}">
+{% endblock %}
+
+{% block sidebar_content %}
+{% set student_nav_scope = 'all' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<script type="application/json" id="student-resources-data">{{ {
+    'subjects': subject_list|default([]),
+    'resourcesBySubject': resources_map|default({}),
+    'pageUrl': student_dash_url('teaching-resources'),
+    'grade': student.current_grade if student else ''
+}|tojson }}</script>
+
+<div class="sp-portal tr-page p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--student space-y-5 sm:space-y-6"
+     x-data="studentTeachingResources()" x-init="init()">
+
+    {% set sp_tech_hint = 'Select a student to view their teaching resources' %}
+    {% set sp_tech_action = student_dash_url('teaching-resources') %}
+    {% set sp_selected_id = parent_student_id %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
+    <a href="{{ student_dash_url() }}" class="sp-back"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard</a>
+
+    {% set role_theme = 'student' %}
+    {% set role_hero_eyebrow = 'Student portal' %}
+    {% set role_hero_title = 'Teaching resources' %}
+    {% set role_hero_subtitle = student.full_name ~ ' · ' ~ student.student_id ~ ' — choose a subject to view files from your teachers.' %}
+    {% set role_hero_icon_class = 'fa-folder-open' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    {% if subject_list %}
+    <div class="tr-hint" role="note">
+        <i class="fas fa-info-circle mt-0.5 shrink-0" aria-hidden="true"></i>
+        <p class="m-0 leading-relaxed">
+            Select a subject for <strong>{{ student.current_grade or 'your class' }}</strong> to open notes and files your teachers have shared.
+        </p>
+    </div>
+
+    <nav class="tr-steps" aria-label="Progress">
+        <button type="button" class="tr-steps__link" @click="clearSubject()"
+                :class="!selectedSubjectId ? 'tr-steps__current !text-gray-900 dark:!text-white !no-underline' : ''">
+            All subjects
+        </button>
+        <template x-if="selectedSubjectId">
+            <span class="tr-steps__sep" aria-hidden="true">›</span>
+        </template>
+        <template x-if="selectedSubjectId">
+            <span class="tr-steps__current" x-text="selectedSubjectName"></span>
+        </template>
+    </nav>
+
+    <!-- Subject picker -->
+    <section x-show="!selectedSubjectId" aria-labelledby="str-subjects-heading">
+        <div class="mb-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+                <h2 id="str-subjects-heading" class="text-lg font-bold text-gray-900 dark:text-white m-0">Choose a subject</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5 m-0">{{ subject_list|length }} subject{% if subject_list|length != 1 %}s{% endif %} in your class</p>
+            </div>
+            <div class="w-full sm:w-auto sm:min-w-[14rem]">
+                <label for="str-subject-select" class="sr-only">Jump to subject</label>
+                <select id="str-subject-select" class="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        @change="if ($event.target.value) selectSubjectById($event.target.value)">
+                    <option value="">Quick select subject…</option>
+                    <template x-for="sub in subjects" :key="sub.subject_id">
+                        <option :value="String(sub.subject_id)" x-text="sub.subject_name + (sub.subject_code ? ' (' + sub.subject_code + ')' : '') + ' — ' + ((sub.resource_count || 0) + ' file' + ((sub.resource_count || 0) === 1 ? '' : 's'))"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+        <div class="tr-grid">
+            <template x-for="sub in subjects" :key="sub.subject_id">
+                <button type="button" class="tr-card" @click="selectSubject(sub)">
+                    <div class="tr-card__top">
+                        <span class="tr-card__icon"><i class="fas fa-bookmark" aria-hidden="true"></i></span>
+                        <span class="tr-card__badge" :class="(sub.resource_count || 0) > 0 ? '' : 'tr-card__badge--muted'">
+                            <i class="fas fa-file-alt text-[9px]"></i>
+                            <span x-text="(sub.resource_count || 0) + ' file' + ((sub.resource_count || 0) === 1 ? '' : 's')"></span>
+                        </span>
+                    </div>
+                    <p class="tr-card__title" x-text="sub.subject_name"></p>
+                    <p class="tr-card__meta font-mono" x-show="sub.subject_code" x-text="sub.subject_code"></p>
+                    <p class="tr-card__meta m-0" x-show="(sub.resource_count || 0) > 0">Tap to view and download</p>
+                    <p class="tr-card__meta m-0 text-amber-700 dark:text-amber-300" x-show="!(sub.resource_count || 0)">No files posted yet</p>
+                </button>
+            </template>
+        </div>
+    </section>
+
+    <!-- Resources for selected subject -->
+    <section x-show="selectedSubjectId" x-cloak aria-labelledby="str-files-heading">
+        <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+                <h2 id="str-files-heading" class="text-lg font-bold text-gray-900 dark:text-white m-0" x-text="selectedSubjectName"></h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5 m-0">
+                    <span x-text="currentResources.length"></span> file<span x-show="currentResources.length !== 1">s</span> shared for {{ student.current_grade or 'your class' }}
+                </p>
+            </div>
+            <button type="button" @click="clearSubject()" class="text-sm font-semibold text-sky-600 dark:text-sky-400 hover:underline shrink-0">
+                <i class="fas fa-arrow-left text-xs mr-1"></i> All subjects
+            </button>
+        </div>
+
+        <div class="modern-card rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+            <template x-if="currentResources.length > 0">
+                <div>
+                    <template x-for="res in currentResources" :key="res.id">
+                        <div class="tr-resource-row hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                            <div class="flex items-start gap-3 min-w-0 flex-1">
+                                <span class="w-10 h-10 shrink-0 rounded-lg bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200 flex items-center justify-center">
+                                    <i class="fas" :class="fileIcon(res.original_filename)" aria-hidden="true"></i>
+                                </span>
+                                <div class="min-w-0">
+                                    <p class="font-semibold text-gray-900 dark:text-white m-0" x-text="res.title"></p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 m-0 truncate" x-text="res.original_filename"></p>
+                                    <p x-show="res.description" class="text-sm text-gray-600 dark:text-gray-300 mt-1 m-0" x-text="res.description"></p>
+                                    <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5 m-0">
+                                        <span x-show="res.teacher_name" x-text="res.teacher_name + ' · '"></span>
+                                        <span x-text="res.created_at_label || ''"></span>
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="tr-resource-actions">
+                                <a :href="res.download_url" target="_blank" rel="noopener"
+                                   class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white">
+                                    <i class="fas fa-download" aria-hidden="true"></i> Download
+                                </a>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+            <div x-show="currentResources.length === 0" class="tr-empty">
+                <i class="fas fa-folder-open text-3xl text-gray-300 dark:text-gray-600 mb-3"></i>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 m-0">No files for this subject yet</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 m-0">Your teacher has not uploaded materials here. Check back later or pick another subject.</p>
+                <button type="button" @click="clearSubject()" class="mt-4 text-sm font-semibold text-sky-600 dark:text-sky-400 hover:underline">
+                    Browse other subjects
+                </button>
+            </div>
+        </div>
+    </section>
+
+    {% else %}
+    <div class="modern-card rounded-2xl border border-dashed border-gray-300 dark:border-gray-600 px-6 py-14 text-center shadow-sm">
+        <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500/15 to-emerald-500/15 flex items-center justify-center mb-5">
+            <i class="fas fa-folder-open text-3xl text-sky-600" aria-hidden="true"></i>
+        </div>
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white">No subjects found</h2>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
+            Subjects for <strong>{{ student.current_grade or 'your class' }}</strong> will appear here once they are registered at school.
+            When teachers upload files, you can open them by subject.
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function studentTeachingResources() {
+    var cfg = {};
+    try {
+        cfg = JSON.parse(document.getElementById('student-resources-data').textContent || '{}');
+    } catch (e) { cfg = {}; }
+    return {
+        subjects: cfg.subjects || [],
+        resourcesBySubject: cfg.resourcesBySubject || {},
+        pageUrl: cfg.pageUrl || '',
+        selectedSubjectId: '',
+        selectedSubjectName: '',
+        init: function () {
+            var params = new URLSearchParams(window.location.search);
+            var sid = params.get('subject_id') || '';
+            if (sid) {
+                this.selectSubjectById(sid, false);
+            }
+        },
+        get currentResources() {
+            if (!this.selectedSubjectId) return [];
+            return this.resourcesBySubject[String(this.selectedSubjectId)] || [];
+        },
+        syncUrl: function () {
+            if (!this.pageUrl || !window.history || !window.history.replaceState) return;
+            var url = this.pageUrl;
+            if (this.selectedSubjectId) {
+                url += '?subject_id=' + encodeURIComponent(this.selectedSubjectId);
+            }
+            window.history.replaceState({}, '', url);
+        },
+        selectSubject: function (sub, updateUrl) {
+            if (!sub) return;
+            this.selectedSubjectId = String(sub.subject_id);
+            this.selectedSubjectName = sub.subject_name || 'Subject';
+            if (updateUrl !== false) this.syncUrl();
+            var sel = document.getElementById('str-subject-select');
+            if (sel) sel.value = this.selectedSubjectId;
+        },
+        selectSubjectById: function (id, updateUrl) {
+            var sub = this.subjects.find(function (s) { return String(s.subject_id) === String(id); });
+            if (sub) this.selectSubject(sub, updateUrl);
+        },
+        clearSubject: function () {
+            this.selectedSubjectId = '';
+            this.selectedSubjectName = '';
+            this.syncUrl();
+            var sel = document.getElementById('str-subject-select');
+            if (sel) sel.value = '';
+        },
+        fileIcon: function (name) {
+            var ext = (name || '').split('.').pop().toLowerCase();
+            if (ext === 'pdf') return 'fa-file-pdf';
+            if (['doc', 'docx'].indexOf(ext) >= 0) return 'fa-file-word';
+            if (['xls', 'xlsx', 'csv'].indexOf(ext) >= 0) return 'fa-file-excel';
+            if (['ppt', 'pptx'].indexOf(ext) >= 0) return 'fa-file-powerpoint';
+            if (['png', 'jpg', 'jpeg', 'gif', 'webp'].indexOf(ext) >= 0) return 'fa-file-image';
+            if (ext === 'zip') return 'fa-file-archive';
+            return 'fa-file-alt';
+        },
+    };
+}
+</script>
+{% endblock %}

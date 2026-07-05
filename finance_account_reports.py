@@ -115,14 +115,26 @@ def _norm_cash_book_vote_key(name):
     return (name or '').strip().upper()
 
 
+_CASH_BOOK_SUPPRESSED_VOTES = frozenset({
+    'CONTIGENCIES',
+    'CONTINGENCIES',
+})
+
+
+def _cash_book_suppressed_vote(key):
+    """Votes omitted from account cash book columns."""
+    return _norm_cash_book_vote_key(key) in _CASH_BOOK_SUPPRESSED_VOTES
+
+
 def _collect_cash_book_vote_meta(cursor, account_id, helpers, ledger_rows=None):
     """Registered votes with display names in priority order (first to last)."""
     by_key = {}
     order = []
+    registered_expense_votes = []
 
     def _add(name, description=''):
         key = _norm_cash_book_vote_key(name)
-        if not key or key == '—':
+        if not key or key == '—' or _cash_book_suppressed_vote(key):
             return
         display = (name or '').strip() or key
         desc = (description or '').strip()
@@ -146,7 +158,12 @@ def _collect_cash_book_vote_meta(cursor, account_id, helpers, ledger_rows=None):
     load_votes = helpers.get('load_account_expense_votes')
     if load_votes:
         try:
-            for name in load_votes(cursor, account_id) or []:
+            registered_expense_votes = [
+                (name or '').strip()
+                for name in (load_votes(cursor, account_id) or [])
+                if (name or '').strip()
+            ]
+            for name in registered_expense_votes:
                 key = _norm_cash_book_vote_key(name)
                 _add(name, desc_map.get(key, ''))
         except Exception as e:
@@ -157,7 +174,8 @@ def _collect_cash_book_vote_meta(cursor, account_id, helpers, ledger_rows=None):
         try:
             for item in load_meta(cursor, account_id) or []:
                 if isinstance(item, dict):
-                    _add(item.get('name') or item.get('key'), item.get('description'))
+                    vote_name = item.get('name') or item.get('key')
+                    _add(vote_name, item.get('description'))
                 else:
                     _add(item)
         except Exception as e:
@@ -786,6 +804,154 @@ def fetch_ledger_rows(cursor, account_id, date_from=None, date_to=None, helpers=
     return rows
 
 
+def _balance_sheet_section_for_account(account):
+    """Map a finance account to a balance sheet section (school books convention)."""
+    cat = (account.get('account_category') or 'Other').strip()
+    cat_lower = cat.lower()
+    name = (account.get('account_name') or '').strip().lower()
+    desc = (account.get('account_description') or '').strip().lower()
+    blob = f'{name} {desc}'
+
+    if cat_lower in ('liability', 'liabilities') or cat_lower == 'trust & liabilities':
+        return 'Liabilities'
+    if 'trust' in cat_lower and 'liabilit' in cat_lower:
+        return 'Liabilities'
+    if cat_lower in (
+        'asset', 'assets', 'bank', 'cash', 'petty cash', 'operational imprest funds',
+        'administrative funds', 'capitation funds', 'development funds',
+    ):
+        return 'Assets'
+    fund_markers = (
+        'operation fund', 'operational', 'imprest',
+        'administrative fund', 'capitation', 'development fund',
+    )
+    if any(marker in blob for marker in fund_markers):
+        return 'Assets'
+    if cat_lower == 'income':
+        return 'Assets'
+    return 'Equity'
+
+
+def _build_balance_sheet_lines(cursor, helpers, focus_account=None, closing_balance=None):
+    """Assets, liabilities and equity for the account being viewed."""
+    if not focus_account:
+        return [], {
+            'asset_total': 0.0,
+            'liability_total': 0.0,
+            'equity_total': 0.0,
+            'balanced': True,
+        }
+
+    focus_account_id = focus_account.get('id')
+    try:
+        focus_account_id = int(focus_account_id)
+    except (TypeError, ValueError):
+        focus_account_id = None
+
+    bal = closing_balance
+    if bal is None:
+        bal = float(focus_account.get('current_balance') or focus_account.get('balance') or 0)
+    bal = round(float(bal), 2)
+
+    acct_row = {
+        'id': focus_account_id,
+        'account_name': (focus_account.get('account_name') or '—').strip() or '—',
+        'account_category': (focus_account.get('account_category') or '').strip(),
+        'account_description': (focus_account.get('account_description') or '').strip(),
+        'account_status': (focus_account.get('account_status') or 'active').strip().lower(),
+        'balance': bal,
+        'balance_display': focus_account.get('current_balance_display') or _fmt_kes(bal),
+    }
+
+    assets, liabilities, equity = [], [], []
+    section = _balance_sheet_section_for_account(acct_row)
+    line = {
+        'account_id': focus_account_id,
+        'name': acct_row['account_name'],
+        'amount': bal,
+        'amount_display': acct_row['balance_display'],
+        'category': acct_row['account_category'],
+    }
+    if section == 'Liabilities':
+        liabilities.append(line)
+    elif section == 'Equity':
+        equity.append(line)
+    else:
+        assets.append(line)
+
+    load_payables = helpers.get('load_account_payables_balance')
+    payables = 0.0
+    if load_payables and focus_account_id:
+        try:
+            payables = round(float(load_payables(cursor, focus_account_id) or 0), 2)
+        except Exception as e:
+            print(f'_build_balance_sheet_lines account payables: {e}')
+    if payables > 0.005:
+        liabilities.append({
+            'account_id': None,
+            'name': 'Accounts payable — suppliers',
+            'amount': payables,
+            'amount_display': _fmt_kes(payables),
+            'category': '',
+        })
+
+    equity_explicit = round(sum(x['amount'] for x in equity), 2)
+    asset_total_raw = round(sum(x['amount'] for x in assets), 2)
+    liab_total_raw = round(sum(x['amount'] for x in liabilities), 2)
+    fund_balance = round(asset_total_raw - liab_total_raw - equity_explicit, 2)
+    if abs(fund_balance) > 0.005 or (not equity and (assets or liabilities)):
+        equity.append({
+            'account_id': None,
+            'name': 'Accumulated fund / reserves',
+            'amount': fund_balance,
+            'amount_display': _fmt_kes(fund_balance),
+            'category': '',
+        })
+
+    lines = []
+
+    def _append_section(section_title, items):
+        if not items:
+            return 0.0
+        lines.append({
+            'section': section_title,
+            'name': section_title,
+            'amount_display': '—',
+            '_row_type': 'section',
+        })
+        total = 0.0
+        for item in items:
+            total += float(item.get('amount') or 0)
+            lines.append({
+                'section': section_title,
+                'name': item['name'],
+                'amount_display': item['amount_display'],
+                '_row_type': 'line',
+                'is_focus': item.get('account_id') == focus_account_id,
+                'category': item.get('category') or '',
+            })
+        total = round(total, 2)
+        lines.append({
+            'section': section_title,
+            'name': f'Total {section_title.lower()}',
+            'amount_display': _fmt_kes(total),
+            '_row_type': 'total',
+        })
+        return total
+
+    asset_total = _append_section('Assets', assets)
+    liab_total = _append_section('Liabilities', liabilities)
+    equity_total = _append_section('Equity', equity)
+
+    balanced = abs(asset_total - (liab_total + equity_total)) < 0.02
+    return lines, {
+        'asset_total': asset_total,
+        'liability_total': liab_total,
+        'equity_total': equity_total,
+        'balanced': balanced,
+    }
+
+
 def fetch_account_report_payload(cursor, account_id, report_slug, filters, helpers):
     """Build view model for one account report."""
     slug = (report_slug or '').strip().lower()
@@ -886,27 +1052,24 @@ def fetch_account_report_payload(cursor, account_id, report_slug, filters, helpe
         }
 
     if slug == 'balance-sheet':
-        cat = (account.get('account_category') or 'Other').strip()
-        cat_lower = cat.lower()
-        if cat_lower in ('income',):
-            section = 'Income / revenue'
-        elif cat_lower in ('asset', 'assets', 'bank', 'cash', 'petty cash'):
-            section = 'Assets'
-        elif cat_lower in ('liability', 'liabilities'):
-            section = 'Liabilities'
-        else:
-            section = 'Equity & other'
+        bs_lines, bs_totals = _build_balance_sheet_lines(
+            cursor,
+            helpers,
+            focus_account=account,
+            closing_balance=closing,
+        )
+        acct_name = (account.get('account_name') or 'Account').strip()
+        balanced_label = 'Yes' if bs_totals.get('balanced') else 'Review required'
         return {
             'report_type': slug,
             'summary': [
-                {'label': 'Account', 'value': account.get('account_name') or '—'},
-                {'label': 'Category', 'value': cat},
-                {'label': 'Opening balance', 'value': f'KES {_fmt_kes(opening)}'},
-                {'label': 'Closing balance', 'value': f'KES {_fmt_kes(closing)}'},
+                {'label': 'Account', 'value': acct_name},
+                {'label': 'Total assets', 'value': f'KES {_fmt_kes(bs_totals.get("asset_total", 0))}'},
+                {'label': 'Total liabilities', 'value': f'KES {_fmt_kes(bs_totals.get("liability_total", 0))}'},
+                {'label': 'Total equity', 'value': f'KES {_fmt_kes(bs_totals.get("equity_total", 0))}'},
+                {'label': 'Books balanced', 'value': balanced_label},
             ],
-            'balance_sheet_lines': [
-                {'section': section, 'name': account.get('account_name'), 'amount_display': _fmt_kes(closing)},
-            ],
+            'balance_sheet_lines': bs_lines,
             'rows': [],
         }
 

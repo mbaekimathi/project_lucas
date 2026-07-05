@@ -1,0 +1,22 @@
+{# Shared school letterhead for lesson plan / attendance booklet pages #}
+{% set _lh_suffix = row.session_key|replace('__', '-') ~ (letterhead_suffix|default('', true)) %}
+{% set _period = (term_label|default('')) ~ (' · ' ~ year_label if year_label|default('') else '') %}
+{% set _extra = row.session_date_display|default(row.session_date, true) %}
+{% if row.session_time %}{% set _extra = _extra ~ ' · ' ~ row.session_time %}{% endif %}
+{% set _extra = _extra ~ ' · ' ~ (row.level_name or '—') ~ ' · ' ~ (row.learning_area|default(row.subject_name, true)) %}
+{% with
+    report_title=doc_title|default('Lesson plan'),
+    report_period_label=_period or '—',
+    report_generated_at='—',
+    print_meta_extra=_extra,
+    letterhead_id='lp-lh-' ~ _lh_suffix,
+    print_title_id='lp-title-' ~ _lh_suffix,
+    print_period_id='lp-period-' ~ _lh_suffix,
+    print_generated_id='lp-generated-' ~ _lh_suffix,
+    letterhead_always_visible=true,
+    letterhead_sync_mode=false,
+    hide_print_meta_primary=true,
+    with_print_footer=false
+%}
+{% include 'dashboards/includes/accounts_print_letterhead.html' %}
+{% endwith %}

@@ -49,11 +49,19 @@
     'librarian_issue_return_records', 'librarian_issue_return_records_level'
 ) or '/books-inventory' in request.path or '/library-overview' in request.path or '/issue-return-records' in request.path %}
 
-{% if _is_deputy %}
+{% set _lead_nav = leadership_nav_scope|default('') %}
+
+{% if _is_deputy and _lead_nav != 'academic' %}
 {% include 'dashboards/includes/deputy_head_dashboard_tpad_link.html' %}
 {% endif %}
 
-{% if _show_hub_nav %}
+{% if _lead_nav == 'academic' %}
+{% if _is_deputy %}
+{% include 'dashboards/includes/deputy_head_dashboard_tpad_link.html' %}
+{% endif %}
+{% set cc_nav_scope = 'all' %}
+{% include 'dashboards/includes/curriculum_coordinator_sidebar.html' %}
+{% elif _show_hub_nav %}
 {% if not _is_deputy %}<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Staff</p>{% endif %}
 <a href="{{ employee_dash_url('staff-management') }}"
    class="sidebar-item {% if _staff_active %}sidebar-item-active{% endif %}">
@@ -134,4 +142,6 @@
     <i class="fas fa-calendar-alt w-5"></i>
     <span>Academic year settings</span>
 </a>
+{% elif _lead_nav == 'academic' and not _is_deputy %}
+{# head of institution on academic pages — no extra footer links #}
 {% endif %}

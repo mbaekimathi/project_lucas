@@ -1,0 +1,34 @@
+{# Lesson plan column — used in combined session / print views #}
+<div class="lp-col lp-col--plan">
+    <h3 class="lp-col__title"><i class="fas fa-book-open" aria-hidden="true"></i> Lesson plan</h3>
+    {% if row.has_lesson_plan|default(false) %}
+    <div class="lp-doc-strand lp-doc-strand--compact" aria-label="Strand and substrand">
+        <div class="lp-doc-strand__grid">
+            <div class="lp-doc-strand__item">
+                <span class="lp-doc-strand__label">Strand</span>
+                <span class="lp-doc-strand__value">{{ row.strand|default('—', true) }}</span>
+            </div>
+            <div class="lp-doc-strand__item">
+                <span class="lp-doc-strand__label">Substrand</span>
+                <span class="lp-doc-strand__value">{{ row.substrand|default('—', true) }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="lp-col__body">
+        {% set plan = row.lesson_plan or {} %}
+        {% for field_key, field_label in lesson_plan_labels %}
+        {% if field_key not in ('strand', 'substrand') %}
+        {% set val = plan.get(field_key, '') %}
+        {% if val %}
+        <article class="lp-booklet-page__field">
+            <h4 class="lp-booklet-page__field-label">{{ field_label }}</h4>
+            <div class="lp-booklet-page__field-value">{{ val }}</div>
+        </article>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="lp-col__empty">No lesson plan saved for this session.</p>
+    {% endif %}
+</div>

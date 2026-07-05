@@ -382,6 +382,35 @@ aside.app-sidebar nav.sidebar-nav a.sidebar-item.app-sidebar__logout > i:first-o
   color: inherit !important;
 }
 
+/* Trailing meta (class hint, lock, etc.) */
+aside.app-sidebar nav.sidebar-nav .sidebar-item > .sidebar-item__meta {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  max-width: 5rem;
+  opacity: 0.65;
+  color: #ffffff;
+}
+
+aside.app-sidebar nav.sidebar-nav .sidebar-item > i.ml-auto,
+aside.app-sidebar nav.sidebar-nav .sidebar-item > i.sidebar-item__meta-icon {
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  font-size: 0.6875rem !important;
+  flex-shrink: 0;
+  color: #ffffff !important;
+  opacity: 0.55;
+}
+
+aside.app-sidebar nav.sidebar-nav .sidebar-item > i.fa-check-circle.ml-auto {
+  opacity: 1;
+  font-size: 0.75rem !important;
+  color: #22c55e !important;
+}
+
 aside.app-sidebar .sidebar-footer {
   padding: 0;
   background: transparent;

@@ -11,7 +11,7 @@
 
 {% block sidebar_content %}
 {% if portal_mode|default('parent') == 'student' %}
-{% set student_nav_scope = 'all' %}
+{% set student_nav_scope = 'exams' %}
 {% include 'dashboards/includes/student_page_sidebar.html' %}
 {% else %}
 {% set parent_nav_scope = 'exams' %}
@@ -75,10 +75,6 @@
     {% endif %}
     {% set role_hero_icon_class = 'fa-user-graduate' %}
     {% include 'dashboards/includes/role_hero.html' %}
-
-    {% if portal_mode|default('parent') == 'student' %}
-    {% include 'dashboards/includes/student_portal_quick_nav.html' %}
-    {% endif %}
 
     {% if portal_mode|default('parent') == 'parent' %}
     <div class="mb-4 flex flex-wrap items-center justify-end gap-3">
