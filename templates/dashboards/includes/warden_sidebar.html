@@ -1,3 +1,10 @@
+{% include 'dashboards/includes/warden_hostel_nav_sidebar.html' %}
+<a href="{{ employee_dash_url() }}?register_hostel=1"
+   class="sidebar-item {% if request.endpoint == 'dashboard_employee' and request.args.get('register_hostel') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-plus w-5"></i>
+    <span>Register hostel</span>
+    {% if request.endpoint == 'dashboard_employee' and request.args.get('register_hostel') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 {% include 'dashboards/includes/department_store_sidebar.html' %}
 {% set acal_show_section_header = true %}
 {% set acal_section_pad_top = true %}

@@ -1,0 +1,25 @@
+{# Warden hostel portal — occupation, hostel management, payment routing #}
+{% include 'dashboards/includes/find_student_sidebar_link.html' %}
+<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Hostels</p>
+{% set _wh_on_payment = request.endpoint == 'warden_hostel_settings' or request.path.rstrip('/').endswith('/hostel-settings') %}
+{% set _wh_on_occupation = request.endpoint in ('warden_hostel_occupations', 'warden_hostel_occupation_settings', 'warden_hostel_rooms') or request.path.rstrip('/').endswith('/hostel-occupations') or request.path.rstrip('/').endswith('/hostel-occupation-settings') %}
+{% set _wh_on_hostel = request.endpoint == 'dashboard_employee' and not _wh_on_payment and not _wh_on_occupation and not request.args.get('register_hostel') %}
+
+<a href="{{ employee_dash_url('hostel-occupations') }}"
+   class="sidebar-item {% if _wh_on_occupation %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-check w-5"></i>
+    <span>Occupation</span>
+    {% if _wh_on_occupation %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url() }}"
+   class="sidebar-item {% if _wh_on_hostel %}sidebar-item-active{% endif %}">
+    <i class="fas fa-bed w-5"></i>
+    <span>Hostel settings</span>
+    {% if _wh_on_hostel %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('hostel-settings') }}"
+   class="sidebar-item {% if _wh_on_payment %}sidebar-item-active{% endif %}">
+    <i class="fas fa-money-check-dollar w-5"></i>
+    <span>Payment settings</span>
+    {% if _wh_on_payment %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

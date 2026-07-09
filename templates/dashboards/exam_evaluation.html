@@ -1287,7 +1287,7 @@
                                             :class="supervisorSelectClass(row, null)"
                                             class="modern-input w-full px-3 py-2.5 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
                                         <option value="">Select Supervisor</option>
-                                        <template x-for="t in teachers" :key="t.id">
+                                        <template x-for="t in getEligibleSupervisors(row.subject_id, selectedAcademicLevel)" :key="t.id">
                                             <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
                                         </template>
                                     </select>
@@ -1317,7 +1317,7 @@
                                                         :class="supervisorSelectClass(row, lvl.id)"
                                                         class="modern-input w-full px-3 py-2.5 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
                                                     <option value="">Select Supervisor</option>
-                                                    <template x-for="t in teachers" :key="t.id">
+                                                    <template x-for="t in getEligibleSupervisors(row.subject_id, lvl.id)" :key="t.id">
                                                         <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
                                                     </template>
                                                 </select>
@@ -1444,7 +1444,7 @@
                                                     :class="supervisorSelectClass(row, null)"
                                                     class="modern-input w-full px-3 py-2 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
                                                 <option value="">Select Supervisor</option>
-                                                <template x-for="t in teachers" :key="t.id">
+                                                <template x-for="t in getEligibleSupervisors(row.subject_id, selectedAcademicLevel)" :key="t.id">
                                                     <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
                                                 </template>
                                             </select>
@@ -1463,7 +1463,7 @@
                                                             :class="supervisorSelectClass(row, lvl.id)"
                                                             class="modern-input w-full px-3 py-2 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
                                                         <option value="">Select Supervisor</option>
-                                                        <template x-for="t in teachers" :key="t.id">
+                                                        <template x-for="t in getEligibleSupervisors(row.subject_id, lvl.id)" :key="t.id">
                                                             <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
                                                         </template>
                                                     </select>
@@ -2261,7 +2261,7 @@
                                         required
                                         class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
                                     <option value="">Select Teacher</option>
-                                    <template x-for="t in teachers" :key="t.id">
+                                    <template x-for="t in getEligibleSupervisors(editingExam.subject_id, editingExam.academic_level_id)" :key="t.id">
                                         <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
                                     </template>
                                 </select>
@@ -2836,6 +2836,28 @@ function examEvaluation() {
             return (this.teacherSubjectPairs || []).filter(
                 p => String(p.subject_id) === String(subjectId) && String(p.academic_level_id) === String(levelId)
             );
+        },
+
+        getTeacherIdSetForLevel(levelId) {
+            const ids = new Set();
+            (this.teacherSubjectPairs || []).forEach(p => {
+                if (String(p.academic_level_id) === String(levelId) && p.teacher_id) {
+                    ids.add(String(p.teacher_id));
+                }
+            });
+            return ids;
+        },
+
+        getEligibleSupervisors(subjectId, levelId) {
+            if (!levelId) return [];
+            const levelTeacherIds = this.getTeacherIdSetForLevel(levelId);
+            const excluded = new Set(
+                this.getAllocatedTeachersForSubject(subjectId, levelId).map(p => String(p.teacher_id))
+            );
+            return (this.teachers || []).filter(t => {
+                const id = String(t.id);
+                return levelTeacherIds.has(id) && !excluded.has(id);
+            });
         },
 
         formatAllocatedTeacherNames(pairs) {

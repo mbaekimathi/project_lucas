@@ -1,0 +1,562 @@
+{% extends "base.html" %}
+
+{% block title %}Payment settings - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/warden_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set hostels = warden_hostels|default([]) %}
+{% set settings_map = hostel_payment_settings_map|default({}) %}
+{% set accounts = hostel_finance_accounts|default([]) %}
+{% set mode_keys = hostel_payment_mode_keys|default(['mpesa', 'cash', 'cheque', 'bank']) %}
+{% set mode_labels = hostel_payment_mode_labels|default({}) %}
+{% set role_theme = 'warden' %}
+{% set role_hero_eyebrow = 'Warden' %}
+{% set role_hero_title = 'Payment settings' %}
+{% set role_hero_subtitle = 'Turn online payments on or off per hostel. When off, students register for rooms manually without payment.' %}
+{% set role_hero_icon_class = 'fa-sliders' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="max-w-4xl mx-auto px-3 sm:px-0 pb-8 space-y-5 sm:space-y-6 portal-page-root role-page role-page--warden"
+     id="warden-hostel-payment-settings"
+     data-save-url="{{ hostel_payment_save_url|default(employee_dash_url('hostel-settings/save'), true) }}"
+     data-min-installments="{{ hostel_min_installments|default(2) }}"
+     data-max-installments="{{ hostel_max_installments|default(12) }}">
+
+    {% include 'dashboards/includes/portal_page_flash.html' %}
+
+    <div class="flex flex-wrap items-center gap-3">
+        <a href="{{ employee_dash_url() }}"
+           class="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+            <i class="fas fa-arrow-left text-xs" aria-hidden="true"></i>
+            Back to hostels
+        </a>
+    </div>
+
+    {% if not hostels %}
+    <section class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/80 dark:bg-amber-950/20 p-4 sm:p-5">
+        <div class="flex gap-3">
+            <span class="shrink-0 w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+                <i class="fas fa-bed" aria-hidden="true"></i>
+            </span>
+            <div class="min-w-0 text-sm text-amber-900 dark:text-amber-100">
+                <p class="font-semibold m-0">No hostels registered yet</p>
+                <p class="mt-1 mb-0 text-amber-800/90 dark:text-amber-200/90">
+                    Register hostels under <strong>Hostel settings</strong> before configuring payment routing.
+                </p>
+            </div>
+        </div>
+    </section>
+    {% elif not accounts %}
+    <section class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/80 dark:bg-amber-950/20 p-4 sm:p-5">
+        <div class="flex gap-3">
+            <span class="shrink-0 w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+            </span>
+            <div class="min-w-0 text-sm text-amber-900 dark:text-amber-100">
+                <p class="font-semibold m-0">No finance accounts available yet</p>
+                <p class="mt-1 mb-0 text-amber-800/90 dark:text-amber-200/90">
+                    Finance accounts are required when <strong>online payments</strong> are enabled for a hostel.
+                </p>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+  {% if hostels %}
+    <div class="space-y-4">
+      {% for hostel in hostels %}
+      {% set hid = hostel.id %}
+      {% set hps = settings_map.get(hid, {}) %}
+      {% set payments_on = hps.get('payments_enabled', true) %}
+      {% set pay_full_on = hps.get('allow_full_payment', true) and not hps.get('allow_installment_payment') %}
+      {% set pay_inst_on = hps.get('allow_installment_payment') %}
+      <section class="js-hostel-payment-card rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden"
+               data-hostel-id="{{ hid }}"
+               data-hostel-name="{{ hostel.name|e }}"
+               aria-labelledby="hostel-payment-{{ hid }}-heading">
+        <div class="px-4 sm:px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center gap-3">
+          {% if hostel.photo_path %}
+          <img src="{{ url_for('static', filename=hostel.photo_path) }}"
+               alt=""
+               class="w-14 h-14 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0" />
+          {% else %}
+          <div class="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+            <i class="fas fa-bed text-xl text-slate-400"></i>
+          </div>
+          {% endif %}
+          <div class="min-w-0 flex-1">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 m-0">{{ hostel.category }}</p>
+            <h2 id="hostel-payment-{{ hid }}-heading" class="text-lg font-bold text-slate-900 dark:text-white m-0 mt-0.5">
+              {{ hostel.name }}
+            </h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400 m-0 mt-0.5">
+              <i class="fas fa-map-marker-alt mr-1 text-slate-400"></i>{{ hostel.location }}
+              · {{ hostel.room_count }} room{{ 's' if hostel.room_count != 1 else '' }}
+            </p>
+          </div>
+          <p class="js-hostel-payment-status text-xs font-semibold m-0 shrink-0 text-slate-400" aria-live="polite"></p>
+        </div>
+
+        <div class="p-4 sm:p-5 space-y-5">
+          <div class="rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/80 dark:bg-indigo-950/25 p-4">
+            <label class="inline-flex items-start gap-3 cursor-pointer">
+              <input type="checkbox"
+                     class="js-hostel-payments-enabled mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                     {% if payments_on %}checked{% endif %} />
+              <span class="min-w-0">
+                <span class="block text-sm font-bold text-slate-900 dark:text-white">Enable online payments</span>
+                <span class="block text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  When off, students register for a room manually and their status becomes <strong>OCCUPIED</strong> without paying online.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div class="js-hostel-manual-info rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/80 dark:bg-emerald-950/25 p-4 {% if payments_on %}hidden{% endif %}">
+            <p class="text-sm font-semibold text-emerald-900 dark:text-emerald-100 m-0">Manual registration mode</p>
+            <p class="text-xs text-emerald-800/90 dark:text-emerald-200/90 m-0 mt-1">
+              Students can pick an available room and register directly. No finance account or payment methods are required.
+            </p>
+          </div>
+
+          <div class="js-hostel-payment-options space-y-5 {% if not payments_on %}hidden{% endif %}">
+          <div>
+            <label for="finance_account_id_{{ hid }}" class="block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400 mb-1.5">
+              Finance account <span class="text-red-500">*</span>
+            </label>
+            <select id="finance_account_id_{{ hid }}"
+                    class="js-hostel-payment-account w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm text-slate-900 dark:text-white"
+                    {% if not accounts %}disabled{% endif %}>
+              <option value="">Select account…</option>
+              {% for acc in accounts %}
+              <option value="{{ acc.id }}"
+                      {% if hps.get('finance_account_id') == acc.id %}selected{% endif %}>
+                {{ acc.account_name }}{% if acc.account_category %} · {{ acc.account_category }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 m-0">
+              All payments for this hostel (deposit, balance, and full payment) are posted to this account.
+            </p>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80">
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white m-0">Payment structure</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 m-0">
+                Choose one option — students pay the <strong>full fee at once</strong> or in <strong>installments</strong> (not both).
+              </p>
+            </div>
+            <div class="p-4 space-y-3">
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" class="js-hostel-allow-full rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                       {% if pay_full_on %}checked{% endif %} />
+                <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">Allow pay full amount in one payment</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" class="js-hostel-allow-installments rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                       {% if pay_inst_on %}checked{% endif %} />
+                <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">Allow pay in installments</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="js-hostel-installments-panel rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden {% if not pay_inst_on %}hidden{% endif %}">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80">
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white m-0">Installment schedule</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 m-0">
+                Percentages apply to the balance after reservation (if enabled). Must add up to 100%.
+              </p>
+            </div>
+            <div class="p-4 space-y-3">
+              <div class="flex flex-wrap items-center gap-3">
+                <label class="text-sm font-semibold text-slate-700 dark:text-slate-200" for="installment_count_{{ hid }}">Number of installments</label>
+                <input type="number" id="installment_count_{{ hid }}" min="{{ hostel_min_installments|default(2) }}" max="{{ hostel_max_installments|default(12) }}"
+                       value="{{ hps.get('installment_count', 2) }}"
+                       class="js-hostel-installment-count w-20 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm" />
+              </div>
+              <div class="js-hostel-installment-rows space-y-2">
+                {% for pct in hps.get('installment_pcts', [50, 50]) %}
+                <div class="js-hostel-installment-row flex items-center gap-2">
+                  <span class="js-hostel-installment-label text-xs font-semibold uppercase tracking-wide text-slate-500 w-24">Installment {{ loop.index }}</span>
+                  <input type="number" min="0.01" max="100" step="0.01" value="{{ pct }}"
+                         class="js-hostel-installment-pct w-24 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm tabular-nums" />
+                  <span class="text-sm text-slate-500">% of balance</span>
+                </div>
+                {% endfor %}
+              </div>
+              <p class="js-hostel-installment-total text-xs font-semibold text-slate-500 m-0">Total: 100%</p>
+            </div>
+          </div>
+
+          <div class="js-hostel-reservation-panel rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden {% if pay_full_on %}hidden{% endif %}">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80">
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white m-0">Reservation</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 m-0">
+                Optional upfront payment to hold a room before paying installments.
+              </p>
+            </div>
+            <div class="p-4 space-y-3">
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" class="js-hostel-allow-reservation rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                       {% if hps.get('allow_reservation', true) %}checked{% endif %} />
+                <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">Allow reservation payment</span>
+              </label>
+              <div class="js-hostel-reservation-pct-wrap flex flex-wrap items-center gap-3 {% if not hps.get('allow_reservation', true) %}opacity-50{% endif %}">
+                <label class="text-sm font-semibold text-slate-700 dark:text-slate-200" for="reservation_pct_{{ hid }}">Reservation % of total fee</label>
+                <input type="number" id="reservation_pct_{{ hid }}" min="0.01" max="99.99" step="0.01"
+                       value="{{ hps.get('reservation_pct', 25) }}"
+                       class="js-hostel-reservation-pct w-24 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm tabular-nums" />
+                <span class="text-sm text-slate-500">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80">
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white m-0">Allowed payment methods</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 m-0">
+                Students booking this hostel can only use the methods you enable. M-Pesa requires Daraja integration.
+              </p>
+            </div>
+            <div class="p-4 flex flex-wrap gap-3">
+              {% for mode in mode_keys %}
+              <label class="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                <input type="checkbox" value="1"
+                       data-mode="{{ mode }}"
+                       class="js-hostel-payment-mode rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                       {% if hps.get('allow_' ~ mode) %}checked{% endif %} />
+                <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {{ mode_labels.get(mode, mode|title) }}
+                </span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          </div>
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var root = document.getElementById('warden-hostel-payment-settings');
+  if (!root) return;
+
+  var saveUrl = root.getAttribute('data-save-url') || '';
+  var minInstallments = parseInt(root.getAttribute('data-min-installments') || '2', 10) || 2;
+  var maxInstallments = parseInt(root.getAttribute('data-max-installments') || '12', 10) || 12;
+  var timers = new WeakMap();
+  var inflight = new WeakMap();
+
+  function installmentTotal(card) {
+    var total = 0;
+    card.querySelectorAll('.js-hostel-installment-pct').forEach(function (input) {
+      total += parseFloat(input.value || '0') || 0;
+    });
+    return Math.round(total * 100) / 100;
+  }
+
+  function updateInstallmentTotal(card) {
+    var totalEl = card.querySelector('.js-hostel-installment-total');
+    if (!totalEl) return;
+    var total = installmentTotal(card);
+    totalEl.textContent = 'Total: ' + total.toFixed(2) + '%';
+    totalEl.classList.toggle('text-red-600', Math.abs(total - 100) > 0.05);
+    totalEl.classList.toggle('dark:text-red-400', Math.abs(total - 100) > 0.05);
+    totalEl.classList.toggle('text-slate-500', Math.abs(total - 100) <= 0.05);
+  }
+
+  function rebuildInstallmentRows(card, count) {
+    var rowsWrap = card.querySelector('.js-hostel-installment-rows');
+    if (!rowsWrap) return;
+    count = Math.max(minInstallments, Math.min(maxInstallments, count || minInstallments));
+    var existing = [];
+    rowsWrap.querySelectorAll('.js-hostel-installment-pct').forEach(function (input) {
+      existing.push(parseFloat(input.value || '0') || 0);
+    });
+    var each = Math.round((100 / count) * 100) / 100;
+    rowsWrap.innerHTML = '';
+    for (var i = 0; i < count; i++) {
+      var row = document.createElement('div');
+      row.className = 'js-hostel-installment-row flex items-center gap-2';
+      var val = existing[i];
+      if (val == null || isNaN(val) || val <= 0) val = each;
+      row.innerHTML =
+        '<span class="js-hostel-installment-label text-xs font-semibold uppercase tracking-wide text-slate-500 w-24">Installment ' + (i + 1) + '</span>' +
+        '<input type="number" min="0.01" max="100" step="0.01" value="' + val + '" class="js-hostel-installment-pct w-24 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm tabular-nums" />' +
+        '<span class="text-sm text-slate-500">% of balance</span>';
+      rowsWrap.appendChild(row);
+      row.querySelector('.js-hostel-installment-pct').addEventListener('input', function () {
+        updateInstallmentTotal(card);
+        scheduleSave(card);
+      });
+    }
+    var countInput = card.querySelector('.js-hostel-installment-count');
+    if (countInput) countInput.value = String(count);
+    updateInstallmentTotal(card);
+  }
+
+  function toggleInstallmentsPanel(card) {
+    var panel = card.querySelector('.js-hostel-installments-panel');
+    var enabled = card.querySelector('.js-hostel-allow-installments');
+    if (panel && enabled) panel.classList.toggle('hidden', !enabled.checked);
+  }
+
+  function toggleReservationPanel(card) {
+    var panel = card.querySelector('.js-hostel-reservation-panel');
+    var allowFull = card.querySelector('.js-hostel-allow-full');
+    if (panel && allowFull) panel.classList.toggle('hidden', !!allowFull.checked);
+  }
+
+  function syncPaymentStructure(card) {
+    var allowFull = card.querySelector('.js-hostel-allow-full');
+    var allowInst = card.querySelector('.js-hostel-allow-installments');
+    if (!allowFull || !allowInst) return;
+    if (allowFull.checked && allowInst.checked) {
+      allowFull.checked = false;
+    }
+    if (!allowFull.checked && !allowInst.checked) {
+      allowFull.checked = true;
+    }
+    toggleInstallmentsPanel(card);
+    toggleReservationPanel(card);
+  }
+
+  function onAllowFullChange(card) {
+    var allowFull = card.querySelector('.js-hostel-allow-full');
+    var allowInst = card.querySelector('.js-hostel-allow-installments');
+    if (allowFull && allowFull.checked && allowInst) {
+      allowInst.checked = false;
+    }
+    toggleInstallmentsPanel(card);
+    toggleReservationPanel(card);
+    scheduleSave(card);
+  }
+
+  function onAllowInstChange(card) {
+    var allowFull = card.querySelector('.js-hostel-allow-full');
+    var allowInst = card.querySelector('.js-hostel-allow-installments');
+    if (allowInst && allowInst.checked && allowFull) {
+      allowFull.checked = false;
+    }
+    toggleInstallmentsPanel(card);
+    toggleReservationPanel(card);
+    scheduleSave(card);
+  }
+
+  function toggleReservationPct(card) {
+    var wrap = card.querySelector('.js-hostel-reservation-pct-wrap');
+    var enabled = card.querySelector('.js-hostel-allow-reservation');
+    if (wrap && enabled) wrap.classList.toggle('opacity-50', !enabled.checked);
+  }
+
+  function setStatus(card, state, message) {
+    var el = card.querySelector('.js-hostel-payment-status');
+    if (!el) return;
+    el.textContent = message || '';
+    el.classList.remove('text-slate-400', 'text-indigo-600', 'text-emerald-600', 'text-red-600', 'dark:text-indigo-400', 'dark:text-emerald-400', 'dark:text-red-400');
+    if (state === 'saving') {
+      el.classList.add('text-indigo-600', 'dark:text-indigo-400');
+    } else if (state === 'saved') {
+      el.classList.add('text-emerald-600', 'dark:text-emerald-400');
+    } else if (state === 'error') {
+      el.classList.add('text-red-600', 'dark:text-red-400');
+    } else {
+      el.classList.add('text-slate-400');
+    }
+  }
+
+  function togglePaymentPanels(card) {
+    var paymentsOn = card.querySelector('.js-hostel-payments-enabled');
+    var options = card.querySelector('.js-hostel-payment-options');
+    var manualInfo = card.querySelector('.js-hostel-manual-info');
+    var enabled = !!(paymentsOn && paymentsOn.checked);
+    if (options) options.classList.toggle('hidden', !enabled);
+    if (manualInfo) manualInfo.classList.toggle('hidden', enabled);
+  }
+
+  function collectPayload(card) {
+    var paymentsEl = card.querySelector('.js-hostel-payments-enabled');
+    var paymentsEnabled = !!(paymentsEl && paymentsEl.checked);
+    var accountEl = card.querySelector('.js-hostel-payment-account');
+    var financeAccountId = accountEl ? accountEl.value : '';
+    var modes = [];
+    card.querySelectorAll('.js-hostel-payment-mode:checked').forEach(function (cb) {
+      var mode = cb.getAttribute('data-mode');
+      if (mode) modes.push(mode);
+    });
+    var installmentPcts = [];
+    card.querySelectorAll('.js-hostel-installment-pct').forEach(function (input) {
+      installmentPcts.push(parseFloat(input.value || '0') || 0);
+    });
+    var allowFullEl = card.querySelector('.js-hostel-allow-full');
+    var allowInstEl = card.querySelector('.js-hostel-allow-installments');
+    var allowResEl = card.querySelector('.js-hostel-allow-reservation');
+    var resPctEl = card.querySelector('.js-hostel-reservation-pct');
+    var instCountEl = card.querySelector('.js-hostel-installment-count');
+    return {
+      hostel_id: card.getAttribute('data-hostel-id'),
+      hostel_name: card.getAttribute('data-hostel-name') || '',
+      payments_enabled: paymentsEnabled,
+      finance_account_id: financeAccountId,
+      modes: modes,
+      payment_plan: {
+        allow_full_payment: !!(allowFullEl && allowFullEl.checked),
+        allow_installment_payment: !!(allowInstEl && allowInstEl.checked),
+        allow_reservation: !!(allowResEl && allowResEl.checked),
+        reservation_pct: resPctEl ? resPctEl.value : null,
+        installment_count: instCountEl ? instCountEl.value : installmentPcts.length,
+        installment_pcts: installmentPcts,
+      },
+    };
+  }
+
+  function canSave(payload) {
+    if (!payload.payments_enabled) return true;
+    if (!payload.finance_account_id || !payload.modes.length) return false;
+    var plan = payload.payment_plan || {};
+    if (plan.allow_full_payment && plan.allow_installment_payment) return false;
+    if (!plan.allow_full_payment && !plan.allow_installment_payment) return false;
+    if (plan.allow_installment_payment) {
+      var total = (plan.installment_pcts || []).reduce(function (a, b) { return a + (parseFloat(b) || 0); }, 0);
+      if (Math.abs(total - 100) > 0.05) return false;
+    }
+    return true;
+  }
+
+  function saveCard(card) {
+    var payload = collectPayload(card);
+    if (!canSave(payload)) {
+      if (!payload.payments_enabled) {
+        setStatus(card, 'idle', '');
+      } else if (!payload.finance_account_id) {
+        setStatus(card, 'idle', 'Select an account to save');
+      } else if (!payload.modes.length) {
+        setStatus(card, 'error', 'Select at least one payment method');
+      } else if ((payload.payment_plan || {}).allow_full_payment && (payload.payment_plan || {}).allow_installment_payment) {
+        setStatus(card, 'error', 'Choose full payment or installments, not both');
+      } else if (!(payload.payment_plan || {}).allow_full_payment && !(payload.payment_plan || {}).allow_installment_payment) {
+        setStatus(card, 'error', 'Choose full payment or installments');
+      } else {
+        setStatus(card, 'error', 'Installments must total 100%');
+      }
+      return;
+    }
+
+    if (inflight.get(card)) return;
+    inflight.set(card, true);
+    setStatus(card, 'saving', 'Saving…');
+
+    if (!saveUrl) {
+      console.error('Hostel payment save URL is missing.');
+      return;
+    }
+
+    fetch(saveUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      credentials: 'same-origin',
+      redirect: 'manual',
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) {
+        if (res.type === 'opaqueredirect' || res.status === 301 || res.status === 302) {
+          return { ok: false, data: { message: 'Session expired. Refresh the page and sign in again.' } };
+        }
+        return res.text().then(function (text) {
+          var data = null;
+          try {
+            data = text ? JSON.parse(text) : null;
+          } catch (e) {
+            if (res.status === 404) {
+              return { ok: false, data: { message: 'Save endpoint not found. Restart the server and refresh this page.' } };
+            }
+            return { ok: false, data: { message: 'Unexpected server response. Refresh and try again.' } };
+          }
+          return { ok: res.ok && data && data.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          setStatus(card, 'saved', 'Saved');
+          window.setTimeout(function () {
+            if (card.querySelector('.js-hostel-payment-status') && card.querySelector('.js-hostel-payment-status').textContent === 'Saved') {
+              setStatus(card, 'idle', '');
+            }
+          }, 2500);
+        } else {
+          setStatus(card, 'error', (result.data && result.data.message) || 'Could not save');
+        }
+      })
+      .catch(function () {
+        setStatus(card, 'error', 'Could not save');
+      })
+      .finally(function () {
+        inflight.set(card, false);
+      });
+  }
+
+  function scheduleSave(card) {
+    var existing = timers.get(card);
+    if (existing) window.clearTimeout(existing);
+    timers.set(card, window.setTimeout(function () {
+      saveCard(card);
+    }, 450));
+  }
+
+  root.querySelectorAll('.js-hostel-payment-card').forEach(function (card) {
+    var paymentsToggle = card.querySelector('.js-hostel-payments-enabled');
+    if (paymentsToggle) {
+      paymentsToggle.addEventListener('change', function () {
+        togglePaymentPanels(card);
+        scheduleSave(card);
+      });
+    }
+    togglePaymentPanels(card);
+    var accountEl = card.querySelector('.js-hostel-payment-account');
+    if (accountEl) accountEl.addEventListener('change', function () { scheduleSave(card); });
+    card.querySelectorAll('.js-hostel-payment-mode').forEach(function (cb) {
+      cb.addEventListener('change', function () { scheduleSave(card); });
+    });
+    var allowFull = card.querySelector('.js-hostel-allow-full');
+    var allowInst = card.querySelector('.js-hostel-allow-installments');
+    var allowRes = card.querySelector('.js-hostel-allow-reservation');
+    var resPct = card.querySelector('.js-hostel-reservation-pct');
+    var instCount = card.querySelector('.js-hostel-installment-count');
+    if (allowFull) allowFull.addEventListener('change', function () { onAllowFullChange(card); });
+    if (allowInst) allowInst.addEventListener('change', function () { onAllowInstChange(card); });
+    if (allowRes) allowRes.addEventListener('change', function () {
+      toggleReservationPct(card);
+      scheduleSave(card);
+    });
+    if (resPct) resPct.addEventListener('input', function () { scheduleSave(card); });
+    if (instCount) instCount.addEventListener('change', function () {
+      rebuildInstallmentRows(card, parseInt(instCount.value || String(minInstallments), 10));
+      scheduleSave(card);
+    });
+    card.querySelectorAll('.js-hostel-installment-pct').forEach(function (input) {
+      input.addEventListener('input', function () {
+        updateInstallmentTotal(card);
+        scheduleSave(card);
+      });
+    });
+    updateInstallmentTotal(card);
+    syncPaymentStructure(card);
+    toggleReservationPct(card);
+  });
+})();
+</script>
+{% endblock %}

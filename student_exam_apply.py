@@ -322,6 +322,228 @@ def fetch_open_exam_sittings(cursor, academic_level_id):
     return _group_open_exam_rows(rows)
 
 
+def ensure_student_exam_application_status_enum(cursor):
+    """Ensure 'successful' is a valid application status."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM student_exam_applications LIKE 'status'")
+        row = cursor.fetchone()
+        if not row:
+            return
+        col_type = (row.get('Type') if isinstance(row, dict) else row[1]) or ''
+        if 'successful' in col_type.lower():
+            return
+        cursor.execute(
+            """
+            ALTER TABLE student_exam_applications
+            MODIFY COLUMN status ENUM(
+                'pending', 'successful', 'approved', 'rejected', 'withdrawn'
+            ) NOT NULL DEFAULT 'successful'
+            """
+        )
+    except Exception as e:
+        print(f'ensure_student_exam_application_status_enum: {e}')
+
+
+def _format_time_display(value):
+    if value is None or value == '':
+        return '—'
+    if hasattr(value, 'strftime'):
+        return value.strftime('%H:%M')
+    text = str(value).strip()
+    return text[:5] if len(text) >= 5 else text or '—'
+
+
+def _format_date_display(value):
+    if value is None or value == '':
+        return '—'
+    if hasattr(value, 'strftime'):
+        return value.strftime('%a, %d %b %Y')
+    text = str(value).strip()
+    if len(text) >= 10 and text[4] == '-':
+        try:
+            from datetime import datetime as dt
+            return dt.strptime(text[:10], '%Y-%m-%d').strftime('%a, %d %b %Y')
+        except ValueError:
+            pass
+    return text[:10] if text else '—'
+
+
+def fetch_student_exam_application(cursor, application_id, student_id):
+    """One application row owned by the student."""
+    try:
+        application_id = int(application_id)
+    except (TypeError, ValueError):
+        return None
+    sid = (student_id or '').strip()
+    if not sid:
+        return None
+    ensure_student_exam_application_status_enum(cursor)
+    cursor.execute(
+        """
+        SELECT id, sitting_key, exam_id, exam_name, exam_type,
+               academic_year_id, term_id, academic_level_id,
+               year_name, term_name, exam_date_str, notes, status, applied_at,
+               review_notes
+        FROM student_exam_applications
+        WHERE id = %s AND TRIM(student_id) = TRIM(%s)
+        LIMIT 1
+        """,
+        (application_id, sid),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        app = dict(row)
+    else:
+        app = {
+            'id': row[0], 'sitting_key': row[1], 'exam_id': row[2], 'exam_name': row[3],
+            'exam_type': row[4], 'academic_year_id': row[5], 'term_id': row[6],
+            'academic_level_id': row[7], 'year_name': row[8], 'term_name': row[9],
+            'exam_date_str': row[10], 'notes': row[11], 'status': row[12],
+            'applied_at': row[13], 'review_notes': row[14] if len(row) > 14 else None,
+        }
+    parts = [x for x in (app.get('year_name'), app.get('term_name'), app.get('exam_name')) if x]
+    app['label'] = ' · '.join(parts) if parts else (app.get('exam_name') or 'Exam')
+    at = app.get('applied_at')
+    if at and hasattr(at, 'strftime'):
+        app['applied_at_str'] = at.strftime('%d %b %Y, %H:%M')
+    else:
+        app['applied_at_str'] = str(at)[:16] if at else '—'
+    app['reference_code'] = f"EXAM-{int(app.get('id') or 0):05d}"
+    return app
+
+
+def fetch_exam_papers_for_application(cursor, application):
+    """Scheduled papers (subject, date, time, venue) for one exam application."""
+    app = application or {}
+    level_id = app.get('academic_level_id')
+    year_id = app.get('academic_year_id')
+    term_id = app.get('term_id')
+    exam_name = (app.get('exam_name') or '').strip()
+    if not level_id or not year_id or not term_id or not exam_name:
+        return []
+    try:
+        cursor.execute(
+            """
+            SELECT e.exam_date, e.start_time, e.end_time, e.venue, e.session_type,
+                   COALESCE(s.subject_name, 'General paper') AS subject_name,
+                   s.subject_code
+            FROM exams e
+            LEFT JOIN subjects s ON e.subject_id = s.id
+            WHERE e.academic_level_id = %s
+              AND e.academic_year_id = %s
+              AND e.term_id = %s
+              AND UPPER(TRIM(e.exam_name)) = UPPER(TRIM(%s))
+              AND LOWER(TRIM(COALESCE(e.status, ''))) IN (
+                  'scheduled', 'ongoing', 'completed', 'submitted', 'gazetted'
+              )
+            ORDER BY e.exam_date ASC, e.start_time ASC, subject_name ASC, e.id ASC
+            """,
+            (int(level_id), int(year_id), int(term_id), exam_name),
+        )
+        rows = cursor.fetchall() or []
+    except Exception as e:
+        print(f'fetch_exam_papers_for_application: {e}')
+        return []
+    papers = []
+    for r in rows:
+        if isinstance(r, dict):
+            exam_date = r.get('exam_date')
+            start_time = r.get('start_time')
+            end_time = r.get('end_time')
+            venue = (r.get('venue') or '').strip()
+            session_type = (r.get('session_type') or '').strip()
+            subject_name = (r.get('subject_name') or 'General paper').strip()
+            subject_code = (r.get('subject_code') or '').strip()
+        else:
+            exam_date = r[0] if len(r) > 0 else None
+            start_time = r[1] if len(r) > 1 else None
+            end_time = r[2] if len(r) > 2 else None
+            venue = (r[3] or '').strip() if len(r) > 3 else ''
+            session_type = (r[4] or '').strip() if len(r) > 4 else ''
+            subject_name = (r[5] or 'General paper').strip() if len(r) > 5 else 'General paper'
+            subject_code = (r[6] or '').strip() if len(r) > 6 else ''
+        time_bits = [_format_time_display(start_time)]
+        end_disp = _format_time_display(end_time)
+        if end_disp != '—' and end_disp != time_bits[0]:
+            time_bits.append(end_disp)
+        time_display = ' – '.join(time_bits) if time_bits[0] != '—' else '—'
+        papers.append({
+            'subject_name': subject_name,
+            'subject_code': subject_code,
+            'subject_label': f'{subject_name} ({subject_code})' if subject_code else subject_name,
+            'exam_date': exam_date,
+            'date_display': _format_date_display(exam_date),
+            'time_display': time_display,
+            'venue': venue or '—',
+            'session_type': session_type or '—',
+        })
+    return papers
+
+
+def fetch_student_exam_slip_profile(cursor, student_id):
+    """Student details for the exam registration slip."""
+    sid = (student_id or '').strip()
+    if not sid:
+        return None
+    has_assessment = False
+    try:
+        cursor.execute("SHOW COLUMNS FROM students LIKE 'assessment_number'")
+        has_assessment = bool(cursor.fetchone())
+    except Exception:
+        pass
+    assessment_sql = ', s.assessment_number' if has_assessment else ', NULL AS assessment_number'
+    cursor.execute(
+        f"""
+        SELECT s.student_id, s.full_name, s.gender, s.current_grade, s.profile_image
+               {assessment_sql}
+        FROM students s
+        WHERE TRIM(s.student_id) = TRIM(%s)
+        LIMIT 1
+        """,
+        (sid,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return {
+            'student_id': row.get('student_id') or sid,
+            'full_name': (row.get('full_name') or '').strip(),
+            'gender': (row.get('gender') or '').strip(),
+            'current_grade': (row.get('current_grade') or '').strip(),
+            'profile_image': (row.get('profile_image') or '').strip(),
+            'assessment_number': (row.get('assessment_number') or '').strip(),
+        }
+    return {
+        'student_id': row[0] if len(row) > 0 else sid,
+        'full_name': (row[1] or '').strip() if len(row) > 1 else '',
+        'gender': (row[2] or '').strip() if len(row) > 2 else '',
+        'current_grade': (row[3] or '').strip() if len(row) > 3 else '',
+        'profile_image': (row[4] or '').strip() if len(row) > 4 else '',
+        'assessment_number': (row[5] or '').strip() if len(row) > 5 else '',
+    }
+
+
+def build_exam_application_slip_payload(cursor, application_id, student_id):
+    """Full slip data for print/download."""
+    app = fetch_student_exam_application(cursor, application_id, student_id)
+    if not app:
+        return None
+    if (app.get('status') or '').strip().lower() not in ('successful', 'approved', 'pending'):
+        return None
+    student = fetch_student_exam_slip_profile(cursor, student_id)
+    if not student:
+        return None
+    papers = fetch_exam_papers_for_application(cursor, app)
+    return {
+        'application': app,
+        'student': student,
+        'papers': papers,
+    }
+
+
 def fetch_student_exam_applications(cursor, student_id):
     cursor.execute(
         """
@@ -353,16 +575,21 @@ def fetch_student_exam_applications(cursor, student_id):
             row['applied_at_str'] = at.strftime('%d %b %Y, %H:%M')
         else:
             row['applied_at_str'] = str(at)[:16] if at else '—'
+        st = (row.get('status') or '').strip().lower()
+        row['status_label'] = 'Successful' if st in ('successful', 'approved') else (
+            'Pending' if st == 'pending' else (row.get('status') or 'pending').title()
+        )
+        row['can_download_slip'] = st in ('successful', 'approved', 'pending')
     return out
 
 
 def submit_student_exam_application(cursor, student_id, sitting_key, open_sittings, notes='', student_meta=None):
     sitting_key = (sitting_key or '').strip()
     if not sitting_key:
-        return False, 'Please select an exam to apply for.'
+        return False, 'Please select an exam to apply for.', None
     sitting = next((s for s in (open_sittings or []) if s.get('sitting_key') == sitting_key), None)
     if not sitting:
-        return False, 'That exam is no longer open for applications.'
+        return False, 'That exam is no longer open for applications.', None
     if student_meta and sitting.get('term_id'):
         apply_rules = sitting.get('apply_rules')
         if apply_rules is None:
@@ -376,8 +603,9 @@ def submit_student_exam_application(cursor, student_id, sitting_key, open_sittin
             apply_rules=apply_rules,
         )
         if apply_rules.get('any_enabled') and not eligibility.get('eligible'):
-            return False, eligibility_block_message(eligibility)
+            return False, eligibility_block_message(eligibility), None
     notes = (notes or '').strip()[:500]
+    ensure_student_exam_application_status_enum(cursor)
     cursor.execute(
         """
         SELECT id, status FROM student_exam_applications
@@ -389,13 +617,13 @@ def submit_student_exam_application(cursor, student_id, sitting_key, open_sittin
     existing = cursor.fetchone()
     if existing:
         st = existing.get('status') if isinstance(existing, dict) else existing[1]
-        if st in ('pending', 'approved'):
-            return False, 'You have already applied for this exam.'
+        if st in ('pending', 'approved', 'successful'):
+            return False, 'You have already applied for this exam.', None
         if st == 'withdrawn':
             cursor.execute(
                 """
                 UPDATE student_exam_applications
-                SET status = 'pending', notes = %s, applied_at = CURRENT_TIMESTAMP,
+                SET status = 'successful', notes = %s, applied_at = CURRENT_TIMESTAMP,
                     reviewed_at = NULL, reviewed_by = NULL, review_notes = NULL,
                     exam_id = %s, exam_name = %s, exam_type = %s,
                     academic_year_id = %s, term_id = %s, academic_level_id = %s,
@@ -417,7 +645,8 @@ def submit_student_exam_application(cursor, student_id, sitting_key, open_sittin
                     sitting_key,
                 ),
             )
-            return True, 'Your application has been resubmitted and is pending review.'
+            app_id = existing.get('id') if isinstance(existing, dict) else existing[0]
+            return True, 'Your exam application was successful. Download your registration slip below.', app_id
     else:
         cursor.execute(
             """
@@ -425,7 +654,7 @@ def submit_student_exam_application(cursor, student_id, sitting_key, open_sittin
                 student_id, sitting_key, exam_id, exam_name, exam_type,
                 academic_year_id, term_id, academic_level_id,
                 year_name, term_name, exam_date_str, notes, status
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'successful')
             """,
             (
                 student_id,
@@ -442,11 +671,15 @@ def submit_student_exam_application(cursor, student_id, sitting_key, open_sittin
                 notes or None,
             ),
         )
-    return True, 'Your exam application has been submitted. The examinations office will review it.'
+        app_id = cursor.lastrowid
+    return True, 'Your exam application was successful. Download your registration slip below.', app_id
 
 
 def merge_sittings_with_applications(open_sittings, applications):
-    applied_keys = {a.get('sitting_key') for a in (applications or []) if a.get('status') in ('pending', 'approved')}
+    applied_keys = {
+        a.get('sitting_key') for a in (applications or [])
+        if a.get('status') in ('pending', 'approved', 'successful')
+    }
     available = []
     for s in open_sittings or []:
         row = dict(s)

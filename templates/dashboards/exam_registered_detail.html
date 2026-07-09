@@ -2131,19 +2131,24 @@
     }
     function addBuildSupervisorsBySubjectForLevel(levelId) {
         const assigned = {};
+        const levelTeacherIds = new Set();
         (teacherSubjectPairs || []).forEach(function (p) {
             if (String(p.academic_level_id) !== String(levelId)) return;
+            if (p.teacher_id) levelTeacherIds.add(parseInt(p.teacher_id, 10));
             const k = String(p.subject_id);
             if (!assigned[k]) assigned[k] = new Set();
             assigned[k].add(parseInt(p.teacher_id, 10));
         });
+        const levelTeachers = (teachers || []).filter(function (t) {
+            return levelTeacherIds.has(parseInt(t.id, 10));
+        });
         const out = {};
         addGetSubjectsForLevel(levelId).forEach(function (s) {
             const excluded = assigned[String(s.id)] || new Set();
-            const pool = (teachers || []).filter(function (t) {
+            const pool = levelTeachers.filter(function (t) {
                 return !excluded.has(parseInt(t.id, 10));
             });
-            out[String(s.id)] = pool.length ? pool : (teachers || []).slice();
+            out[String(s.id)] = pool;
         });
         return out;
     }

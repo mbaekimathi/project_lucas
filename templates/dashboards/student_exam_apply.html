@@ -38,7 +38,7 @@
                 <ol class="list-decimal list-inside m-0 mt-1.5 space-y-1 text-xs text-blue-800/90 dark:text-blue-200/90 leading-relaxed">
                     <li>Select an exam from the list below.</li>
                     <li>Review the requirements for that exam and confirm you meet them.</li>
-                    <li>Submit your application and collect your registration slip from the examinations office once approved.</li>
+                    <li>Submit your application — on success, download your registration slip with your photo and exam timetable.</li>
                 </ol>
             </div>
         </div>
@@ -113,6 +113,7 @@
                             <th>Date</th>
                             <th>Submitted</th>
                             <th>Status</th>
+                            <th class="text-right">Slip</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -127,14 +128,31 @@
                             <td>
                                 {% set st = app.status|default('pending') %}
                                 <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide
-                                    {% if st == 'approved' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200
+                                    {% if st in ('approved', 'successful') %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200
                                     {% elif st == 'rejected' %}bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200
                                     {% elif st == 'withdrawn' %}bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400
                                     {% else %}bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200{% endif %}">
-                                    {{ st }}
+                                    {% if st == 'successful' %}
+                                    <i class="fas fa-circle-check text-[10px]" aria-hidden="true"></i>
+                                    {% endif %}
+                                    {{ app.status_label|default(st) }}
                                 </span>
                                 {% if app.review_notes and st == 'rejected' %}
                                 <p class="text-[11px] text-gray-500 dark:text-gray-400 m-0 mt-1">{{ app.review_notes }}</p>
+                                {% endif %}
+                            </td>
+                            <td class="text-right whitespace-nowrap">
+                                {% if app.can_download_slip and app.slip_url %}
+                                <a href="{{ app.slip_url }}?print=1"
+                                   target="_blank"
+                                   rel="noopener"
+                                   class="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition"
+                                   title="Print / download registration slip">
+                                    <i class="fas fa-print text-sm" aria-hidden="true"></i>
+                                    <span class="sr-only">Print registration slip</span>
+                                </a>
+                                {% else %}
+                                <span class="text-gray-300 dark:text-gray-600">—</span>
                                 {% endif %}
                             </td>
                         </tr>
@@ -151,7 +169,7 @@
     </section>
 
     <p class="text-[11px] text-gray-400 dark:text-gray-500 text-center max-w-2xl mx-auto">
-        Approved applications must be confirmed at the examinations office before sitting the exam.
+        Successful applications can be downloaded immediately. Present your slip with school ID at each exam session.
     </p>
 </div>
 

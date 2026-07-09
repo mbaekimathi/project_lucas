@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}Occupation - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/warden_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set stats = occupation_stats|default({}) %}
+{% set filter_opts = occupation_filter_options|default({}) %}
+{% set role_theme = 'warden' %}
+{% set role_hero_eyebrow = 'Warden' %}
+{% set role_hero_title = 'Occupation' %}
+{% set role_hero_subtitle = 'All in-session students and their hostel room assignments.' %}
+{% set role_hero_icon_class = 'fa-user-check' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="max-w-7xl mx-auto px-3 sm:px-0 pb-8 space-y-5 sm:space-y-6 portal-page-root role-page role-page--warden"
+     id="warden-hostel-occupations-page">
+
+    {% include 'dashboards/includes/portal_page_flash.html' %}
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
+            <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 m-0">Students</p>
+            <p class="text-xl font-bold text-slate-900 dark:text-white mt-1 mb-0 tabular-nums">{{ stats.total|default(0) }}</p>
+        </div>
+        <div class="rounded-xl border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/60 dark:bg-emerald-950/20 px-4 py-3">
+            <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300 m-0">Assigned</p>
+            <p class="text-xl font-bold text-emerald-800 dark:text-emerald-200 mt-1 mb-0 tabular-nums">{{ stats.assigned|default(0) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
+            <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 m-0">Unassigned</p>
+            <p class="text-xl font-bold text-slate-900 dark:text-white mt-1 mb-0 tabular-nums">{{ stats.unassigned|default(0) }}</p>
+        </div>
+        <div class="rounded-xl border border-indigo-200 dark:border-indigo-800/50 bg-indigo-50/60 dark:bg-indigo-950/20 px-4 py-3">
+            <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300 m-0">Occupied</p>
+            <p class="text-xl font-bold text-indigo-800 dark:text-indigo-200 mt-1 mb-0 tabular-nums">{{ stats.occupied|default(0) }}</p>
+        </div>
+        <div class="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/20 px-4 py-3">
+            <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300 m-0">Reserved</p>
+            <p class="text-xl font-bold text-amber-800 dark:text-amber-200 mt-1 mb-0 tabular-nums">{{ stats.reserved|default(0) }}</p>
+        </div>
+    </div>
+
+    <section class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden" aria-labelledby="warden-student-occupations-heading">
+        <div class="px-4 sm:px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <h2 id="warden-student-occupations-heading" class="text-lg font-bold text-slate-900 dark:text-white m-0">Students</h2>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5 m-0">
+                        <span id="js-occupation-visible-count">{{ student_occupations|length }}</span>
+                        of {{ student_occupations|length }} shown
+                    </p>
+                </div>
+                <button type="button" id="js-occupation-clear-filters"
+                        class="hidden text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline self-start sm:self-center">
+                    Clear filters
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                    <label for="js-occupation-filter-student" class="block text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Student</label>
+                    <input type="search" id="js-occupation-filter-student" autocomplete="off"
+                           placeholder="Name or admission no…"
+                           class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white" />
+                </div>
+                <div>
+                    <label for="js-occupation-filter-gender" class="block text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Gender</label>
+                    <select id="js-occupation-filter-gender"
+                            class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white">
+                        <option value="">All genders</option>
+                        {% for g in filter_opts.genders|default([]) %}
+                        <option value="{{ g|e }}">{{ g }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="js-occupation-filter-hostel" class="block text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Hostel</label>
+                    <select id="js-occupation-filter-hostel"
+                            class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white">
+                        <option value="">All hostels</option>
+                        <option value="__unassigned__">Unassigned</option>
+                        {% for h in filter_opts.hostels|default([]) %}
+                        <option value="{{ h|e }}">{{ h }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="js-occupation-filter-price" class="block text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Price (KES)</label>
+                    <select id="js-occupation-filter-price"
+                            class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white">
+                        <option value="">All prices</option>
+                        {% for p in filter_opts.prices|default([]) %}
+                        <option value="{{ p }}">{{ '{:,.2f}'.format(p) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        {% if student_occupations %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm" id="js-occupation-table">
+                <thead>
+                    <tr class="border-b border-slate-200/80 dark:border-slate-700/80 text-slate-500 dark:text-slate-400">
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Student name</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Admission no.</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Gender</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Academic level</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Hostel</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Location</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Room</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide text-right">Price (KES)</th>
+                    </tr>
+                </thead>
+                <tbody id="js-occupation-tbody">
+                    {% for row in student_occupations %}
+                    {% set display_price = row.room_price if row.room_price else row.total_amount %}
+                    <tr class="js-occupation-row border-b border-slate-200/60 dark:border-slate-700/60 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                        data-name="{{ row.full_name|lower|e }}"
+                        data-admission="{{ row.student_id|lower|e }}"
+                        data-gender="{{ row.gender|e }}"
+                        data-hostel="{{ row.hostel_name|e }}"
+                        data-unassigned="{{ '1' if not row.has_occupation else '0' }}"
+                        data-price="{{ display_price if row.has_occupation and display_price else '' }}">
+                        <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white whitespace-nowrap">{{ row.full_name or '—' }}</td>
+                        <td class="px-4 py-3 font-mono text-slate-700 dark:text-slate-200 whitespace-nowrap">{{ row.student_id or '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{{ row.gender or '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{{ row.current_grade or '—' }}</td>
+                        <td class="px-4 py-3 text-slate-800 dark:text-slate-100">
+                            {% if row.hostel_name %}{{ row.hostel_name }}{% else %}<span class="text-slate-400">—</span>{% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                            {% if row.hostel_location %}{{ row.hostel_location }}{% else %}<span class="text-slate-400">—</span>{% endif %}
+                        </td>
+                        <td class="px-4 py-3 font-mono font-semibold text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                            {% if row.room_reference %}{{ row.room_reference }}{% else %}<span class="text-slate-400 font-sans font-normal">—</span>{% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                            {% if row.has_occupation and display_price %}{{ '{:,.2f}'.format(display_price) }}{% else %}<span class="text-slate-400">—</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="js-occupation-empty" class="hidden px-4 sm:px-5 py-10 text-center">
+            <p class="text-sm text-slate-500 dark:text-slate-400 m-0">No students match the current filters.</p>
+        </div>
+        {% else %}
+        <div class="px-4 sm:px-5 py-10 text-center">
+            <p class="text-sm text-slate-500 dark:text-slate-400 m-0">No in-session students found.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+
+{% if student_occupations %}
+<script>
+(function () {
+  'use strict';
+
+  var studentInput = document.getElementById('js-occupation-filter-student');
+  var genderSelect = document.getElementById('js-occupation-filter-gender');
+  var hostelSelect = document.getElementById('js-occupation-filter-hostel');
+  var priceSelect = document.getElementById('js-occupation-filter-price');
+  var clearBtn = document.getElementById('js-occupation-clear-filters');
+  var countEl = document.getElementById('js-occupation-visible-count');
+  var emptyEl = document.getElementById('js-occupation-empty');
+  var tableEl = document.getElementById('js-occupation-table');
+  var rows = document.querySelectorAll('.js-occupation-row');
+  var total = rows.length;
+
+  function norm(val) {
+    return String(val || '').trim().toLowerCase();
+  }
+
+  function hasActiveFilters() {
+    return !!(norm(studentInput && studentInput.value) ||
+      (genderSelect && genderSelect.value) ||
+      (hostelSelect && hostelSelect.value) ||
+      (priceSelect && priceSelect.value));
+  }
+
+  function applyFilters() {
+    var q = norm(studentInput && studentInput.value);
+    var gender = genderSelect ? genderSelect.value : '';
+    var hostel = hostelSelect ? hostelSelect.value : '';
+    var price = priceSelect ? priceSelect.value : '';
+    var visible = 0;
+
+    rows.forEach(function (row) {
+      var name = row.getAttribute('data-name') || '';
+      var admission = row.getAttribute('data-admission') || '';
+      var rowGender = row.getAttribute('data-gender') || '';
+      var rowHostel = row.getAttribute('data-hostel') || '';
+      var unassigned = row.getAttribute('data-unassigned') === '1';
+      var rowPrice = row.getAttribute('data-price') || '';
+
+      var match = true;
+      if (q && name.indexOf(q) === -1 && admission.indexOf(q) === -1) match = false;
+      if (gender && rowGender !== gender) match = false;
+      if (hostel === '__unassigned__' && !unassigned) match = false;
+      if (hostel && hostel !== '__unassigned__' && rowHostel !== hostel) match = false;
+      if (price && rowPrice !== price) match = false;
+
+      row.classList.toggle('hidden', !match);
+      if (match) visible += 1;
+    });
+
+    if (countEl) countEl.textContent = String(visible);
+    if (emptyEl) emptyEl.classList.toggle('hidden', visible > 0);
+    if (tableEl) tableEl.classList.toggle('hidden', visible === 0);
+    if (clearBtn) clearBtn.classList.toggle('hidden', !hasActiveFilters());
+  }
+
+  function clearFilters() {
+    if (studentInput) studentInput.value = '';
+    if (genderSelect) genderSelect.value = '';
+    if (hostelSelect) hostelSelect.value = '';
+    if (priceSelect) priceSelect.value = '';
+    applyFilters();
+  }
+
+  if (studentInput) studentInput.addEventListener('input', applyFilters);
+  if (genderSelect) genderSelect.addEventListener('change', applyFilters);
+  if (hostelSelect) hostelSelect.addEventListener('change', applyFilters);
+  if (priceSelect) priceSelect.addEventListener('change', applyFilters);
+  if (clearBtn) clearBtn.addEventListener('click', clearFilters);
+
+  applyFilters();
+})();
+</script>
+{% endif %}
+{% endblock %}

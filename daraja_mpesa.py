@@ -19,7 +19,12 @@ import requests
 DARAJA_SANDBOX_BASE = 'https://sandbox.safaricom.co.ke'
 DARAJA_PRODUCTION_BASE = 'https://api.safaricom.co.ke'
 
-# Keys that must never be read from the database (env only).
+
+def _is_hosted_runtime() -> bool:
+    return (os.environ.get('IS_HOSTED') or '').strip().lower() in ('true', '1', 'yes')
+
+
+# Keys loaded from .env on local dev; hosted may override from integration_settings.
 _DARAJA_SECRET_KEYS = frozenset({
     'consumer_key', 'consumer_secret', 'passkey', 'shortcode', 'till_number',
     'initiator_name', 'security_credential', 'b2c_shortcode',
@@ -176,22 +181,32 @@ def merge_daraja_settings(stored: Optional[dict]) -> dict:
     """
     Effective runtime settings: .env defaults with integration_settings overrides,
     plus enabled flag and school M-Pesa account profiles from DB.
+
+    On local dev (IS_HOSTED=false), STK credentials and environment always come from
+    .env.local / .env so sandbox keys are not replaced by production values saved in DB.
     """
     ui = stored if isinstance(stored, dict) else {}
     merged = load_daraja_config_from_env()
     merged['enabled'] = bool(ui.get('enabled'))
     merged['mpesa_accounts'] = normalize_mpesa_account_presets(ui.get('mpesa_accounts'))
-    for key in _DARAJA_SECRET_KEYS:
-        db_val = (ui.get(key) or '').strip()
-        if db_val:
-            merged[key] = db_val
-    for key in ('stk_callback_url', 'callback_base_url'):
-        db_val = (ui.get(key) or '').strip()
-        if db_val:
-            merged[key] = db_val
-    db_env = (ui.get('environment') or '').strip().lower()
-    if db_env in ('sandbox', 'production'):
-        merged['environment'] = db_env
+    if _is_hosted_runtime():
+        for key in _DARAJA_SECRET_KEYS:
+            db_val = (ui.get(key) or '').strip()
+            if db_val:
+                merged[key] = db_val
+        for key in ('stk_callback_url', 'callback_base_url'):
+            db_val = (ui.get(key) or '').strip()
+            if db_val:
+                merged[key] = db_val
+        db_env = (ui.get('environment') or '').strip().lower()
+        if db_env in ('sandbox', 'production'):
+            merged['environment'] = db_env
+    else:
+        for key in ('stk_callback_url', 'callback_base_url'):
+            env_val = (merged.get(key) or '').strip()
+            db_val = (ui.get(key) or '').strip()
+            if not env_val and db_val:
+                merged[key] = db_val
     return merged
 
 
@@ -355,7 +370,16 @@ def get_access_token(settings: dict) -> tuple[Optional[str], Optional[str]]:
         r = requests.get(url, auth=(key, secret), timeout=30)
         data = r.json() if r.content else {}
         if r.status_code != 200:
-            return None, data.get('errorMessage') or data.get('error_description') or f'OAuth failed ({r.status_code}).'
+            err = data.get('errorMessage') or data.get('error_description') or f'OAuth failed ({r.status_code}).'
+            env = (settings.get('environment') or 'sandbox').lower()
+            if r.status_code == 400 and not _is_hosted_runtime():
+                err += (
+                    ' Local dev uses .env.local Daraja credentials (sandbox). '
+                    'If this persists, verify DARAJA_CONSUMER_KEY and DARAJA_CONSUMER_SECRET in .env.local.'
+                )
+            elif r.status_code == 400:
+                err += f' Check Daraja credentials for the {env} environment in Integration Settings.'
+            return None, err
         token = data.get('access_token')
         if not token:
             return None, 'No access token returned from Daraja.'

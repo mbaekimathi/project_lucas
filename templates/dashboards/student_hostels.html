@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+
+{% block title %}Hostels - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+{% include 'dashboards/includes/student_portal_head.html' %}
+<style>
+.sh-hostel-card { transition: box-shadow .2s, border-color .2s; }
+.sh-hostel-card:hover { box-shadow: 0 8px 24px rgba(15,23,42,.08); }
+.sh-hostel-card.is-expanded { border-color: rgb(99 102 241 / 0.45); box-shadow: 0 8px 24px rgba(99,102,241,.08); }
+.sh-room-row.is-taken { opacity: .55; }
+.sh-status--reserved { background: #fef3c7; color: #92400e; }
+.dark .sh-status--reserved { background: rgba(146,64,14,.25); color: #fcd34d; }
+.sh-status--occupied { background: #d1fae5; color: #065f46; }
+.dark .sh-status--occupied { background: rgba(6,95,70,.25); color: #6ee7b7; }
+.sh-hostel-rooms-panel { display: none; }
+.sh-hostel-card.is-expanded .sh-hostel-rooms-panel { display: block; }
+.sh-hostel-toggle-icon { transition: transform .2s ease; }
+.sh-hostel-card.is-expanded .sh-hostel-toggle-icon { transform: rotate(180deg); }
+</style>
+{% endblock %}
+
+{% block sidebar_content %}
+{% set student_nav_scope = 'all' %}
+{% include 'dashboards/includes/student_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set hostel_mpesa_allowed = any_hostel_mpesa_enabled|default(false) and mpesa_daraja_enabled|default(false) %}
+{% set manual_allocation_enabled = any_manual_allocation_enabled|default(false) %}
+{% set booking_mpesa_allowed = my_booking and my_booking.mpesa_payment_allowed|default(false) and mpesa_daraja_enabled|default(false) %}
+{% set show_hostel_mpesa_modal = hostel_mpesa_allowed or booking_mpesa_allowed %}
+<div class="sp-portal p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto portal-page-root role-page role-page--student space-y-5 sm:space-y-6"
+     id="student-hostels-page"
+     data-student-id="{{ student.student_id|e }}"
+     data-student-name="{{ student.full_name|e }}"
+     data-allocate-url="{{ hostel_allocate_url|default(student_dash_url('hostels/allocate'), true) }}"
+     data-mpesa-stk-url="{{ hostel_mpesa_stk_url|default(student_dash_url('hostels/mpesa/stk-push'), true) }}"
+     data-mpesa-confirm-url="{{ hostel_mpesa_confirm_url|default(student_dash_url('hostels/mpesa/confirm-payment'), true) }}"
+     data-mpesa-status-url-base="{{ hostel_mpesa_status_url_base|default(student_dash_url('hostels/mpesa/status') + '/', true) }}">
+
+    {% set sp_tech_hint = 'Select a student to view their hostel information' %}
+    {% set sp_tech_action = student_dash_url('hostels') %}
+    {% set sp_selected_id = parent_student_id %}
+    {% include 'dashboards/includes/student_portal_technician.html' %}
+    <a href="{{ student_dash_url() }}" class="sp-back"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to dashboard</a>
+
+    {% set role_theme = 'student' %}
+    {% set role_hero_eyebrow = 'Student portal' %}
+    {% set role_hero_title = 'Hostels' %}
+    {% set role_hero_subtitle = student.full_name ~ ' · ' ~ student.student_id ~ ' — browse available hostels and book your room.' %}
+    {% set role_hero_icon_class = 'fa-bed' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    <div class="rounded-xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50 dark:bg-indigo-950/30 px-4 py-3">
+        <div class="flex items-start gap-3">
+            <span class="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 flex items-center justify-center shrink-0">
+                <i class="fas fa-circle-info" aria-hidden="true"></i>
+            </span>
+            <div class="text-sm text-indigo-900 dark:text-indigo-100">
+                <p class="font-semibold m-0">How booking works</p>
+                <ol class="list-decimal list-inside m-0 mt-1.5 space-y-1 text-xs text-indigo-800/90 dark:text-indigo-200/90 leading-relaxed">
+                    <li>Click a hostel to view its rooms and prices.</li>
+                    {% if hostel_mpesa_allowed and manual_allocation_enabled %}
+                    <li>Some hostels accept <strong>online payment</strong> (full amount, reservation, or installments). Others allow <strong>manual registration</strong> without payment.</li>
+                    <li>After paying a reservation online, complete balance or installments to become <strong>OCCUPIED</strong>. Manual registration becomes <strong>OCCUPIED</strong> immediately.</li>
+                    {% elif hostel_mpesa_allowed %}
+                    <li>Payment options depend on each hostel — you may pay the <strong>full amount</strong>, a <strong>reservation</strong> to hold your room, or <strong>installments</strong> where enabled.</li>
+                    <li>After a reservation, pay the remaining balance or installments to become <strong>OCCUPIED</strong>.</li>
+                    {% elif manual_allocation_enabled %}
+                    <li>Pick an available room and tap <strong>Register for room</strong> — no online payment is required.</li>
+                    <li>Your status becomes <strong>OCCUPIED</strong> immediately after registration.</li>
+                    {% else %}
+                    <li>Hostel booking is not open yet. Contact the boarding office.</li>
+                    {% endif %}
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    {% if my_booking %}
+    {% set booking_manual = my_booking.manual_allocation_allowed|default(false) %}
+    <section class="sp-panel overflow-hidden" aria-labelledby="my-hostel-booking-heading">
+        <header class="sp-panel__head">
+            <h2 id="my-hostel-booking-heading" class="sp-panel__title m-0">
+                <span class="sp-panel__title-icon sp-panel__title-icon--exams"><i class="fas fa-key" aria-hidden="true"></i></span>
+                My booking
+            </h2>
+        </header>
+        <div class="sp-panel__body">
+            <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+                <div class="flex gap-4">
+                    {% if my_booking.hostel_photo_path %}
+                    <img src="{{ url_for('static', filename=my_booking.hostel_photo_path) }}"
+                         alt="" class="w-24 h-24 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0" />
+                    {% else %}
+                    <div class="w-24 h-24 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                        <i class="fas fa-bed text-2xl text-slate-400"></i>
+                    </div>
+                    {% endif %}
+                    <div class="min-w-0">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 m-0">{{ my_booking.hostel_category }}</p>
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white m-0 mt-0.5">{{ my_booking.hostel_name }}</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 m-0 mt-1">
+                            <i class="fas fa-map-marker-alt mr-1 text-slate-400"></i>{{ my_booking.hostel_location }}
+                        </p>
+                        <p class="text-sm text-gray-700 dark:text-gray-300 m-0 mt-2">
+                            Room <span class="font-mono font-semibold">{{ my_booking.room_reference }}</span>
+                            · KES {{ '{:,.2f}'.format(my_booking.total_amount) }}
+                        </p>
+                        {% set bst = my_booking.status %}
+                        <span class="inline-flex mt-2 items-center rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide sh-status--{{ 'reserved' if bst == 'reserved' else 'occupied' }}">
+                            {{ booking_status_label(bst) }}
+                        </span>
+                    </div>
+                </div>
+                <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/40 p-4 space-y-3 min-w-[220px]">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-600 dark:text-slate-400">Total</span>
+                        <span class="font-semibold tabular-nums">KES {{ '{:,.2f}'.format(my_booking.total_amount) }}</span>
+                    </div>
+                    {% if not booking_manual %}
+                    {% set res_pct = my_booking.payment_settings.reservation_pct|default(my_booking.reservation_pct|default(25)) %}
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-600 dark:text-slate-400">Reservation ({{ '{:g}'.format(res_pct) }}%)</span>
+                        <span class="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                            KES {{ '{:,.2f}'.format(my_booking.deposit_amount) }}
+                            {% if my_booking.deposit_paid_at and my_booking.deposit_amount > 0 %}<i class="fas fa-check-circle ml-1" title="Paid"></i>{% endif %}
+                        </span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-600 dark:text-slate-400">Balance</span>
+                        <span class="font-semibold tabular-nums {% if my_booking.balance_paid_at %}text-emerald-600 dark:text-emerald-400{% endif %}">
+                            KES {{ '{:,.2f}'.format(my_booking.balance_amount) }}
+                            {% if my_booking.balance_paid_at %}<i class="fas fa-check-circle ml-1" title="Paid"></i>{% endif %}
+                        </span>
+                    </div>
+                    {% if my_booking.installment_plan %}
+                    <div class="pt-1 space-y-1">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 m-0">Installments</p>
+                        {% for inst in my_booking.installment_plan %}
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-600 dark:text-slate-400">#{{ inst.no }} ({{ '{:g}'.format(inst.pct) }}%)</span>
+                            <span class="font-semibold tabular-nums {% if inst.paid %}text-emerald-600 dark:text-emerald-400{% endif %}">
+                                KES {{ '{:,.2f}'.format(inst.amount) }}
+                                {% if inst.paid %}<i class="fas fa-check-circle ml-1"></i>{% endif %}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <p class="text-xs text-slate-500 dark:text-slate-400 m-0">Registered without online payment.</p>
+                    {% endif %}
+                    <div class="pt-2 flex flex-col gap-2">
+                        {% if my_booking.status == 'reserved' and my_booking.mpesa_payment_allowed and mpesa_daraja_enabled|default(false) and my_booking.next_payment_amount %}
+                        <button type="button"
+                                class="js-student-hostel-mpesa-open w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white"
+                                data-mpesa-purpose="{{ my_booking.next_payment_purpose or 'hostel_balance' }}"
+                                data-mpesa-student-id="{{ student.student_id }}"
+                                data-mpesa-student-name="{{ student.full_name|e }}"
+                                data-mpesa-amount="{{ my_booking.next_payment_amount }}"
+                                data-mpesa-booking-id="{{ my_booking.id }}">
+                            <i class="fas fa-mobile-alt"></i> Pay {{ my_booking.next_payment_label or 'balance' }}
+                        </button>
+                        {% elif my_booking.status == 'occupied' %}
+                        <p class="text-xs text-center text-emerald-700 dark:text-emerald-300 m-0">
+                            <i class="fas fa-check-circle mr-1"></i>
+                            {% if booking_manual %}You are registered and checked in to this room.{% else %}Fully paid — you are checked in to this room.{% endif %}
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="sp-panel overflow-hidden" aria-labelledby="available-hostels-heading">
+        <header class="sp-panel__head">
+            <h2 id="available-hostels-heading" class="sp-panel__title m-0">
+                <span class="sp-panel__title-icon sp-panel__title-icon--exams"><i class="fas fa-building" aria-hidden="true"></i></span>
+                Available hostels
+            </h2>
+        </header>
+        <div class="sp-panel__body">
+            {% if not available_hostels %}
+            <div class="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-slate-900/30 p-8 text-center">
+                <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
+                    <i class="fas fa-bed text-2xl" aria-hidden="true"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white m-0">No hostels available yet</h3>
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-md mx-auto m-0">
+                    The warden has not registered any active hostels. Check back later or contact the boarding office.
+                </p>
+            </div>
+            {% else %}
+            <div class="space-y-4" id="hostels-list">
+                {% for hostel in available_hostels %}
+                <article class="sh-hostel-card rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900/50"
+                         data-hostel-id="{{ hostel.id }}">
+                    <button type="button"
+                            class="js-hostel-toggle w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-inset"
+                            aria-expanded="false"
+                            aria-controls="hostel-rooms-{{ hostel.id }}">
+                        <div class="grid md:grid-cols-[140px_minmax(0,1fr)_auto] items-stretch">
+                            {% if hostel.photo_path %}
+                            <img src="{{ url_for('static', filename=hostel.photo_path) }}"
+                                 alt=""
+                                 class="w-full h-28 md:h-full md:min-h-[7rem] object-cover pointer-events-none" />
+                            {% else %}
+                            <div class="w-full h-28 md:min-h-[7rem] bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 flex items-center justify-center pointer-events-none">
+                                <i class="fas fa-bed text-3xl text-slate-400"></i>
+                            </div>
+                            {% endif %}
+                            <div class="p-4 sm:p-5 min-w-0 flex flex-col justify-center">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">{{ hostel.category }}</span>
+                                <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white m-0 mt-0.5">{{ hostel.name }}</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400 m-0 mt-1 truncate">
+                                    <i class="fas fa-map-marker-alt mr-1 text-slate-400"></i>{{ hostel.location }}
+                                </p>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 m-0 mt-2">
+                                    {{ hostel.room_count }} room{{ 's' if hostel.room_count != 1 else '' }}
+                                    · {{ hostel.available_room_count }} available
+                                </p>
+                            </div>
+                            <div class="hidden sm:flex flex-col items-center justify-center gap-1 px-4 border-l border-slate-100 dark:border-slate-800 text-indigo-600 dark:text-indigo-400">
+                                <i class="fas fa-chevron-down sh-hostel-toggle-icon text-sm" aria-hidden="true"></i>
+                                <span class="text-[10px] font-semibold uppercase tracking-wide js-hostel-toggle-label">View rooms</span>
+                            </div>
+                        </div>
+                    </button>
+
+                    <div id="hostel-rooms-{{ hostel.id }}" class="sh-hostel-rooms-panel border-t border-slate-200 dark:border-slate-700">
+                        <div class="p-4 sm:p-5 pt-3 sm:pt-4">
+                            {% if hostel.description %}
+                            <p class="text-sm text-gray-600 dark:text-gray-400 m-0 mb-4 leading-relaxed">{{ hostel.description }}</p>
+                            {% endif %}
+
+                            {% if hostel.rooms %}
+                            <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                                <table class="w-full text-sm">
+                                    <thead class="bg-slate-50 dark:bg-slate-800/80 text-left text-xs uppercase tracking-wide text-slate-500">
+                                        <tr>
+                                            <th class="px-3 py-2 font-semibold">Room</th>
+                                            <th class="px-3 py-2 font-semibold">Occupants</th>
+                                            <th class="px-3 py-2 font-semibold">Price (KES)</th>
+                                            {% if hostel.payments_enabled|default(true) and hostel.allow_installment_payment|default(false) and not hostel.allow_full_payment|default(true) %}
+                                            <th class="px-3 py-2 font-semibold">Installments</th>
+                                            {% elif hostel.payments_enabled|default(true) %}
+                                            <th class="px-3 py-2 font-semibold">Reservation</th>
+                                            {% endif %}
+                                            <th class="px-3 py-2 font-semibold">Status</th>
+                                            <th class="px-3 py-2 font-semibold text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                                        {% for room in hostel.rooms %}
+                                        <tr class="sh-room-row {% if not room.is_available %}is-taken{% endif %}">
+                                            <td class="px-3 py-2.5 font-mono font-semibold text-gray-900 dark:text-white">{{ room.reference_number }}</td>
+                                            <td class="px-3 py-2.5 text-gray-600 dark:text-gray-400">{{ room.occupant_count }}</td>
+                                            <td class="px-3 py-2.5 tabular-nums font-medium">{{ '{:,.2f}'.format(room.price) }}</td>
+                                            {% if hostel.payments_enabled|default(true) and hostel.allow_installment_payment|default(false) and not hostel.allow_full_payment|default(true) %}
+                                            <td class="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-400">
+                                                {% if room.installments %}
+                                                {% for inst in room.installments %}
+                                                <span class="block tabular-nums">#{{ inst.no }}: {{ '{:,.2f}'.format(inst.amount) }} <span class="text-slate-400">({{ '{:g}'.format(inst.pct) }}%)</span></span>
+                                                {% endfor %}
+                                                {% else %}—{% endif %}
+                                            </td>
+                                            {% elif hostel.payments_enabled|default(true) %}
+                                            <td class="px-3 py-2.5 tabular-nums text-indigo-700 dark:text-indigo-300 font-medium">
+                                                {% if room.allow_reservation|default(hostel.allow_reservation|default(true)) %}
+                                                {{ '{:,.2f}'.format(room.deposit_amount) }}
+                                                <span class="text-[10px] text-slate-400">({{ '{:g}'.format(room.reservation_pct|default(hostel.reservation_pct|default(25))) }}%)</span>
+                                                {% else %}—{% endif %}
+                                            </td>
+                                            {% endif %}
+                                            <td class="px-3 py-2.5">
+                                                {% if room.is_available %}
+                                                <span class="text-emerald-600 dark:text-emerald-400 text-xs font-semibold">Available</span>
+                                                {% else %}
+                                                <span class="text-slate-500 text-xs font-semibold">Taken</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="px-3 py-2.5 text-right">
+                                                {% if room.is_available and not my_booking and hostel.mpesa_payment_allowed and mpesa_daraja_enabled|default(false) %}
+                                                {% set room_full = room.allow_full_payment|default(hostel.allow_full_payment|default(false)) %}
+                                                {% set room_inst = room.allow_installment_payment|default(hostel.allow_installment_payment|default(false)) %}
+                                                {% set room_res = room.allow_reservation|default(hostel.allow_reservation|default(true)) %}
+                                                {% set first_inst = (room.installments or [])[0] if room.installments else none %}
+                                                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-1.5">
+                                                    {% if room_full %}
+                                                    <button type="button"
+                                                            class="js-student-hostel-mpesa-open inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1.5 text-[11px] font-semibold text-white whitespace-nowrap"
+                                                            data-mpesa-purpose="hostel_full"
+                                                            data-mpesa-title="Pay full hostel amount"
+                                                            data-mpesa-student-id="{{ student.student_id }}"
+                                                            data-mpesa-student-name="{{ student.full_name|e }}"
+                                                            data-mpesa-room-id="{{ room.id }}"
+                                                            data-mpesa-room-ref="{{ room.reference_number }}"
+                                                            data-mpesa-hostel-name="{{ hostel.name|e }}"
+                                                            data-mpesa-amount="{{ room.price }}">
+                                                        <i class="fas fa-mobile-alt"></i> Pay full
+                                                    </button>
+                                                    {% elif room_inst %}
+                                                    {% if room_res %}
+                                                    <button type="button"
+                                                            class="js-student-hostel-mpesa-open inline-flex items-center justify-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-2.5 py-1.5 text-[11px] font-semibold text-white whitespace-nowrap"
+                                                            data-mpesa-purpose="hostel_deposit"
+                                                            data-mpesa-title="Pay reservation"
+                                                            data-mpesa-student-id="{{ student.student_id }}"
+                                                            data-mpesa-student-name="{{ student.full_name|e }}"
+                                                            data-mpesa-room-id="{{ room.id }}"
+                                                            data-mpesa-room-ref="{{ room.reference_number }}"
+                                                            data-mpesa-hostel-name="{{ hostel.name|e }}"
+                                                            data-mpesa-amount="{{ room.deposit_amount }}">
+                                                        <i class="fas fa-mobile-alt"></i> Reserve ({{ '{:g}'.format(room.reservation_pct|default(hostel.reservation_pct|default(25))) }}%)
+                                                    </button>
+                                                    {% else %}
+                                                    <button type="button"
+                                                            class="js-student-hostel-mpesa-open inline-flex items-center justify-center gap-1 rounded-lg bg-violet-600 hover:bg-violet-700 px-2.5 py-1.5 text-[11px] font-semibold text-white whitespace-nowrap"
+                                                            data-mpesa-purpose="hostel_deposit"
+                                                            data-mpesa-title="Pay installment 1"
+                                                            data-mpesa-student-id="{{ student.student_id }}"
+                                                            data-mpesa-student-name="{{ student.full_name|e }}"
+                                                            data-mpesa-room-id="{{ room.id }}"
+                                                            data-mpesa-room-ref="{{ room.reference_number }}"
+                                                            data-mpesa-hostel-name="{{ hostel.name|e }}"
+                                                            data-mpesa-amount="{{ first_inst.amount if first_inst else room.deposit_amount }}">
+                                                        <i class="fas fa-mobile-alt"></i> Pay installment 1
+                                                    </button>
+                                                    {% endif %}
+                                                    {% if room.installments|length > 1 %}
+                                                    <span class="text-[10px] text-slate-400 text-right sm:text-left">{{ room.installments|length }} installments after{% if room_res %} reservation{% endif %}</span>
+                                                    {% endif %}
+                                                    {% endif %}
+                                                </div>
+                                                {% elif room.is_available and not my_booking and hostel.manual_allocation_allowed|default(false) %}
+                                                <button type="button"
+                                                        class="js-student-hostel-allocate inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1.5 text-[11px] font-semibold text-white whitespace-nowrap"
+                                                        data-room-id="{{ room.id }}"
+                                                        data-room-ref="{{ room.reference_number }}"
+                                                        data-hostel-name="{{ hostel.name|e }}">
+                                                    <i class="fas fa-user-check"></i> Register for room
+                                                </button>
+                                                {% elif room.is_available and not my_booking and not hostel.mpesa_payment_allowed and not hostel.manual_allocation_allowed|default(false) %}
+                                                <span class="text-xs text-slate-400">Unavailable</span>
+                                                {% else %}
+                                                <span class="text-xs text-slate-400">—</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% else %}
+                            <p class="text-sm text-slate-500 dark:text-slate-400 m-0">No rooms listed for this hostel.</p>
+                            {% endif %}
+
+                            <button type="button"
+                                    class="js-hostel-toggle mt-4 sm:hidden w-full inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                <i class="fas fa-chevron-up sh-hostel-toggle-icon" aria-hidden="true"></i>
+                                <span class="js-hostel-toggle-label">Hide rooms</span>
+                            </button>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% if my_booking and my_booking.status == 'reserved' and not my_booking.manual_allocation_allowed|default(false) %}
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-4 m-0">
+                You already have an active booking. Pay the balance to complete your check-in.
+            </p>
+            {% endif %}
+            {% endif %}
+        </div>
+    </section>
+
+    {% if show_hostel_mpesa_modal %}
+    {% include 'dashboards/includes/student_hostel_mpesa.html' %}
+    {% endif %}
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var page = document.getElementById('student-hostels-page');
+  var allocateUrl = page ? (page.getAttribute('data-allocate-url') || '') : '';
+  var studentId = page ? (page.getAttribute('data-student-id') || '') : '';
+
+  function setHostelExpanded(card, expanded) {
+    if (!card) return;
+    card.classList.toggle('is-expanded', expanded);
+    var toggles = card.querySelectorAll('.js-hostel-toggle');
+    toggles.forEach(function (btn) {
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    });
+    card.querySelectorAll('.js-hostel-toggle-label').forEach(function (el) {
+      el.textContent = expanded ? 'Hide rooms' : 'View rooms';
+    });
+  }
+
+  document.addEventListener('click', function (event) {
+    var toggle = event.target.closest('.js-hostel-toggle');
+    if (!toggle) return;
+
+    var card = toggle.closest('.sh-hostel-card');
+    if (!card) return;
+
+    var willExpand = !card.classList.contains('is-expanded');
+
+    document.querySelectorAll('.sh-hostel-card.is-expanded').forEach(function (other) {
+      if (other !== card) setHostelExpanded(other, false);
+    });
+
+    setHostelExpanded(card, willExpand);
+  });
+
+  document.addEventListener('click', function (event) {
+    var btn = event.target.closest('.js-student-hostel-allocate');
+    if (!btn || btn.disabled) return;
+
+    var roomId = btn.getAttribute('data-room-id');
+    var roomRef = btn.getAttribute('data-room-ref') || 'this room';
+    var hostelName = btn.getAttribute('data-hostel-name') || 'the hostel';
+    if (!roomId || !allocateUrl || !studentId) return;
+
+    var label = btn.innerHTML;
+    if (!window.confirm('Register for room ' + roomRef + ' at ' + hostelName + '? You will be marked OCCUPIED.')) {
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registering…';
+
+    fetch(allocateUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        student_id: studentId,
+        hostel_room_id: roomId,
+      }),
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok && data && data.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          window.location.reload();
+          return;
+        }
+        window.alert((result.data && result.data.message) || 'Could not register for this room.');
+        btn.disabled = false;
+        btn.innerHTML = label;
+      })
+      .catch(function () {
+        window.alert('Could not register for this room. Try again.');
+        btn.disabled = false;
+        btn.innerHTML = label;
+      });
+  });
+})();
+</script>
+{% endblock %}

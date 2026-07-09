@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exam registration — {{ application.reference_code }} — {{ student.full_name }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    {% include 'dashboards/includes/accounts_print_letterhead_styles.html' %}
+    <style>
+        :root {
+            --ink: #0f172a;
+            --muted: #64748b;
+            --line: #e2e8f0;
+            --brand: #4f46e5;
+            --brand-dark: #3730a3;
+            --brand-soft: #eef2ff;
+            --ok: #059669;
+            --ok-soft: #ecfdf5;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            color: var(--ink);
+            background: linear-gradient(160deg, #eef2ff 0%, #f8fafc 42%, #f1f5f9 100%);
+            min-height: 100vh;
+            padding: 24px 16px 48px;
+        }
+        .exam-slip-toolbar {
+            max-width: 820px;
+            margin: 0 auto 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .exam-slip-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: none;
+            border-radius: 12px;
+            padding: 10px 16px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .exam-slip-btn:hover { transform: translateY(-1px); }
+        .exam-slip-btn--primary {
+            background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+            color: #fff;
+            box-shadow: 0 8px 24px rgba(79, 70, 229, 0.28);
+        }
+        .exam-slip-btn--ghost {
+            background: #fff;
+            color: var(--ink);
+            border: 1px solid var(--line);
+        }
+        #exam-slip-print-wrap {
+            max-width: 820px;
+            margin: 0 auto;
+        }
+        .exam-slip-sheet {
+            background: #fff;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(15, 23, 42, 0.04);
+        }
+        .exam-slip-sheet__body { padding: 24px 28px 28px; }
+        .exam-slip-profile {
+            display: grid;
+            grid-template-columns: 100px 1fr;
+            gap: 16px;
+            align-items: start;
+            margin-bottom: 18px;
+        }
+        .exam-slip-photo {
+            width: 100px;
+            height: 118px;
+            border-radius: 14px;
+            overflow: hidden;
+            background: #f8fafc;
+            border: 1px solid var(--line);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .exam-slip-photo img { width: 100%; height: 100%; object-fit: cover; }
+        .exam-slip-photo__placeholder { font-size: 2rem; color: #a5b4fc; }
+        .exam-slip-profile-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 12px;
+            margin-bottom: 4px;
+        }
+        .exam-slip-profile h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+        .exam-slip-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: var(--ok-soft);
+            border: 1px solid #a7f3d0;
+            color: #047857;
+            font-size: 0.65rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .exam-slip-status i { font-size: 0.6rem; }
+        .exam-slip-profile > div > p {
+            margin: 0 0 10px;
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+        .exam-slip-meta {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+        }
+        .exam-slip-meta__card {
+            padding: 7px 9px;
+            border-radius: 8px;
+            background: #f8fafc;
+            border: 1px solid var(--line);
+        }
+        .exam-slip-meta__label {
+            display: block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+        .exam-slip-meta__value {
+            font-size: 0.875rem;
+            font-weight: 700;
+            color: var(--ink);
+            word-break: break-word;
+        }
+        .exam-slip-section-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 0 8px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--brand-dark);
+        }
+        .exam-slip-section-title i {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            background: var(--brand-soft);
+            color: var(--brand);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+        }
+        .exam-slip-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid var(--line);
+        }
+        .exam-slip-table thead th {
+            background: #f8fafc;
+            color: #475569;
+            font-size: 0.62rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            text-align: left;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--line);
+        }
+        .exam-slip-table tbody td {
+            padding: 5px 8px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 0.78rem;
+            vertical-align: middle;
+            line-height: 1.25;
+        }
+        .exam-slip-table tbody tr:last-child td { border-bottom: none; }
+        .exam-slip-table tbody tr:nth-child(even) td { background: #fcfdff; }
+        .exam-slip-subject { font-weight: 700; color: var(--ink); }
+        .exam-slip-code {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+        .exam-slip-venue {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--ink);
+        }
+        .exam-slip-empty {
+            padding: 16px;
+            text-align: center;
+            border: 1px dashed var(--line);
+            border-radius: 8px;
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+        .exam-slip-foot {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--line);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 0.68rem;
+            color: var(--muted);
+        }
+        .exam-slip-foot strong { color: var(--ink); }
+
+        @media (max-width: 640px) {
+            .exam-slip-sheet__body { padding-left: 16px; padding-right: 16px; }
+            .exam-slip-profile { grid-template-columns: 1fr; }
+            .exam-slip-meta { grid-template-columns: 1fr 1fr; }
+        }
+
+        /* Single-page print layout */
+        @page {
+            size: A4 portrait;
+            margin: 8mm 10mm 12mm;
+        }
+        html.acr-accounts-print.exam-slip-print-doc,
+        html.acr-accounts-print-measure.exam-slip-print-doc {
+            background: #fff !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc body,
+        html.acr-accounts-print-measure.exam-slip-print-doc body {
+            background: #fff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-toolbar,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-toolbar {
+            display: none !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc #exam-slip-print-wrap,
+        html.acr-accounts-print-measure.exam-slip-print-doc #exam-slip-print-wrap {
+            max-width: none;
+            margin: 0;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-sheet,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-sheet {
+            border-radius: 0;
+            box-shadow: none;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .acr-print-letterhead__brand,
+        html.acr-accounts-print-measure.exam-slip-print-doc .acr-print-letterhead__brand {
+            margin-bottom: 1mm !important;
+            padding-bottom: 1mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .acr-print-letterhead__logo,
+        html.acr-accounts-print-measure.exam-slip-print-doc .acr-print-letterhead__logo {
+            max-height: 14mm !important;
+            max-width: 14mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .acr-print-letterhead__school,
+        html.acr-accounts-print-measure.exam-slip-print-doc .acr-print-letterhead__school {
+            font-size: 11pt !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .acr-print-letterhead__doc,
+        html.acr-accounts-print-measure.exam-slip-print-doc .acr-print-letterhead__doc {
+            margin-bottom: 1.5mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-sheet__body,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-sheet__body {
+            padding: 0 0 2mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-profile,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-profile {
+            grid-template-columns: 22mm 1fr !important;
+            gap: 3mm !important;
+            margin-bottom: 2.5mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-photo,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-photo {
+            width: 22mm !important;
+            height: 26mm !important;
+            border-radius: 2mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-profile h2,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-profile h2 {
+            font-size: 11pt !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-profile > div > p,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-profile > div > p {
+            font-size: 7.5pt !important;
+            margin-bottom: 1.5mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-meta,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-meta {
+            grid-template-columns: repeat(3, 1fr) !important;
+            gap: 1.5mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-meta__card,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-meta__card {
+            padding: 1mm 1.5mm !important;
+            border-radius: 1mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-meta__label,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-meta__label {
+            font-size: 5.5pt !important;
+            margin-bottom: 0.3mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-meta__value,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-meta__value {
+            font-size: 7pt !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-status,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-status {
+            font-size: 6pt !important;
+            padding: 0.8mm 2mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-section-title,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-section-title {
+            font-size: 7pt !important;
+            margin-bottom: 1mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-section-title i,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-section-title i {
+            width: 4mm !important;
+            height: 4mm !important;
+            font-size: 6pt !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-table thead th,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-table thead th {
+            font-size: 6pt !important;
+            padding: 1mm 1.5mm !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-table tbody td,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-table tbody td {
+            font-size: 6.75pt !important;
+            padding: 0.8mm 1.5mm !important;
+            line-height: 1.2 !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-code,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-code {
+            font-size: 6pt !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-foot,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-foot {
+            margin-top: 1.5mm !important;
+            padding-top: 1mm !important;
+            font-size: 6pt !important;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-table,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-table {
+            page-break-inside: avoid;
+        }
+        html.acr-accounts-print.exam-slip-print-doc .exam-slip-profile,
+        html.acr-accounts-print-measure.exam-slip-print-doc .exam-slip-profile {
+            page-break-inside: avoid;
+        }
+        @media print {
+            body { background: #fff; padding: 0; }
+            .exam-slip-toolbar { display: none !important; }
+            .exam-slip-sheet { border-radius: 0; box-shadow: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="exam-slip-toolbar no-print">
+        <a href="{{ url_for('student_exam_apply') }}" class="exam-slip-btn exam-slip-btn--ghost">
+            <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to applications
+        </a>
+        <button type="button" class="exam-slip-btn exam-slip-btn--primary" id="exam-slip-print-btn">
+            <i class="fas fa-print" aria-hidden="true"></i> Print / Download PDF
+        </button>
+    </div>
+
+    <div id="exam-slip-print-wrap">
+        {% set report_title = 'Exam registration slip' %}
+        {% set report_period_label = (application.year_name or '—') ~ (' · ' ~ application.term_name if application.term_name else '') %}
+        {% set report_generated_at = application.applied_at_str or '—' %}
+        {% set hide_print_meta_primary = true %}
+        {% set letterhead_sync_mode = false %}
+        {% set print_meta_extra = 'Ref ' ~ (application.reference_code or '—') ~ ' · ' ~ (application.exam_name or 'Exam') %}
+        {% include 'dashboards/includes/accounts_print_letterhead.html' %}
+
+        <article class="exam-slip-sheet" id="exam-slip-content">
+            <div class="exam-slip-sheet__body">
+                <div class="exam-slip-profile">
+                    <div class="exam-slip-photo">
+                        {% if profile_image_url %}
+                        <img src="{{ profile_image_url }}" alt="{{ student.full_name }}">
+                        {% else %}
+                        <span class="exam-slip-photo__placeholder" aria-hidden="true"><i class="fas fa-user"></i></span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <div class="exam-slip-profile-head">
+                            <h2>{{ student.full_name or '—' }}</h2>
+                            <span class="exam-slip-status">
+                                <i class="fas fa-circle-check" aria-hidden="true"></i>
+                                {% if application.status == 'pending' %}Submitted{% else %}Successful{% endif %}
+                            </span>
+                        </div>
+                        <p>{{ application.label }} · Ref {{ application.reference_code }}</p>
+                        <div class="exam-slip-meta">
+                            <div class="exam-slip-meta__card">
+                                <span class="exam-slip-meta__label">Admission / ID</span>
+                                <span class="exam-slip-meta__value">{{ student.student_id or '—' }}</span>
+                            </div>
+                            <div class="exam-slip-meta__card">
+                                <span class="exam-slip-meta__label">Class / Grade</span>
+                                <span class="exam-slip-meta__value">{{ student.current_grade or '—' }}</span>
+                            </div>
+                            <div class="exam-slip-meta__card">
+                                <span class="exam-slip-meta__label">Gender</span>
+                                <span class="exam-slip-meta__value">{{ student.gender or '—' }}</span>
+                            </div>
+                            <div class="exam-slip-meta__card">
+                                <span class="exam-slip-meta__label">Applied on</span>
+                                <span class="exam-slip-meta__value">{{ application.applied_at_str or '—' }}</span>
+                            </div>
+                            {% if student.assessment_number %}
+                            <div class="exam-slip-meta__card">
+                                <span class="exam-slip-meta__label">Assessment no.</span>
+                                <span class="exam-slip-meta__value">{{ student.assessment_number }}</span>
+                            </div>
+                            {% endif %}
+                            <div class="exam-slip-meta__card">
+                                <span class="exam-slip-meta__label">Academic year</span>
+                                <span class="exam-slip-meta__value">{{ application.year_name or '—' }}{% if application.term_name %} · {{ application.term_name }}{% endif %}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="exam-slip-section-title">
+                    <i class="fas fa-clipboard-list" aria-hidden="true"></i>
+                    Examination timetable
+                </h3>
+
+                {% if papers %}
+                <table class="exam-slip-table">
+                    <thead>
+                        <tr>
+                            <th>Subject / paper</th>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Venue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for paper in papers %}
+                        <tr>
+                            <td data-label="Subject">
+                                <span class="exam-slip-subject">{{ paper.subject_name }}</span>
+                                {% if paper.subject_code %}
+                                <span class="exam-slip-code">{{ paper.subject_code }}</span>
+                                {% endif %}
+                            </td>
+                            <td data-label="Date">{{ paper.date_display }}</td>
+                            <td data-label="Time">{{ paper.time_display }}</td>
+                            <td data-label="Venue">{{ paper.venue }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="exam-slip-empty">
+                    Paper details will appear here once the examination timetable is published.
+                </div>
+                {% endif %}
+
+                <footer class="exam-slip-foot">
+                    <div>
+                        <strong>Important:</strong> Present this slip with your school ID at each examination session.
+                    </div>
+                    <div>Generated {{ application.applied_at_str or 'now' }}</div>
+                </footer>
+            </div>
+        </article>
+    </div>
+
+    <script>
+    (function () {
+        var schoolName = {{ (school_settings.school_name or 'School')|tojson }};
+        var refCode = {{ (application.reference_code or 'exam-slip')|tojson }};
+
+        function collectExamSlipPrintHtml() {
+            var parts = [];
+            var letterhead = document.getElementById('acr-print-letterhead');
+            if (letterhead) parts.push(letterhead.outerHTML);
+            var content = document.getElementById('exam-slip-content');
+            if (content) parts.push(content.outerHTML);
+            var footer = document.querySelector('.acr-print-footer');
+            if (footer) parts.push(footer.outerHTML);
+            return parts.join('');
+        }
+
+        function runExamSlipPrint() {
+            if (typeof window.syncAccountsPrintFooter === 'function') {
+                window.syncAccountsPrintFooter();
+            }
+            if (typeof window.printAccountsInFrame === 'function') {
+                var day = new Date().toISOString().slice(0, 10);
+                window.printAccountsInFrame({
+                    title: schoolName + ' — exam_registration_' + refCode + '_' + day,
+                    htmlClass: 'acr-accounts-print exam-slip-print-doc',
+                    bodyClass: 'acr-accounts-print exam-slip-print-doc',
+                    collect: collectExamSlipPrintHtml,
+                });
+                return;
+            }
+            window.print();
+        }
+
+        window.collectExamSlipPrintHtml = collectExamSlipPrintHtml;
+        window.runExamSlipPrint = runExamSlipPrint;
+
+        var printBtn = document.getElementById('exam-slip-print-btn');
+        if (printBtn) {
+            printBtn.addEventListener('click', runExamSlipPrint);
+        }
+
+        document.addEventListener('keydown', function (event) {
+            if (!(event.ctrlKey || event.metaKey) || String(event.key || '').toLowerCase() !== 'p') return;
+            if (!document.getElementById('exam-slip-print-wrap')) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            runExamSlipPrint();
+        }, true);
+
+        {% if auto_print %}
+        window.addEventListener('load', function () {
+            window.setTimeout(runExamSlipPrint, 400);
+        });
+        {% endif %}
+    })();
+    </script>
+</body>
+</html>

@@ -3957,26 +3957,49 @@
     return (cols || []).map(function(col) {
       var name = col.exam_name || col.label || '';
       var nk = normalizedExamNameKey(name);
+      var foundDate = String(col.exam_date || col.date || '').trim();
+      if (!foundDate) {
+        Object.keys(detail || {}).some(function(subj) {
+          return (detail[subj] || []).some(function(ex) {
+            if (!examNamesReferToSameSitting(ex.exam_name, col) && normalizedExamNameKey(ex.exam_name) !== nk) {
+              return false;
+            }
+            foundDate = String(ex.exam_date || '').trim();
+            return !!foundDate;
+          });
+        });
+      }
+      if (!foundDate && rows && rows.length) {
+        rows.some(function(r) {
+          if (normalizedExamNameKey(r.exam_name) !== nk) return false;
+          foundDate = String(r.exam_date || '').trim();
+          return !!foundDate;
+        });
+      }
       return {
-        key: nk || normalizedExamSittingKey(name, ''),
+        key: col.key || nk || normalizedExamSittingKey(name, foundDate),
         label: col.label || shortExamLabel(name) || name || 'Exam',
         exam_name: name,
-        exam_date: '',
+        exam_date: foundDate,
+        date: foundDate,
       };
     });
   }
 
   function buildExamColsFromVisibleFilter(detail, rows) {
-    return enrichExamColsFromMarks(
-      getVisibleExamFilterPicks().map(function(p) {
-        return {
-          label: shortExamLabel(p.exam_name) || p.exam_name,
-          exam_name: p.exam_name,
-          exam_date: '',
-        };
-      }),
-      detail,
-      rows
+    return prepareIndividualReportExamCols(
+      enrichExamColsFromMarks(
+        getVisibleExamFilterPicks().map(function(p) {
+          return {
+            label: shortExamLabel(p.exam_name) || p.exam_name,
+            exam_name: p.exam_name,
+            exam_date: '',
+          };
+        }),
+        detail,
+        rows
+      ),
+      detail
     );
   }
 
@@ -4600,9 +4623,10 @@
           label: shortExamLabel(col.exam_name || col.label || '') || String(col.exam_name || col.label || 'Exam').trim() || 'Exam',
           exam_name: col.exam_name || col.label || '',
           exam_date: col.exam_date || '',
+          date: col.exam_date || '',
         });
       });
-      return out;
+      return prepareIndividualReportExamCols(out, detail);
     }
     var seen = {};
     var list = [];
@@ -4615,22 +4639,12 @@
           key: key,
           label: shortExamLabel(ex.exam_name || 'Exam') || String(ex.exam_name || 'Exam').trim() || 'Exam',
           exam_name: ex.exam_name || '',
+          exam_date: ex.exam_date || '',
           date: ex.exam_date || '',
         });
       });
     });
-    list.sort(function(a, b) {
-      return String(a.date).localeCompare(String(b.date))
-        || a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
-    });
-    return list.map(function(x) {
-      return {
-        key: x.key,
-        label: x.label,
-        exam_name: x.exam_name || x.label || '',
-        exam_date: x.date || '',
-      };
-    });
+    return prepareIndividualReportExamCols(list, detail);
   }
 
   function examNamesReferToSameSitting(exName, examCol) {
@@ -4720,33 +4734,85 @@
     return mark;
   }
 
+  function examColHasMarks(col, detail) {
+    return Object.keys(detail || {}).some(function(subj) {
+      return (detail[subj] || []).some(function(ex) {
+        if (!examEntryMatchesExamCol(ex, col)) return false;
+        return ex.mark != null && ex.mark !== '';
+      });
+    });
+  }
+
+  function effectiveExamDateForCol(col, detail) {
+    var datedWithMarks = [];
+    var datedAny = [];
+    Object.keys(detail || {}).forEach(function(subj) {
+      (detail[subj] || []).forEach(function(ex) {
+        if (!examEntryMatchesExamCol(ex, col)) return;
+        var d = String(ex.exam_date || '').trim();
+        if (!d) return;
+        datedAny.push(d);
+        if (ex.mark != null && ex.mark !== '') datedWithMarks.push(d);
+      });
+    });
+    if (datedWithMarks.length) {
+      datedWithMarks.sort();
+      return datedWithMarks[0];
+    }
+    if (datedAny.length) {
+      datedAny.sort();
+      return datedAny[0];
+    }
+    return String(col.exam_date || col.date || '').trim();
+  }
+
   function sortExamColsChronological(examCols) {
     return (examCols || []).slice().sort(function(a, b) {
-      return String(a.date || a.exam_date || '').localeCompare(String(b.date || b.exam_date || ''))
-        || String(a.exam_name || a.label || '').localeCompare(String(b.exam_name || b.label || ''), undefined, { sensitivity: 'base' });
+      var da = String(a.exam_date || a.date || '').trim();
+      var db = String(b.exam_date || b.date || '').trim();
+      var aHas = !!da;
+      var bHas = !!db;
+      if (aHas !== bHas) return aHas ? -1 : 1;
+      if (aHas) {
+        var dc = da.localeCompare(db);
+        if (dc !== 0) return dc;
+      }
+      return String(a.exam_name || a.label || '').localeCompare(String(b.exam_name || b.label || ''), undefined, { sensitivity: 'base' });
     });
   }
 
   function enrichExamColsWithDates(examCols, detail) {
     return (examCols || []).map(function(col) {
-      if (col.exam_date || col.date) return col;
-      var foundDate = '';
-      Object.keys(detail || {}).some(function(subj) {
-        return (detail[subj] || []).some(function(ex) {
-          if (examEntryMatchesExamCol(ex, col)) {
-            foundDate = String(ex.exam_date || '').trim();
-            return !!foundDate;
-          }
-          return false;
-        });
+      var eff = effectiveExamDateForCol(col, detail);
+      var hasMarks = examColHasMarks(col, detail);
+      return Object.assign({}, col, {
+        exam_date: eff || col.exam_date || col.date || '',
+        date: eff || col.exam_date || col.date || '',
+        _hasMarks: hasMarks,
       });
-      if (!foundDate) return col;
-      return Object.assign({}, col, { exam_date: foundDate, date: foundDate });
     });
   }
 
   function prepareIndividualReportExamCols(examCols, detail) {
-    return sortExamColsChronological(enrichExamColsWithDates(examCols, detail));
+    return enrichExamColsWithDates(examCols, detail)
+      .sort(function(a, b) {
+        if (!!a._hasMarks !== !!b._hasMarks) return a._hasMarks ? -1 : 1;
+        var da = String(a.exam_date || a.date || '').trim();
+        var db = String(b.exam_date || b.date || '').trim();
+        var aHas = !!da;
+        var bHas = !!db;
+        if (aHas !== bHas) return aHas ? -1 : 1;
+        if (aHas) {
+          var dc = da.localeCompare(db);
+          if (dc !== 0) return dc;
+        }
+        return String(a.exam_name || a.label || '').localeCompare(String(b.exam_name || b.label || ''), undefined, { sensitivity: 'base' });
+      })
+      .map(function(col) {
+        var c = Object.assign({}, col);
+        delete c._hasMarks;
+        return c;
+      });
   }
 
   function renderNumberedExamReferenceLegend(examCols) {
@@ -5670,7 +5736,8 @@
         : gradePointsFromMark(row.mean, rowBands);
       const subjectTable = useMultiExam
         ? buildReportCardMultiExamSubjectTable(
-            row, cardSubjectColumns, multiExamCols, rowBands, row.academic_level_id, gradeCodeRemarksMeta
+            row, cardSubjectColumns, multiExamCols, rowBands, row.academic_level_id, gradeCodeRemarksMeta,
+            { numberedExamCols: true }
           )
         : buildReportCardSubjectTable(
             row, cardSubjectColumns, rowBands, row.academic_level_id, gradeCodeRemarksMeta
@@ -5728,6 +5795,9 @@
         if (filterCols.length > 1) {
           examCols = filterCols;
         }
+      }
+      if (examCols.length > 1) {
+        examCols = prepareIndividualReportExamCols(examCols, detail);
       }
 
       if (!allExamsMode || !examCols.length) {
@@ -6982,8 +7052,15 @@
         return;
       }
       const built = buildExamDetailFromPerformanceRows(studentRows);
-      const filterCols = buildExamColsFromVisibleFilter(built.detail, studentRows);
-      const examCols = filterCols.length > 1 ? filterCols : built.examCols;
+      let examCols = built.examCols;
+      if (allExamsUi) {
+        const filterCols = buildExamColsFromVisibleFilter(built.detail, studentRows);
+        if (filterCols.length > 1) {
+          examCols = filterCols;
+        } else {
+          examCols = prepareIndividualReportExamCols(examCols, built.detail);
+        }
+      }
       if (examCols.length > 1) {
         jobs.push({
           bundle: Object.assign({}, bundle, {

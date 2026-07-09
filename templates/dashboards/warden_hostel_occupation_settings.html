@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Hostel occupation settings - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/warden_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set role_theme = 'warden' %}
+{% set role_hero_eyebrow = 'Warden' %}
+{% set role_hero_title = 'Hostel occupation settings' %}
+{% set role_hero_subtitle = 'Room capacities and occupant totals across all registered hostels.' %}
+{% set role_hero_icon_class = 'fa-users-between-lines' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="max-w-7xl mx-auto px-3 sm:px-0 pb-8 space-y-5 sm:space-y-6 portal-page-root role-page role-page--warden">
+
+    {% include 'dashboards/includes/portal_page_flash.html' %}
+
+    <section class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden" aria-labelledby="warden-occupation-heading">
+        <div class="px-4 sm:px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80">
+            <h2 id="warden-occupation-heading" class="text-lg font-bold text-slate-900 dark:text-white m-0">Occupation by hostel</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5 m-0">
+                {{ warden_hostels|length }} hostel{{ 's' if warden_hostels|length != 1 else '' }} on record
+            </p>
+        </div>
+
+        {% if warden_hostels %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-slate-200/80 dark:border-slate-700/80 text-slate-500 dark:text-slate-400">
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Hostel</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Location</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide text-center">Rooms</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide text-center">Bed spaces</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide text-center">Status</th>
+                        <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for hostel in warden_hostels %}
+                    <tr class="border-b border-slate-200/60 dark:border-slate-700/60 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/40{% if hostel.status == 'suspended' %} opacity-70{% endif %}">
+                        <td class="px-4 py-3">
+                            <p class="font-semibold text-slate-900 dark:text-white m-0">{{ hostel.name }}</p>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 m-0 mt-0.5">{{ hostel.category }}</p>
+                        </td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{{ hostel.location }}</td>
+                        <td class="px-4 py-3 text-center tabular-nums">{{ hostel.room_count|default(0) }}</td>
+                        <td class="px-4 py-3 text-center tabular-nums font-medium text-slate-900 dark:text-white">{{ hostel.room_occupant_total|default(hostel.occupant_count)|default(0) }}</td>
+                        <td class="px-4 py-3 text-center whitespace-nowrap">
+                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[0.6875rem] font-semibold uppercase tracking-wide
+                                {% if hostel.status == 'suspended' %}bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300
+                                {% else %}bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300{% endif %}">
+                                {{ 'Suspended' if hostel.status == 'suspended' else 'Active' }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-center">
+                            <a href="{{ employee_dash_url('hostels/' ~ hostel.id) }}"
+                               class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">
+                                <i class="fas fa-door-open text-[10px]" aria-hidden="true"></i>
+                                View rooms
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-4 sm:px-5 py-10 text-center">
+            <p class="text-sm text-slate-500 dark:text-slate-400 m-0">No hostels registered yet.</p>
+            <a href="{{ employee_dash_url() }}"
+               class="inline-flex items-center gap-2 mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5">
+                <i class="fas fa-bed" aria-hidden="true"></i> Go to hostel settings
+            </a>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

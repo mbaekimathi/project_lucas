@@ -19,6 +19,7 @@ from student_transcript import build_student_exam_transcripts
 from student_exam_apply import (
     build_eligibility_for_sittings,
     build_exam_apply_eligibility,
+    build_exam_application_slip_payload,
     delete_exam_apply_rules,
     fetch_all_exam_apply_rules_map,
     fetch_level_exam_apply_overview,
@@ -29,6 +30,45 @@ from student_exam_apply import (
     save_exam_apply_rules,
     serialize_sittings_for_student_apply,
     submit_student_exam_application,
+)
+from warden_hostels import (
+    HOSTEL_CATEGORIES,
+    delete_hostel,
+    ensure_hostels_tables,
+    fetch_hostel_by_id,
+    fetch_hostels_with_rooms,
+    register_hostel_from_request,
+    toggle_hostel_suspend,
+    update_hostel_from_request,
+)
+from student_hostel_booking import (
+    allocate_hostel_room_manually,
+    apply_hostel_mpesa_payment,
+    booking_status_label,
+    ensure_student_hostel_bookings_table,
+    fetch_available_hostels_for_student,
+    fetch_booking_by_id,
+    fetch_student_hostel_booking,
+    fetch_warden_hostel_student_occupations,
+    build_occupation_filter_options,
+    validate_hostel_deposit_payment,
+    validate_hostel_room_payment,
+)
+from hostel_settings import (
+    HOSTEL_MAX_INSTALLMENTS,
+    HOSTEL_MIN_INSTALLMENTS,
+    HOSTEL_PAYMENT_MODE_KEYS,
+    HOSTEL_PAYMENT_MODE_LABELS,
+    attach_payment_settings_to_hostels,
+    ensure_hostel_payment_settings_table,
+    fetch_hostel_payment_settings,
+    fetch_hostel_payment_settings_map,
+    get_booking_next_payment,
+    hostel_payment_method_allowed,
+    hostel_payment_purpose_allowed,
+    resolve_hostel_finance_account_id,
+    save_hostel_payment_settings_from_form,
+    save_hostel_payment_settings_single,
 )
 from env_loader import load_project_env, env_file_label
 from portal_public import (
@@ -8917,6 +8957,70 @@ def _load_exam_session_presets_from_db(cursor):
         return presets
 
 
+def _fetch_exam_supervisor_allocation_maps(cursor, level_ids):
+    """
+    Supervisor eligibility from teacher_subject_assignments:
+    - teachers_by_level: teachers allocated to teach at least one subject at each level
+    - excluded_by_ls: subject teachers who cannot supervise that paper at that level
+  """
+    from collections import defaultdict
+
+    level_ids = sorted({int(x) for x in (level_ids or []) if int(x) > 0})
+    teachers_by_level = defaultdict(set)
+    subjects_by_level = defaultdict(set)
+    excluded_by_ls = defaultdict(set)
+    subject_name_by_id = {}
+    if not level_ids:
+        return {
+            'teachers_by_level': teachers_by_level,
+            'subjects_by_level': subjects_by_level,
+            'excluded_by_ls': excluded_by_ls,
+            'subject_name_by_id': subject_name_by_id,
+        }
+
+    ph = ','.join(['%s'] * len(level_ids))
+    cursor.execute(f"""
+        SELECT tsa.academic_level_id, tsa.subject_id, tsa.teacher_id, s.subject_name
+        FROM teacher_subject_assignments tsa
+        INNER JOIN subjects s ON s.id = tsa.subject_id AND s.status = 'active'
+        INNER JOIN academic_levels al ON al.id = tsa.academic_level_id AND al.level_status = 'active'
+        INNER JOIN employees emp ON emp.id = tsa.teacher_id
+            AND emp.status = 'active'
+            AND (emp.role = 'teachers' OR emp.role = 'teacher')
+        WHERE tsa.academic_level_id IN ({ph})
+    """, tuple(level_ids))
+
+    for row in cursor.fetchall() or []:
+        lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
+        sid = row.get('subject_id') if isinstance(row, dict) else row[1]
+        tid = row.get('teacher_id') if isinstance(row, dict) else row[2]
+        sname = row.get('subject_name', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else '')
+        if lid and sid:
+            lid_i = int(lid)
+            sid_i = int(sid)
+            subjects_by_level[lid_i].add(sid_i)
+            if sname:
+                subject_name_by_id[sid_i] = str(sname)
+        if lid and tid:
+            teachers_by_level[int(lid)].add(int(tid))
+        if lid and sid and tid:
+            excluded_by_ls[(int(lid), int(sid))].add(int(tid))
+
+    return {
+        'teachers_by_level': teachers_by_level,
+        'subjects_by_level': subjects_by_level,
+        'excluded_by_ls': excluded_by_ls,
+        'subject_name_by_id': subject_name_by_id,
+    }
+
+
+def _eligible_exam_supervisor_ids(teachers_by_level, excluded_by_ls, level_id, subject_id):
+    """Teachers at this academic level who do not teach this subject in that class."""
+    level_teachers = teachers_by_level.get(int(level_id), set()) or set()
+    excluded = excluded_by_ls.get((int(level_id), int(subject_id)), set()) or set()
+    return level_teachers.difference(excluded)
+
+
 def ensure_student_marks_foreign_keys(cursor):
     """
     Add InnoDB foreign keys to student_marks if possible.
@@ -9974,22 +10078,24 @@ def _academic_report_multi_exam_mode(exam_name, exam_names):
 
 
 def _filter_exam_columns_to_names(cols, exam_names):
-    """Keep only exam columns that match the filter dropdown, in filter order."""
+    """Keep only exam columns that match the filter dropdown, ordered by sitting date (earliest first)."""
     if not exam_names:
-        return cols or []
+        return _sort_report_exam_columns_chronological(cols or [])
+
+    def _chrono_sort_key(c):
+        ed = str(c.get('exam_date') or '').strip()
+        return (0 if ed else 1, ed, str(c.get('exam_name') or '').strip().lower())
+
     allowed = [str(n).strip() for n in exam_names if str(n).strip()]
     if not allowed:
-        return cols or []
+        return _sort_report_exam_columns_chronological(cols or [])
     allowed_set = {n.casefold() for n in allowed}
-    order = {n.casefold(): i for i, n in enumerate(allowed)}
     filtered = [
         c for c in (cols or [])
         if isinstance(c, dict)
         and str(c.get('exam_name') or '').strip().casefold() in allowed_set
     ]
-    filtered.sort(
-        key=lambda c: order.get(str(c.get('exam_name') or '').strip().casefold(), 9999)
-    )
+    filtered.sort(key=_chrono_sort_key)
     # Fill missing filter exams (no marks yet) so headers match the dropdown.
     present = {str(c.get('exam_name') or '').strip().casefold() for c in filtered}
     for en in allowed:
@@ -10003,10 +10109,21 @@ def _filter_exam_columns_to_names(cols, exam_names):
             'label': _academic_report_short_exam_label(en) or en,
         })
         present.add(en.casefold())
-    filtered.sort(
-        key=lambda c: order.get(str(c.get('exam_name') or '').strip().casefold(), 9999)
-    )
+    filtered.sort(key=_chrono_sort_key)
     return filtered
+
+
+def _sort_report_exam_columns_chronological(cols):
+    """Earliest exam sitting first; undated exams last."""
+    ordered = [c for c in (cols or []) if isinstance(c, dict)]
+    ordered.sort(
+        key=lambda c: (
+            0 if str(c.get('exam_date') or '').strip() else 1,
+            str(c.get('exam_date') or '').strip(),
+            str(c.get('exam_name') or '').strip().lower(),
+        )
+    )
+    return ordered
 
 
 def _logical_exam_sitting_key(exam_name, exam_date=None, exam_id=None):
@@ -10047,8 +10164,7 @@ def _collect_report_exam_columns(grouped):
                     'label': _academic_report_short_exam_label(en) or str(en).strip() or 'Exam',
                 }
     cols = list(seen.values())
-    cols.sort(key=lambda x: (str(x.get('exam_date') or ''), str(x.get('exam_name') or '').lower()))
-    return cols
+    return _sort_report_exam_columns_chronological(cols)
 
 
 def _exam_window_from_report_columns(exam_columns):
@@ -23978,6 +24094,20 @@ def dashboard_employee():
                 print(f"store manager dashboard departments: {sd_err}")
             finally:
                 sd_conn.close()
+
+    warden_hostels = []
+    if dashboard_content_role == 'warden':
+        wh_conn = get_db_connection()
+        if wh_conn:
+            try:
+                with wh_conn.cursor() as cursor:
+                    ensure_hostels_tables(cursor)
+                    wh_conn.commit()
+                    warden_hostels = fetch_hostels_with_rooms(cursor)
+            except Exception as wh_err:
+                print(f"warden dashboard hostels: {wh_err}")
+            finally:
+                wh_conn.close()
     
     return render_template('dashboards/dashboard_employee.html', 
                          role=session.get('role', 'employee'),
@@ -24005,7 +24135,9 @@ def dashboard_employee():
                          accountant_dashboard=accountant_dashboard,
                          store_departments=store_departments,
                          store_department_categories=list(STORE_DEPARTMENT_CATEGORIES),
-                         store_department_role_labels=dict(STORE_DEPARTMENT_ROLE_LABELS))
+                         store_department_role_labels=dict(STORE_DEPARTMENT_ROLE_LABELS),
+                         warden_hostels=warden_hostels,
+                         hostel_categories=list(HOSTEL_CATEGORIES))
 
 
 EMPLOYEE_TPAD_ENDPOINTS = frozenset({
@@ -26111,6 +26243,8 @@ def assign_grade_settings_to_classes():
 
 def _find_student_portal_access():
     """Teachers and other roles that may view the student register."""
+    if session_effective_role() == 'warden':
+        return True
     return _student_management_has_access()
 
 
@@ -26141,6 +26275,26 @@ def _redact_student_contact_fields(student_dict):
     for key in _STUDENT_CONTACT_FIELD_KEYS:
         redacted[key] = None
     return redacted
+
+
+def _student_hostel_occupation_dict(cursor, student_id):
+    """Current hostel room assignment for find-student and similar views."""
+    booking = fetch_student_hostel_booking(cursor, student_id)
+    if not booking:
+        return {'has_occupation': False}
+    booked_at = booking.get('created_at')
+    return {
+        'has_occupation': True,
+        'hostel_id': booking.get('hostel_id'),
+        'hostel_name': booking.get('hostel_name') or '',
+        'hostel_location': booking.get('hostel_location') or '',
+        'hostel_category': booking.get('hostel_category') or '',
+        'hostel_room_id': booking.get('hostel_room_id'),
+        'room_reference': booking.get('room_reference') or '',
+        'occupation_status': booking.get('status') or '',
+        'occupation_status_label': booking_status_label(booking.get('status')),
+        'booked_at': str(booked_at) if booked_at else None,
+    }
 
 
 def _student_row_to_detail_dict(student):
@@ -26244,6 +26398,7 @@ def _fetch_find_student_suggestions(cursor, q='', limit=25):
 
 
 @app.route('/dashboard/employee/find-student')
+@app.route('/dashboard/warden/find-student')
 @login_required
 def teacher_find_student():
     """Find student — live search by name, admission number, or assessment number."""
@@ -26257,6 +26412,7 @@ def teacher_find_student():
 
 
 @app.route('/dashboard/employee/find-student/<student_id>', methods=['GET'])
+@app.route('/dashboard/warden/find-student/<student_id>', methods=['GET'])
 @login_required
 def teacher_find_student_detail(student_id):
     """Student detail for find-student page; redacts sponsor/parent fields when unauthorized."""
@@ -26268,10 +26424,12 @@ def teacher_find_student_detail(student_id):
     try:
         with connection.cursor() as cursor:
             row = _fetch_student_detail_row(cursor, student_id)
+            hostel_occupation = _student_hostel_occupation_dict(cursor, student_id)
         if not row:
             return jsonify({'success': False, 'message': 'Student not found.'}), 404
         can_contact = _can_view_student_contact_details()
         payload = _student_row_to_detail_dict(row)
+        payload['hostel_occupation'] = hostel_occupation
         if not can_contact:
             payload = _redact_student_contact_fields(payload)
         return jsonify({
@@ -26288,6 +26446,7 @@ def teacher_find_student_detail(student_id):
 
 
 @app.route('/dashboard/employee/find-student/search', methods=['GET'])
+@app.route('/dashboard/warden/find-student/search', methods=['GET'])
 @login_required
 def teacher_find_student_search():
     """Typeahead JSON for find-student page."""
@@ -36742,6 +36901,8 @@ def can_find_student():
     """Whether the current session may open Find student (sidebar + page)."""
     if not has_request_context() or not session.get('user_id'):
         return False
+    if session_effective_role() == 'warden':
+        return True
     return _student_management_has_access()
 
 
@@ -41140,12 +41301,14 @@ def _render_student_exam_apply(student_id, ctx):
                         open_sittings, _, _ = build_eligibility_for_sittings(
                             cursor, student_id, student_meta, open_sittings,
                         )
-                    ok, msg = submit_student_exam_application(
+                    ok, msg, app_id = submit_student_exam_application(
                         cursor, student_id, sitting_key, open_sittings, '', student_meta,
                     )
                     if ok:
                         connection.commit()
                         flash(msg, 'success')
+                        if app_id:
+                            return redirect(student_dashboard_path(f'exam-apply/slip/{int(app_id)}?print=1'))
                     else:
                         flash(msg, 'error')
             except Exception as e:
@@ -41160,6 +41323,12 @@ def _render_student_exam_apply(student_id, ctx):
 
     exam_sittings = merge_sittings_with_applications(open_sittings, applications)
     exam_sittings_json = serialize_sittings_for_student_apply(exam_sittings)
+    for app in applications:
+        aid = app.get('id')
+        if aid and app.get('can_download_slip'):
+            app['slip_url'] = student_dashboard_path(f'exam-apply/slip/{int(aid)}')
+        else:
+            app['slip_url'] = ''
     return render_template(
         'dashboards/student_exam_apply.html',
         student=stu,
@@ -41168,6 +41337,75 @@ def _render_student_exam_apply(student_id, ctx):
         applications=applications,
         has_open_exams=bool(exam_sittings_json),
         **_student_portal_template_kwargs(ctx),
+    )
+
+
+@app.route('/dashboard/student/exam-apply/slip/<int:application_id>')
+@app.route('/student/exam-apply/slip/<int:application_id>')
+@login_required
+def student_exam_apply_slip(application_id):
+    """Printable exam registration slip for a successful application."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_exam_progress_access(student_id):
+        flash('You cannot access exam slips on this account.', 'error')
+        return redirect(student_dashboard_path())
+
+    slip = None
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                slip = build_exam_application_slip_payload(cursor, application_id, student_id)
+        except Exception as e:
+            print(f'student_exam_apply_slip: {e}')
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not slip:
+        flash('Registration slip not found or not available yet.', 'error')
+        return redirect(student_dashboard_path('exam-apply'))
+
+    student = slip.get('student') or {}
+    profile_rel = _student_profile_image_static_path(student.get('profile_image'))
+    profile_url = ''
+    if profile_rel:
+        try:
+            profile_url = url_for('static', filename=profile_rel, _external=True)
+        except Exception:
+            profile_url = _student_profile_image_url(student.get('profile_image'))
+
+    school = get_school_settings() or {}
+    school_logo = (school.get('school_logo') or '').strip()
+    logo_url = ''
+    if school_logo:
+        logo_rel = school_logo.replace('\\', '/').lstrip('/')
+        if logo_rel.lower().startswith('static/'):
+            logo_rel = logo_rel[7:]
+        try:
+            logo_url = url_for('static', filename=logo_rel, _external=True)
+        except Exception:
+            logo_url = school_logo
+
+    return render_template(
+        'dashboards/student_exam_apply_slip.html',
+        slip=slip,
+        application=slip.get('application') or {},
+        student=student,
+        papers=slip.get('papers') or [],
+        profile_image_url=profile_url,
+        school_logo_url=logo_url,
+        school_settings=school,
+        auto_print=request.args.get('print') == '1',
     )
 
 
@@ -41378,6 +41616,553 @@ def student_portal_library():
         pocket_money_student_id=student.get('student_id') or student_id,
         **_student_portal_template_kwargs(ctx),
     )
+
+
+@app.route('/dashboard/student/hostels')
+@app.route('/student/hostels')
+@login_required
+def student_portal_hostels():
+    """Student portal — browse hostels, book a room, pay deposit and balance."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    student_id = (ctx.get('student_id') or '').strip()
+    if not student_id:
+        flash('No student account linked.', 'error')
+        return redirect(student_dashboard_path())
+    if not _student_portal_access(student_id):
+        flash('You cannot view hostel information for this student.', 'error')
+        return redirect(student_dashboard_path())
+
+    student = None
+    available_hostels = []
+    my_booking = None
+    any_hostel_mpesa_enabled = False
+    any_manual_allocation_enabled = False
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT student_id, full_name, current_grade
+                    FROM students
+                    WHERE LOWER(TRIM(student_id)) = LOWER(TRIM(%s))
+                      AND status = 'in session'
+                    LIMIT 1
+                    """,
+                    (student_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    if isinstance(row, dict):
+                        student = {
+                            'student_id': (row.get('student_id') or '').strip(),
+                            'full_name': (row.get('full_name') or '').strip(),
+                            'current_grade': (row.get('current_grade') or '').strip(),
+                        }
+                    else:
+                        student = {
+                            'student_id': (row[0] or '').strip(),
+                            'full_name': (row[1] or '').strip(),
+                            'current_grade': (row[2] or '').strip(),
+                        }
+                ensure_finance_accounts_table(cursor)
+                ensure_hostel_payment_settings_table(cursor)
+                ensure_student_hostel_bookings_table(cursor)
+                available_hostels = fetch_available_hostels_for_student(cursor)
+                my_booking = fetch_student_hostel_booking(cursor, student_id)
+                settings_map = fetch_hostel_payment_settings_map(cursor)
+                attach_payment_settings_to_hostels(available_hostels, settings_map)
+                if my_booking:
+                    attach_payment_settings_to_hostels([my_booking], settings_map)
+                    next_amt, next_label, next_purpose = get_booking_next_payment(my_booking)
+                    my_booking['next_payment_amount'] = next_amt
+                    my_booking['next_payment_label'] = next_label
+                    my_booking['next_payment_purpose'] = next_purpose
+                any_hostel_mpesa_enabled = any(
+                    h.get('mpesa_payment_allowed') for h in available_hostels
+                ) or bool(my_booking and my_booking.get('mpesa_payment_allowed'))
+                any_manual_allocation_enabled = any(
+                    h.get('manual_allocation_allowed') for h in available_hostels
+                )
+                connection.commit()
+        except Exception as e:
+            print(f"student_portal_hostels: {e}")
+            flash('Error loading hostel information.', 'error')
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not student:
+        flash('Student not found.', 'error')
+        return redirect(student_dashboard_path())
+
+    return render_template(
+        'dashboards/student_hostels.html',
+        student=student,
+        parent_student_id=student.get('student_id') or student_id,
+        available_hostels=available_hostels,
+        my_booking=my_booking,
+        any_hostel_mpesa_enabled=any_hostel_mpesa_enabled,
+        any_manual_allocation_enabled=any_manual_allocation_enabled,
+        hostel_allocate_url=student_dash_url('hostels/allocate'),
+        hostel_mpesa_stk_url=student_dash_url('hostels/mpesa/stk-push'),
+        hostel_mpesa_confirm_url=student_dash_url('hostels/mpesa/confirm-payment'),
+        hostel_mpesa_status_url_base=student_dash_url('hostels/mpesa/status') + '/',
+        booking_status_label=booking_status_label,
+        mpesa_daraja_enabled=_get_daraja_settings_from_flag(),
+        mpesa_sandbox_confirm=_mpesa_sandbox_manual_confirm_enabled(),
+        **_student_portal_template_kwargs(ctx),
+    )
+
+
+def _student_hostel_mpesa_booking_amount(cursor, booking, purpose):
+    """Validate booking state and return expected amount for balance/installment STK."""
+    purpose = (purpose or '').strip().lower()
+    status = (booking.get('status') or '').strip().lower()
+    if purpose == 'hostel_balance':
+        if status != 'reserved':
+            return None, 'This booking is not awaiting the balance payment.'
+        return float(booking.get('balance_amount') or 0), None
+    if purpose == 'hostel_installment':
+        if status != 'reserved':
+            return None, 'This booking is not awaiting an installment payment.'
+        amount, _, _ = get_booking_next_payment(booking)
+        if amount is None:
+            return None, 'No installment is due on this booking.'
+        return amount, None
+    return None, 'Invalid payment purpose.'
+
+
+def _student_can_access_hostel_mpesa_txn(ctx, txn_row):
+    """Return True when signed-in student may view/pay this hostel STK txn."""
+    sid = (ctx.get('student_id') or '').strip()
+    txn_sid = (txn_row.get('student_id') or '').strip()
+    if not sid or not txn_sid:
+        return False
+    if sid.lower() != txn_sid.lower():
+        if ctx.get('is_technician') and ctx.get('current_view_role') == 'student':
+            return _student_portal_access(txn_sid)
+        return False
+    return _student_portal_access(sid    )
+
+
+@app.route('/dashboard/student/hostels/allocate', methods=['POST'])
+@app.route('/student/hostels/allocate', methods=['POST'])
+@login_required
+def student_hostel_allocate():
+    """Student: register for a hostel room without payment when payments are disabled."""
+    ctx = _student_portal_auth()
+    if ctx is None:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+
+    data = request.get_json(silent=True) or request.form
+    student_id = (data.get('student_id') or ctx.get('student_id') or '').strip()
+    hostel_room_id = data.get('hostel_room_id')
+
+    if not student_id or not _student_portal_access(student_id):
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    if not hostel_room_id:
+        return jsonify({'ok': False, 'message': 'Select a room to register.'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database unavailable.'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_hostel_payment_settings_table(cursor)
+            result = allocate_hostel_room_manually(cursor, student_id, hostel_room_id)
+            if result.get('ok'):
+                connection.commit()
+                return jsonify({
+                    'ok': True,
+                    'message': result.get('message') or 'Room allocated.',
+                    'booking_id': result.get('booking_id'),
+                })
+            connection.rollback()
+            return jsonify({'ok': False, 'message': result.get('message') or 'Could not allocate room.'}), 400
+    except Exception as e:
+        print(f"student_hostel_allocate: {e}")
+        connection.rollback()
+        return jsonify({'ok': False, 'message': 'Could not allocate room.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/student/hostels/mpesa/stk-push', methods=['POST'])
+@app.route('/student/hostels/mpesa/stk-push', methods=['POST'])
+@login_required
+def student_hostel_mpesa_stk_push():
+    """Initiate M-Pesa STK for hostel deposit (25%) or balance payment."""
+    import daraja_mpesa as daraja
+
+    ctx = _student_portal_auth()
+    if ctx is None:
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    data = request.get_json(silent=True) or request.form
+    purpose = (data.get('purpose') or '').strip().lower()
+    student_id = (data.get('student_id') or ctx.get('student_id') or '').strip()
+    phone = (data.get('phone') or '').strip()
+    raw_amount = data.get('amount')
+    booking_id = data.get('booking_id')
+    hostel_room_id = data.get('hostel_room_id')
+
+    if purpose not in ('hostel_deposit', 'hostel_full', 'hostel_balance', 'hostel_installment'):
+        return jsonify({'success': False, 'message': 'Invalid payment purpose.'}), 400
+    if not student_id or not _student_portal_access(student_id):
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            expected_amount = None
+            hostel_id = None
+            stk_request_meta = {'stk': {}}
+
+            if purpose in ('hostel_deposit', 'hostel_full'):
+                if not hostel_room_id:
+                    return jsonify({'success': False, 'message': 'Select a room to book.'}), 400
+                quote = validate_hostel_room_payment(cursor, student_id, hostel_room_id)
+                if not quote.get('ok'):
+                    return jsonify({'success': False, 'message': quote.get('message')}), 400
+                hostel_id = quote.get('hostel_id')
+                hostel_settings = quote.get('payment_settings') or fetch_hostel_payment_settings(cursor, hostel_id)
+                if not hostel_payment_purpose_allowed(hostel_settings, purpose):
+                    return jsonify({
+                        'success': False,
+                        'message': 'This payment option is not enabled for this hostel. Contact the warden.',
+                    }), 400
+                if purpose == 'hostel_full':
+                    expected_amount = float(quote.get('total_amount') or 0)
+                else:
+                    expected_amount = float(quote.get('deposit_amount') or 0)
+                stk_request_meta['hostel_room_id'] = int(quote['hostel_room_id'])
+                stk_request_meta['expected_amount'] = expected_amount
+            else:
+                booking = fetch_booking_by_id(cursor, booking_id)
+                if not booking:
+                    return jsonify({'success': False, 'message': 'Booking not found.'}), 404
+                if (booking.get('student_id') or '').strip().lower() != student_id.lower():
+                    return jsonify({'success': False, 'message': 'This booking does not belong to you.'}), 403
+                hostel_id = booking.get('hostel_id')
+                expected_amount, amt_err = _student_hostel_mpesa_booking_amount(cursor, booking, purpose)
+                if amt_err:
+                    return jsonify({'success': False, 'message': amt_err}), 400
+                stk_request_meta['hostel_booking_id'] = int(booking.get('id'))
+                stk_request_meta['expected_amount'] = expected_amount
+
+            ensure_finance_accounts_table(cursor)
+            ensure_hostel_payment_settings_table(cursor)
+            hostel_settings = fetch_hostel_payment_settings(cursor, hostel_id)
+            if not hostel_payment_purpose_allowed(hostel_settings, purpose):
+                return jsonify({
+                    'success': False,
+                    'message': 'This payment option is not enabled for this hostel. Contact the warden.',
+                }), 400
+            if not hostel_payment_method_allowed(hostel_settings, 'mpesa'):
+                return jsonify({
+                    'success': False,
+                    'message': 'M-Pesa is not enabled for this hostel. Contact the warden.',
+                }), 400
+
+            daraja_settings = _get_daraja_settings(cursor)
+            if not daraja_settings.get('enabled'):
+                return jsonify({
+                    'success': False,
+                    'message': 'M-Pesa online payments are disabled. Contact the school.',
+                }), 400
+            if not daraja.credentials_configured(daraja_settings):
+                return jsonify({
+                    'success': False,
+                    'message': 'M-Pesa is not configured on the server. Contact the school.',
+                }), 503
+
+            finance_account_id, acct_err = resolve_hostel_finance_account_id(
+                cursor, hostel_id, hostel_settings,
+            )
+            if acct_err:
+                return jsonify({'success': False, 'message': acct_err}), 400
+            fee_structure_id = None
+
+            mpesa_cfg, cfg_err = _finance_account_mpesa_stk_config(
+                cursor, finance_account_id, student_id, daraja_settings,
+            )
+            if cfg_err:
+                return jsonify({'success': False, 'message': cfg_err}), 400
+
+            callback_url, cb_err = daraja.resolve_stk_callback_url(
+                daraja_settings,
+                fallback_url=url_for('mpesa_stk_callback', _external=True),
+            )
+            if cb_err:
+                return jsonify({'success': False, 'message': cb_err}), 400
+
+            desc = (
+                'Hostel balance'
+                if purpose == 'hostel_balance'
+                else ('Hostel full payment' if purpose == 'hostel_full' else 'Hostel deposit (25%)')
+            )
+            stk = daraja.stk_push(
+                daraja_settings,
+                phone=phone,
+                amount=raw_amount,
+                account_reference=mpesa_cfg['account_reference'],
+                transaction_desc=desc,
+                callback_url=callback_url,
+                business_shortcode=mpesa_cfg['business_shortcode'],
+                transaction_type=mpesa_cfg['transaction_type'],
+                party_b_shortcode=mpesa_cfg.get('party_b_shortcode'),
+            )
+            if not stk.get('ok'):
+                return jsonify({'success': False, 'message': stk.get('error') or 'STK push failed.'}), 400
+
+            stk_request_meta['stk'] = stk.get('raw') or {}
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                """
+                INSERT INTO mpesa_stk_transactions
+                    (checkout_request_id, merchant_request_id, student_id, parent_email,
+                     purpose, amount, phone, finance_account_id, fee_structure_id,
+                     account_reference, business_shortcode, mpesa_type, status, raw_request_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    stk.get('checkout_request_id'),
+                    stk.get('merchant_request_id'),
+                    student_id,
+                    None,
+                    purpose,
+                    raw_amount,
+                    phone,
+                    finance_account_id,
+                    fee_structure_id,
+                    mpesa_cfg['account_reference'],
+                    mpesa_cfg['business_shortcode'],
+                    mpesa_cfg['mpesa_type'],
+                    'pending',
+                    json.dumps(stk_request_meta),
+                ),
+            )
+            connection.commit()
+            sync_warning = None
+            if _mpesa_should_sync_stk_to_remote():
+                sync_ok, _code, sync_detail = _mpesa_stk_sync_pending_to_remote({
+                    'checkout_request_id': stk.get('checkout_request_id'),
+                    'merchant_request_id': stk.get('merchant_request_id'),
+                    'student_id': student_id,
+                    'parent_email': None,
+                    'purpose': purpose,
+                    'amount': raw_amount,
+                    'phone': phone,
+                    'finance_account_id': finance_account_id,
+                    'fee_structure_id': fee_structure_id,
+                    'account_reference': mpesa_cfg['account_reference'],
+                    'business_shortcode': mpesa_cfg['business_shortcode'],
+                    'mpesa_type': mpesa_cfg['mpesa_type'],
+                    'raw_request_json': json.dumps({
+                        'sync_origin': 'local',
+                        **stk_request_meta,
+                    }),
+                })
+                _mpesa_stk_record_sync_meta(cursor, stk.get('checkout_request_id'), sync_ok, sync_detail)
+                connection.commit()
+                if not sync_ok:
+                    sync_warning = sync_detail
+            payload = {
+                'success': True,
+                'message': stk.get('customer_message') or 'Check your phone for the M-Pesa prompt.',
+                'checkout_request_id': stk.get('checkout_request_id'),
+                'account_reference': mpesa_cfg['account_reference'],
+                'business_name': mpesa_cfg.get('business_name'),
+                'mpesa_type': mpesa_cfg.get('mpesa_type'),
+            }
+            if _mpesa_sandbox_manual_confirm_enabled():
+                payload['confirm_available'] = True
+            if sync_warning:
+                payload['sync_warning'] = sync_warning
+            return jsonify(payload)
+    except Exception as e:
+        print(f"student_hostel_mpesa_stk_push: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not start M-Pesa payment.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/student/hostels/mpesa/status/<checkout_request_id>', methods=['GET'])
+@app.route('/student/hostels/mpesa/status/<checkout_request_id>', methods=['GET'])
+@login_required
+def student_hostel_mpesa_stk_status(checkout_request_id):
+    """Poll STK transaction status (student hostel payments)."""
+    import daraja_mpesa as daraja
+
+    ctx = _student_portal_auth()
+    if ctx is None:
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                "SELECT * FROM mpesa_stk_transactions WHERE checkout_request_id = %s LIMIT 1",
+                (checkout_request_id,),
+            )
+            txn = cursor.fetchone()
+            if not txn:
+                return jsonify({'success': False, 'message': 'Transaction not found.'}), 404
+            txn_row = txn if isinstance(txn, dict) else dict(zip([d[0] for d in cursor.description], txn))
+
+            if not _student_can_access_hostel_mpesa_txn(ctx, txn_row):
+                return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+            purpose = (txn_row.get('purpose') or '').strip().lower()
+            if purpose not in ('hostel_deposit', 'hostel_full', 'hostel_balance'):
+                return jsonify({'success': False, 'message': 'Invalid transaction.'}), 400
+
+            status = (txn_row.get('status') or 'pending').lower()
+            if status == 'completed':
+                connection.commit()
+                return jsonify({
+                    'success': True,
+                    'status': 'completed',
+                    'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
+                    **_mpesa_stk_status_fields(txn_row),
+                })
+            if status in ('failed', 'cancelled'):
+                connection.commit()
+                return jsonify({
+                    'success': True,
+                    'status': status,
+                    'message': txn_row.get('result_desc') or 'Payment was not completed.',
+                    **_mpesa_stk_status_fields(txn_row),
+                })
+
+            daraja_settings = _get_daraja_settings(cursor)
+            _mpesa_stk_ensure_remote_registered(cursor, txn_row)
+            connection.commit()
+            polled = _mpesa_stk_try_complete_from_query(cursor, txn_row, daraja_settings)
+            if polled:
+                connection.commit()
+                return jsonify(polled)
+            remote = _mpesa_stk_try_complete_from_remote_sync(cursor, txn_row)
+            if remote:
+                connection.commit()
+                return jsonify(remote)
+            connection.commit()
+            pending_payload = {
+                'success': True,
+                'status': 'pending',
+                'message': 'Check your phone and enter your M-Pesa PIN…',
+                **_mpesa_stk_status_fields(txn_row),
+            }
+            sync_warning = _mpesa_stk_sync_warning_from_row(txn_row)
+            if sync_warning:
+                pending_payload['sync_warning'] = sync_warning
+            if _mpesa_sandbox_manual_confirm_enabled():
+                pending_payload['confirm_available'] = True
+            return jsonify(pending_payload)
+    except Exception as e:
+        print(f"student_hostel_mpesa_stk_status: {e}")
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Could not check status.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/student/hostels/mpesa/confirm-payment', methods=['POST'])
+@app.route('/student/hostels/mpesa/confirm-payment', methods=['POST'])
+@login_required
+def student_hostel_mpesa_confirm_payment():
+    """Sandbox fallback — confirm hostel M-Pesa payment locally."""
+    if not _mpesa_sandbox_manual_confirm_enabled():
+        return jsonify({'success': False, 'message': 'Manual confirm is only available in sandbox local dev.'}), 403
+
+    ctx = _student_portal_auth()
+    if ctx is None:
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    data = request.get_json(silent=True) or request.form
+    checkout_id = (data.get('checkout_request_id') or '').strip()
+    mpesa_receipt = (data.get('mpesa_code_reference') or data.get('mpesa_receipt') or '').strip()
+    if not checkout_id:
+        return jsonify({'success': False, 'message': 'Missing payment session.'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_mpesa_stk_transactions_table(cursor)
+            cursor.execute(
+                "SELECT * FROM mpesa_stk_transactions WHERE checkout_request_id = %s LIMIT 1",
+                (checkout_id,),
+            )
+            txn = cursor.fetchone()
+            if not txn:
+                return jsonify({'success': False, 'message': 'Payment session not found.'}), 404
+            txn_row = txn if isinstance(txn, dict) else dict(zip([d[0] for d in cursor.description], txn))
+
+            if not _student_can_access_hostel_mpesa_txn(ctx, txn_row):
+                return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+            purpose = (txn_row.get('purpose') or '').strip().lower()
+            if purpose not in ('hostel_deposit', 'hostel_full', 'hostel_balance'):
+                return jsonify({'success': False, 'message': 'Invalid transaction.'}), 400
+
+            status = (txn_row.get('status') or 'pending').lower()
+            if status == 'completed':
+                return jsonify({
+                    'success': True,
+                    'status': 'completed',
+                    'message': txn_row.get('result_desc') or _mpesa_parent_success_message(txn_row),
+                    **_mpesa_stk_status_fields(txn_row),
+                })
+            if status in ('failed', 'cancelled'):
+                return jsonify({'success': False, 'message': txn_row.get('result_desc') or 'Payment was not completed.'}), 400
+
+            receipt = mpesa_receipt or checkout_id
+            callback_data = {
+                'result_code': 0,
+                'result_desc': 'Sandbox payment confirmed by student.',
+                'mpesa_receipt': receipt,
+                'mpesa_code_reference': receipt,
+            }
+            ok, msg, recorded_receipt = _mpesa_stk_finalize_success(
+                cursor, txn_row, callback_data,
+                raw_json=json.dumps({'sandbox_manual_confirm': True, 'checkout_request_id': checkout_id}),
+            )
+            if not ok:
+                connection.commit()
+                return jsonify({'success': False, 'message': msg or 'Could not record payment.'}), 400
+            connection.commit()
+            return jsonify({
+                'success': True,
+                'status': 'completed',
+                'message': msg,
+                'mpesa_receipt': recorded_receipt,
+                'mpesa_code_reference': recorded_receipt,
+            })
+    except Exception as e:
+        print(f"student_hostel_mpesa_confirm_payment: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'Could not confirm payment.'}), 500
+    finally:
+        connection.close()
 
 
 def _fetch_student_portal_notifications(ctx, limit=30):
@@ -44261,8 +45046,13 @@ def profile(role):
             try:
                 with connection.cursor() as cursor:
                     employee_id = session.get('employee_id') or session.get('user_id')
-                    cursor.execute("SELECT * FROM employees WHERE id = %s OR employee_id = %s", 
-                                 (employee_id, employee_id))
+                    cursor.execute("""
+                        SELECT e.*, en.staff_number AS staff_employee_number
+                        FROM employees e
+                        LEFT JOIN employee_number en ON en.employee_id = e.id
+                        WHERE e.id = %s OR e.employee_id = %s
+                        LIMIT 1
+                    """, (employee_id, employee_id))
                     employee = cursor.fetchone()
                     if employee:
                         user_data = employee
@@ -44548,10 +45338,25 @@ def update_employee_profile():
     email = request.form.get('email', '').strip().lower()
     phone = request.form.get('phone', '').strip().upper()
     id_number = request.form.get('id_number', '').strip().upper()
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '').strip()
+    confirm_password = request.form.get('confirm_password', '').strip()
+    password_change_requested = any([current_password, new_password, confirm_password])
     
     if not all([full_name, email, phone]):
         flash('Please fill in all required fields.', 'error')
         return redirect(url_for('profile', role='employee'))
+
+    if password_change_requested:
+        if not all([current_password, new_password, confirm_password]):
+            flash('To change your password, fill in current, new, and confirm password fields.', 'error')
+            return redirect(url_for('profile', role='employee'))
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'error')
+            return redirect(url_for('profile', role='employee'))
+        if len(new_password) < 6:
+            flash('New password must be at least 6 characters long.', 'error')
+            return redirect(url_for('profile', role='employee'))
     
     # Handle profile picture upload
     profile_picture = None
@@ -44572,49 +45377,71 @@ def update_employee_profile():
         try:
             with connection.cursor() as cursor:
                 employee_id = session.get('employee_id') or session.get('user_id')
-                
-                # Get current profile picture to delete old one if new one is uploaded
-                old_profile_picture = None
+                cursor.execute(
+                    "SELECT id, password_hash, profile_picture FROM employees WHERE id = %s OR employee_id = %s LIMIT 1",
+                    (employee_id, employee_id),
+                )
+                employee_row = cursor.fetchone()
+                if not employee_row:
+                    flash('Employee account not found.', 'error')
+                    return redirect(url_for('profile', role='employee'))
+
+                employee_db_id = employee_row.get('id') if isinstance(employee_row, dict) else employee_row[0]
+                stored_password_hash = employee_row.get('password_hash') if isinstance(employee_row, dict) else employee_row[1]
+                old_profile_picture = employee_row.get('profile_picture') if isinstance(employee_row, dict) else employee_row[2]
+
+                cursor.execute(
+                    "SELECT id FROM employees WHERE LOWER(TRIM(email)) = %s AND id != %s LIMIT 1",
+                    (email, employee_db_id),
+                )
+                if cursor.fetchone():
+                    flash('That email address is already in use by another account.', 'error')
+                    return redirect(url_for('profile', role='employee'))
+
+                new_password_hash = None
+                if password_change_requested:
+                    if not stored_password_hash or not check_password_hash(stored_password_hash, current_password):
+                        flash('Current password is incorrect.', 'error')
+                        return redirect(url_for('profile', role='employee'))
+                    new_password_hash = generate_password_hash(new_password)
+
+                update_fields = {
+                    'full_name': full_name,
+                    'email': email,
+                    'phone': phone,
+                    'id_number': id_number,
+                }
                 if profile_picture:
-                    cursor.execute("SELECT profile_picture FROM employees WHERE id = %s OR employee_id = %s", 
-                                 (employee_id, employee_id))
-                    result = cursor.fetchone()
-                    if result and result.get('profile_picture'):
-                        old_profile_picture = result.get('profile_picture')
-                
-                # Update employee profile
-                if profile_picture:
-                    cursor.execute("""
-                        UPDATE employees 
-                        SET full_name = %s, email = %s, phone = %s, id_number = %s, profile_picture = %s
-                        WHERE id = %s OR employee_id = %s
-                    """, (full_name, email, phone, id_number, profile_picture, employee_id, employee_id))
-                    
-                    # Delete old profile picture if it exists
-                    if old_profile_picture:
-                        old_file_path = os.path.join('static', old_profile_picture)
-                        if os.path.exists(old_file_path):
-                            try:
-                                os.remove(old_file_path)
-                            except Exception as e:
-                                print(f"Error deleting old profile picture: {e}")
-                    
-                    # Update session with new profile picture
-                    session['profile_picture'] = profile_picture
-                else:
-                    cursor.execute("""
-                        UPDATE employees 
-                        SET full_name = %s, email = %s, phone = %s, id_number = %s
-                        WHERE id = %s OR employee_id = %s
-                    """, (full_name, email, phone, id_number, employee_id, employee_id))
-                
+                    update_fields['profile_picture'] = profile_picture
+                if new_password_hash:
+                    update_fields['password_hash'] = new_password_hash
+
+                set_clause = ', '.join(f"{col} = %s" for col in update_fields)
+                params = list(update_fields.values()) + [employee_db_id]
+                cursor.execute(
+                    f"UPDATE employees SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                    params,
+                )
+
+                if profile_picture and old_profile_picture and old_profile_picture != profile_picture:
+                    old_file_path = os.path.join('static', old_profile_picture)
+                    if os.path.exists(old_file_path):
+                        try:
+                            os.remove(old_file_path)
+                        except Exception as e:
+                            print(f"Error deleting old profile picture: {e}")
+
                 connection.commit()
-                
-                # Update session
+
                 session['full_name'] = full_name
                 session['email'] = email
-                
-                flash('Profile updated successfully!', 'success')
+                if profile_picture:
+                    session['profile_picture'] = profile_picture
+
+                if password_change_requested:
+                    flash('Profile and password updated successfully!', 'success')
+                else:
+                    flash('Profile updated successfully!', 'success')
         except Exception as e:
             print(f"Error updating employee profile: {e}")
             import traceback
@@ -49926,6 +50753,7 @@ def save_exam():
                     created_by = emp.get('id') if isinstance(emp, dict) else emp[0]
         
         with connection.cursor() as cursor:
+            skipped_no_supervisor = []
             if manual_share_template:
                 import random
                 from collections import defaultdict
@@ -50005,6 +50833,7 @@ def save_exam():
                 """, tuple(all_share_level_ids))
 
                 excluded_by_ls = defaultdict(set)
+                teachers_by_level = defaultdict(set)
                 subjects_by_level = defaultdict(set)
                 for row in cursor.fetchall() or []:
                     lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
@@ -50012,34 +50841,24 @@ def save_exam():
                     tid = row.get('teacher_id') if isinstance(row, dict) else row[2]
                     if lid and sid:
                         subjects_by_level[int(lid)].add(int(sid))
+                    if lid and tid:
+                        teachers_by_level[int(lid)].add(int(tid))
                     if lid and sid and tid:
                         excluded_by_ls[(int(lid), int(sid))].add(int(tid))
 
-                cursor.execute("""
-                    SELECT id
-                    FROM employees
-                    WHERE status = 'active' AND (role = 'teachers' OR role = 'teacher')
-                    ORDER BY id ASC
-                """)
-                all_active_teacher_ids = [
-                    int(r.get('id') if isinstance(r, dict) else r[0])
-                    for r in (cursor.fetchall() or []) if (r.get('id') if isinstance(r, dict) else r[0])
-                ]
-                if not all_active_teacher_ids:
-                    return jsonify({'success': False, 'message': 'No active teachers found to supervise exams.'}), 400
+                if not any(teachers_by_level.values()):
+                    return jsonify({'success': False, 'message': 'No teachers are allocated to the selected academic levels.'}), 400
 
-                all_active_set = set(all_active_teacher_ids)
                 candidate_by_ls = defaultdict(set)
                 for grp in share_groups:
                     for lid in grp:
                         for sid in sorted(subjects_by_level.get(int(lid), set())):
                             key = (int(lid), int(sid))
-                            excluded = excluded_by_ls.get(key) or set()
-                            candidates = all_active_set.difference(excluded)
+                            candidates = _eligible_exam_supervisor_ids(teachers_by_level, excluded_by_ls, lid, sid)
                             if not candidates:
                                 return jsonify({
                                     'success': False,
-                                    'message': f'No eligible supervisors for subject {sid} in class {lid}: all active teachers teach that subject in that class.'
+                                    'message': f'No eligible supervisors for subject {sid} in class {lid}: no teachers at this academic level can supervise (they may all teach that subject in this class).'
                                 }), 400
                             candidate_by_ls[key] = set(candidates)
 
@@ -50091,7 +50910,7 @@ def save_exam():
                             if teacher_id not in candidates:
                                 return jsonify({
                                     'success': False,
-                                    'message': f'Selected supervisor is not eligible for subject {subject_id} in class {level_id} (cannot supervise a subject they teach in that class).'
+                                    'message': f'Selected supervisor is not eligible for subject {subject_id} in class {level_id} (must teach at this academic level and cannot supervise a subject they teach in that class).'
                                 }), 400
                             if int(teacher_id) in used_in_slot:
                                 return jsonify({
@@ -50239,43 +51058,28 @@ def save_exam():
                         share_groups = [sorted([int(x) for x in grp if int(x) in lvl_ok]) for grp in share_groups]
                         share_groups = [grp for grp in share_groups if len(grp) >= 2]
 
-                # Load all active teachers once (fallback for missing allocations)
-                cursor.execute("""
-                    SELECT id
-                    FROM employees
-                    WHERE status = 'active' AND (role = 'teachers' OR role = 'teacher')
-                    ORDER BY id ASC
-                """)
-                all_active_teacher_ids = [r.get('id') if isinstance(r, dict) else r[0] for r in (cursor.fetchall() or [])]
-                all_active_teacher_ids = [int(x) for x in all_active_teacher_ids if x]
-                if not all_active_teacher_ids:
-                    return jsonify({'success': False, 'message': 'No active teachers found to supervise exams.'}), 400
+                supervisor_maps = _fetch_exam_supervisor_allocation_maps(cursor, level_ids)
+                teachers_by_level = supervisor_maps['teachers_by_level']
+                excluded_by_ls = supervisor_maps['excluded_by_ls']
+                if not any(teachers_by_level.values()):
+                    return jsonify({'success': False, 'message': 'No teachers are allocated to the selected academic levels.'}), 400
 
-                # Build mapping: excluded (allocated subject teachers) per (class, subject).
-                # Rule: supervisor must NOT be the allocated subject teacher for that class/subject.
-                excluded_by_ls = defaultdict(set)
-                if assign_rows:
-                    for row in assign_rows:
-                        lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
-                        sid = row.get('subject_id') if isinstance(row, dict) else row[1]
-                        tid = row.get('teacher_id') if isinstance(row, dict) else row[2]
-                        if lid and sid and tid:
-                            excluded_by_ls[(int(lid), int(sid))].add(int(tid))
-
-                # Candidates per (class, subject): any active teacher EXCEPT the allocated subject teacher(s).
-                all_active_set = set(all_active_teacher_ids)
+                # Candidates per (class, subject): teachers at that level except the allocated subject teacher(s).
+                # Pairs with no eligible supervisors are still scheduled; supervisor is left unset for manual assignment.
                 candidate_by_ls = defaultdict(set)
+                skipped_no_supervisor = []
                 for lid in level_ids:
                     for sid in sorted(subjects_by_level.get(int(lid), set())):
                         key = (int(lid), int(sid))
-                        excluded = excluded_by_ls.get(key) or set()
-                        candidates = all_active_set.difference(set(excluded))
+                        candidates = _eligible_exam_supervisor_ids(teachers_by_level, excluded_by_ls, lid, sid)
                         if not candidates:
                             subj_name = subject_name_by_id.get(sid) or f"Subject {sid}"
-                            return jsonify({
-                                'success': False,
-                                'message': f'No eligible supervisors for {subj_name} in class {lid}: all active teachers are allocated to teach that subject.'
-                            }), 400
+                            skipped_no_supervisor.append({
+                                'academic_level_id': int(lid),
+                                'subject_id': int(sid),
+                                'subject_name': subj_name,
+                            })
+                            continue
                         candidate_by_ls[key] = set(candidates)
 
                 # Build tasks (one per class/subject). Supervisor selection happens per-slot to avoid conflicts.
@@ -50299,11 +51103,12 @@ def save_exam():
                             for lid in grp:
                                 task_list.append({'academic_level_id': int(lid), 'subject_id': int(sid)})
 
-                # Normal scheduling tasks for the remaining selected levels
-                for (lid, sid) in sorted(candidate_by_ls.keys(), key=lambda k: (k[0], k[1])):
+                # Normal scheduling tasks for the remaining selected levels (include subjects needing manual supervisors)
+                for lid in level_ids:
                     if int(lid) in shared_class_ids:
                         continue
-                    task_list.append({'academic_level_id': lid, 'subject_id': sid})
+                    for sid in sorted(subjects_by_level.get(int(lid), set())):
+                        task_list.append({'academic_level_id': int(lid), 'subject_id': int(sid)})
                 if not task_list:
                     return jsonify({
                         'success': False,
@@ -50365,20 +51170,19 @@ def save_exam():
                                     }), 500
 
                                 candidates = sorted({int(x) for x in (candidate_by_ls.get((int(level_id), int(subject_id))) or set()) if x})
-                                free_candidates = [
-                                    tid for tid in candidates
-                                    if tid not in used_in_slot and not _teacher_conflicts(tid, allocation_exam_date, smin, emin)
-                                ]
-                                if not free_candidates:
-                                    return jsonify({
-                                        'success': False,
-                                        'message': 'Shared timetable requires enough available supervisors. Not enough distinct supervisors for one or more slots; try adding more teachers or selecting more days/sessions.'
-                                    }), 400
+                                if candidates:
+                                    free_candidates = [
+                                        tid for tid in candidates
+                                        if tid not in used_in_slot and not _teacher_conflicts(tid, allocation_exam_date, smin, emin)
+                                    ]
+                                    teacher_id = random.choice(free_candidates) if free_candidates else None
+                                else:
+                                    teacher_id = None
 
-                                teacher_id = random.choice(free_candidates)
-                                used_in_slot.add(int(teacher_id))
+                                if teacher_id is not None:
+                                    used_in_slot.add(int(teacher_id))
+                                    seen_teacher_slots.append((int(teacher_id), allocation_exam_date, smin, emin))
                                 seen_class_session_slots.add(class_slot_key)
-                                seen_teacher_slots.append((int(teacher_id), allocation_exam_date, smin, emin))
 
                                 smin_dur = _time_to_minutes(start_time_str)
                                 emin_dur = _time_to_minutes(end_time_str)
@@ -50389,7 +51193,7 @@ def save_exam():
                                 normalized_allocations.append({
                                     'academic_level_id': int(level_id),
                                     'subject_id': int(subject_id),
-                                    'teacher_id': int(teacher_id),
+                                    'teacher_id': int(teacher_id) if teacher_id else None,
                                     'exam_date': allocation_exam_date,
                                     'venue': level_venue_by_id.get(
                                         int(level_id),
@@ -50410,15 +51214,15 @@ def save_exam():
                             continue
                         subject_id = int(task['subject_id'])
                         candidates = sorted({int(x) for x in (candidate_by_ls.get((level_id, subject_id)) or set()) if x})
-                        if not candidates:
-                            return jsonify({
-                                'success': False,
-                                'message': 'No eligible supervisors found for one or more class/subject pairs.'
-                            }), 400
 
                         placed = False
                         attempts = 0
-                        # Try successive slots for this class until we find a free eligible supervisor.
+                        teacher_id = None
+                        allocation_exam_date = ''
+                        session_type = ''
+                        start_time_str = ''
+                        end_time_str = ''
+                        # Try successive slots for this class until we place the subject (supervisor optional when none eligible).
                         while not placed and attempts < total_slots_per_level:
                             attempts += 1
                             slot_idx = next_slot_index_by_level[level_id]
@@ -50441,9 +51245,14 @@ def save_exam():
                             if emin <= smin:
                                 emin += 24 * 60
 
+                            if not candidates:
+                                teacher_id = None
+                                seen_class_session_slots.add(key)
+                                placed = True
+                                continue
+
                             free_candidates = [tid for tid in candidates if not _teacher_conflicts(tid, allocation_exam_date, smin, emin)]
                             if not free_candidates:
-                                # Slot exists but no eligible supervisors are free; try the next slot for this class.
                                 continue
 
                             teacher_id = random.choice(free_candidates)
@@ -50466,7 +51275,7 @@ def save_exam():
                         normalized_allocations.append({
                             'academic_level_id': level_id,
                             'subject_id': subject_id,
-                            'teacher_id': int(teacher_id),
+                            'teacher_id': int(teacher_id) if teacher_id else None,
                             'exam_date': allocation_exam_date,
                             'venue': level_venue_by_id.get(
                                 level_id,
@@ -50481,8 +51290,8 @@ def save_exam():
             if not normalized_allocations:
                 return jsonify({'success': False, 'message': 'No allocations to save.'}), 400
 
-            # Validate teacher IDs exist and are active teachers
-            teacher_ids = list({na['teacher_id'] for na in normalized_allocations})
+            # Validate teacher IDs exist and are active teachers (rows without a supervisor are allowed).
+            teacher_ids = list({na['teacher_id'] for na in normalized_allocations if na.get('teacher_id')})
             if teacher_ids:
                 placeholders = ",".join(["%s"] * len(teacher_ids))
                 cursor.execute(f"""
@@ -50494,38 +51303,24 @@ def save_exam():
                 if invalid:
                     return jsonify({'success': False, 'message': 'One or more selected teachers are invalid or inactive'}), 400
 
-            # Rule: supervisor must not be the allocated subject teacher for that class/subject.
-            # Load exclusions for the involved (level, subject) pairs once.
+            # Rule: supervisor must teach at this academic level and must not teach that subject in that class.
             pairs = {(int(na['academic_level_id']), int(na['subject_id'])) for na in normalized_allocations}
-            excluded_by_pair = {}
-            if pairs:
-                level_ids = sorted({p[0] for p in pairs})
-                subj_ids = sorted({p[1] for p in pairs})
-                ph_l = ",".join(["%s"] * len(level_ids))
-                ph_s = ",".join(["%s"] * len(subj_ids))
-                cursor.execute(f"""
-                    SELECT tsa.academic_level_id, tsa.subject_id, tsa.teacher_id
-                    FROM teacher_subject_assignments tsa
-                    INNER JOIN employees emp ON emp.id = tsa.teacher_id
-                      AND emp.status = 'active'
-                      AND (emp.role = 'teachers' OR emp.role = 'teacher')
-                    WHERE tsa.academic_level_id IN ({ph_l})
-                      AND tsa.subject_id IN ({ph_s})
-                """, tuple(level_ids + subj_ids))
-                for r in cursor.fetchall() or []:
-                    lid = r.get('academic_level_id') if isinstance(r, dict) else r[0]
-                    sid = r.get('subject_id') if isinstance(r, dict) else r[1]
-                    tid = r.get('teacher_id') if isinstance(r, dict) else r[2]
-                    if lid and sid and tid:
-                        excluded_by_pair.setdefault((int(lid), int(sid)), set()).add(int(tid))
+            level_ids_for_supervisors = sorted({p[0] for p in pairs})
+            supervisor_maps = _fetch_exam_supervisor_allocation_maps(cursor, level_ids_for_supervisors)
+            teachers_by_level = supervisor_maps['teachers_by_level']
+            excluded_by_pair = supervisor_maps['excluded_by_ls']
 
             for na in normalized_allocations:
-                key = (int(na['academic_level_id']), int(na['subject_id']))
-                excluded = excluded_by_pair.get(key) or set()
-                if excluded and int(na['teacher_id']) in excluded:
+                tid = na.get('teacher_id')
+                if not tid:
+                    continue
+                lid = int(na['academic_level_id'])
+                sid = int(na['subject_id'])
+                eligible = _eligible_exam_supervisor_ids(teachers_by_level, excluded_by_pair, lid, sid)
+                if int(tid) not in eligible:
                     return jsonify({
                         'success': False,
-                        'message': 'Invalid supervisor: the selected teacher is currently allocated to teach that subject in that class. Pick a different active teacher to supervise.'
+                        'message': 'Invalid supervisor: the selected teacher must be allocated to teach at this academic level and cannot be the teacher allocated to that subject in that class.'
                     }), 400
 
             cursor.execute("""
@@ -50597,21 +51392,22 @@ def save_exam():
                     }), 400
 
                 # Teacher time conflict against existing exams on same date (overlap)
-                cursor.execute("""
-                    SELECT id, exam_name, academic_level_id, subject_id, start_time, end_time
-                    FROM exams
-                    WHERE supervisor_id = %s AND exam_date = %s
-                      AND start_time IS NOT NULL AND end_time IS NOT NULL
-                      AND (start_time < %s AND end_time > %s)
-                    LIMIT 1
-                """, (na['teacher_id'], allocation_exam_date, na['end_time'], na['start_time']))
-                conflict = cursor.fetchone()
-                if conflict:
-                    conflict_exam_name = conflict.get('exam_name') if isinstance(conflict, dict) else conflict[1]
-                    return jsonify({
-                        'success': False,
-                        'message': f"Teacher conflict: selected teacher already has an exam at this time on {allocation_exam_date} (existing exam: {conflict_exam_name})."
-                    }), 400
+                if na.get('teacher_id'):
+                    cursor.execute("""
+                        SELECT id, exam_name, academic_level_id, subject_id, start_time, end_time
+                        FROM exams
+                        WHERE supervisor_id = %s AND exam_date = %s
+                          AND start_time IS NOT NULL AND end_time IS NOT NULL
+                          AND (start_time < %s AND end_time > %s)
+                        LIMIT 1
+                    """, (na['teacher_id'], allocation_exam_date, na['end_time'], na['start_time']))
+                    conflict = cursor.fetchone()
+                    if conflict:
+                        conflict_exam_name = conflict.get('exam_name') if isinstance(conflict, dict) else conflict[1]
+                        return jsonify({
+                            'success': False,
+                            'message': f"Teacher conflict: selected teacher already has an exam at this time on {allocation_exam_date} (existing exam: {conflict_exam_name})."
+                        }), 400
 
                 cursor.execute("""
                     INSERT INTO exams (
@@ -50655,10 +51451,18 @@ def save_exam():
             )
 
             connection.commit()
+            pending_supervisor = sum(1 for na in normalized_allocations if not na.get('teacher_id'))
+            success_message = f'Exam registered successfully with {len(inserted_ids)} allocation(s)'
+            if pending_supervisor:
+                success_message += (
+                    f'. {pending_supervisor} allocation(s) have no supervisor yet — open the registered exam and assign supervisors manually.'
+                )
             return jsonify({
                 'success': True,
-                'message': f'Exam registered successfully with {len(inserted_ids)} allocation(s)',
-                'exam_ids': inserted_ids
+                'message': success_message,
+                'exam_ids': inserted_ids,
+                'pending_supervisor_count': pending_supervisor,
+                'skipped_no_supervisor': skipped_no_supervisor,
             })
             
     except Exception as e:
@@ -50786,22 +51590,18 @@ def update_exam():
                     'message': 'Supervisor must be an active employee with role Teacher.'
                 }), 400
 
-            # Rule: supervisor must not be the allocated subject teacher for that class/subject.
-            cursor.execute("""
-                SELECT 1
-                FROM teacher_subject_assignments tsa
-                INNER JOIN employees emp ON emp.id = tsa.teacher_id
-                  AND emp.status = 'active'
-                  AND (emp.role = 'teachers' OR emp.role = 'teacher')
-                WHERE tsa.academic_level_id = %s
-                  AND tsa.subject_id = %s
-                  AND tsa.teacher_id = %s
-                LIMIT 1
-            """, (academic_level_id, subject_id, supervisor_id))
-            if cursor.fetchone():
+            # Rule: supervisor must teach at this academic level and must not teach that subject in that class.
+            supervisor_maps = _fetch_exam_supervisor_allocation_maps(cursor, [academic_level_id])
+            eligible = _eligible_exam_supervisor_ids(
+                supervisor_maps['teachers_by_level'],
+                supervisor_maps['excluded_by_ls'],
+                academic_level_id,
+                subject_id,
+            )
+            if supervisor_id not in eligible:
                 return jsonify({
                     'success': False,
-                    'message': 'Invalid supervisor: the selected teacher is allocated to teach that subject in that class. Choose a different active teacher to supervise.'
+                    'message': 'Invalid supervisor: the selected teacher must be allocated to teach at this academic level and cannot be the teacher allocated to that subject in that class.'
                 }), 400
 
             # Enforce: one subject per class/session/day (exclude this row)
@@ -51022,21 +51822,16 @@ def exam_evaluation_eligible_supervisors():
                     'end_time': _normalize_time_mysql(en_raw) or '',
                 })
 
-            # Exclude allocated subject teacher(s) for the class/subject (optional inputs)
+            # Exclude allocated subject teacher(s) and limit to teachers at this academic level.
             excluded_ids = set()
-            if academic_level_id > 0 and subject_id > 0:
-                cursor.execute("""
-                    SELECT tsa.teacher_id
-                    FROM teacher_subject_assignments tsa
-                    INNER JOIN employees emp ON emp.id = tsa.teacher_id
-                      AND emp.status = 'active'
-                      AND (emp.role = 'teachers' OR emp.role = 'teacher')
-                    WHERE tsa.academic_level_id = %s AND tsa.subject_id = %s
-                """, (academic_level_id, subject_id))
-                for r in cursor.fetchall() or []:
-                    tid = r.get('teacher_id') if isinstance(r, dict) else r[0]
-                    if tid is not None:
-                        excluded_ids.add(int(tid))
+            level_teacher_ids = set()
+            if academic_level_id > 0:
+                supervisor_maps = _fetch_exam_supervisor_allocation_maps(cursor, [academic_level_id])
+                level_teacher_ids = set(supervisor_maps['teachers_by_level'].get(academic_level_id, set()) or set())
+                if subject_id > 0:
+                    excluded_ids.update(
+                        supervisor_maps['excluded_by_ls'].get((academic_level_id, subject_id), set()) or set()
+                    )
 
             # If excluded IDs are also busy, remove them so they don't appear in UI lists.
             if excluded_ids:
@@ -51057,6 +51852,8 @@ def exam_evaluation_eligible_supervisors():
                 if tid is None:
                     continue
                 tid = int(tid)
+                if academic_level_id > 0 and tid not in level_teacher_ids:
+                    continue
                 if tid in excluded_ids:
                     continue
                 if tid in busy_ids:
@@ -51353,7 +52150,10 @@ def exam_evaluation_allocation_options():
                         'employee_id': employee_id or '',
                     })
 
-            # Supervisor options: all active teachers EXCEPT allocated subject teachers for this class/subject
+            # Supervisor options: teachers at this academic level except allocated subject teachers.
+            supervisor_maps = _fetch_exam_supervisor_allocation_maps(cursor, [level_id])
+            teachers_at_level = supervisor_maps['teachers_by_level'].get(level_id, set()) or set()
+
             cursor.execute(f"""
                 SELECT e.id AS teacher_id, e.full_name, {_employee_staff_identity_sql('e')} AS employee_id
                 FROM employees e
@@ -51365,8 +52165,7 @@ def exam_evaluation_allocation_options():
                 'full_name': (r.get('full_name', '') if isinstance(r, dict) else (r[1] if len(r) > 1 else '')) or '',
                 'employee_id': (r.get('employee_id', '') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')) or '',
             } for r in (cursor.fetchall() or []) if (r.get('teacher_id') if isinstance(r, dict) else r[0]) is not None]
-            all_ids = [t['id'] for t in all_active_teachers]
-            all_ids_set = set(all_ids)
+            teachers_at_level_list = [t for t in all_active_teachers if int(t['id']) in teachers_at_level]
 
             excluded_ids_by_subject = {}
             supervisors_by_subject = {}
@@ -51374,8 +52173,13 @@ def exam_evaluation_allocation_options():
                 sid = str(int(s['id']))
                 excluded = {int(t['id']) for t in (assigned_teachers_by_subject.get(sid) or []) if t.get('id') is not None}
                 excluded_ids_by_subject[sid] = sorted(excluded)
-                elig_ids = all_ids_set.difference(excluded)
-                supervisors_by_subject[sid] = [t for t in all_active_teachers if int(t['id']) in elig_ids]
+                elig_ids = _eligible_exam_supervisor_ids(
+                    supervisor_maps['teachers_by_level'],
+                    supervisor_maps['excluded_by_ls'],
+                    level_id,
+                    int(s['id']),
+                )
+                supervisors_by_subject[sid] = [t for t in teachers_at_level_list if int(t['id']) in elig_ids]
 
             return jsonify({
                 'success': True,
@@ -51383,7 +52187,7 @@ def exam_evaluation_allocation_options():
                 'subjects': subjects,
                 # Back-compat + clarity:
                 # - assigned_teachers_by_subject: the actual allocated subject teachers for this class
-                # - supervisors_by_subject: eligible exam supervisors (active teachers excluding allocated ones)
+                # - supervisors_by_subject: eligible exam supervisors (teachers at this level excluding allocated subject teachers)
                 'teachers_by_subject': assigned_teachers_by_subject,
                 'assigned_teachers_by_subject': assigned_teachers_by_subject,
                 'excluded_teacher_ids_by_subject': excluded_ids_by_subject,
@@ -56478,6 +57282,58 @@ def _fetch_finance_accounts_for_pocket_money_picker(cursor):
     return rows
 
 
+def _fetch_finance_accounts_for_hostel_picker(cursor):
+    """Active finance accounts for warden hostel payment settings."""
+    ensure_finance_accounts_table(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT id, account_category, account_name, account_description
+            FROM finance_accounts
+            WHERE LOWER(COALESCE(account_status, 'active')) = 'active'
+            ORDER BY account_name ASC, id ASC
+            """
+        )
+        raw = cursor.fetchall() or []
+        account_ids = []
+        for r in raw:
+            aid = r.get('id') if isinstance(r, dict) else r[0]
+            if aid is not None:
+                account_ids.append(aid)
+        payments_map = _fetch_finance_account_payment_methods_map(cursor, account_ids)
+        for r in raw:
+            if isinstance(r, dict):
+                aid = r.get('id')
+                row = {
+                    'id': aid,
+                    'account_category': (r.get('account_category') or '').strip(),
+                    'account_name': (r.get('account_name') or '').strip(),
+                    'account_description': (r.get('account_description') or '').strip(),
+                }
+            else:
+                aid = r[0]
+                row = {
+                    'id': aid,
+                    'account_category': (r[1] or '').strip() if len(r) > 1 else '',
+                    'account_name': (r[2] or '').strip() if len(r) > 2 else '',
+                    'account_description': (r[3] or '').strip() if len(r) > 3 else '',
+                }
+            modes = [
+                (pm.get('payment_mode') or '').lower()
+                for pm in (payments_map.get(aid) or [])
+                if pm.get('payment_mode')
+            ]
+            row['payment_modes'] = modes
+            row['payment_mode_labels'] = [
+                HOSTEL_PAYMENT_MODE_LABELS.get(m, m.title()) for m in modes
+            ]
+            rows.append(row)
+    except Exception as e:
+        print(f"_fetch_finance_accounts_for_hostel_picker: {e}")
+    return rows
+
+
 def _validate_pocket_money_finance_account(cursor, finance_account_id, payment_method):
     """Ensure account exists, is active, Pocket money category, and supports mode."""
     ensure_finance_accounts_table(cursor)
@@ -57663,6 +58519,56 @@ def _complete_mpesa_stk_success(cursor, txn_row, callback_data):
     recorded_by = meta.get('employee_name') or 'Parent M-Pesa'
     received_by_id = meta.get('employee_db_id')
 
+    if purpose in ('hostel_deposit', 'hostel_full', 'hostel_balance'):
+        booking_id = meta.get('hostel_booking_id')
+        hostel_room_id = meta.get('hostel_room_id')
+        ok, hostel_msg, result_booking_id = apply_hostel_mpesa_payment(
+            cursor, purpose, booking_id, student_id, amount, receipt,
+            hostel_room_id=hostel_room_id,
+        )
+        if not ok:
+            return False, hostel_msg, None
+        if purpose == 'hostel_balance':
+            notes_text = 'Student hostel balance (M-Pesa STK)'
+        elif purpose == 'hostel_full':
+            notes_text = 'Student hostel full payment (M-Pesa STK)'
+        else:
+            notes_text = 'Student hostel deposit (M-Pesa STK)'
+        ensure_finance_account_transactions_table(cursor)
+        cursor.execute(
+            """
+            INSERT INTO student_payments
+                (student_id, fee_structure_id, amount_paid, payment_method,
+                 transaction_id, reference_number, received_by, payment_date, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, CURDATE(), %s)
+            """,
+            (
+                student_id,
+                fee_structure_id,
+                amount,
+                'Mobile Money',
+                receipt[:255] if receipt else None,
+                receipt[:255] if receipt else None,
+                None,
+                notes_text,
+            ),
+        )
+        payment_id = cursor.lastrowid
+        if finance_account_id:
+            _credit_finance_account(
+                cursor, finance_account_id, amount,
+                payment_method='Mobile Money',
+                reference_code=receipt,
+                description=f'{notes_text} — {student_id}',
+                related_type='student_payment',
+                related_id=payment_id,
+                recorded_by_name='Student M-Pesa',
+            )
+        return True, hostel_msg, {
+            'payment_id': payment_id,
+            'hostel_booking_id': result_booking_id or booking_id,
+        }
+
     if purpose in ('pocket_money', 'accountant_pocket_money'):
         note_label = (
             'Accountant M-Pesa STK top-up'
@@ -57751,6 +58657,12 @@ def _mpesa_purpose_label(purpose):
         return 'Pocket money top-up (accountant M-Pesa)'
     if p == 'accountant_school_fee':
         return 'School fees payment (accountant M-Pesa)'
+    if p == 'hostel_deposit':
+        return 'Hostel booking deposit (25%)'
+    if p == 'hostel_full':
+        return 'Hostel full payment'
+    if p == 'hostel_balance':
+        return 'Hostel balance payment'
     return 'School fees payment'
 
 
@@ -65646,6 +66558,19 @@ def _can_access_librarian_portal(role=None):
     return eff == 'librarian' or _is_institution_leadership_viewer()
 
 
+def _can_access_warden_portal(role=None):
+    eff = (role or _store_inventory_effective_role() or '').strip().lower()
+    return eff == 'warden' or _is_institution_leadership_viewer()
+
+
+def _warden_portal_guard():
+    """Redirect if current user cannot manage hostels."""
+    if not _can_access_warden_portal():
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+    return None
+
+
 def _department_store_effective_role():
     eff = (_store_inventory_effective_role() or '').strip().lower()
     if _is_institution_leadership_viewer():
@@ -70611,6 +71536,372 @@ def store_inventory_toggle_suspend(item_id):
     finally:
         connection.close()
     return redirect(employee_dash_url('store-inventory'))
+
+
+@app.route('/dashboard/employee/hostel-occupation-settings', methods=['GET'])
+@app.route('/dashboard/warden/hostel-occupation-settings', methods=['GET'])
+@login_required
+def warden_hostel_occupation_settings():
+    """Warden: occupation overview across registered hostels."""
+    if not _can_access_warden_portal():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    warden_hostels = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_hostels_tables(cursor)
+                warden_hostels = fetch_hostels_with_rooms(cursor)
+                connection.commit()
+        except Exception as e:
+            print(f"warden_hostel_occupation_settings: {e}")
+            flash('Could not load hostel occupation data.', 'error')
+        finally:
+            connection.close()
+
+    return render_template(
+        'dashboards/warden_hostel_occupation_settings.html',
+        role=user_role,
+        is_technician=is_technician,
+        warden_hostels=warden_hostels,
+    )
+
+
+@app.route('/dashboard/employee/hostel-occupations', methods=['GET'])
+@app.route('/dashboard/warden/hostel-occupations', methods=['GET'])
+@login_required
+def warden_hostel_occupations():
+    """Warden: list all students and their hostel room occupations."""
+    if not _can_access_warden_portal():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    student_occupations = []
+    occupation_filter_options = {'genders': [], 'hostels': [], 'prices': []}
+    stats = {'total': 0, 'assigned': 0, 'unassigned': 0, 'occupied': 0, 'reserved': 0}
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_hostels_tables(cursor)
+                ensure_student_hostel_bookings_table(cursor)
+                student_occupations = fetch_warden_hostel_student_occupations(cursor)
+                occupation_filter_options = build_occupation_filter_options(student_occupations)
+                stats['total'] = len(student_occupations)
+                for row in all_rows:
+                    if row.get('has_occupation'):
+                        stats['assigned'] += 1
+                        st = row.get('occupation_status') or ''
+                        if st == 'occupied':
+                            stats['occupied'] += 1
+                        elif st == 'reserved':
+                            stats['reserved'] += 1
+                    else:
+                        stats['unassigned'] += 1
+                connection.commit()
+        except Exception as e:
+            print(f"warden_hostel_occupations: {e}")
+            flash('Could not load student occupations.', 'error')
+        finally:
+            connection.close()
+
+    return render_template(
+        'dashboards/warden_hostel_occupations.html',
+        role=user_role,
+        is_technician=is_technician,
+        student_occupations=student_occupations,
+        occupation_stats=stats,
+        occupation_search=search,
+        occupation_filter=occupation_filter,
+        booking_status_label=booking_status_label,
+    )
+
+
+@app.route('/dashboard/employee/hostel-settings', methods=['GET'])
+@app.route('/dashboard/warden/hostel-settings', methods=['GET'])
+@login_required
+def warden_hostel_settings():
+    """Warden: configure hostel payment accounts and allowed payment methods."""
+    if not _can_access_warden_portal():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    warden_hostels = []
+    hostel_payment_settings_map = {}
+    hostel_finance_accounts = []
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dashboard_path())
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            ensure_hostel_payment_settings_table(cursor)
+            ensure_hostels_tables(cursor)
+            hostel_finance_accounts = _fetch_finance_accounts_for_hostel_picker(cursor)
+            warden_hostels = fetch_hostels_with_rooms(cursor)
+            hostel_payment_settings_map = fetch_hostel_payment_settings_map(cursor)
+            connection.commit()
+    except Exception as e:
+        print(f"warden_hostel_settings: {e}")
+        flash('Could not load hostel payment settings.', 'error')
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/warden_hostel_settings.html',
+        role=user_role,
+        is_technician=is_technician,
+        warden_hostels=warden_hostels,
+        hostel_payment_settings_map=hostel_payment_settings_map,
+        hostel_finance_accounts=hostel_finance_accounts,
+        hostel_payment_mode_keys=HOSTEL_PAYMENT_MODE_KEYS,
+        hostel_payment_mode_labels=HOSTEL_PAYMENT_MODE_LABELS,
+        hostel_payment_save_url=employee_dash_url('hostel-settings/save'),
+        hostel_min_installments=HOSTEL_MIN_INSTALLMENTS,
+        hostel_max_installments=HOSTEL_MAX_INSTALLMENTS,
+    )
+
+
+@app.route('/dashboard/employee/hostel-settings/save', methods=['POST'])
+@app.route('/dashboard/warden/hostel-settings/save', methods=['POST'])
+@login_required
+def warden_hostel_settings_autosave():
+    """Warden: autosave payment settings for a single hostel."""
+    if not _can_access_warden_portal():
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+
+    data = request.get_json(silent=True) or {}
+    hostel_id = data.get('hostel_id')
+    finance_account_id = data.get('finance_account_id')
+    modes = data.get('modes')
+    hostel_name = (data.get('hostel_name') or '').strip()
+    payment_plan = data.get('payment_plan') or {
+        'allow_full_payment': data.get('allow_full_payment'),
+        'allow_installment_payment': data.get('allow_installment_payment'),
+        'allow_reservation': data.get('allow_reservation'),
+        'reservation_pct': data.get('reservation_pct'),
+        'installment_count': data.get('installment_count'),
+        'installment_pcts': data.get('installment_pcts'),
+    }
+    payments_enabled = data.get('payments_enabled')
+    if payments_enabled is None:
+        payments_enabled = True
+    else:
+        payments_enabled = bool(payments_enabled)
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database unavailable.'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_finance_accounts_table(cursor)
+            ensure_hostel_payment_settings_table(cursor)
+            employee_id = session.get('employee_id') or session.get('user_id')
+            result = save_hostel_payment_settings_single(
+                cursor,
+                hostel_id,
+                hostel_name,
+                finance_account_id,
+                modes,
+                employee_id=employee_id,
+                payment_plan=payment_plan,
+                payments_enabled=payments_enabled,
+            )
+            if result.get('ok'):
+                connection.commit()
+                return jsonify({'ok': True, 'message': result.get('message') or 'Saved.'})
+            connection.rollback()
+            return jsonify({'ok': False, 'message': result.get('message') or 'Could not save.'}), 400
+    except Exception as e:
+        print(f"warden_hostel_settings_autosave: {e}")
+        connection.rollback()
+        return jsonify({'ok': False, 'message': 'Could not save settings.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/hostels/<int:hostel_id>')
+@login_required
+def warden_hostel_rooms(hostel_id):
+    """Warden: view rooms and occupants for a registered hostel."""
+    if not _can_access_warden_portal():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    hostel = None
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_hostels_tables(cursor)
+                connection.commit()
+                hostel = fetch_hostel_by_id(cursor, hostel_id)
+        except Exception as e:
+            print(f"warden_hostel_rooms: {e}")
+            flash('Could not load hostel details.', 'error')
+        finally:
+            connection.close()
+
+    if not hostel:
+        flash('Hostel not found.', 'error')
+        return redirect(employee_dashboard_path())
+
+    return render_template(
+        'dashboards/warden_hostel_rooms.html',
+        role=user_role,
+        is_technician=is_technician,
+        hostel=hostel,
+    )
+
+
+@app.route('/dashboard/employee/hostels/register', methods=['POST'])
+@login_required
+def warden_hostels_register():
+    """Register a school hostel with rooms (warden)."""
+    redir = _warden_portal_guard()
+    if redir:
+        return redir
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dashboard_path())
+
+    employee_id = session.get('employee_id') or session.get('user_id')
+    try:
+        with connection.cursor() as cursor:
+            result = register_hostel_from_request(
+                cursor, request.form, employee_id=employee_id,
+                photo_file=request.files.get('hostel_photo'),
+            )
+            if result.get('ok'):
+                connection.commit()
+                flash(result['message'], 'success')
+            else:
+                connection.rollback()
+                flash(result.get('message', 'Could not register the hostel.'), 'error')
+    except Exception as e:
+        connection.rollback()
+        print(f"warden_hostels_register: {e}")
+        flash('An error occurred while registering the hostel.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(employee_dashboard_path())
+
+
+@app.route('/dashboard/employee/hostels/<int:hostel_id>', methods=['POST'])
+@login_required
+def warden_hostels_update(hostel_id):
+    """Update a registered hostel and its rooms (warden)."""
+    redir = _warden_portal_guard()
+    if redir:
+        return redir
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dashboard_path())
+
+    try:
+        with connection.cursor() as cursor:
+            result = update_hostel_from_request(
+                cursor, hostel_id, request.form,
+                photo_file=request.files.get('hostel_photo'),
+            )
+            if result.get('ok'):
+                connection.commit()
+                flash(result['message'], 'success')
+            else:
+                connection.rollback()
+                flash(result.get('message', 'Could not update the hostel.'), 'error')
+    except Exception as e:
+        connection.rollback()
+        print(f"warden_hostels_update: {e}")
+        flash('An error occurred while updating the hostel.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(employee_dashboard_path())
+
+
+@app.route('/dashboard/employee/hostels/<int:hostel_id>/toggle-suspend', methods=['POST'])
+@login_required
+def warden_hostels_toggle_suspend(hostel_id):
+    """Suspend or reactivate a hostel (warden)."""
+    redir = _warden_portal_guard()
+    if redir:
+        return redir
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dashboard_path())
+
+    try:
+        with connection.cursor() as cursor:
+            result = toggle_hostel_suspend(cursor, hostel_id)
+            if result.get('ok'):
+                connection.commit()
+                flash(result['message'], 'success')
+            else:
+                connection.rollback()
+                flash(result.get('message', 'Could not update hostel status.'), 'error')
+    except Exception as e:
+        connection.rollback()
+        print(f"warden_hostels_toggle_suspend: {e}")
+        flash('An error occurred while updating hostel status.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(employee_dashboard_path())
+
+
+@app.route('/dashboard/employee/hostels/<int:hostel_id>/delete', methods=['POST'])
+@login_required
+def warden_hostels_delete(hostel_id):
+    """Delete a hostel and its rooms (warden)."""
+    redir = _warden_portal_guard()
+    if redir:
+        return redir
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dashboard_path())
+
+    try:
+        with connection.cursor() as cursor:
+            result = delete_hostel(cursor, hostel_id)
+            if result.get('ok'):
+                connection.commit()
+                flash(result['message'], 'success')
+            else:
+                connection.rollback()
+                flash(result.get('message', 'Could not delete the hostel.'), 'error')
+    except Exception as e:
+        connection.rollback()
+        print(f"warden_hostels_delete: {e}")
+        flash('An error occurred while deleting the hostel.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(employee_dashboard_path())
 
 
 @app.route('/dashboard/employee/store-departments', methods=['POST'])

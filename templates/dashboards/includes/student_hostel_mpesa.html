@@ -1,0 +1,438 @@
+{# Student hostel M-Pesa STK pay — modal + script #}
+<div id="student-hostel-mpesa-modal"
+     class="fixed inset-0 z-[9999] hidden items-center justify-center p-4"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="student-hostel-mpesa-title"
+     aria-hidden="true">
+    <div class="js-student-hostel-mpesa-close absolute inset-0 bg-slate-900/70 backdrop-blur-sm"></div>
+    <div class="relative z-10 w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div class="px-5 py-4 bg-gradient-to-r from-emerald-600 to-teal-700 text-white">
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-emerald-100">M-Pesa</p>
+                    <h3 id="student-hostel-mpesa-title" class="text-lg font-bold">Pay hostel fee</h3>
+                    <p id="student-hostel-mpesa-subtitle" class="text-xs text-emerald-100/90 mt-1 normal-case truncate hidden"></p>
+                </div>
+                <button type="button" class="js-student-hostel-mpesa-close p-2 rounded-lg hover:bg-white/10 shrink-0" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+        <form id="student-hostel-mpesa-form" class="p-5 space-y-4" novalidate>
+            <ol class="text-xs text-slate-600 dark:text-slate-400 space-y-1.5 list-decimal list-inside">
+                <li>Enter the M-Pesa number that will receive the STK prompt</li>
+                <li>Confirm the amount and tap Pay</li>
+                <li>Enter your M-Pesa PIN on your phone</li>
+            </ol>
+            <div>
+                <label for="student-hostel-mpesa-phone" class="block text-xs font-semibold uppercase text-slate-500 mb-1.5">M-Pesa phone</label>
+                <input type="tel" id="student-hostel-mpesa-phone" name="phone" required
+                       placeholder="e.g. 0712345678" autocomplete="tel"
+                       class="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2.5 text-sm dark:bg-slate-800 dark:text-white" />
+            </div>
+            <div>
+                <label for="student-hostel-mpesa-amount" class="block text-xs font-semibold uppercase text-slate-500 mb-1.5">Amount (KES)</label>
+                <input type="number" id="student-hostel-mpesa-amount" name="amount" min="1" step="1" required readonly
+                       class="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2.5 text-sm tabular-nums dark:bg-slate-800 dark:text-white bg-slate-50 dark:bg-slate-800/80" />
+            </div>
+            <div id="student-hostel-mpesa-status-row" class="hidden flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                <i class="fas fa-spinner fa-spin text-emerald-600"></i>
+                <span>Checking payment status…</span>
+            </div>
+            <p id="student-hostel-mpesa-feedback" class="hidden text-sm rounded-lg px-3 py-2" role="status"></p>
+            <p id="student-hostel-mpesa-receipt-row" class="hidden text-xs font-mono text-slate-500">
+                M-Pesa code: <span id="student-hostel-mpesa-receipt" class="font-semibold text-emerald-700 dark:text-emerald-400"></span>
+            </p>
+            <div id="student-hostel-mpesa-confirm-row" class="hidden space-y-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3">
+                <p class="text-xs text-amber-900 dark:text-amber-100">Paid on your phone but still waiting? Sandbox: confirm to record the payment locally.</p>
+                <input type="text" id="student-hostel-mpesa-receipt-input" placeholder="M-Pesa code reference (optional)"
+                       class="w-full rounded-lg border border-amber-200 dark:border-amber-700 px-3 py-2 text-sm dark:bg-slate-800 dark:text-white" />
+                <button type="button" id="student-hostel-mpesa-confirm-btn"
+                        class="w-full rounded-lg bg-amber-600 hover:bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white">
+                    Confirm payment recorded
+                </button>
+            </div>
+            <div class="flex flex-col-reverse sm:flex-row gap-2 pt-1">
+                <button type="button" class="js-student-hostel-mpesa-close flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Close
+                </button>
+                <button type="submit" id="student-hostel-mpesa-submit" class="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 px-4 py-2.5 text-sm font-semibold text-white inline-flex items-center justify-center gap-2">
+                    <i id="student-hostel-mpesa-submit-spinner" class="fas fa-spinner fa-spin hidden"></i>
+                    <i id="student-hostel-mpesa-submit-icon" class="fas fa-mobile-alt"></i>
+                    <span id="student-hostel-mpesa-submit-text">Pay with M-Pesa</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var CONFIG = {
+    stkUrl: {{ hostel_mpesa_stk_url|default(student_dash_url('hostels/mpesa/stk-push'), true)|tojson }},
+    confirmUrl: {{ hostel_mpesa_confirm_url|default(student_dash_url('hostels/mpesa/confirm-payment'), true)|tojson }},
+    statusUrlBase: {{ hostel_mpesa_status_url_base|default(student_dash_url('hostels/mpesa/status') + '/', true)|tojson }},
+    darajaReady: {{ mpesa_daraja_enabled|default(false)|tojson }},
+    sandboxConfirm: {{ mpesa_sandbox_confirm|default(false)|tojson }},
+  };
+
+  function statusPollUrl(checkoutId) {
+    var base = String(CONFIG.statusUrlBase || '/student/hostels/mpesa/status/').replace(/\/?$/, '/');
+    return base + encodeURIComponent(checkoutId || '');
+  }
+
+  var modal, form, phoneInput, amountInput, titleEl, subtitleEl, feedbackEl, statusRow;
+  var receiptRow, receiptEl, confirmRow, confirmBtn, receiptInput;
+  var submitBtn, submitSpinner, submitIcon, submitText;
+
+  var session = {
+    purpose: 'hostel_deposit',
+    studentId: '',
+    studentName: '',
+    bookingId: '',
+    roomId: '',
+    pollId: null,
+    pollCount: 0,
+    busy: false,
+    checkoutId: null,
+  };
+
+  function cacheDom() {
+    modal = document.getElementById('student-hostel-mpesa-modal');
+    form = document.getElementById('student-hostel-mpesa-form');
+    phoneInput = document.getElementById('student-hostel-mpesa-phone');
+    amountInput = document.getElementById('student-hostel-mpesa-amount');
+    titleEl = document.getElementById('student-hostel-mpesa-title');
+    subtitleEl = document.getElementById('student-hostel-mpesa-subtitle');
+    feedbackEl = document.getElementById('student-hostel-mpesa-feedback');
+    statusRow = document.getElementById('student-hostel-mpesa-status-row');
+    receiptRow = document.getElementById('student-hostel-mpesa-receipt-row');
+    receiptEl = document.getElementById('student-hostel-mpesa-receipt');
+    confirmRow = document.getElementById('student-hostel-mpesa-confirm-row');
+    confirmBtn = document.getElementById('student-hostel-mpesa-confirm-btn');
+    receiptInput = document.getElementById('student-hostel-mpesa-receipt-input');
+    submitBtn = document.getElementById('student-hostel-mpesa-submit');
+    submitSpinner = document.getElementById('student-hostel-mpesa-submit-spinner');
+    submitIcon = document.getElementById('student-hostel-mpesa-submit-icon');
+    submitText = document.getElementById('student-hostel-mpesa-submit-text');
+  }
+
+  function reveal(el) { if (el) el.classList.remove('hidden'); }
+  function conceal(el) { if (el) el.classList.add('hidden'); }
+  function showConfirmRow(show) { if (confirmRow) confirmRow.classList.toggle('hidden', !show); }
+
+  function openModal() {
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('overflow-hidden');
+  }
+
+  function closeModal() {
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('overflow-hidden');
+  }
+
+  function setFeedback(msg, kind) {
+    if (!feedbackEl) return;
+    feedbackEl.textContent = msg || '';
+    feedbackEl.classList.remove('hidden', 'bg-red-50', 'text-red-800', 'bg-emerald-50', 'text-emerald-800', 'bg-slate-100', 'text-slate-700');
+    if (!msg) { feedbackEl.classList.add('hidden'); return; }
+    if (kind === 'error') {
+      feedbackEl.classList.add('bg-red-50', 'text-red-800');
+    } else if (kind === 'ok') {
+      feedbackEl.classList.add('bg-emerald-50', 'text-emerald-800');
+    } else {
+      feedbackEl.classList.add('bg-slate-100', 'text-slate-700');
+    }
+    reveal(feedbackEl);
+  }
+
+  function setBusy(busy) {
+    session.busy = busy;
+    if (submitBtn) submitBtn.disabled = busy;
+    if (submitSpinner) submitSpinner.classList.toggle('hidden', !busy);
+    if (submitIcon) submitIcon.classList.toggle('hidden', busy);
+  }
+
+  function stopPolling() {
+    if (session.pollId) {
+      clearInterval(session.pollId);
+      session.pollId = null;
+    }
+    session.pollCount = 0;
+    conceal(statusRow);
+  }
+
+  function mpesaCodeReference(data) {
+    return (data && (data.mpesa_code_reference || data.mpesa_receipt)) || '';
+  }
+
+  function showMpesaCodeReference(code) {
+    if (!code || !receiptRow || !receiptEl) return;
+    receiptEl.textContent = code;
+    reveal(receiptRow);
+  }
+
+  function handleCompleted(data) {
+    stopPolling();
+    setBusy(false);
+    showConfirmRow(false);
+    var msg = (data && data.message) || 'Payment successful.';
+    setFeedback(msg, 'ok');
+    window.setTimeout(function () { window.location.reload(); }, 1200);
+  }
+
+  function openFromButton(btn) {
+    if (!btn || !modal) return;
+    session.purpose = btn.getAttribute('data-mpesa-purpose') || 'hostel_deposit';
+    session.studentId = btn.getAttribute('data-mpesa-student-id') || '';
+    session.studentName = btn.getAttribute('data-mpesa-student-name') || '';
+    session.bookingId = btn.getAttribute('data-mpesa-booking-id') || '';
+    session.roomId = btn.getAttribute('data-mpesa-room-id') || '';
+
+    var roomRef = btn.getAttribute('data-mpesa-room-ref') || '';
+    var hostelName = btn.getAttribute('data-mpesa-hostel-name') || '';
+
+    if (titleEl) {
+      var customTitle = btn.getAttribute('data-mpesa-title');
+      if (customTitle) {
+        titleEl.textContent = customTitle;
+      } else if (session.purpose === 'hostel_balance') {
+        titleEl.textContent = 'Pay hostel balance';
+      } else if (session.purpose === 'hostel_installment') {
+        titleEl.textContent = 'Pay hostel installment';
+      } else if (session.purpose === 'hostel_full') {
+        titleEl.textContent = 'Pay full hostel amount';
+      } else {
+        titleEl.textContent = 'Pay hostel reservation';
+      }
+    }
+    if (subtitleEl) {
+      if ((session.purpose === 'hostel_deposit' || session.purpose === 'hostel_full') && roomRef && hostelName) {
+        subtitleEl.textContent = hostelName + ' · Room ' + roomRef;
+        subtitleEl.classList.remove('hidden');
+      } else if (session.studentName) {
+        subtitleEl.textContent = session.studentName + ' · Ref ' + session.studentId;
+        subtitleEl.classList.remove('hidden');
+      } else {
+        subtitleEl.classList.add('hidden');
+      }
+    }
+    if (phoneInput) phoneInput.value = '';
+    if (amountInput) {
+      var suggested = btn.getAttribute('data-mpesa-amount');
+      amountInput.value = suggested ? String(suggested) : '';
+    }
+
+    setFeedback('');
+    conceal(receiptRow);
+    showConfirmRow(false);
+    session.checkoutId = null;
+    stopPolling();
+    setBusy(false);
+    openModal();
+    if (phoneInput) phoneInput.focus();
+  }
+
+  function pollCheckout(checkoutId) {
+    stopPolling();
+    session.checkoutId = checkoutId;
+    reveal(statusRow);
+
+    function tick() {
+      session.pollCount += 1;
+      fetch(statusPollUrl(checkoutId), {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      })
+        .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, status: res.status, data: data }; }); })
+        .then(function (result) {
+          var data = result.data;
+          if (!result.ok || !data || !data.success) {
+            if (result.status === 404) {
+              setFeedback('Payment session not found. Try again.', 'error');
+              stopPolling();
+            }
+            return;
+          }
+          if (data.sync_warning) setFeedback(data.sync_warning, 'error');
+          if (data.confirm_available || CONFIG.sandboxConfirm) {
+            if (session.pollCount >= 4) showConfirmRow(true);
+          }
+          var codeRef = mpesaCodeReference(data);
+          if (codeRef) showMpesaCodeReference(codeRef);
+          var status = String(data.status || '').toLowerCase();
+          if (status === 'completed') {
+            handleCompleted(data);
+          } else if (status === 'failed' || status === 'cancelled') {
+            stopPolling();
+            setBusy(false);
+            showConfirmRow(false);
+            setFeedback(data.message || 'Payment was not completed.', 'error');
+          } else if (data.message && !data.sync_warning) {
+            setFeedback(data.message, 'ok');
+          }
+        })
+        .catch(function () { /* retry */ });
+
+      if (session.pollCount >= 40) {
+        stopPolling();
+        setBusy(false);
+        if (CONFIG.sandboxConfirm) {
+          showConfirmRow(true);
+          setFeedback('Still waiting. If you entered your PIN, tap Confirm payment below (sandbox).', 'error');
+        } else {
+          setFeedback('Timed out waiting for M-Pesa. Try again or contact the school.', 'error');
+        }
+      }
+    }
+
+    tick();
+    session.pollId = setInterval(tick, 3000);
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    if (session.busy) return;
+
+    var phone = phoneInput ? phoneInput.value.trim() : '';
+    var amount = amountInput ? amountInput.value.trim() : '';
+
+    if (!CONFIG.darajaReady) {
+      setFeedback('M-Pesa is not enabled. Contact the school.', 'error');
+      return;
+    }
+    if (!phone) {
+      setFeedback('Enter the M-Pesa phone number.', 'error');
+      phoneInput && phoneInput.focus();
+      return;
+    }
+    if (!amount || Number(amount) < 1) {
+      setFeedback('Enter a valid amount.', 'error');
+      return;
+    }
+    if (session.purpose === 'hostel_balance' && !session.bookingId) {
+      setFeedback('Booking not found. Refresh the page.', 'error');
+      return;
+    }
+    if (session.purpose === 'hostel_installment' && !session.bookingId) {
+      setFeedback('Booking not found. Refresh the page.', 'error');
+      return;
+    }
+    if (session.purpose === 'hostel_deposit' && !session.roomId) {
+      setFeedback('Room not selected. Refresh the page.', 'error');
+      return;
+    }
+    if (session.purpose === 'hostel_full' && !session.roomId) {
+      setFeedback('Room not selected. Refresh the page.', 'error');
+      return;
+    }
+
+    setBusy(true);
+    setFeedback('');
+    conceal(receiptRow);
+
+    var payload = {
+      purpose: session.purpose,
+      student_id: session.studentId,
+      phone: phone,
+      amount: amount,
+    };
+    if (session.purpose === 'hostel_balance' || session.purpose === 'hostel_installment') {
+      payload.booking_id = session.bookingId;
+    } else if (session.purpose === 'hostel_deposit' || session.purpose === 'hostel_full') {
+      payload.hostel_room_id = session.roomId;
+    }
+
+    fetch(CONFIG.stkUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (!data || !data.success) {
+          setFeedback((data && data.message) || 'Could not start M-Pesa payment.', 'error');
+          return;
+        }
+        setFeedback(data.message || 'Check your phone and enter your M-Pesa PIN.', 'ok');
+        if (data.sync_warning) setFeedback(data.sync_warning, 'error');
+        if (data.checkout_request_id) {
+          showConfirmRow(false);
+          pollCheckout(data.checkout_request_id);
+        }
+      })
+      .catch(function () {
+        setFeedback('Could not reach the server.', 'error');
+      })
+      .finally(function () { setBusy(false); });
+  }
+
+  function confirmSandbox() {
+    if (!session.checkoutId) return;
+    setBusy(true);
+    fetch(CONFIG.confirmUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({
+        checkout_request_id: session.checkoutId,
+        mpesa_code_reference: receiptInput ? receiptInput.value.trim() : '',
+      }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (!data || !data.success) {
+          setFeedback((data && data.message) || 'Could not confirm payment.', 'error');
+          return;
+        }
+        handleCompleted(data);
+      })
+      .catch(function () { setFeedback('Could not confirm payment.', 'error'); })
+      .finally(function () { setBusy(false); });
+  }
+
+  function onDocumentClick(event) {
+    var openBtn = event.target.closest('.js-student-hostel-mpesa-open');
+    if (openBtn) {
+      event.preventDefault();
+      openFromButton(openBtn);
+      return;
+    }
+    if (event.target.closest('.js-student-hostel-mpesa-close')) {
+      event.preventDefault();
+      closeModal();
+      stopPolling();
+      setBusy(false);
+      setFeedback('');
+      conceal(receiptRow);
+      showConfirmRow(false);
+      session.checkoutId = null;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    cacheDom();
+    if (form) form.addEventListener('submit', submit);
+    if (confirmBtn) confirmBtn.addEventListener('click', confirmSandbox);
+    document.addEventListener('click', onDocumentClick);
+  });
+})();
+</script>

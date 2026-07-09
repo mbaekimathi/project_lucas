@@ -70,6 +70,12 @@
     <span>Library</span>
     {% if request.endpoint == 'student_portal_library' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ student_dash_url('hostels') }}"
+   class="sidebar-item {% if request.endpoint == 'student_portal_hostels' or '/hostels' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-bed w-5"></i>
+    <span>Hostels</span>
+    {% if request.endpoint == 'student_portal_hostels' or '/hostels' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 <a href="{{ portal_notifications_hub_url|default(student_dash_url('notifications')) }}"
    class="sidebar-item {% if request.endpoint == 'student_portal_notifications' %}sidebar-item-active{% endif %}">
     <i class="fas fa-bell w-5"></i>

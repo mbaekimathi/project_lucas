@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}{{ hostel.name }} — Rooms & occupants - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include 'dashboards/includes/warden_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% set role_theme = 'warden' %}
+{% set role_hero_eyebrow = 'Warden' %}
+{% set role_hero_title = hostel.name %}
+{% set role_hero_subtitle = hostel.category ~ ' · ' ~ hostel.location ~ ' — occupants are recorded per room.' %}
+{% set role_hero_icon_class = 'fa-door-open' %}
+{% set role_hero_chips = [
+    {'icon': 'fa-door-closed', 'text': hostel.room_count|default(0) ~ ' room' ~ ('s' if hostel.room_count|default(0) != 1 else '')},
+    {'icon': 'fa-users', 'text': hostel.room_occupant_total|default(0) ~ ' total occupant' ~ ('s' if hostel.room_occupant_total|default(0) != 1 else '')}
+] %}
+
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--warden">
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        {% include 'dashboards/includes/portal_page_flash.html' %}
+
+        <div class="flex flex-wrap items-center gap-3">
+            <a href="{{ employee_dash_url() }}"
+               class="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                <i class="fas fa-arrow-left text-xs" aria-hidden="true"></i>
+                Back to hostels
+            </a>
+        </div>
+
+        {% include 'dashboards/includes/role_hero.html' %}
+
+        {% if hostel.photo_path %}
+        <section class="role-panel overflow-hidden" aria-label="Hostel photo">
+            <img src="{{ url_for('static', filename=hostel.photo_path) }}"
+                 alt="{{ hostel.name }}"
+                 class="w-full max-h-80 object-cover" />
+        </section>
+        {% endif %}
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="role-panel p-4 sm:p-5">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 m-0">Category</p>
+                <p class="text-lg font-bold text-slate-900 dark:text-white mt-1 mb-0">{{ hostel.category }}</p>
+            </div>
+            <div class="role-panel p-4 sm:p-5">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 m-0">Total rooms</p>
+                <p class="text-lg font-bold text-slate-900 dark:text-white mt-1 mb-0 tabular-nums">{{ hostel.room_count|default(0) }}</p>
+            </div>
+            <div class="role-panel p-4 sm:p-5">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 m-0">Total occupants</p>
+                <p class="text-lg font-bold text-slate-900 dark:text-white mt-1 mb-0 tabular-nums">{{ hostel.room_occupant_total|default(0) }}</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 m-0">Sum across all rooms</p>
+            </div>
+            <div class="role-panel p-4 sm:p-5">
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 m-0">Status</p>
+                <p class="text-lg font-bold mt-1 mb-0
+                    {% if hostel.status == 'suspended' %}text-amber-700 dark:text-amber-300{% else %}text-emerald-700 dark:text-emerald-300{% endif %}">
+                    {{ 'Suspended' if hostel.status == 'suspended' else 'Active' }}
+                </p>
+            </div>
+        </div>
+
+        {% if hostel.description %}
+        <section class="role-panel p-4 sm:p-5" aria-labelledby="hostel-desc-heading">
+            <h2 id="hostel-desc-heading" class="text-sm font-bold text-slate-900 dark:text-white m-0 mb-2">Description</h2>
+            <p class="text-sm text-slate-600 dark:text-slate-300 m-0 leading-relaxed">{{ hostel.description }}</p>
+        </section>
+        {% endif %}
+
+        <section class="role-panel overflow-hidden" aria-labelledby="hostel-rooms-heading">
+            <div class="px-4 sm:px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                    <h2 id="hostel-rooms-heading" class="text-lg font-bold text-slate-900 dark:text-white m-0">Rooms & occupants</h2>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5 m-0">
+                        {{ hostel.rooms|length }} room{{ 's' if hostel.rooms|length != 1 else '' }}
+                        {% if hostel.room_occupant_total is defined and hostel.room_occupant_total > 0 %}
+                        · {{ hostel.room_occupant_total }} bed space{{ 's' if hostel.room_occupant_total != 1 else '' }} across rooms
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+
+            {% if hostel.rooms %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-slate-200/80 dark:border-slate-700/80 text-slate-500 dark:text-slate-400">
+                            <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">#</th>
+                            <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide">Reference number</th>
+                            <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide text-right">Price</th>
+                            <th class="px-4 py-3 font-semibold text-[0.6875rem] uppercase tracking-wide text-center">Occupants (per room)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for room in hostel.rooms %}
+                        <tr class="border-b border-slate-200/60 dark:border-slate-700/60 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                            <td class="px-4 py-3 tabular-nums text-slate-500">{{ room.sort_order }}</td>
+                            <td class="px-4 py-3 font-mono font-semibold text-slate-900 dark:text-white">{{ room.reference_number }}</td>
+                            <td class="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{{ '%.2f'|format(room.price) }}</td>
+                            <td class="px-4 py-3 text-center tabular-nums text-slate-700 dark:text-slate-200">{{ room.occupant_count|default(0) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% if hostel.room_occupant_total is defined and hostel.room_occupant_total > 0 %}
+                    <tfoot>
+                        <tr class="bg-slate-50/90 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700">
+                            <td colspan="3" class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total room occupants</td>
+                            <td class="px-4 py-3 text-center font-bold tabular-nums text-slate-900 dark:text-white">{{ hostel.room_occupant_total }}</td>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
+                </table>
+            </div>
+            {% else %}
+            <div class="px-4 sm:px-5 py-10 text-center">
+                <p class="text-sm text-slate-500 dark:text-slate-400 m-0">No rooms registered for this hostel yet.</p>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

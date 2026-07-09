@@ -175,12 +175,7 @@
 {% elif current_role == 'warden' %}
 <div class="p-4 sm:p-6 lg:p-8 role-page role-page--warden">
     <div class="max-w-7xl mx-auto space-y-6">
-        {% set role_theme = 'warden' %}
-        {% set role_hero_eyebrow = 'Warden' %}
-        {% set role_hero_title = 'Boarding & hostel' %}
-        {% set role_hero_subtitle = 'Manage hostel operations and request supplies from the school store.' %}
-        {% set role_hero_icon_class = 'fa-bed' %}
-        {% include 'dashboards/includes/role_hero.html' %}
+        {% include 'dashboards/includes/warden_role_home.html' %}
     </div>
 </div>
 {% elif current_role == 'cateress' %}
