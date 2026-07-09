@@ -10,7 +10,7 @@ import time
 
 from flask import request, session
 
-PORTAL_PASSWORD_MIN_LEN = 8
+PORTAL_PASSWORD_MIN_LEN = 6
 
 _rate_lock = threading.Lock()
 _rate_buckets: dict = {}
@@ -53,6 +53,8 @@ def validate_email_format(email, required=False):
 def validate_portal_password(password):
     """Return None if OK, else error message."""
     pw = password or ''
+    if re.fullmatch(r'\d{6}', pw):
+        return None
     if len(pw) < PORTAL_PASSWORD_MIN_LEN:
         return f'Password must be at least {PORTAL_PASSWORD_MIN_LEN} characters.'
     if not re.search(r'[A-Za-z]', pw):

@@ -8,7 +8,7 @@
             <p class="text-xs font-bold uppercase tracking-[0.2em] text-white/70">Secure portal</p>
             <h1 class="mt-4 text-3xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">Sign in to {{ school_settings.school_name or 'your school' }}</h1>
             <p class="mt-4 text-white/75 text-sm leading-relaxed max-w-sm">
-                Staff use their employee code. Students use a six-digit portal code. <strong class="text-white/90">Parents</strong> enter their child’s admission ID first; then the page asks for a password or offers a short registration if no portal account exists yet.
+                Staff use their employee code. <strong class="text-white/90">Parents</strong> and <strong class="text-white/90">students</strong> enter an admission ID first; then the page asks for a password or offers a short registration if no portal account exists yet.
             </p>
             <ul class="mt-6 space-y-2 text-sm text-white/70 list-none pl-0">
                 <li class="flex gap-2"><i class="fas fa-check text-emerald-400/90 mt-0.5 shrink-0" aria-hidden="true"></i><span>Fees, notices, and academic updates in one place</span></li>
@@ -48,6 +48,12 @@
                     <a href="{{ url_for('parent_portal_setup', admission=(parent_setup_admission or default_admission or login_code or '')) }}" class="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-amber-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 transition-colors">
                         Open full setup <i class="fas fa-arrow-right text-xs opacity-90" aria-hidden="true"></i>
                     </a>
+                </div>
+            {% endif %}
+            {% if student_setup_hint %}
+                <div class="rounded-xl border border-amber-400/70 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-600/60 dark:bg-amber-950/50 dark:text-amber-50">
+                    <p class="font-semibold text-amber-950 dark:text-amber-100">First-time student</p>
+                    <p class="mt-1 text-amber-900/95 dark:text-amber-100/90">Enter your admission ID below; the page will guide you through account setup.</p>
                 </div>
             {% endif %}
             </div>
@@ -118,13 +124,13 @@
                     <input type="date" id="parent_reg_dob" name="date_of_birth" required autocomplete="bday">
                 </div>
                 <div>
-                    <label for="parent_reg_email">Your email</label>
-                    <input type="email" id="parent_reg_email" name="email" required maxlength="255" autocomplete="email" placeholder="you@example.com">
+                    <label for="parent_reg_email">Your email <span class="text-white/45 font-normal">(optional)</span></label>
+                    <input type="email" id="parent_reg_email" name="email" maxlength="255" autocomplete="email" placeholder="you@example.com">
                 </div>
                 <div class="cbc-password-field" x-data="{ showPw: false }">
                     <label for="parent_reg_pw">New password</label>
                     <div class="cbc-password-field__wrap">
-                        <input :type="showPw ? 'text' : 'password'" id="parent_reg_pw" name="new_password" required minlength="8" autocomplete="new-password" class="cbc-password-field__input" placeholder="At least 8 characters, with letters and numbers">
+                        <input :type="showPw ? 'text' : 'password'" id="parent_reg_pw" name="new_password" required minlength="6" maxlength="64" autocomplete="new-password" class="cbc-password-field__input" placeholder="6-digit code or password (min. 6 characters)">
                         <button type="button" class="cbc-password-field__toggle" @click="showPw = !showPw" :aria-label="showPw ? 'Hide password' : 'Show password'">
                             <i class="fas text-lg" :class="showPw ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
                         </button>
@@ -133,13 +139,54 @@
                 <div class="cbc-password-field" x-data="{ showPw2: false }">
                     <label for="parent_reg_pw2">Confirm password</label>
                     <div class="cbc-password-field__wrap">
-                        <input :type="showPw2 ? 'text' : 'password'" id="parent_reg_pw2" name="confirm_password" required minlength="8" autocomplete="new-password" class="cbc-password-field__input" placeholder="Repeat password">
+                        <input :type="showPw2 ? 'text' : 'password'" id="parent_reg_pw2" name="confirm_password" required minlength="6" maxlength="64" autocomplete="new-password" class="cbc-password-field__input" placeholder="Repeat password or 6-digit code">
                         <button type="button" class="cbc-password-field__toggle" @click="showPw2 = !showPw2" :aria-label="showPw2 ? 'Hide password' : 'Show password'">
                             <i class="fas text-lg" :class="showPw2 ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>
                 <p id="parent_reg_pw_err" class="hidden text-sm text-red-300"></p>
+                <label class="inline-flex items-center gap-2 text-sm text-white/60 cursor-pointer">
+                    <input type="checkbox" name="remember_me" value="1" class="rounded border-white/30 bg-white/5">
+                    Remember me on this device
+                </label>
+                <button type="submit" class="w-full cbc-cta-red justify-center py-3.5 text-base font-bold shadow-lg shadow-black/20">
+                    <i class="fas fa-user-check" aria-hidden="true"></i> Create account &amp; continue
+                </button>
+            </form>
+
+            <form method="POST" action="{{ url_for('login_student_register') }}" id="login_student_register_form" class="cbc-premium-form mt-6 hidden space-y-4 border-t border-white/10 pt-6" data-skip-global-validate="true" novalidate>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <p class="text-sm font-semibold text-white/90">Create your student portal</p>
+                <p class="text-xs text-white/55">Admission <strong class="text-white/80" id="student_reg_admission_display"></strong> — confirm your date of birth, then choose your email and password.</p>
+                <input type="hidden" name="admission" id="student_reg_admission_hidden" value="">
+                <div>
+                    <label for="student_reg_dob">Your date of birth</label>
+                    <input type="date" id="student_reg_dob" name="date_of_birth" required autocomplete="bday">
+                </div>
+                <div>
+                    <label for="student_reg_email">Your email <span class="text-white/45 font-normal">(optional)</span></label>
+                    <input type="email" id="student_reg_email" name="email" maxlength="255" autocomplete="email" placeholder="you@example.com">
+                </div>
+                <div class="cbc-password-field" x-data="{ showPw: false }">
+                    <label for="student_reg_pw">New password</label>
+                    <div class="cbc-password-field__wrap">
+                        <input :type="showPw ? 'text' : 'password'" id="student_reg_pw" name="new_password" required minlength="6" maxlength="64" autocomplete="new-password" class="cbc-password-field__input" placeholder="6-digit code or password (min. 6 characters)">
+                        <button type="button" class="cbc-password-field__toggle" @click="showPw = !showPw" :aria-label="showPw ? 'Hide password' : 'Show password'">
+                            <i class="fas text-lg" :class="showPw ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="cbc-password-field" x-data="{ showPw2: false }">
+                    <label for="student_reg_pw2">Confirm password</label>
+                    <div class="cbc-password-field__wrap">
+                        <input :type="showPw2 ? 'text' : 'password'" id="student_reg_pw2" name="confirm_password" required minlength="6" maxlength="64" autocomplete="new-password" class="cbc-password-field__input" placeholder="Repeat password or 6-digit code">
+                        <button type="button" class="cbc-password-field__toggle" @click="showPw2 = !showPw2" :aria-label="showPw2 ? 'Hide password' : 'Show password'">
+                            <i class="fas text-lg" :class="showPw2 ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+                <p id="student_reg_pw_err" class="hidden text-sm text-red-300"></p>
                 <label class="inline-flex items-center gap-2 text-sm text-white/60 cursor-pointer">
                     <input type="checkbox" name="remember_me" value="1" class="rounded border-white/30 bg-white/5">
                     Remember me on this device
@@ -158,8 +205,28 @@
 </div>
 <script>
 (function () {
-    var checkUrl = {{ url_for('api_parent_portal_check_admission')|tojson }};
-    var parentPhase = 'na';
+    var ADMISSION_FLOW = {
+        parent: {
+            checkUrl: {{ url_for('api_parent_portal_check_admission')|tojson }},
+            regFormId: 'login_parent_register_form',
+            admissionHiddenId: 'parent_reg_admission_hidden',
+            admissionDisplayId: 'parent_reg_admission_display',
+            pwA: 'parent_reg_pw',
+            pwB: 'parent_reg_pw2',
+            pwErrId: 'parent_reg_pw_err'
+        },
+        student: {
+            checkUrl: {{ url_for('api_student_portal_check_admission')|tojson }},
+            regFormId: 'login_student_register_form',
+            admissionHiddenId: 'student_reg_admission_hidden',
+            admissionDisplayId: 'student_reg_admission_display',
+            pwA: 'student_reg_pw',
+            pwB: 'student_reg_pw2',
+            pwErrId: 'student_reg_pw_err'
+        }
+    };
+
+    var admissionPhase = 'na';
     var debounceMs = 420;
     var debounceTimer = null;
     var fetchSeq = 0;
@@ -173,7 +240,15 @@
         return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\"/g, '&quot;');
     }
 
-    function setParentAdmissionStatus(html, extraClass) {
+    function isAdmissionRole(role) {
+        return role === 'parent' || role === 'student';
+    }
+
+    function flowCfg(role) {
+        return ADMISSION_FLOW[role] || null;
+    }
+
+    function setAdmissionStatus(html, extraClass) {
         var el = document.getElementById('login_parent_admission_status');
         if (!el) return;
         el.classList.remove('hidden');
@@ -181,7 +256,7 @@
         el.innerHTML = html || '';
     }
 
-    function hideParentAdmissionStatus() {
+    function hideAdmissionStatus() {
         var el = document.getElementById('login_parent_admission_status');
         if (!el) return;
         el.classList.add('hidden');
@@ -197,25 +272,21 @@
         var link = document.getElementById('role_forgot_password_link');
         if (!link || !sel) return;
         var role = sel.value;
-        if (role === 'parent' && parentPhase !== 'password') {
+        if (isAdmissionRole(role) && admissionPhase !== 'password') {
             link.classList.add('hidden');
             return;
         }
         link.classList.remove('hidden');
         if (role === 'parent') {
-            var v = admissionValue || norm((document.getElementById('login_code') || {}).value || '');
-            link.href = parentForgotBaseUrl + (v ? ('?admission=' + encodeURIComponent(v)) : '');
+            var pv = admissionValue || norm((document.getElementById('login_code') || {}).value || '');
+            link.href = parentForgotBaseUrl + (pv ? ('?admission=' + encodeURIComponent(pv)) : '');
         } else if (role === 'student') {
-            var scode = ((document.getElementById('login_code') || {}).value || '').trim();
-            link.href = studentForgotBaseUrl + (scode.length === 6 ? ('?code=' + encodeURIComponent(scode)) : '');
+            var sv = admissionValue || norm((document.getElementById('login_code') || {}).value || '');
+            link.href = studentForgotBaseUrl + (sv ? ('?admission=' + encodeURIComponent(sv)) : '');
         } else {
             var code = ((document.getElementById('login_code') || {}).value || '').trim();
             link.href = employeeForgotBaseUrl + (code.length === 6 ? ('?code=' + encodeURIComponent(code)) : '');
         }
-    }
-
-    function updateParentForgotLink(admissionValue) {
-        updateRoleForgotLinks(admissionValue);
     }
 
     function setPasswordBlockVisible(visible) {
@@ -232,34 +303,39 @@
             pw.setAttribute('disabled', 'disabled');
             pw.value = '';
         }
-        updateParentForgotLink();
+        updateRoleForgotLinks();
     }
 
-    function setRegisterFormVisible(visible) {
-        var f = document.getElementById('login_parent_register_form');
-        if (!f) return;
-        if (visible) {
-            f.classList.remove('hidden');
-        } else {
-            f.classList.add('hidden');
-        }
+    function setRegisterFormVisible(role, visible) {
+        Object.keys(ADMISSION_FLOW).forEach(function (r) {
+            var f = document.getElementById(ADMISSION_FLOW[r].regFormId);
+            if (!f) return;
+            if (r === role && visible) {
+                f.classList.remove('hidden');
+            } else {
+                f.classList.add('hidden');
+            }
+        });
     }
 
-    function syncAdmissionHidden() {
+    function syncAdmissionHidden(role) {
+        var cfg = flowCfg(role);
+        if (!cfg) return;
         var inp = document.getElementById('login_code');
-        var hid = document.getElementById('parent_reg_admission_hidden');
-        var disp = document.getElementById('parent_reg_admission_display');
+        var hid = document.getElementById(cfg.admissionHiddenId);
+        var disp = document.getElementById(cfg.admissionDisplayId);
         var v = inp ? norm(inp.value) : '';
         if (hid) hid.value = v;
         if (disp) disp.textContent = v || '—';
     }
 
-    function resetParentFlow() {
-        parentPhase = 'na';
+    function resetAdmissionFlow() {
+        admissionPhase = 'na';
         if (debounceTimer) clearTimeout(debounceTimer);
         if (abortCtl) abortCtl.abort();
-        hideParentAdmissionStatus();
-        setRegisterFormVisible(false);
+        hideAdmissionStatus();
+        setRegisterFormVisible('parent', false);
+        setRegisterFormVisible('student', false);
         setPasswordBlockVisible(true);
         var pw = document.getElementById('password');
         if (pw) {
@@ -268,16 +344,16 @@
         }
     }
 
-    function applyParentCheckResult(data, admissionValue) {
+    function applyAdmissionCheckResult(data, admissionValue, role) {
         var sel = document.getElementById('role_view');
-        if (!sel || sel.value !== 'parent') return;
-        syncAdmissionHidden();
+        if (!sel || sel.value !== role) return;
+        syncAdmissionHidden(role);
         if (data.ready) {
-            parentPhase = 'register';
-            updateParentForgotLink();
+            admissionPhase = 'register';
+            updateRoleForgotLinks();
             setPasswordBlockVisible(false);
-            setRegisterFormVisible(true);
-            setParentAdmissionStatus(
+            setRegisterFormVisible(role, true);
+            setAdmissionStatus(
                 '<span class="text-emerald-300 font-medium">✓ ' + esc(data.message || 'No portal account yet — complete the form below.') + '</span>' +
                 (data.student_name ? ' <span class="text-white/60">(' + esc(data.student_name) + ')</span>' : ''),
                 ''
@@ -285,67 +361,96 @@
             return;
         }
         if (data.reason === 'portal_exists') {
-            parentPhase = 'password';
-            setRegisterFormVisible(false);
+            admissionPhase = 'password';
+            setRegisterFormVisible(role, false);
             setPasswordBlockVisible(true);
-            updateParentForgotLink(admissionValue);
+            updateRoleForgotLinks(admissionValue);
             var msg = (data && data.message) ? esc(data.message) : 'Sign in with your password.';
             var link = data.login_url ? ' <a class="font-semibold text-sky-300 hover:text-white underline underline-offset-2" href="' + String(data.login_url) + '">Open sign-in</a>' : '';
-            setParentAdmissionStatus('<span class="text-sky-200">' + msg + '</span>' + link, '');
+            setAdmissionStatus('<span class="text-sky-200">' + msg + '</span>' + link, '');
             return;
         }
-        parentPhase = 'blocked';
-        updateParentForgotLink();
-        setRegisterFormVisible(false);
+        admissionPhase = 'blocked';
+        updateRoleForgotLinks();
+        setRegisterFormVisible(role, false);
         setPasswordBlockVisible(false);
         var m = (data && data.message) ? esc(data.message) : 'Cannot continue with this admission ID.';
-        setParentAdmissionStatus('<span class="text-red-300">' + m + '</span>', '');
+        setAdmissionStatus('<span class="text-red-300">' + m + '</span>', '');
     }
 
-    function runParentAdmissionCheck() {
+    function runAdmissionCheck() {
         var sel = document.getElementById('role_view');
         var input = document.getElementById('login_code');
-        if (!sel || sel.value !== 'parent' || !input) return;
+        var role = sel ? sel.value : '';
+        var cfg = flowCfg(role);
+        if (!cfg || !input) return;
         var v = norm(input.value);
         input.value = v;
-        syncAdmissionHidden();
+        syncAdmissionHidden(role);
         if (v.length < 2) {
-            hideParentAdmissionStatus();
+            hideAdmissionStatus();
             setPasswordBlockVisible(false);
-            setRegisterFormVisible(false);
-            parentPhase = 'na';
+            setRegisterFormVisible(role, false);
+            admissionPhase = 'na';
             return;
         }
         if (abortCtl) abortCtl.abort();
         abortCtl = new AbortController();
         var mySeq = ++fetchSeq;
-        setParentAdmissionStatus('<span class="text-white/50">Checking admission…</span>', '');
+        setAdmissionStatus('<span class="text-white/50">Checking admission…</span>', '');
         setPasswordBlockVisible(false);
-        setRegisterFormVisible(false);
-        parentPhase = 'checking';
+        setRegisterFormVisible(role, false);
+        admissionPhase = 'checking';
 
-        fetch(checkUrl + '?q=' + encodeURIComponent(v), { signal: abortCtl.signal, credentials: 'same-origin' })
+        fetch(cfg.checkUrl + '?q=' + encodeURIComponent(v), { signal: abortCtl.signal, credentials: 'same-origin' })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
             .then(function (pack) {
                 if (mySeq !== fetchSeq) return;
                 if (norm(document.getElementById('login_code').value) !== v) return;
-                applyParentCheckResult(pack.j, v);
+                applyAdmissionCheckResult(pack.j, v, role);
             })
             .catch(function (e) {
                 if (e.name === 'AbortError') return;
                 if (mySeq !== fetchSeq) return;
-                parentPhase = 'blocked';
+                admissionPhase = 'blocked';
                 setPasswordBlockVisible(false);
-                setRegisterFormVisible(false);
-                setParentAdmissionStatus('<span class="text-red-300">Could not verify. Try again.</span>', '');
+                setRegisterFormVisible(role, false);
+                setAdmissionStatus('<span class="text-red-300">Could not verify. Try again.</span>', '');
             });
     }
 
-    function scheduleParentCheck() {
+    function scheduleAdmissionCheck() {
         var sel = document.getElementById('role_view');
-        if (!sel || sel.value !== 'parent') return;
+        if (!sel || !isAdmissionRole(sel.value)) return;
         if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(runParentAdmissionCheck, debounceMs);
+        debounceTimer = setTimeout(runAdmissionCheck, debounceMs);
+    }
+
+    function configureAdmissionRole(role, label, sub) {
+        var input = document.getElementById('login_code');
+        if (label) {
+            label.textContent = role === 'parent' ? 'Student admission ID' : 'Your admission ID';
+        }
+        if (input) {
+            input.placeholder = 'e.g. STU001';
+            input.setAttribute('inputmode', 'text');
+            input.removeAttribute('pattern');
+            input.setAttribute('maxlength', '32');
+            input.setAttribute('minlength', '2');
+        }
+        if (sub) {
+            sub.textContent = role === 'parent'
+                ? 'Parents: enter the admission ID first. After it checks out, you’ll see either the password box (existing account) or a short registration form (first time).'
+                : 'Students: enter your admission ID first. After it checks out, you’ll see either the password box (existing account) or a short registration form (first time).';
+        }
+        setPasswordBlockVisible(false);
+        setRegisterFormVisible('parent', false);
+        setRegisterFormVisible('student', false);
+        hideAdmissionStatus();
+        admissionPhase = 'na';
+        if (input && norm(input.value).length >= 2) {
+            scheduleAdmissionCheck();
+        }
     }
 
     function syncRole() {
@@ -356,47 +461,18 @@
         var sub = document.getElementById('login_subtitle');
         if (!sel || !roleHidden) return;
         roleHidden.value = sel.value;
-        if (sel.value === 'parent') {
-            if (label) {
-                label.textContent = 'Student admission ID';
-            }
-            if (input) {
-                input.placeholder = 'e.g. STU001';
-                input.setAttribute('inputmode', 'text');
-                input.removeAttribute('pattern');
-                input.setAttribute('maxlength', '32');
-                input.setAttribute('minlength', '2');
-            }
-            if (sub) {
-                sub.textContent = 'Parents: enter the admission ID first. After it checks out, you’ll see either the password box (existing account) or a short registration form (first time).';
-            }
-            setPasswordBlockVisible(false);
-            setRegisterFormVisible(false);
-            hideParentAdmissionStatus();
-            parentPhase = 'na';
-            if (input && norm(input.value).length >= 2) {
-                scheduleParentCheck();
-            }
+        if (sel.value === 'parent' || sel.value === 'student') {
+            configureAdmissionRole(sel.value, label, sub);
         } else {
-            resetParentFlow();
+            resetAdmissionFlow();
             if (input && label) {
-                if (sel.value === 'student') {
-                    label.textContent = 'Six-digit portal code';
-                    input.placeholder = '000000';
-                    input.setAttribute('inputmode', 'numeric');
-                    input.setAttribute('pattern', '[0-9]{6}');
-                    input.setAttribute('maxlength', '6');
-                    input.setAttribute('minlength', '6');
-                    if (sub) sub.textContent = 'Students: six-digit code and password from your school.';
-                } else {
-                    label.textContent = 'Six-digit employee code';
-                    input.placeholder = '000000';
-                    input.setAttribute('inputmode', 'numeric');
-                    input.setAttribute('pattern', '[0-9]{6}');
-                    input.setAttribute('maxlength', '6');
-                    input.setAttribute('minlength', '6');
-                    if (sub) sub.textContent = 'Staff: six-digit employee ID and your account password.';
-                }
+                label.textContent = 'Six-digit employee code';
+                input.placeholder = '000000';
+                input.setAttribute('inputmode', 'numeric');
+                input.setAttribute('pattern', '[0-9]{6}');
+                input.setAttribute('maxlength', '6');
+                input.setAttribute('minlength', '6');
+                if (sub) sub.textContent = 'Staff: six-digit employee ID and your account password.';
             }
         }
         updateRoleForgotLinks();
@@ -409,17 +485,17 @@
 
         if (loginInput) {
             loginInput.addEventListener('input', function () {
-                if (sel && sel.value === 'parent') {
+                if (sel && isAdmissionRole(sel.value)) {
                     loginInput.value = norm(loginInput.value);
-                    scheduleParentCheck();
+                    scheduleAdmissionCheck();
                 }
                 updateRoleForgotLinks();
             });
             loginInput.addEventListener('blur', function () {
-                if (sel && sel.value === 'parent') {
+                if (sel && isAdmissionRole(sel.value)) {
                     loginInput.value = norm(loginInput.value);
                     if (debounceTimer) clearTimeout(debounceTimer);
-                    runParentAdmissionCheck();
+                    runAdmissionCheck();
                 }
             });
         }
@@ -430,13 +506,15 @@
         syncRole();
         if (sel) sel.addEventListener('change', syncRole);
 
-        var regForm = document.getElementById('login_parent_register_form');
-        if (regForm) {
+        Object.keys(ADMISSION_FLOW).forEach(function (role) {
+            var cfg = ADMISSION_FLOW[role];
+            var regForm = document.getElementById(cfg.regFormId);
+            if (!regForm) return;
             regForm.addEventListener('submit', function (e) {
-                syncAdmissionHidden();
-                var a = document.getElementById('parent_reg_pw');
-                var b = document.getElementById('parent_reg_pw2');
-                var err = document.getElementById('parent_reg_pw_err');
+                syncAdmissionHidden(role);
+                var a = document.getElementById(cfg.pwA);
+                var b = document.getElementById(cfg.pwB);
+                var err = document.getElementById(cfg.pwErrId);
                 if (a && b && a.value !== b.value) {
                     e.preventDefault();
                     if (err) {
@@ -447,13 +525,17 @@
                 }
                 if (err) err.classList.add('hidden');
             });
-        }
+        });
+
         var mainForm = document.getElementById('main_login_form');
         if (mainForm) {
             mainForm.addEventListener('submit', function (e) {
                 var r = document.getElementById('role');
-                var reg = document.getElementById('login_parent_register_form');
-                if (r && r.value === 'parent' && reg && !reg.classList.contains('hidden')) {
+                if (!r || !isAdmissionRole(r.value)) return;
+                var cfg = flowCfg(r.value);
+                if (!cfg) return;
+                var reg = document.getElementById(cfg.regFormId);
+                if (reg && !reg.classList.contains('hidden')) {
                     e.preventDefault();
                     return false;
                 }

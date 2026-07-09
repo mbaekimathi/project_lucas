@@ -195,18 +195,18 @@
                 <button type="submit" class="w-full cbc-cta-red justify-center py-3.5">Save &amp; verify information</button>
             </form>
             {% else %}
-            <h2 class="text-xl font-extrabold text-white">Email and password</h2>
-            <p class="mt-1 text-sm text-white/55">Admission ID: <strong class="text-white">{{ student_id_display }}</strong></p>
+            <h2 class="text-xl font-extrabold text-white">Password</h2>
+            <p class="mt-1 text-sm text-white/55">Admission ID: <strong class="text-white">{{ student_id_display }}</strong>. Email is optional; parent and student portals use separate passwords.</p>
             <form method="post" action="{{ url_for('parent_portal_setup') }}" class="cbc-premium-form mt-6 space-y-4" id="parent_setup_form" data-skip-global-validate="true">
                 <input type="hidden" name="setup_action" value="account">
                 <div>
-                    <label for="email">Your email</label>
-                    <input type="email" id="email" name="email" required maxlength="255" autocomplete="email" placeholder="you@example.com">
+                    <label for="email">Your email <span class="text-white/45 font-normal">(optional)</span></label>
+                    <input type="email" id="email" name="email" maxlength="255" autocomplete="email" placeholder="you@example.com">
                 </div>
                 <div class="cbc-password-field" x-data="{ showPassword: false }">
                     <label for="new_password">New password</label>
                     <div class="cbc-password-field__wrap">
-                        <input :type="showPassword ? 'text' : 'password'" id="new_password" name="new_password" required minlength="6" autocomplete="new-password" class="cbc-password-field__input" placeholder="At least 6 characters">
+                        <input :type="showPassword ? 'text' : 'password'" id="new_password" name="new_password" required minlength="6" maxlength="64" autocomplete="new-password" class="cbc-password-field__input" placeholder="6-digit code or password (min. 6 characters)">
                         <button type="button" class="cbc-password-field__toggle" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Hide password' : 'Show password'">
                             <i class="fas text-lg" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
                         </button>
@@ -215,7 +215,7 @@
                 <div class="cbc-password-field" x-data="{ showPassword2: false }">
                     <label for="confirm_password">Confirm password</label>
                     <div class="cbc-password-field__wrap">
-                        <input :type="showPassword2 ? 'text' : 'password'" id="confirm_password" name="confirm_password" required minlength="6" autocomplete="new-password" class="cbc-password-field__input" placeholder="Repeat password">
+                        <input :type="showPassword2 ? 'text' : 'password'" id="confirm_password" name="confirm_password" required minlength="6" maxlength="64" autocomplete="new-password" class="cbc-password-field__input" placeholder="Repeat password or 6-digit code">
                         <button type="button" class="cbc-password-field__toggle" @click="showPassword2 = !showPassword2" :aria-label="showPassword2 ? 'Hide password' : 'Show password'">
                             <i class="fas text-lg" :class="showPassword2 ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
                         </button>

@@ -847,14 +847,13 @@
     #ar-preview-wrap article.ar-rc-individual {
         margin-bottom: 0 !important;
     }
-    /* Full A4 portrait sheet per student — min-height only so content does not spill to a 2nd page */
+    /* One natural-height report card per student — avoid min-height that spills onto a 2nd page */
     #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual,
     #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual {
-        min-height: 276mm !important;
+        min-height: 0 !important;
         height: auto !important;
         max-height: none !important;
-        display: flex !important;
-        flex-direction: column !important;
+        display: block !important;
         box-sizing: border-box !important;
         break-inside: avoid !important;
         page-break-inside: avoid !important;
@@ -1702,19 +1701,28 @@
     box-sizing: border-box;
 }
 @container ar-preview (max-width: 480px) {
-    #ar-details-list .ar-marks-matrix { font-size: 0.5625rem; }
-    #ar-details-list .ar-marks-matrix--dense { font-size: 0.5rem; }
+    #ar-details-list .ar-marks-matrix,
+    #ar-preview-wrap .ar-marks-matrix { font-size: 0.5625rem; }
+    #ar-details-list .ar-marks-matrix--dense,
+    #ar-preview-wrap .ar-marks-matrix--dense { font-size: 0.5rem; }
     #ar-details-list .ar-marks-matrix--xdense,
-    #ar-details-list .ar-marks-matrix--xxdense { font-size: 0.46875rem; }
-    #ar-details-list .ar-timetable-grid { font-size: 0.5625rem; }
-    #ar-details-list .ar-simple-table { font-size: 0.6875rem; }
+    #ar-details-list .ar-marks-matrix--xxdense,
+    #ar-preview-wrap .ar-marks-matrix--xdense,
+    #ar-preview-wrap .ar-marks-matrix--xxdense { font-size: 0.46875rem; }
+    #ar-details-list .ar-timetable-grid,
+    #ar-preview-wrap .ar-timetable-grid { font-size: 0.5625rem; }
+    #ar-details-list .ar-simple-table,
+    #ar-preview-wrap .ar-simple-table { font-size: 0.6875rem; }
 }
 @container ar-preview (min-width: 481px) and (max-width: 768px) {
-    #ar-details-list .ar-marks-matrix { font-size: clamp(0.5625rem, 1.3cqi, 0.75rem); }
-    #ar-details-list .ar-timetable-grid { font-size: clamp(0.5625rem, 1.1cqi, 0.75rem); }
+    #ar-details-list .ar-marks-matrix,
+    #ar-preview-wrap .ar-marks-matrix { font-size: clamp(0.5625rem, 1.3cqi, 0.75rem); }
+    #ar-details-list .ar-timetable-grid,
+    #ar-preview-wrap .ar-timetable-grid { font-size: clamp(0.5625rem, 1.1cqi, 0.75rem); }
 }
 @container ar-preview (min-width: 769px) {
-    #ar-details-list .ar-marks-matrix { font-size: clamp(0.6875rem, 0.6rem + 0.4cqi, 0.875rem); }
+    #ar-details-list .ar-marks-matrix,
+    #ar-preview-wrap .ar-marks-matrix { font-size: clamp(0.6875rem, 0.6rem + 0.4cqi, 0.875rem); }
 }
 #ar-details-list .ar-fit-table,
 #ar-preview-wrap .ar-fit-table {
@@ -3004,6 +3012,208 @@
         flex-shrink: 0 !important;
     }
 }
+
+/* —— Screen: responsive workspace & report preview (mobile / tablet / desktop) —— */
+@media screen {
+    #ar-preview-wrap .ar-rc {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    #ar-preview-wrap .ar-fit-sheet {
+        -webkit-overflow-scrolling: touch;
+    }
+    @media (max-width: 399px) {
+        .ar-report-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    @media (max-width: 639px) {
+        .ar-chooser-toolbar .ar-filter-control {
+            min-width: 0;
+            max-width: 100%;
+            flex: 1 1 100%;
+        }
+        .ar-report-filter-card-inner {
+            padding: 0.85rem 0.9rem;
+        }
+    }
+    @media (max-width: 1023px) {
+        #ar-details-list.ar-preview-scroll {
+            overflow-x: auto;
+            overflow-y: visible;
+            max-height: none;
+            -webkit-overflow-scrolling: touch;
+        }
+    }
+    @media (max-width: 639px) {
+        .ar-preview-toolbar {
+            flex-direction: column;
+            align-items: stretch;
+            width: 100%;
+        }
+        .ar-preview-toolbar > button,
+        .ar-preview-toolbar > div {
+            width: 100%;
+        }
+        .ar-preview-toolbar .flex.items-center.rounded-xl {
+            flex-wrap: wrap;
+        }
+        .ar-preview-toolbar #ar-export-format {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .ar-preview-toolbar #ar-export-btn {
+            flex: 1 1 auto;
+            justify-content: center;
+        }
+    }
+    @container ar-preview (max-width: 560px) {
+        #ar-preview-wrap .acr-print-letterhead__brand {
+            grid-template-columns: auto minmax(0, 1fr);
+            grid-template-rows: auto auto;
+            gap: 0.5rem 0.65rem;
+        }
+        #ar-preview-wrap .acr-print-letterhead__brand-left {
+            grid-column: 1;
+            grid-row: 1;
+        }
+        #ar-preview-wrap .acr-print-letterhead__school-block {
+            grid-column: 2;
+            grid-row: 1;
+            align-items: flex-start;
+            text-align: left;
+        }
+        #ar-preview-wrap .acr-print-letterhead__brand-right {
+            grid-column: 1 / -1;
+            grid-row: 2;
+            justify-self: center;
+        }
+        #ar-preview-wrap .acr-print-letterhead__logo {
+            width: 3.25rem;
+            height: 3.25rem;
+            max-width: 3.25rem;
+            max-height: 3.25rem;
+        }
+        #ar-preview-wrap .acr-print-letterhead__qr-img {
+            width: 4rem;
+            height: 4rem;
+        }
+        #ar-preview-wrap .acr-print-letterhead__school {
+            font-size: 0.9375rem;
+            text-align: left;
+        }
+        #ar-preview-wrap .acr-print-letterhead__location,
+        #ar-preview-wrap .acr-print-letterhead__school-contacts {
+            text-align: left;
+            margin-left: 0;
+            margin-right: 0;
+        }
+        #ar-preview-wrap .ar-rc-header .acr-print-letterhead {
+            padding: 0.65rem 0.75rem 0;
+        }
+        #ar-preview-wrap .acr-print-letterhead__meta-grid {
+            grid-template-columns: 1fr 1fr;
+            gap: 0.35rem 0.65rem;
+        }
+    }
+    @container ar-preview (max-width: 480px) {
+        #ar-preview-wrap .ar-rc {
+            font-size: 0.75rem;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+        }
+        #ar-preview-wrap .ar-rc-inner {
+            padding: 0 0.75rem;
+        }
+        #ar-preview-wrap .ar-rc-header {
+            margin: 0 -0.75rem 0.85rem;
+        }
+        #ar-preview-wrap .ar-rc-meta-panel {
+            padding: 0.65rem 0.75rem;
+        }
+        #ar-preview-wrap .ar-rc-meta-panel--with-photo {
+            grid-template-columns: 1fr;
+            gap: 0.65rem;
+        }
+        #ar-preview-wrap .ar-rc-meta-photo-wrap {
+            order: -1;
+        }
+        #ar-preview-wrap .ar-rc-meta-grid {
+            grid-template-columns: 1fr;
+            gap: 0.45rem;
+        }
+        #ar-preview-wrap .ar-rc-photo {
+            width: 4rem;
+            height: 4.85rem;
+        }
+        #ar-preview-wrap .ar-rc-stats-row--5 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        #ar-preview-wrap .ar-rc-stat-value {
+            font-size: 1rem;
+        }
+        #ar-preview-wrap .ar-rc-signatures {
+            grid-template-columns: 1fr;
+            gap: 0.65rem;
+        }
+        #ar-preview-wrap .ar-rc-table {
+            font-size: 0.6875rem;
+        }
+        #ar-preview-wrap .ar-rc-table thead th {
+            font-size: 0.5625rem;
+            padding: 0.35rem 0.2rem;
+        }
+        #ar-preview-wrap .ar-rc-table tbody td {
+            padding: 0.3rem 0.25rem;
+        }
+        #ar-preview-wrap .ar-rc-table--multi-exam {
+            min-width: 22rem;
+        }
+        #ar-preview-wrap .ar-rc-table--subjects:not(.ar-rc-table--multi-exam) {
+            min-width: 18rem;
+        }
+        #ar-preview-wrap .ar-rc-table-scroll {
+            margin: 0 -0.15rem;
+            padding-bottom: 0.15rem;
+        }
+        #ar-preview-wrap .ar-fit-sheet:has(table.ar-marks-matrix) {
+            border-radius: 0.375rem;
+            box-shadow: inset -10px 0 10px -10px rgba(15, 23, 42, 0.1);
+        }
+        #ar-preview-wrap details.ar-class-print-sheet > summary {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+            padding-top: 0.75rem;
+            padding-bottom: 0.75rem;
+        }
+        #ar-preview-wrap details.ar-class-print-sheet > div {
+            padding-left: 0.65rem;
+            padding-right: 0.65rem;
+        }
+        #ar-preview-wrap .acr-print-letterhead__meta-grid {
+            grid-template-columns: 1fr;
+        }
+        #ar-preview-wrap .acr-print-letterhead__title {
+            font-size: 0.8125rem;
+        }
+        #ar-preview-wrap .ar-portal-qr-img {
+            width: 3.5rem;
+            height: 3.5rem;
+        }
+    }
+    @container ar-preview (min-width: 481px) and (max-width: 768px) {
+        #ar-preview-wrap .ar-rc-stats-row--5 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        #ar-preview-wrap .ar-rc-signatures {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        #ar-preview-wrap .ar-rc-meta-panel--with-photo {
+            grid-template-columns: 1fr auto;
+            gap: 0.85rem;
+        }
+    }
+}
 </style>
 
 {% set role_theme = portal_page_variant|default('default') %}
@@ -3196,7 +3406,7 @@
                         </div>
                     </div>
                     <div class="no-print flex flex-col gap-3 xl:items-end">
-                        <div class="flex flex-wrap items-center gap-2">
+                        <div class="ar-preview-toolbar flex flex-wrap items-center gap-2">
                             <button type="button"
                                     id="ar-download-pdf-btn"
                                     title="Save as PDF via your browser print dialog"
@@ -4349,6 +4559,80 @@
     printPreviewRestore = null;
   }
 
+  function studentGroupKey(row) {
+    if (!row) return '_';
+    var sid = row.student_id;
+    if (sid !== null && sid !== undefined && String(sid).trim()) {
+      return 'sid:' + String(sid).trim().toLowerCase();
+    }
+    var adm = row.admission_number;
+    if (adm !== null && adm !== undefined && String(adm).trim()) {
+      return 'adm:' + String(adm).trim().toLowerCase();
+    }
+    return 'name:' + String(row.full_name || '_').trim().toLowerCase();
+  }
+
+  function dedupeStudentRows(rows) {
+    var seen = Object.create(null);
+    var out = [];
+    (rows || []).forEach(function(row) {
+      var key = studentGroupKey(row);
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(row);
+    });
+    return out;
+  }
+
+  function collectAcademicReportPrintHtml() {
+    var wrap = document.getElementById('ar-preview-wrap');
+    if (!wrap) return '';
+    if (!wrap.classList.contains('ar-print-individual-batch')) {
+      return typeof window.collectFeesReportPrintHtml === 'function'
+        ? window.collectFeesReportPrintHtml()
+        : wrap.outerHTML;
+    }
+    if (typeof window.collectFeesReportPrintHtml !== 'function') {
+      return wrap.outerHTML;
+    }
+    var clone = wrap.cloneNode(true);
+    var cards = Array.from(clone.querySelectorAll('#ar-details-list article.ar-rc-individual'));
+    var seen = Object.create(null);
+    var unique = [];
+    cards.forEach(function(card) {
+      var key = String(card.getAttribute('data-student-id') || '').trim().toLowerCase();
+      if (!key) {
+        var nameEl = card.querySelector('.ar-rc-meta-panel .ar-rc-meta-item .ar-rc-meta-value');
+        key = nameEl ? String(nameEl.textContent || '').trim().toLowerCase() : '';
+      }
+      if (!key) key = '__card_' + unique.length;
+      if (seen[key]) {
+        if (card.parentNode) card.parentNode.removeChild(card);
+        return;
+      }
+      seen[key] = true;
+      unique.push(card);
+    });
+    unique.forEach(function(card, i) {
+      card.classList.add('ar-print-page-sheet');
+      card.classList.toggle('ar-print-page-follow', i > 0);
+    });
+    clone.querySelectorAll('.no-print').forEach(function(node) {
+      if (node.parentNode) node.parentNode.removeChild(node);
+    });
+    var footer = document.getElementById('fr-fees-print-footer')
+      || document.getElementById('ar-academic-print-footer')
+      || document.getElementById('ar-cal-print-footer')
+      || document.querySelector('.acr-print-footer');
+    if (footer) {
+      var footerId = String(footer.id || '');
+      if (footerId && !clone.querySelector('[id="' + footerId.replace(/"/g, '\\"') + '"]')) {
+        clone.appendChild(footer.cloneNode(true));
+      }
+    }
+    return clone.outerHTML;
+  }
+
   function normalizeIndividualReportPrintPages() {
     var wrap = document.getElementById('ar-preview-wrap');
     if (!wrap || !wrap.classList.contains('ar-print-individual-batch')) return;
@@ -4356,11 +4640,7 @@
     for (var i = 0; i < cards.length; i++) {
       var card = cards[i];
       card.classList.add('ar-print-page-sheet');
-      if (i > 0) {
-        card.classList.add('ar-print-page-follow');
-      } else {
-        card.classList.remove('ar-print-page-follow');
-      }
+      card.classList.toggle('ar-print-page-follow', i > 0);
     }
   }
 
@@ -4457,10 +4737,11 @@
         title: (SCHOOL_INFO.name || 'School') + ' — ' + reportDisplayTitle(),
         htmlClass: printClass,
         bodyClass: printClass,
-        collect: window.collectFeesReportPrintHtml,
+        collect: collectAcademicReportPrintHtml,
       });
       window.setTimeout(function() {
         restoreDetailsAfterPrint();
+        restorePreviewAfterPrint();
         clearMarksMatrixPrintPageRule();
       }, 400);
       return;
@@ -4575,8 +4856,12 @@
   }
 
   function isAllExamsReportMode(meta, af) {
-    if (meta && meta.all_exams_mode) return true;
     var pick = splitExamPick(val('gf-exam-name'));
+    if (pick.exam_name) {
+      var afExam = String((af && af.exam_name) || '').trim();
+      if (afExam && !/^all exams$/i.test(afExam)) return false;
+    }
+    if (meta && meta.all_exams_mode) return true;
     if (!pick.exam_name) return true;
     var en = String((af && af.exam_name) || '').trim();
     return !en || /^all exams$/i.test(en);
@@ -5517,6 +5802,68 @@
     return renderAttendanceRegister(regBundle);
   }
 
+  /** Ordered subject labels from exam-subject-settings (meta), keyed by level id then class name. */
+  function reportSettingsSubjectOrder(meta, levelId, classKeys) {
+    meta = meta || {};
+    var byLevel = meta.subject_columns_by_level_id || {};
+    if (levelId != null && levelId !== '' && Array.isArray(byLevel[String(levelId)]) && byLevel[String(levelId)].length) {
+      return byLevel[String(levelId)].slice();
+    }
+    var byClass = meta.subject_columns_by_class || {};
+    var keys = Array.isArray(classKeys) ? classKeys : [];
+    for (var i = 0; i < keys.length; i++) {
+      var k = String(keys[i] || '').trim();
+      if (k && Array.isArray(byClass[k]) && byClass[k].length) return byClass[k].slice();
+    }
+    if (Array.isArray(meta.subject_columns) && meta.subject_columns.length) {
+      return meta.subject_columns.slice();
+    }
+    return [];
+  }
+
+  function classKeysForSubjectOrder(row, className, af) {
+    var keys = [];
+    function add(k) {
+      k = String(k || '').trim();
+      if (k && keys.indexOf(k) === -1) keys.push(k);
+    }
+    add(className);
+    if (row) {
+      add(row.current_grade);
+      add(row.home_class);
+      add(row.level_name);
+    }
+    add(af && af.class_level);
+    return keys;
+  }
+
+  function orderSubjectLabelsByReportSettings(names, meta, levelId, classKeys, fallbackSorter) {
+    var list = (names || []).map(function(n) { return String(n || '').trim(); }).filter(Boolean);
+    if (!list.length) return [];
+    var base = reportSettingsSubjectOrder(meta, levelId, classKeys);
+    if (!base.length) {
+      return typeof fallbackSorter === 'function' ? fallbackSorter(list.slice()) : list.slice();
+    }
+    var seen = {};
+    var out = [];
+    base.forEach(function(label) {
+      if (list.indexOf(label) >= 0 && !seen[label]) {
+        seen[label] = true;
+        out.push(label);
+      }
+    });
+    var extras = list.filter(function(n) { return !seen[n]; });
+    if (extras.length) {
+      extras = typeof fallbackSorter === 'function'
+        ? fallbackSorter(extras)
+        : extras.sort(function(a, b) {
+            return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+          });
+      out = out.concat(extras);
+    }
+    return out;
+  }
+
   function renderAllStudentsPerformance(bundle) {
     let rows = Array.isArray(bundle.rows) ? bundle.rows.slice() : [];
     rows = narrowExamRowsToSelectedStudent(rows);
@@ -5575,53 +5922,52 @@
 
     function subjectColumnsForClass(className, list) {
       var k = String(className || '').trim();
-      var seen = {};
-      var ordered = [];
-      function addCol(name) {
-        var n = String(name || '').trim();
-        if (!n || seen[n]) return;
-        seen[n] = true;
-        ordered.push(n);
+      var row0 = (list && list.length) ? list[0] : null;
+      var levelId = row0 && row0.academic_level_id != null ? row0.academic_level_id : null;
+      var classKeys = classKeysForSubjectOrder(row0, k, af);
+      var baseOrder = reportSettingsSubjectOrder(meta, levelId, classKeys);
+      if (!baseOrder.length && mergeSingleCohort && subjectColumns.length) {
+        baseOrder = subjectColumns.slice();
+      } else if (!baseOrder.length && subjectColumns.length) {
+        baseOrder = subjectColumns.slice();
       }
-      if (mergeSingleCohort && subjectColumns.length) {
-        subjectColumns.forEach(addCol);
-      } else if (k && Array.isArray(subjectColumnsByClass[k]) && subjectColumnsByClass[k].length) {
-        subjectColumnsByClass[k].forEach(addCol);
-      } else if (k && list && list.length) {
-        var ln = String((list[0] && list[0].level_name) || '').trim();
-        if (ln && Array.isArray(subjectColumnsByClass[ln]) && subjectColumnsByClass[ln].length) {
-          subjectColumnsByClass[ln].forEach(addCol);
-        }
-      }
-      if (!ordered.length && subjectColumns.length && (!k || !Object.keys(subjectColumnsByClass).length || mergeSingleCohort)) {
-        subjectColumns.forEach(addCol);
-      }
-      var fromRows = {};
+      var withMarks = {};
       (list || []).forEach(function(row) {
         if (!row) return;
-        Object.keys(row).forEach(function(key) {
-          if (!key || _rowMetaKeys[key]) return;
-          var v = row[key];
-          if (v === '' || v === null || v === undefined) return;
-          if (typeof v === 'object') return;
-          fromRows[key] = true;
-        });
         var sm = row.subject_marks;
         if (sm && typeof sm === 'object') {
           Object.keys(sm).forEach(function(key) {
             var v = sm[key];
-            if (v !== '' && v !== null && v !== undefined) fromRows[key] = true;
+            if (v !== '' && v !== null && v !== undefined) withMarks[key] = true;
+          });
+        } else {
+          Object.keys(row).forEach(function(key) {
+            if (!key || _rowMetaKeys[key]) return;
+            var v = row[key];
+            if (v === '' || v === null || v === undefined) return;
+            if (typeof v === 'object') return;
+            withMarks[key] = true;
           });
         }
-        if (Array.isArray(row.class_subject_columns)) {
-          row.class_subject_columns.forEach(function(key) { if (key) fromRows[key] = true; });
-        }
       });
-      Object.keys(fromRows).sort(function(a, b) {
-        return a.localeCompare(b, undefined, { sensitivity: 'base' });
-      }).forEach(addCol);
-      return ordered.length ? ordered : Object.keys(fromRows).sort(function(a, b) {
-        return a.localeCompare(b, undefined, { sensitivity: 'base' });
+      if (baseOrder.length) {
+        var ordered = baseOrder.filter(function(col) { return withMarks[col]; });
+        var extra = Object.keys(withMarks).filter(function(c) { return ordered.indexOf(c) === -1; });
+        if (extra.length) {
+          extra.sort(function(a, b) {
+            var ia = baseOrder.indexOf(a);
+            var ib = baseOrder.indexOf(b);
+            if (ia === -1) ia = 1e9;
+            if (ib === -1) ib = 1e9;
+            if (ia !== ib) return ia - ib;
+            return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+          });
+          ordered = ordered.concat(extra);
+        }
+        return ordered;
+      }
+      return Object.keys(withMarks).sort(function(a, b) {
+        return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
       });
     }
 
@@ -5745,11 +6091,10 @@
       const tableClass = useMultiExam
         ? 'ar-rc-table ar-rc-table--subjects ar-rc-table--multi-exam'
         : 'ar-rc-table ar-rc-table--subjects';
-      const tableHtml = useMultiExam
-        ? '<div class="ar-rc-table-scroll"><table class="' + tableClass + '"><thead><tr>' + subjectTable.head + '</tr></thead><tbody>' + subjectTable.html + '</tbody></table></div>'
-        : '<table class="' + tableClass + '"><thead><tr>' + subjectTable.head + '</tr></thead><tbody>' + subjectTable.html + '</tbody></table>';
+      const tableHtml =
+        '<div class="ar-rc-table-scroll"><table class="' + tableClass + '"><thead><tr>' + subjectTable.head + '</tr></thead><tbody>' + subjectTable.html + '</tbody></table></div>';
       return '' +
-        '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(studentSheetIndex) + '">' +
+        '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(studentSheetIndex) + '" data-student-id="' + escapeHtml(studentGroupKey(row)) + '">' +
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
           '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
           '<div class="ar-rc-inner">' +
@@ -6016,10 +6361,11 @@
     const classBlocks = classKeys.map(function(className, sectionIndex) {
       const list = groupedByClass[className] || [];
       const scope = currentExamScope();
+      const classList = dedupeStudentRows(list);
       const inner = scope === 'class'
-        ? renderClassTable(className, list)
-        : rankStudentsWithinClass(list).map(function(entry) {
-            return renderStudentCardsForEntry(entry, list);
+        ? renderClassTable(className, classList)
+        : rankStudentsWithinClass(classList).map(function(entry) {
+            return renderStudentCardsForEntry(entry, classList);
           }).join('');
       const sheetCls = printPageWrapClass(sectionIndex) + ' ar-class-print-sheet rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-md ring-1 ring-slate-900/[0.03] dark:ring-white/[0.06]';
       return '' +
@@ -7029,7 +7375,7 @@
     const af = meta.applied_filters || {};
     const byStudent = {};
     rows.forEach(function(r) {
-      const sid = String((r && (r.student_id != null ? r.student_id : r.admission_number)) || '').trim() || '_';
+      const sid = studentGroupKey(r);
       if (!byStudent[sid]) byStudent[sid] = [];
       byStudent[sid].push(r);
     });
@@ -7040,14 +7386,19 @@
     });
     var indSheetIndex = 0;
     var jobs = [];
+    var jobStudentSeen = Object.create(null);
     studentGroups.forEach(function(sid) {
       const studentRows = byStudent[sid];
+      const jobKey = studentGroupKey(studentRows[0]);
+      if (jobStudentSeen[jobKey]) return;
+      jobStudentSeen[jobKey] = true;
       const examPick = splitExamPick(val('gf-exam-name'));
       const allExamsUi = !examPick.exam_name || isAllExamsReportMode(meta, af);
       if (!allExamsUi) {
         jobs.push({
           bundle: Object.assign({}, bundle, { rows: studentRows }),
           sheetIndex: indSheetIndex++,
+          studentKey: jobKey,
         });
         return;
       }
@@ -7069,6 +7420,7 @@
             subjectMarksByExam: built.detail,
           }),
           sheetIndex: indSheetIndex++,
+          studentKey: jobKey,
         });
         return;
       }
@@ -7082,12 +7434,14 @@
         jobs.push({
           bundle: Object.assign({}, bundle, { rows: filtered.length ? filtered : studentRows, examLabel: exCol.label }),
           sheetIndex: indSheetIndex++,
+          studentKey: jobKey,
         });
         return;
       }
       jobs.push({
         bundle: Object.assign({}, bundle, { rows: studentRows }),
         sheetIndex: indSheetIndex++,
+        studentKey: jobKey,
       });
     });
     return { jobs: jobs, emptyMessage: '' };
@@ -7095,7 +7449,7 @@
 
   function renderIndividualStudentPerformanceJobsHtml(jobs) {
     return (jobs || []).map(function(job) {
-      return renderIndividualStudentPerformanceCard(job.bundle, job.sheetIndex);
+      return renderIndividualStudentPerformanceCard(job.bundle, job.sheetIndex, job.studentKey);
     }).join('');
   }
 
@@ -7125,7 +7479,7 @@
       let chunk = '';
       for (; i < end; i++) {
         const job = list[i];
-        chunk += renderIndividualStudentPerformanceCard(job.bundle, job.sheetIndex);
+        chunk += renderIndividualStudentPerformanceCard(job.bundle, job.sheetIndex, job.studentKey);
       }
       root.insertAdjacentHTML('beforeend', chunk);
       if (prog) {
@@ -7148,10 +7502,11 @@
     return renderIndividualStudentPerformanceJobsHtml(built.jobs);
   }
 
-  function renderIndividualStudentPerformanceCard(bundle, sheetIndex) {
+  function renderIndividualStudentPerformanceCard(bundle, sheetIndex, studentKey) {
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
     if (!rows.length) return '';
     const first = rows[0] || {};
+    const cardStudentKey = studentKey || studentGroupKey(first);
     const meta = bundle.meta || {};
     const af = meta.applied_filters || {};
     const bySubject = {};
@@ -7202,12 +7557,20 @@
           subjectOrderMap[s] = isNaN(eo) ? 1000000000 : eo;
         }
       });
-      const subjectOrder = Object.keys(subjectMarksByExam).sort(function(a, b) {
-        const ea = subjectOrderMap[a] != null ? subjectOrderMap[a] : 1000000000;
-        const eb = subjectOrderMap[b] != null ? subjectOrderMap[b] : 1000000000;
-        if (ea !== eb) return ea - eb;
-        return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
-      });
+      const subjectOrder = orderSubjectLabelsByReportSettings(
+        Object.keys(subjectMarksByExam),
+        meta,
+        studentLevelId,
+        classKeysForSubjectOrder(first, first.level_name, af),
+        function(names) {
+          return names.sort(function(a, b) {
+            const ea = subjectOrderMap[a] != null ? subjectOrderMap[a] : 1000000000;
+            const eb = subjectOrderMap[b] != null ? subjectOrderMap[b] : 1000000000;
+            if (ea !== eb) return ea - eb;
+            return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+          });
+        }
+      );
       const syntheticRow = { subject_marks_by_exam: subjectMarksByExam };
       const subjectTableInd = buildReportCardMultiExamSubjectTable(
         syntheticRow, subjectOrder, orderedExamCols, activeBands, studentLevelId, gradeCodeRemarksInd,
@@ -7240,7 +7603,7 @@
       const gradeLegendMulti = gradeLegendHtmlFromMeta(meta);
       const examReferenceLegend = renderNumberedExamReferenceLegend(orderedExamCols);
       return '' +
-        '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex == null ? 0 : sheetIndex) + '">' +
+        '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex == null ? 0 : sheetIndex) + '" data-student-id="' + escapeHtml(cardStudentKey) + '">' +
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
           '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
           '<div class="ar-rc-inner">' +
@@ -7306,12 +7669,21 @@
       }
     });
 
-    const subjects = Object.keys(bySubject).sort(function(a, b) {
-      const ea = (bySubject[a] && bySubject[a].minExamOrder != null) ? bySubject[a].minExamOrder : 1000000000;
-      const eb = (bySubject[b] && bySubject[b].minExamOrder != null) ? bySubject[b].minExamOrder : 1000000000;
-      if (ea !== eb) return ea - eb;
-      return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
-    }).map(function(subject) {
+    const subjectNames = orderSubjectLabelsByReportSettings(
+      Object.keys(bySubject),
+      meta,
+      studentLevelId,
+      classKeysForSubjectOrder(first, first.level_name, af),
+      function(names) {
+        return names.sort(function(a, b) {
+          const ea = (bySubject[a] && bySubject[a].minExamOrder != null) ? bySubject[a].minExamOrder : 1000000000;
+          const eb = (bySubject[b] && bySubject[b].minExamOrder != null) ? bySubject[b].minExamOrder : 1000000000;
+          if (ea !== eb) return ea - eb;
+          return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+        });
+      }
+    );
+    const subjects = subjectNames.map(function(subject) {
       const marks = bySubject[subject].marks;
       const subjectId = bySubject[subject].subjectId;
       const markNum = marks.length ? marks[0] : null;
@@ -7369,7 +7741,7 @@
     const gradeLegendInd = gradeLegendHtmlFromMeta(meta);
 
     return '' +
-      '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex == null ? 0 : sheetIndex) + '">' +
+      '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex == null ? 0 : sheetIndex) + '" data-student-id="' + escapeHtml(cardStudentKey) + '">' +
         '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
         '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
         '<div class="ar-rc-inner">' +
@@ -7381,10 +7753,10 @@
             { label: 'Term / exam', value: termExamLabel }
           ], photoHtml) +
           '<div class="ar-rc-main-body">' +
-            '<table class="ar-rc-table ar-rc-table--subjects">' +
+            '<div class="ar-rc-table-scroll"><table class="ar-rc-table ar-rc-table--subjects">' +
               '<thead><tr>' + subjectTableInd.head + '</tr></thead>' +
               '<tbody>' + subjectTableInd.html + '</tbody>' +
-            '</table>' +
+            '</table></div>' +
             '<div class="ar-rc-stats-row ar-rc-stats-row--5">' +
               (singleExamCard
                 ? '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">' + escapeHtml(overallTotalText) + '</p></div>' +

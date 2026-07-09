@@ -15975,8 +15975,20 @@ def normalize_login_email(email):
     return (email or '').strip().lower()
 
 
+def _optional_portal_registration_email(raw):
+    """Return (email_or_none, error_message). Blank input is allowed (NULL in DB)."""
+    email = normalize_login_email(raw or '')
+    if not email:
+        return None, None
+    if '@' not in email or '.' not in email.split('@')[-1]:
+        return None, 'Enter a valid email address or leave the field blank.'
+    if len(email) > 255:
+        return None, 'Email is too long.'
+    return email, None
+
+
 def ensure_users_portal_login_schema(cursor):
-    """Add login_code / student_id on users for parent & student six-digit portal sign-in."""
+    """Add login_code / student_id on users for parent & student portal sign-in."""
     try:
         cursor.execute("SHOW COLUMNS FROM users LIKE 'login_code'")
         if not cursor.fetchone():
@@ -15995,6 +16007,46 @@ def ensure_users_portal_login_schema(cursor):
             )
     except Exception as e:
         print(f"ensure_users_portal_login_schema student_id: {e}")
+    try:
+        cursor.execute(
+            "SELECT IS_NULLABLE FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
+        )
+        row = cursor.fetchone()
+        if row:
+            nullable = row.get('IS_NULLABLE', 'NO') if isinstance(row, dict) else row[0]
+            if nullable == 'NO':
+                cursor.execute("ALTER TABLE users MODIFY COLUMN email VARCHAR(255) NULL")
+    except Exception as e:
+        print(f"ensure_users_portal_login_schema email nullable: {e}")
+    try:
+        cursor.execute(
+            "UPDATE users SET email = NULL WHERE email IS NOT NULL AND TRIM(email) = ''"
+        )
+    except Exception as e:
+        print(f"ensure_users_portal_login_schema email blank cleanup: {e}")
+    try:
+        cursor.execute(
+            "SELECT index_name FROM information_schema.statistics "
+            "WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email' AND non_unique = 0"
+        )
+        for idx_row in cursor.fetchall() or []:
+            idx_name = idx_row.get('index_name') if isinstance(idx_row, dict) else idx_row[0]
+            if idx_name and idx_name != 'uk_users_email_role':
+                cursor.execute(f"ALTER TABLE users DROP INDEX `{idx_name}`")
+    except Exception as e:
+        print(f"ensure_users_portal_login_schema drop email unique: {e}")
+    try:
+        cursor.execute(
+            "SELECT 1 FROM information_schema.statistics "
+            "WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = 'uk_users_email_role'"
+        )
+        if not cursor.fetchone():
+            cursor.execute(
+                "CREATE UNIQUE INDEX uk_users_email_role ON users (email, role)"
+            )
+    except Exception as e:
+        print(f"ensure_users_portal_login_schema email role unique: {e}")
     try:
         cursor.execute(
             "SELECT 1 FROM information_schema.statistics "
@@ -16407,28 +16459,35 @@ def _clear_employee_password_reset_session():
 
 def _clear_student_password_reset_session():
     session.pop('student_pwd_reset_code', None)
+    session.pop('student_pwd_reset_student_id', None)
+    session.pop('student_pwd_reset_dob_ok', None)
 
 
-def _fetch_student_portal_user(cursor, login_code_raw):
-    """Student portal user by six-digit code or matching student_id suffix."""
-    code = (login_code_raw or '').strip()
-    if not code.isdigit() or len(code) != 6:
+def _fetch_student_portal_user(cursor, admission_raw):
+    """Student portal user: match stored student_id (admission) or legacy 6-digit login_code."""
+    admission_key = _normalize_parent_admission(admission_raw)
+    if not admission_key:
         return None
-    cursor.execute(
-        """
-        SELECT u.* FROM users u
-        WHERE u.role = 'student' AND (
-            (u.login_code IS NOT NULL AND u.login_code = %s)
-            OR (u.student_id IS NOT NULL AND (
-                u.student_id = %s
-                OR (CHAR_LENGTH(u.student_id) >= 6 AND RIGHT(u.student_id, 6) = %s)
-            ))
+    clauses = ["UPPER(TRIM(COALESCE(u.student_id,''))) = %s"]
+    params = [admission_key]
+    ar = (admission_raw or '').strip()
+    if ar.isdigit() and len(ar) == 6:
+        clauses.append("(u.login_code IS NOT NULL AND u.login_code = %s)")
+        params.append(ar)
+        clauses.append(
+            "(u.student_id IS NOT NULL AND CHAR_LENGTH(u.student_id) >= 6 AND RIGHT(u.student_id, 6) = %s)"
         )
-        LIMIT 1
-        """,
-        (code, code, code),
-    )
+        params.append(ar)
+    sql = "SELECT u.* FROM users u WHERE u.role = 'student' AND (" + " OR ".join(clauses) + ") LIMIT 1"
+    cursor.execute(sql, params)
     return cursor.fetchone()
+
+
+def _resolve_student_password_reset_email(cursor, admission_raw):
+    """Email for student password recovery: portal account (users.email) only."""
+    portal_user = _fetch_student_portal_user(cursor, admission_raw)
+    portal_email = normalize_login_email((portal_user or {}).get('email') or '')
+    return portal_email, portal_user
 
 
 def _fetch_employee_for_password_reset(cursor, employee_code_raw):
@@ -16459,8 +16518,8 @@ def _password_reset_forgot_url(account_type):
 
 def _password_reset_login_url(account_type, admission=''):
     role = (account_type or 'employee').strip().lower()
-    if role == 'parent' and (admission or '').strip():
-        return url_for('login', role='parent', admission=(admission or '').strip())
+    if role in ('parent', 'student') and (admission or '').strip():
+        return url_for('login', role=role, admission=(admission or '').strip())
     if role in ('employee', 'parent', 'student'):
         return url_for('login', role=role)
     return url_for('login')
@@ -20561,6 +20620,102 @@ def api_parent_portal_check_admission():
             pass
 
 
+@app.route('/api/student-portal/check-admission', methods=['GET'])
+def api_student_portal_check_admission():
+    """Live validation: admission exists and whether a student portal account already exists."""
+    allowed, retry_after = check_rate_limit('check_student_admission', limit=30, window_sec=60)
+    if not allowed:
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'rate_limited',
+                'message': rate_limit_flash_message(retry_after),
+            }
+        ), 429
+
+    raw = (request.args.get('q') or '').strip()
+    admission_key = _normalize_parent_admission(raw)
+    if not admission_key:
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'empty',
+                'message': 'Enter your admission ID.',
+            }
+        )
+    if not _parent_admission_pattern_ok(admission_key):
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'invalid_format',
+                'message': 'Use 2–32 letters or numbers only (e.g. STU001).',
+            }
+        )
+    connection = get_db_connection()
+    if not connection:
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'server',
+                'message': 'Service unavailable. Try again in a moment.',
+            }
+        ), 503
+    try:
+        with connection.cursor() as cursor:
+            ensure_users_portal_login_schema(cursor)
+            connection.commit()
+            row = _fetch_student_parent_by_admission(cursor, raw)
+            if not row:
+                return jsonify(
+                    {
+                        'ok': False,
+                        'ready': False,
+                        'reason': 'not_found',
+                        'message': 'No student with that admission ID in our records. Check spelling (letters and numbers only) or contact the school.',
+                    }
+                )
+            sid = (row.get('student_id') or admission_key).strip()
+            if _fetch_student_portal_user(cursor, raw):
+                return jsonify(
+                    {
+                        'ok': False,
+                        'ready': False,
+                        'reason': 'portal_exists',
+                        'message': 'A student portal account already exists for this admission. Sign in or use Forgot password.',
+                        'login_url': url_for('login', role='student', admission=sid),
+                    }
+                )
+            return jsonify(
+                {
+                    'ok': True,
+                    'ready': True,
+                    'reason': 'ready',
+                    'message': 'Admission verified. Continuing…',
+                    'student_name': (row.get('student_name') or '').strip(),
+                    'student_id': sid,
+                }
+            )
+    except Exception as e:
+        print(f"api_student_portal_check_admission: {e}")
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'server',
+                'message': 'Could not verify right now. Try again.',
+            }
+        ), 500
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
 @app.route('/parent-forgot-password', methods=['GET', 'POST'])
 @app.route('/parent/forgot-password', methods=['GET', 'POST'])
 @app.route('/dashboard/parent/forgot-password', methods=['GET', 'POST'])
@@ -20855,8 +21010,8 @@ def employee_forgot_password():
 @app.route('/student/forgot-password', methods=['GET', 'POST'])
 @app.route('/dashboard/student/forgot-password', methods=['GET', 'POST'])
 def student_forgot_password():
-    """Student password reset: six-digit portal code → email on account → verification code."""
-    code_prefill = (request.args.get('code') or '').strip()
+    """Student password reset: admission ID → DOB → email on account → verification code."""
+    admission_prefill = (request.args.get('admission') or request.args.get('code') or '').strip()
 
     if request.method == 'POST':
         action = (request.form.get('reset_action') or '').strip()
@@ -20869,43 +21024,81 @@ def student_forgot_password():
             with connection.cursor() as cursor:
                 ensure_users_portal_login_schema(cursor)
                 connection.commit()
-                if action == 'code':
-                    raw = (request.form.get('portal_code') or '').strip()
-                    if not raw.isdigit() or len(raw) != 6:
-                        error = 'Enter your six-digit student portal code.'
+                if action == 'admission':
+                    raw = (request.form.get('admission') or '').strip()
+                    ak = _normalize_parent_admission(raw)
+                    if not _parent_admission_pattern_ok(ak):
+                        error = 'Enter a valid admission ID (letters and numbers only, e.g. STU001).'
                     else:
-                        portal_user = _fetch_student_portal_user(cursor, raw)
-                        if not portal_user:
+                        row = _fetch_student_parent_by_admission(cursor, raw)
+                        if not row:
                             error = (
-                                'We could not find a student portal account with that code. '
-                                'Check the code from your school or contact the office.'
+                                'We could not find a student with that admission ID. '
+                                'Check the ID or contact the school.'
                             )
                         else:
-                            session['student_pwd_reset_code'] = raw
-                            return redirect(url_for('student_forgot_password'))
+                            portal_user = _fetch_student_portal_user(cursor, raw)
+                            if not portal_user:
+                                error = (
+                                    'No student portal account exists for this admission yet. '
+                                    'Use Student sign-in on the login page to create one.'
+                                )
+                            else:
+                                canonical_sid = (row.get('student_id') or ak).strip()
+                                session['student_pwd_reset_student_id'] = canonical_sid
+                                session.pop('student_pwd_reset_dob_ok', None)
+                                return redirect(url_for('student_forgot_password'))
+                elif action == 'dob':
+                    sid = session.get('student_pwd_reset_student_id')
+                    if not sid:
+                        error = 'Session expired. Enter the admission ID again.'
+                    else:
+                        dob_in = _parse_dob_submitted(request.form.get('date_of_birth'))
+                        if dob_in is None:
+                            error = 'Enter a valid date of birth.'
+                        else:
+                            row = _fetch_student_parent_by_admission(cursor, sid)
+                            if not row:
+                                error = 'Record not found. Start again with the admission ID.'
+                                _clear_student_password_reset_session()
+                            else:
+                                db_dob = row.get('date_of_birth')
+                                if db_dob is None:
+                                    error = (
+                                        'Date of birth is not on file for this student. Please contact the school.'
+                                    )
+                                else:
+                                    if hasattr(db_dob, 'date'):
+                                        db_dob = db_dob.date()
+                                    if dob_in != db_dob:
+                                        error = (
+                                            'That date of birth does not match our records. Try again or contact the school.'
+                                        )
+                                    else:
+                                        session['student_pwd_reset_dob_ok'] = '1'
+                                        return redirect(url_for('student_forgot_password'))
                 elif action == 'email':
-                    code_sess = session.get('student_pwd_reset_code')
-                    if not code_sess:
-                        error = 'Session expired. Enter your portal code again.'
+                    sid = session.get('student_pwd_reset_student_id')
+                    if not sid or session.get('student_pwd_reset_dob_ok') != '1':
+                        error = 'Session expired or date of birth not verified. Start again from the admission step.'
                     else:
                         email_in = normalize_login_email(request.form.get('email', ''))
                         if not email_in or '@' not in email_in:
                             error = 'Enter the email address on your student portal account.'
                         else:
-                            portal_user = _fetch_student_portal_user(cursor, code_sess)
+                            account_email, portal_user = _resolve_student_password_reset_email(cursor, sid)
                             if not portal_user:
-                                error = 'Student portal account not found. Start again with your portal code.'
+                                error = 'No portal account found. Start again or contact the school.'
                                 _clear_student_password_reset_session()
                             else:
-                                account_email = normalize_login_email(portal_user.get('email') or '')
                                 if not account_email:
                                     error = (
                                         'No email is stored on your student portal account. Please contact the school office.'
                                     )
                                 elif email_in != account_email:
                                     error = (
-                                        'That email does not match our records for this portal code. '
-                                        'Use the email the school registered for you, or contact the office.'
+                                        'That email does not match our records for this admission. '
+                                        'Use the email you registered with, or contact the school.'
                                     )
                                 else:
                                     full_name = (portal_user.get('full_name') or 'Student').strip() or 'Student'
@@ -20926,7 +21119,7 @@ def student_forgot_password():
                                         _clear_student_password_reset_session()
                                         session['pwd_reset_email'] = result
                                         session['pwd_reset_account_type'] = 'student'
-                                        session.pop('pwd_reset_admission', None)
+                                        session['pwd_reset_admission'] = sid
                                         flash(
                                             'We sent a 6-digit code to your email. Enter it on the next page with your new password.',
                                             'success',
@@ -20944,16 +21137,17 @@ def student_forgot_password():
             flash(error, 'error')
             return redirect(url_for('student_forgot_password'))
 
-    code_sess = session.get('student_pwd_reset_code')
+    student_id_sess = session.get('student_pwd_reset_student_id')
+    dob_ok = session.get('student_pwd_reset_dob_ok') == '1'
     masked_email = ''
-    if code_sess:
+    if student_id_sess and dob_ok:
         connection = get_db_connection()
         if connection:
             try:
                 with connection.cursor() as cursor:
-                    portal_user = _fetch_student_portal_user(cursor, code_sess)
-                    if portal_user:
-                        masked_email = _mask_email_for_display(portal_user.get('email') or '')
+                    account_email, _portal_user = _resolve_student_password_reset_email(cursor, student_id_sess)
+                    if account_email:
+                        masked_email = _mask_email_for_display(account_email)
             except Exception as e:
                 print(f"student_forgot_password masked email: {e}")
             finally:
@@ -20962,12 +21156,18 @@ def student_forgot_password():
                 except Exception:
                     pass
 
-    step = 2 if code_sess else 1
+    if student_id_sess and dob_ok:
+        step = 3
+    elif student_id_sess:
+        step = 2
+    else:
+        step = 1
+
     return render_template(
         'student_forgot_password.html',
         step=step,
-        code_prefill=code_prefill or code_sess or '',
-        portal_code_display=code_sess or '',
+        admission_prefill=admission_prefill,
+        student_id_display=student_id_sess or '',
         masked_email=masked_email,
     )
 
@@ -21035,11 +21235,11 @@ def parent_portal_setup():
                     if not sid or session.get('parent_portal_student_info_ok') != '1':
                         error = 'Session expired or student information not verified. Start again from the admission step.'
                     else:
-                        email = normalize_login_email(request.form.get('email', ''))
+                        email, email_err = _optional_portal_registration_email(request.form.get('email', ''))
                         pw = request.form.get('new_password', '')
                         pw2 = request.form.get('confirm_password', '')
-                        if not email or '@' not in email:
-                            error = 'Enter a valid email address.'
+                        if email_err:
+                            error = email_err
                         elif validate_portal_password(pw):
                             error = validate_portal_password(pw)
                         elif pw != pw2:
@@ -21072,8 +21272,8 @@ def parent_portal_setup():
                                 except IntegrityError:
                                     connection.rollback()
                                     error = (
-                                        'That email is already used by another account. '
-                                        'Use a different email or sign in and use Forgot password if this is yours.'
+                                        'A parent portal account with that email already exists. '
+                                        'Use a different email, leave it blank, or sign in and use Forgot password.'
                                     )
                                 except Exception as ex:
                                     connection.rollback()
@@ -21241,7 +21441,7 @@ def login_parent_register():
         return redirect(url_for('login', role='parent'))
 
     admission_raw = (request.form.get('admission') or '').strip()
-    email = normalize_login_email(request.form.get('email', ''))
+    email, email_err = _optional_portal_registration_email(request.form.get('email', ''))
     pw = request.form.get('new_password', '')
     pw2 = request.form.get('confirm_password', '')
     remember = bool(request.form.get('remember_me'))
@@ -21262,8 +21462,8 @@ def login_parent_register():
         flash('Enter your child’s date of birth.', 'error')
         return _back(admission_raw)
 
-    if not email or '@' not in email:
-        flash('Enter a valid email address.', 'error')
+    if email_err:
+        flash(email_err, 'error')
         return _back(admission_raw)
     pw_err = validate_portal_password(pw)
     if pw_err:
@@ -21316,7 +21516,7 @@ def login_parent_register():
             except IntegrityError:
                 connection.rollback()
                 flash(
-                    'That email is already used by another account. Use a different email or Forgot password.',
+                    'A parent portal account with that email already exists. Use a different email, leave it blank, or use Forgot password.',
                     'error',
                 )
                 return _back(canonical_sid)
@@ -21328,11 +21528,122 @@ def login_parent_register():
 
         session.permanent = remember
         session['user_id'] = new_id
-        session['email'] = email
+        session['email'] = email or ''
         session['full_name'] = parent_name
         session['role'] = 'parent'
         flash(f'Welcome, {parent_name}! Your parent portal is ready.', 'success')
         return redirect(parent_dashboard_path('verify-student-info'))
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+@app.route('/login/student-register', methods=['POST'])
+def login_student_register():
+    """Create student portal account from login page (admission + DOB + optional email + password), then sign in."""
+    allowed, retry_after = check_rate_limit('student_register_post', limit=6, window_sec=300)
+    if not allowed:
+        flash(rate_limit_flash_message(retry_after), 'error')
+        return redirect(url_for('login', role='student'))
+
+    if not validate_portal_csrf(request.form.get('csrf_token')):
+        flash('Your session expired. Refresh the page and submit again.', 'error')
+        return redirect(url_for('login', role='student'))
+
+    admission_raw = (request.form.get('admission') or '').strip()
+    email, email_err = _optional_portal_registration_email(request.form.get('email', ''))
+    pw = request.form.get('new_password', '')
+    pw2 = request.form.get('confirm_password', '')
+    remember = bool(request.form.get('remember_me'))
+
+    def _back(admission_val=''):
+        q = {'role': 'student'}
+        if admission_val:
+            q['admission'] = admission_val
+        return redirect(url_for('login', **q))
+
+    ak = _normalize_parent_admission(admission_raw)
+    if not _parent_admission_pattern_ok(ak):
+        flash('Enter a valid admission ID (letters and numbers only, e.g. STU001).', 'error')
+        return _back(admission_raw)
+
+    dob_in = _parse_dob_submitted(request.form.get('date_of_birth'))
+    if dob_in is None:
+        flash('Enter your date of birth.', 'error')
+        return _back(admission_raw)
+
+    if email_err:
+        flash(email_err, 'error')
+        return _back(admission_raw)
+    pw_err = validate_portal_password(pw)
+    if pw_err:
+        flash(pw_err, 'error')
+        return _back(admission_raw)
+    if pw != pw2:
+        flash('Password and confirmation do not match.', 'error')
+        return _back(admission_raw)
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error. Please try again later.', 'error')
+        return _back(admission_raw)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_users_portal_login_schema(cursor)
+            connection.commit()
+            row = _fetch_student_parent_by_admission(cursor, admission_raw)
+            if not row:
+                flash('No student with that admission ID in our records. Check spelling or contact the school.', 'error')
+                return _back()
+            canonical_sid = (row.get('student_id') or ak).strip()
+            db_dob = row.get('date_of_birth')
+            if db_dob is not None and hasattr(db_dob, 'date'):
+                db_dob = db_dob.date()
+            if db_dob is None:
+                flash('Date of birth is not on file for this student. Please contact the school.', 'error')
+                return _back(canonical_sid)
+            if dob_in != db_dob:
+                flash('That date of birth does not match our records.', 'error')
+                return _back(canonical_sid)
+            if _fetch_student_portal_user(cursor, admission_raw):
+                flash('A student account already exists for this admission. Sign in with your password below.', 'info')
+                return _back(canonical_sid)
+
+            student_name = (row.get('student_name') or 'Student').strip() or 'Student'
+            ph = generate_password_hash(pw)
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO users (full_name, email, password_hash, login_code, student_id, role)
+                    VALUES (%s, %s, %s, NULL, %s, 'student')
+                    """,
+                    (student_name, email, ph, canonical_sid),
+                )
+                new_id = cursor.lastrowid
+                connection.commit()
+            except IntegrityError:
+                connection.rollback()
+                flash(
+                    'A student portal account with that email already exists. Use a different email, leave it blank, or use Forgot password.',
+                    'error',
+                )
+                return _back(canonical_sid)
+            except Exception as ex:
+                connection.rollback()
+                print(f'login_student_register: {ex}')
+                flash('Could not create your account. Please try again.', 'error')
+                return _back(canonical_sid)
+
+        session.permanent = remember
+        session['user_id'] = new_id
+        session['email'] = email or ''
+        session['full_name'] = student_name
+        session['role'] = 'student'
+        flash(f'Welcome, {student_name}! Your student portal is ready.', 'success')
+        return redirect(student_dashboard_path())
     finally:
         try:
             connection.close()
@@ -21361,7 +21672,7 @@ def login():
             or request.form.get('admission_number', '').strip()
         )
 
-        def render_login_error(message, parent_setup_hint=False, parent_setup_admission=''):
+        def render_login_error(message, parent_setup_hint=False, parent_setup_admission='', student_setup_hint=False, student_setup_admission=''):
             return render_template(
                 'login.html',
                 default_role=role if role in ('employee', 'parent', 'student') else '',
@@ -21369,8 +21680,10 @@ def login():
                 login_code=code,
                 remember_me=bool(request.form.get('remember_me')),
                 parent_setup_hint=parent_setup_hint,
-                default_admission=(code.strip() if role == 'parent' else ''),
+                default_admission=(code.strip() if role in ('parent', 'student') else ''),
                 parent_setup_admission=parent_setup_admission,
+                student_setup_hint=student_setup_hint,
+                student_setup_admission=student_setup_admission,
             )
 
         if not role:
@@ -21382,6 +21695,10 @@ def login():
                 return render_login_error(
                     "Enter your child's student admission ID (the ID on the admission confirmation, e.g. STU001)."
                 )
+            if role == 'student':
+                return render_login_error(
+                    'Enter your student admission ID (the ID on your admission confirmation, e.g. STU001).'
+                )
             return render_login_error('Please enter your six-digit code.')
 
         if role == 'employee':
@@ -21389,12 +21706,7 @@ def login():
                 return render_login_error('Please enter your password.')
             if not code.isdigit() or len(code) != 6:
                 return render_login_error('Your sign-in code must be exactly 6 digits.')
-        elif role == 'student':
-            if not password:
-                return render_login_error('Please enter your password.')
-            if not code.isdigit() or len(code) != 6:
-                return render_login_error('Your sign-in code must be exactly 6 digits.')
-        else:
+        elif role in ('parent', 'student'):
             if not password:
                 return render_login_error('Please enter your password.')
             adm_key = _normalize_parent_admission(code)
@@ -21520,26 +21832,26 @@ def login():
                         if _parent_requires_student_info_verification(cursor, user['id']):
                             return redirect(parent_dashboard_path('verify-student-info'))
                         return redirect(parent_dashboard_path())
-                    else:
-                        cursor.execute(
-                            """
-                            SELECT * FROM users WHERE role = %s AND (
-                                (login_code IS NOT NULL AND login_code = %s)
-                                OR (student_id IS NOT NULL AND (
-                                    student_id = %s
-                                    OR (CHAR_LENGTH(student_id) >= 6 AND RIGHT(student_id, 6) = %s)
-                                ))
-                            )
-                            LIMIT 1
-                            """,
-                            (role, code, code, code),
-                        )
-                        user = cursor.fetchone()
-
+                    elif role == 'student':
+                        user = _fetch_student_portal_user(cursor, code)
                         if not user:
+                            sp = _fetch_student_parent_by_admission(cursor, code)
+                            if sp:
+                                return render_template(
+                                    'login.html',
+                                    default_role='student',
+                                    login_error=(
+                                        'No portal account is registered for this admission yet. '
+                                        'Confirm your date of birth, then enter your email and choose a password below.'
+                                    ),
+                                    login_code=code,
+                                    remember_me=bool(request.form.get('remember_me')),
+                                    student_setup_hint=True,
+                                    default_admission=code.strip(),
+                                    student_setup_admission=code.strip(),
+                                )
                             return render_login_error(
-                                'No account matches this six-digit code for the role you selected. '
-                                'If you were given a portal code, use that; students may also try the last six characters of their student ID.'
+                                'No student portal account matches this admission ID. Check the ID or contact the school.'
                             )
                         if not (
                             check_password_hash(user['password_hash'], raw_password)
@@ -21578,8 +21890,10 @@ def login():
         login_code=adm,
         remember_me=False,
         parent_setup_hint=False,
+        student_setup_hint=False,
         default_admission=adm,
         parent_setup_admission='',
+        student_setup_admission='',
         login_error=None,
     )
 
@@ -87507,10 +87821,15 @@ def _build_academic_report_payload(cursor, report_type, f):
             )
 
         subject_columns_by_class = {}
+        subject_columns_by_level_id = {}
         for ln, level_id in level_name_to_id.items():
             labels = reg_labels_by_lid.get(level_id, [])
             if labels:
                 subject_columns_by_class[ln] = labels
+                try:
+                    subject_columns_by_level_id[str(int(level_id))] = list(labels)
+                except (TypeError, ValueError):
+                    pass
 
         sids_for_cols = list({m['sid'] for m in subject_meta.values() if m.get('sid')})
         id_to_gc_all_perf = fetch_subject_id_to_exam_group_category(cursor, sids_for_cols) if sids_for_cols else {}
@@ -87702,6 +88021,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             meta['subject_columns_by_class'] = {combined_display: list(subject_columns)}
         else:
             meta['subject_columns_by_class'] = subject_columns_by_class
+        meta['subject_columns_by_level_id'] = subject_columns_by_level_id
         if not level_ids:
             try:
                 cursor.execute(
@@ -88303,6 +88623,35 @@ def _build_academic_report_payload(cursor, report_type, f):
                 }
         except Exception:
             pass
+        try:
+            reg_labels_by_lid, _combo_plan_by_lid, _exam_tot = _merged_registered_subject_labels_by_level_id(cursor)
+            level_name_to_id_ind = _level_name_to_id_map(cursor)
+            subject_columns_by_class_ind = {}
+            subject_columns_by_level_id_ind = {}
+            for ln, level_id in (level_name_to_id_ind or {}).items():
+                labels = (reg_labels_by_lid or {}).get(level_id, [])
+                if labels:
+                    subject_columns_by_class_ind[ln] = list(labels)
+                    try:
+                        subject_columns_by_level_id_ind[str(int(level_id))] = list(labels)
+                    except (TypeError, ValueError):
+                        pass
+            if is_combined_level and level_ids:
+                merged_ind_labels = []
+                seen_ind = set()
+                for lid_i in level_ids:
+                    for lbl in (reg_labels_by_lid or {}).get(int(lid_i), []):
+                        if lbl not in seen_ind:
+                            seen_ind.add(lbl)
+                            merged_ind_labels.append(lbl)
+                if merged_ind_labels:
+                    meta['subject_columns'] = merged_ind_labels
+            elif level_ids and len(level_ids) == 1:
+                meta['subject_columns'] = list((reg_labels_by_lid or {}).get(int(level_ids[0]), []) or [])
+            meta['subject_columns_by_class'] = subject_columns_by_class_ind
+            meta['subject_columns_by_level_id'] = subject_columns_by_level_id_ind
+        except Exception as e:
+            print(f"Note: subject column order meta for individual report: {e}")
         title = 'Individual student — exam performance' if report_type == 'exam_individual_performance' else 'Individual exam performance'
         return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
 
