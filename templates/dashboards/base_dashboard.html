@@ -77,27 +77,8 @@
     <meta name="MobileOptimized" content="width">
     <title>{% block title %}Dashboard - {{ school_settings.school_name or 'Modern School' }}{% endblock %}</title>
     
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'brand-primary': '{{ school_settings.primary_color|default("#800020") }}',
-                        'brand-secondary': '{{ school_settings.secondary_color|default("#A00030") }}',
-                        'brand-maroon': '{{ school_settings.primary_color|default("#800020") }}',
-                        'brand-maroon-dark': '{{ school_settings.accent_color|default("#5C0014") }}',
-                        'brand-maroon-light': '{{ school_settings.secondary_color|default("#A00030") }}',
-                    },
-                    fontFamily: {
-                        sans: ['{{ school_settings.font_family|default("Inter") }}', 'system-ui', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Prebuilt Tailwind (npm run build:css) — no browser JIT compile -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.built.css') }}">
     
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>

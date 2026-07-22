@@ -1,6 +1,7 @@
 Flask==3.0.0
 Flask-Mail==0.9.1
 PyMySQL==1.1.0
+DBUtils==3.1.0
 Werkzeug==3.0.1
 python-dotenv==1.0.0
 reportlab==4.0.7
@@ -14,5 +15,8 @@ google-auth==2.25.2
 google-auth-oauthlib==1.2.0
 requests==2.31.0
 pywebpush==2.0.0
+# Optional: shared cache/rate-limits across Passenger workers (REDIS_URL or REDIS_HOST)
+redis==5.0.1
+psutil==7.0.0
 
 

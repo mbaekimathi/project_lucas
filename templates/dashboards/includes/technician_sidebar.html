@@ -30,11 +30,11 @@
     <span>Google Drive backup</span>
     {% if request.endpoint == 'database_backup_restore' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
-<a href="{{ employee_dash_url('database/health-status') }}"
-   class="sidebar-item {% if request.endpoint == 'database_health_status' %}sidebar-item-active{% endif %}">
+<a href="{{ employee_dash_url('health-status') }}"
+   class="sidebar-item {% if request.endpoint == 'health_status' %}sidebar-item-active{% endif %}">
     <i class="fas fa-heartbeat w-5"></i>
     <span>Health &amp; status</span>
-    {% if request.endpoint == 'database_health_status' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint == 'health_status' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('database/logs-audit-trails') }}"
    class="sidebar-item {% if request.endpoint == 'logs_audit_trails' %}sidebar-item-active{% endif %}">

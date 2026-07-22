@@ -1105,7 +1105,7 @@ function paymentModal() {
                 }
             }
             tick();
-            this.mpesaPollId = setInterval(tick, 3000);
+            this.mpesaPollId = setInterval(tick, 12000);
         },
         async confirmMpesaSandbox() {
             if (!this.mpesaCheckoutId || !SF_MPESA_CFG.confirmUrl) return;

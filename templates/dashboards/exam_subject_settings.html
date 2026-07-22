@@ -10,94 +10,59 @@
 {% block content %}
 {% set role_theme = portal_page_variant|default('default') %}
 {% set role_hero_title = 'Exam subject settings' %}
-{% set role_hero_subtitle = 'Paper totals, column order, and combined subjects for marks sheets.' %}
+{% set role_hero_subtitle = 'Set each subject’s paper total (out of). Scores convert to /100 on reports.' %}
 {% set role_hero_icon_class = 'fa-clipboard-check' %}
 {% include 'dashboards/includes/role_hero.html' %}
 
-<div class="max-w-4xl mx-auto px-3 sm:px-6 pb-8 space-y-5 sm:space-y-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
-
-    <nav class="flex flex-wrap gap-2 text-xs sm:text-sm" aria-label="On this page">
-        <a href="#exam-column-order" class="rounded-full px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-brand-primary/10 hover:text-brand-primary transition-colors">Order</a>
-        <a href="#exam-totals" class="rounded-full px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-brand-primary/10 hover:text-brand-primary transition-colors">Totals</a>
-        <a href="#combine-exam-subjects" class="rounded-full px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-brand-primary/10 hover:text-brand-primary transition-colors">Combine</a>
-    </nav>
-
-    <section id="exam-column-order" class="scroll-mt-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
-        <div class="px-4 py-3 sm:px-5 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">Column order</h2>
-            <p class="mt-0.5 text-xs sm:text-sm text-gray-500 dark:text-gray-400">Drag or use arrows. Combined subjects move as one row.</p>
-        </div>
-        <div class="p-3 sm:p-5">
-            {% if exam_column_order_by_category and exam_column_order_by_category|length > 0 %}
-            <form id="exam-order-form" method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="space-y-3">
-                <input type="hidden" name="exam_order_action" value="save_order">
-                <input type="hidden" name="exam_column_order_json" id="exam_column_order_json" value="">
-                <div id="exam-column-order-root" class="space-y-3 max-h-72 sm:max-h-80 overflow-y-auto" aria-label="Column order">
-                    {% for section in exam_column_order_by_category %}
-                    <div class="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
-                        <p class="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/80">
-                            {{ section.category }}
-                        </p>
-                        <ul class="exam-column-order-list divide-y divide-gray-100 dark:divide-gray-800" data-category="{{ section.category }}">
-                            {% for slot in section.slots %}
-                            <li draggable="true" data-slot="1" data-type="{{ slot.type }}" data-id="{{ slot.id }}"
-                                class="exam-order-item flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-900 cursor-grab active:cursor-grabbing select-none">
-                                <span class="text-gray-300 dark:text-gray-600 shrink-0 text-sm"><i class="fas fa-grip-vertical" aria-hidden="true"></i></span>
-                                <span class="flex-1 min-w-0 text-sm text-gray-900 dark:text-white truncate">{{ slot.label }}</span>
-                                {% if slot.type == 'combo' %}
-                                <span class="shrink-0 text-[10px] font-medium text-violet-600 dark:text-violet-400">Combo</span>
-                                {% endif %}
-                                <span class="flex shrink-0 gap-0.5">
-                                    <button type="button" class="exam-ord-up p-1.5 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Move up"><i class="fas fa-chevron-up text-xs" aria-hidden="true"></i></button>
-                                    <button type="button" class="exam-ord-down p-1.5 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Move down"><i class="fas fa-chevron-down text-xs" aria-hidden="true"></i></button>
-                                </span>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                    {% endfor %}
-                </div>
-                <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white bg-gray-800 hover:bg-gray-900 dark:bg-gray-600 dark:hover:bg-gray-500">
-                    <i class="fas fa-save text-xs" aria-hidden="true"></i> Save order
-                </button>
-            </form>
-            {% else %}
-            <p class="text-sm text-gray-500 dark:text-gray-400 py-2">No subjects yet.</p>
-            {% endif %}
-        </div>
-    </section>
+<div class="max-w-4xl mx-auto px-3 sm:px-6 pb-8 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
 
     {% if subjects_rows %}
-    <section id="exam-totals" class="scroll-mt-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+    <section id="exam-totals" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
         <div class="px-4 py-3 sm:px-5 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">Exam totals</h2>
-            <p class="mt-0.5 text-xs sm:text-sm text-gray-500 dark:text-gray-400">Marks out of this total; default 100 scales to % on reports.</p>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">Out of marks</h2>
+            <p class="mt-0.5 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                Set the paper total for each subject. Preview shows an example actual score and its converted mark (/100).
+            </p>
         </div>
-        <form id="exam-subject-settings-form" method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="p-3 sm:p-5 space-y-4" novalidate>
-            <div class="space-y-4">
+        <form id="exam-subject-settings-form" method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="p-3 sm:p-5 space-y-5" novalidate>
+            <div class="space-y-5">
                 {% for section in subjects_by_category %}
                 <div>
                     <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">{{ section.category }}</p>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {% for s in section.subjects %}
-                        <div class="exam-scale-row rounded-lg border border-gray-100 dark:border-gray-800 p-3 flex flex-col sm:flex-row sm:items-center gap-2">
-                            <div class="flex-1 min-w-0 flex items-center justify-between gap-2 sm:block">
-                                <div class="min-w-0">
-                                    <p class="font-medium text-sm text-gray-900 dark:text-white truncate">{{ s.subject_name }}</p>
-                                    {% if s.subject_code %}<p class="text-xs font-mono text-gray-400 truncate">{{ s.subject_code }}</p>{% endif %}
-                                </div>
-                                <span class="text-xs text-emerald-600 dark:text-emerald-400 tabular-nums shrink-0 sm:hidden preview-num-pct">{{ s.preview_example_pct if s.preview_example_pct is not none else '—' }}%</span>
-                            </div>
-                            <div class="flex items-center gap-2 shrink-0">
-                                <label class="sr-only" for="exam_total_marks_{{ s.id }}">Total for {{ s.subject_name }}</label>
-                                <input id="exam_total_marks_{{ s.id }}" type="text" name="exam_total_marks_{{ s.id }}"
-                                       inputmode="decimal" autocomplete="off" placeholder="100"
-                                       value="{% if s.exam_total_marks is not none %}{{ s.exam_total_marks }}{% else %}100{% endif %}"
-                                       class="exam-total-input w-full sm:w-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 sm:py-1.5 text-sm focus:ring-2 focus:ring-brand-primary">
-                                <span class="hidden sm:inline text-xs tabular-nums text-emerald-600 dark:text-emerald-400 w-10 text-right preview-num-pct">{{ s.preview_example_pct if s.preview_example_pct is not none else '—' }}%</span>
-                            </div>
-                        </div>
-                        {% endfor %}
+                    <div class="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">
+                        <table class="w-full min-w-[28rem] text-sm">
+                            <thead>
+                                <tr class="bg-gray-50 dark:bg-gray-800/80 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    <th class="px-3 py-2.5 font-semibold">Subject</th>
+                                    <th class="px-3 py-2.5 font-semibold text-center w-28">Out of</th>
+                                    <th class="px-3 py-2.5 font-semibold text-center w-28">Actual mark</th>
+                                    <th class="px-3 py-2.5 font-semibold text-center w-32">Converted mark</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                                {% for s in section.subjects %}
+                                <tr class="exam-scale-row bg-white dark:bg-gray-900">
+                                    <td class="px-3 py-2.5 min-w-0">
+                                        <p class="font-medium text-gray-900 dark:text-white truncate">{{ s.subject_name }}</p>
+                                        {% if s.subject_code %}<p class="text-xs font-mono text-gray-400 truncate">{{ s.subject_code }}</p>{% endif %}
+                                    </td>
+                                    <td class="px-3 py-2.5 text-center">
+                                        <label class="sr-only" for="exam_total_marks_{{ s.id }}">Out of for {{ s.subject_name }}</label>
+                                        <input id="exam_total_marks_{{ s.id }}" type="text" name="exam_total_marks_{{ s.id }}"
+                                               inputmode="decimal" autocomplete="off" placeholder="100"
+                                               value="{% if s.exam_total_marks is not none %}{{ s.exam_total_marks }}{% else %}100{% endif %}"
+                                               class="exam-total-input w-20 mx-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-brand-primary">
+                                    </td>
+                                    <td class="px-3 py-2.5 text-center">
+                                        <span class="preview-num-raw tabular-nums font-medium text-gray-900 dark:text-white">{{ s.preview_example_raw if s.preview_example_raw is not none else '—' }}</span>
+                                    </td>
+                                    <td class="px-3 py-2.5 text-center">
+                                        <span class="preview-num-pct tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{{ s.preview_example_pct if s.preview_example_pct is not none else '—' }}</span><span class="text-emerald-600 dark:text-emerald-400 text-xs font-semibold"> /100</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
                 {% endfor %}
@@ -106,7 +71,7 @@
             <div class="flex flex-col-reverse sm:flex-row sm:items-center gap-2 pt-1">
                 <a href="{{ employee_dash_url('exam-evaluation') }}" class="text-center sm:text-left text-sm text-gray-500 hover:text-brand-primary py-2">Cancel</a>
                 <button type="submit" class="w-full sm:w-auto sm:ml-auto inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-sm">
-                    <i class="fas fa-save text-xs" aria-hidden="true"></i> Save totals
+                    <i class="fas fa-save text-xs" aria-hidden="true"></i> Save out of marks
                 </button>
             </div>
         </form>
@@ -116,84 +81,6 @@
         No active subjects. Add them under Classes &amp; subjects first.
     </div>
     {% endif %}
-
-    <section id="combine-exam-subjects" class="scroll-mt-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
-        <div class="px-4 py-3 sm:px-5 border-b border-gray-100 dark:border-gray-800">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">Combine subjects</h2>
-            <p class="mt-0.5 text-xs sm:text-sm text-gray-500 dark:text-gray-400">One marks column; edit the code. Remove to split again.</p>
-        </div>
-        <div class="p-3 sm:p-5 space-y-5">
-            {% if combinations_display %}
-            <div class="space-y-2">
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Active combinations</p>
-                <ul class="space-y-2">
-                    {% for c in combinations_display %}
-                    <li class="rounded-lg border border-violet-100 dark:border-violet-900/40 bg-violet-50/30 dark:bg-violet-950/20 p-3">
-                        <form method="post" action="{{ employee_dash_url('exam-subject-settings') }}#combine-exam-subjects" class="space-y-2">
-                            <input type="hidden" name="combine_action" value="update_code">
-                            <input type="hidden" name="combination_id" value="{{ c.id }}">
-                            <p class="text-sm font-medium text-gray-900 dark:text-white leading-snug">{{ c.label_name }}</p>
-                            <label class="block">
-                                <span class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Combined code</span>
-                                <input type="text" name="update_combined_code" maxlength="64"
-                                       value="{{ c.label_code }}"
-                                       autocomplete="off" spellcheck="false"
-                                       class="combo-code-input w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-mono text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-transparent">
-                            </label>
-                            <div class="flex flex-wrap gap-2 pt-1">
-                                <button type="submit" name="combine_action" value="update_code"
-                                        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-white bg-gray-800 hover:bg-gray-900 dark:bg-gray-600 dark:hover:bg-gray-500">
-                                    <i class="fas fa-save text-xs" aria-hidden="true"></i> Save code
-                                </button>
-                                <button type="submit" name="combine_action" value="delete"
-                                        class="rounded-lg px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                        onclick="return confirm('Remove this combination?');">Remove</button>
-                            </div>
-                        </form>
-                    </li>
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
-
-            {% if subjects_by_category %}
-            <div class="space-y-2 {% if combinations_display %}pt-2 border-t border-gray-100 dark:border-gray-800{% endif %}">
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">New combination</p>
-                <form id="combine-subjects-form" method="post" action="{{ employee_dash_url('exam-subject-settings') }}#combine-exam-subjects" class="space-y-3">
-                    <div id="combine-subject-picks" class="max-h-56 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-                        {% for section in subjects_by_category %}
-                        <div>
-                            <p class="sticky top-0 z-[1] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-50 dark:bg-gray-800/95">{{ section.category }}</p>
-                            {% for s in section.subjects %}
-                            <label class="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer">
-                                <input type="checkbox" name="subject_pick" value="{{ s.id }}"
-                                       class="combine-subject-cb rounded border-gray-300 dark:border-gray-600 shrink-0"
-                                       data-subject-code="{{ (s.subject_code or '')|e }}"
-                                       data-subject-name="{{ (s.subject_name or '')|e }}">
-                                <span class="flex-1 min-w-0 text-sm truncate text-gray-900 dark:text-white">{{ s.subject_name }}</span>
-                                {% if s.subject_code %}<span class="shrink-0 text-xs font-mono text-gray-400">{{ s.subject_code }}</span>{% endif %}
-                            </label>
-                            {% endfor %}
-                        </div>
-                        {% endfor %}
-                    </div>
-                    <div class="flex flex-col sm:flex-row gap-2">
-                        <label class="flex-1 min-w-0">
-                            <span class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Combined code</span>
-                            <input type="text" id="new_combined_code" name="combined_code" maxlength="64" autocomplete="off" spellcheck="false"
-                                   placeholder="MATH/SCI"
-                                   class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-mono text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-transparent">
-                        </label>
-                        <button type="submit" name="combine_action" value="create"
-                                class="sm:self-end inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shrink-0">
-                            <i class="fas fa-link text-xs" aria-hidden="true"></i> Combine
-                        </button>
-                    </div>
-                </form>
-            </div>
-            {% endif %}
-        </div>
-    </section>
 </div>
 
 <script>
@@ -203,18 +90,22 @@
         if (!isFinite(n) || n <= 0) return 100;
         return n;
     }
-    function previewForMax(mx) {
+    function previewRawForMax(mx) {
         var ill = mx >= 50 ? 50 : Math.round((mx / 2) * 10000) / 10000;
         if (!(ill > 0)) ill = 1;
-        return Math.round((10000 * ill) / mx) / 100;
+        return ill;
+    }
+    function previewPctForMax(mx) {
+        return Math.round((100 * previewRawForMax(mx)) / mx);
     }
     function updateRow(row) {
         var inp = row.querySelector('.exam-total-input');
         if (!inp) return;
-        var pct = previewForMax(effectiveMaxFromInput(inp.value));
-        row.querySelectorAll('.preview-num-pct').forEach(function (el) {
-            el.textContent = String(pct);
-        });
+        var mx = effectiveMaxFromInput(inp.value);
+        var rawEl = row.querySelector('.preview-num-raw');
+        var pctEl = row.querySelector('.preview-num-pct');
+        if (rawEl) rawEl.textContent = String(previewRawForMax(mx));
+        if (pctEl) pctEl.textContent = String(previewPctForMax(mx));
     }
     var form = document.getElementById('exam-subject-settings-form');
     if (!form) return;
@@ -225,114 +116,6 @@
         }
     });
     form.querySelectorAll('.exam-scale-row').forEach(updateRow);
-})();
-
-(function () {
-    var root = document.getElementById('exam-column-order-root');
-    var jsonInput = document.getElementById('exam_column_order_json');
-    var orderForm = document.getElementById('exam-order-form');
-    if (!root || !jsonInput || !orderForm) return;
-
-    function listForItem(li) {
-        return li ? li.closest('ul.exam-column-order-list') : null;
-    }
-
-    function serializeOrder() {
-        var slots = [];
-        root.querySelectorAll('ul.exam-column-order-list').forEach(function (ul) {
-            ul.querySelectorAll('li.exam-order-item').forEach(function (li) {
-                var t = (li.getAttribute('data-type') || '').trim().toLowerCase();
-                var id = parseInt(li.getAttribute('data-id'), 10);
-                if ((t === 'subject' || t === 'combo') && !isNaN(id)) {
-                    slots.push({ type: t, id: id });
-                }
-            });
-        });
-        jsonInput.value = JSON.stringify(slots);
-    }
-
-    orderForm.addEventListener('submit', serializeOrder);
-
-    root.addEventListener('click', function (e) {
-        var btn = e.target.closest('.exam-ord-up, .exam-ord-down');
-        if (!btn || !root.contains(btn)) return;
-        var li = btn.closest('li.exam-order-item');
-        var ul = listForItem(li);
-        if (!li || !ul) return;
-        if (btn.classList.contains('exam-ord-up') && li.previousElementSibling) {
-            ul.insertBefore(li, li.previousElementSibling);
-        } else if (btn.classList.contains('exam-ord-down') && li.nextElementSibling) {
-            ul.insertBefore(li.nextElementSibling, li);
-        }
-    });
-
-    var dragEl = null;
-    var dragList = null;
-    root.addEventListener('dragstart', function (e) {
-        var li = e.target.closest('li.exam-order-item');
-        if (!li || !root.contains(li)) return;
-        dragEl = li;
-        dragList = listForItem(li);
-        li.classList.add('opacity-50');
-        try {
-            e.dataTransfer.setData('text/plain', '1');
-            e.dataTransfer.effectAllowed = 'move';
-        } catch (err) {}
-    });
-    root.addEventListener('dragend', function () {
-        if (dragEl) dragEl.classList.remove('opacity-50');
-        dragEl = null;
-        dragList = null;
-    });
-    root.addEventListener('dragover', function (e) {
-        var li = e.target.closest('li.exam-order-item');
-        if (!li || !dragEl || listForItem(li) !== dragList) return;
-        e.preventDefault();
-    });
-    root.addEventListener('drop', function (e) {
-        e.preventDefault();
-        if (!dragEl || !dragList) return;
-        var target = e.target.closest('li.exam-order-item');
-        if (!target || target === dragEl || listForItem(target) !== dragList) return;
-        var rect = target.getBoundingClientRect();
-        if ((e.clientY - rect.top) < rect.height / 2) {
-            dragList.insertBefore(dragEl, target);
-        } else {
-            dragList.insertBefore(dragEl, target.nextElementSibling);
-        }
-    });
-})();
-
-(function () {
-    var picksRoot = document.getElementById('combine-subject-picks');
-    var codeInput = document.getElementById('new_combined_code');
-    if (!picksRoot || !codeInput) return;
-
-    var userEdited = false;
-    codeInput.addEventListener('input', function () { userEdited = true; });
-
-    function codePartFromCb(cb) {
-        var cd = (cb.getAttribute('data-subject-code') || '').trim();
-        if (cd) return cd;
-        var nm = (cb.getAttribute('data-subject-name') || '').trim();
-        return nm ? nm.slice(0, 12) : '—';
-    }
-
-    function refreshSuggestion() {
-        if (userEdited) return;
-        var parts = [];
-        picksRoot.querySelectorAll('.combine-subject-cb:checked').forEach(function (cb) {
-            parts.push(codePartFromCb(cb));
-        });
-        codeInput.value = parts.join('/');
-    }
-
-    picksRoot.addEventListener('change', function (e) {
-        if (e.target && e.target.classList && e.target.classList.contains('combine-subject-cb')) {
-            refreshSuggestion();
-        }
-    });
-    refreshSuggestion();
 })();
 </script>
 {% endblock %}

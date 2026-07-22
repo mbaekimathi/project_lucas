@@ -8322,7 +8322,67 @@
         return;
       }
       const fmt = exportFmtEl ? (exportFmtEl.value || 'excel') : 'excel';
-      window.location.href = buildExportUrl(reportType, fmt);
+      if (fmt === 'csv') {
+        window.location.href = buildExportUrl(reportType, fmt);
+        return;
+      }
+      // Excel: background job so the worker is not blocked for other users
+      const prevLabel = exportBtn.innerHTML;
+      exportBtn.disabled = true;
+      exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Preparing Excel…';
+      fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          report_type: reportType,
+          format: 'excel',
+          filters: getFiltersForReport(reportType),
+        }),
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (!data || !data.success || !data.job_id) {
+          window.alert((data && data.message) || 'Could not start Excel export.');
+          exportBtn.disabled = false;
+          exportBtn.innerHTML = prevLabel;
+          return;
+        }
+        const statusUrl = data.status_url || (API.replace(/\/generate\/?$/, '/export-status/') + data.job_id);
+        function poll() {
+          fetch(statusUrl, {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin',
+          }).then(function(r) { return r.json(); }).then(function(st) {
+            if (!st || !st.success) {
+              window.alert((st && st.message) || 'Export status unavailable.');
+              exportBtn.disabled = false;
+              exportBtn.innerHTML = prevLabel;
+              return;
+            }
+            if (st.status === 'success' && st.download_url) {
+              exportBtn.disabled = false;
+              exportBtn.innerHTML = prevLabel;
+              window.location.href = st.download_url;
+              return;
+            }
+            if (st.status === 'error') {
+              window.alert(st.message || 'Excel export failed.');
+              exportBtn.disabled = false;
+              exportBtn.innerHTML = prevLabel;
+              return;
+            }
+            exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> ' + (st.message || 'Building…');
+            setTimeout(poll, 2000);
+          }).catch(function() {
+            setTimeout(poll, 3000);
+          });
+        }
+        poll();
+      }).catch(function(err) {
+        console.error(err);
+        window.alert('Excel export failed to start.');
+        exportBtn.disabled = false;
+        exportBtn.innerHTML = prevLabel;
+      });
     });
   }
   const registerDateEl = document.getElementById('gf-register-date');

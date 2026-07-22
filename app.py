@@ -416,6 +416,232 @@ def complete_employee_login_session(employee, selected_role, remember_me=False):
     session['profile_picture'] = employee.get('profile_picture')
     session.pop('auth_pending_employee_pk', None)
     session.pop('auth_pending_remember_me', None)
+    register_active_employee_session(employee, role)
+
+
+# --- Active employee sessions (for technician health-status live list) ---
+_ACTIVE_EMPLOYEE_SESSIONS = {}
+_ACTIVE_EMPLOYEE_SESSIONS_LOCK = threading.Lock()
+_ACTIVE_EMPLOYEE_SESSION_TTL = 45 * 60  # drop after 45 minutes idle
+_ACTIVE_EMPLOYEE_TOUCH_MIN_INTERVAL = 15  # seconds between registry writes per browser
+
+
+def _active_employee_session_payload(employee_or_session, role, sid, logged_in_at=None):
+    now = time.time()
+    if isinstance(employee_or_session, dict) and 'full_name' in employee_or_session:
+        src = employee_or_session
+        user_id = src.get('id')
+        full_name = (src.get('full_name') or '').strip()
+        email = (src.get('email') or '').strip()
+        employee_code = (src.get('employee_id') or '').strip()
+        profile_picture = src.get('profile_picture')
+    else:
+        user_id = session.get('user_id')
+        full_name = (session.get('full_name') or '').strip()
+        email = (session.get('email') or '').strip()
+        employee_code = (session.get('employee_id') or '').strip()
+        profile_picture = session.get('profile_picture')
+    ip = ''
+    path = ''
+    if has_request_context():
+        ip = (request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+        path = (request.environ.get('portal_original_path_info') or request.path or '')[:180]
+    return {
+        'sid': sid,
+        'user_id': user_id,
+        'employee_id': employee_code,
+        'full_name': full_name or 'Unknown',
+        'email': email,
+        'role': (role or '').strip().lower() or 'employee',
+        'profile_picture': profile_picture,
+        'ip': ip,
+        'path': path,
+        'logged_in_at': float(logged_in_at or now),
+        'last_seen': now,
+    }
+
+
+def _active_employee_sessions_redis():
+    try:
+        from shared_cache import get_redis
+        return get_redis()
+    except Exception:
+        return None
+
+
+def register_active_employee_session(employee, role):
+    """Record an employee browser session after login."""
+    if not employee or not employee.get('id'):
+        return
+    sid = secrets.token_hex(16)
+    session['_active_sid'] = sid
+    session['_active_sid_touched_at'] = time.time()
+    payload = _active_employee_session_payload(employee, role, sid)
+    r = _active_employee_sessions_redis()
+    if r is not None:
+        try:
+            key = f'ec:emp_sess:{sid}'
+            r.setex(key, _ACTIVE_EMPLOYEE_SESSION_TTL, json.dumps(payload, default=str))
+            r.sadd('ec:emp_sess:index', sid)
+            return
+        except Exception:
+            pass
+    with _ACTIVE_EMPLOYEE_SESSIONS_LOCK:
+        _ACTIVE_EMPLOYEE_SESSIONS[sid] = payload
+
+
+def unregister_active_employee_session(sid=None, user_id=None):
+    """Remove one or all sessions for an employee (logout)."""
+    sid = sid or (session.get('_active_sid') if has_request_context() else None)
+    user_id = user_id if user_id is not None else (session.get('user_id') if has_request_context() else None)
+    r = _active_employee_sessions_redis()
+    if r is not None:
+        try:
+            if sid:
+                r.delete(f'ec:emp_sess:{sid}')
+                r.srem('ec:emp_sess:index', sid)
+            if user_id is not None:
+                for member in list(r.smembers('ec:emp_sess:index') or []):
+                    raw = r.get(f'ec:emp_sess:{member}')
+                    if not raw:
+                        r.srem('ec:emp_sess:index', member)
+                        continue
+                    try:
+                        data = json.loads(raw)
+                    except Exception:
+                        continue
+                    if str(data.get('user_id')) == str(user_id):
+                        r.delete(f'ec:emp_sess:{member}')
+                        r.srem('ec:emp_sess:index', member)
+        except Exception:
+            pass
+    with _ACTIVE_EMPLOYEE_SESSIONS_LOCK:
+        if sid:
+            _ACTIVE_EMPLOYEE_SESSIONS.pop(sid, None)
+        if user_id is not None:
+            drop = [k for k, v in _ACTIVE_EMPLOYEE_SESSIONS.items() if str(v.get('user_id')) == str(user_id)]
+            for k in drop:
+                _ACTIVE_EMPLOYEE_SESSIONS.pop(k, None)
+
+
+def touch_active_employee_session():
+    """Refresh last-seen for the current employee request (throttled)."""
+    if not has_request_context():
+        return
+    role = normalize_allocated_role(session.get('role')) or (session.get('role') or '').strip().lower()
+    if not session.get('user_id') or role not in EMPLOYEE_SUB_ROLES_SET:
+        return
+    now = time.time()
+    last_touch = float(session.get('_active_sid_touched_at') or 0)
+    sid = session.get('_active_sid')
+    if sid and (now - last_touch) < _ACTIVE_EMPLOYEE_TOUCH_MIN_INTERVAL:
+        return
+    if not sid:
+        sid = secrets.token_hex(16)
+        session['_active_sid'] = sid
+    session['_active_sid_touched_at'] = now
+
+    existing_login = None
+    r = _active_employee_sessions_redis()
+    if r is not None:
+        try:
+            raw = r.get(f'ec:emp_sess:{sid}')
+            if raw:
+                existing_login = (json.loads(raw) or {}).get('logged_in_at')
+        except Exception:
+            pass
+    if existing_login is None:
+        with _ACTIVE_EMPLOYEE_SESSIONS_LOCK:
+            existing_login = (_ACTIVE_EMPLOYEE_SESSIONS.get(sid) or {}).get('logged_in_at')
+
+    payload = _active_employee_session_payload(None, role, sid, logged_in_at=existing_login)
+    if r is not None:
+        try:
+            r.setex(f'ec:emp_sess:{sid}', _ACTIVE_EMPLOYEE_SESSION_TTL, json.dumps(payload, default=str))
+            r.sadd('ec:emp_sess:index', sid)
+            return
+        except Exception:
+            pass
+    with _ACTIVE_EMPLOYEE_SESSIONS_LOCK:
+        _ACTIVE_EMPLOYEE_SESSIONS[sid] = payload
+
+
+def list_active_employee_sessions():
+    """Return active employee sessions sorted by most recently seen."""
+    now = time.time()
+    rows = []
+    r = _active_employee_sessions_redis()
+    if r is not None:
+        try:
+            members = list(r.smembers('ec:emp_sess:index') or [])
+            for sid in members:
+                raw = r.get(f'ec:emp_sess:{sid}')
+                if not raw:
+                    r.srem('ec:emp_sess:index', sid)
+                    continue
+                try:
+                    data = json.loads(raw)
+                except Exception:
+                    r.srem('ec:emp_sess:index', sid)
+                    continue
+                last_seen = float(data.get('last_seen') or 0)
+                if now - last_seen > _ACTIVE_EMPLOYEE_SESSION_TTL:
+                    r.delete(f'ec:emp_sess:{sid}')
+                    r.srem('ec:emp_sess:index', sid)
+                    continue
+                rows.append(data)
+        except Exception:
+            rows = []
+    if not rows:
+        with _ACTIVE_EMPLOYEE_SESSIONS_LOCK:
+            expired = []
+            for sid, data in _ACTIVE_EMPLOYEE_SESSIONS.items():
+                last_seen = float(data.get('last_seen') or 0)
+                if now - last_seen > _ACTIVE_EMPLOYEE_SESSION_TTL:
+                    expired.append(sid)
+                    continue
+                rows.append(dict(data))
+            for sid in expired:
+                _ACTIVE_EMPLOYEE_SESSIONS.pop(sid, None)
+
+    def _fmt_ago(ts):
+        try:
+            ago = int(max(0, now - float(ts)))
+        except (TypeError, ValueError):
+            return '—'
+        if ago < 60:
+            return f'{ago}s ago'
+        if ago < 3600:
+            return f'{ago // 60}m ago'
+        return f'{ago // 3600}h ago'
+
+    # Deduplicate by user_id keeping newest last_seen (one row per employee)
+    by_user = {}
+    for row in rows:
+        uid = row.get('user_id')
+        prev = by_user.get(uid)
+        if not prev or float(row.get('last_seen') or 0) >= float(prev.get('last_seen') or 0):
+            by_user[uid] = row
+    out = []
+    for row in sorted(by_user.values(), key=lambda x: float(x.get('last_seen') or 0), reverse=True):
+        out.append({
+            'user_id': row.get('user_id'),
+            'employee_id': row.get('employee_id') or '',
+            'full_name': row.get('full_name') or 'Unknown',
+            'email': row.get('email') or '',
+            'role': row.get('role') or 'employee',
+            'ip': row.get('ip') or '',
+            'path': row.get('path') or '',
+            'logged_in_at': datetime.fromtimestamp(float(row.get('logged_in_at') or now)).strftime('%Y-%m-%d %H:%M:%S'),
+            'last_seen_at': datetime.fromtimestamp(float(row.get('last_seen') or now)).strftime('%Y-%m-%d %H:%M:%S'),
+            'last_seen_ago': _fmt_ago(row.get('last_seen')),
+            'is_current': bool(
+                has_request_context()
+                and session.get('user_id') is not None
+                and str(session.get('user_id')) == str(row.get('user_id'))
+            ),
+        })
+    return out
 
 
 def role_to_slug(role: str) -> str:
@@ -634,6 +860,7 @@ ROOT_DASHBOARD_PREFIXES = frozenset(EMPLOYEE_ROLE_SLUGS) | frozenset({'parent', 
 # After /<employee-role-slug>/, first segment of the remainder: routes that live at site root (not /dashboard/employee/…)
 EMPLOYEE_SCOPED_ROOT_SEGMENTS = frozenset({
     'staff-management', 'student-management', 'users-roles', 'system-settings', 'database',
+    'health-status',
     'assign-roles-approve', 'approve-employee', 'update-employee', 'delete-employee',
     'toggle-suspend-employee', 'get-employee', 'get-student', 'check-student-id',
     'check-staff-number',
@@ -750,12 +977,14 @@ ABOUT_UPLOAD_FOLDER = 'static/uploads/about'
 ACADEMIC_CALENDAR_UPLOAD_FOLDER = 'static/uploads/academic_calendar'
 SUBJECT_COURSE_PHOTO_FOLDER = 'static/uploads/subject_courses'
 BACKUP_FOLDER = 'static/uploads/backups'
+EXPORT_FOLDER = 'static/uploads/exports'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 ALLOWED_COMMUNICATION_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'}
 ALLOWED_TEACHING_RESOURCE_EXTENSIONS = ALLOWED_COMMUNICATION_EXTENSIONS | {'ppt', 'pptx', 'zip'}
 
 # Create backup folder if it doesn't exist
 os.makedirs(BACKUP_FOLDER, exist_ok=True)
+os.makedirs(EXPORT_FOLDER, exist_ok=True)
 ALLOWED_PAYMENT_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['PAYMENT_PROOF_FOLDER'] = PAYMENT_PROOF_FOLDER
@@ -1511,6 +1740,7 @@ def _parse_student_id_digits(val):
 
 
 # In-memory cache for school_settings (avoids 2 DB round-trips per request: info_schema + SELECT)
+# Prefer shared_cache (Redis when REDIS_URL/REDIS_HOST set) so workers share the same snapshot.
 _SCHOOL_SETTINGS_CACHE = {'data': None, 'expires_at': 0.0}
 SCHOOL_SETTINGS_CACHE_TTL = int(os.environ.get('SCHOOL_SETTINGS_CACHE_TTL', '300'))
 
@@ -1523,21 +1753,42 @@ _PORTAL_QR_CACHE = {}
 _PORTAL_QR_CACHE_LOCK = threading.Lock()
 _PORTAL_QR_CACHE_MAX = 64
 
+try:
+    from shared_cache import cache_delete, cache_get, cache_set
+except ImportError:
+    cache_get = cache_set = cache_delete = None  # type: ignore
+
 
 def invalidate_school_settings_cache():
     """Call after any INSERT/UPDATE to school_settings."""
     _SCHOOL_SETTINGS_CACHE['data'] = None
     _SCHOOL_SETTINGS_CACHE['expires_at'] = 0.0
+    if cache_delete:
+        cache_delete('school_settings')
 
 
 def invalidate_academic_levels_cache():
     """Call after academic_levels insert/update/delete."""
     _ACADEMIC_LEVELS_CACHE['data'] = None
     _ACADEMIC_LEVELS_CACHE['expires_at'] = 0.0
+    if cache_delete:
+        cache_delete('academic_levels_active')
+
+
+def invalidate_finance_portal_caches():
+    """Call after financial year or finance account changes."""
+    if cache_delete:
+        cache_delete('financial_year_session')
+        cache_delete('accountant_active_accounts')
 
 
 def get_cached_active_academic_levels():
     """Return active academic levels list (cached). Opens DB only on miss/expiry."""
+    if cache_get:
+        shared = cache_get('academic_levels_active')
+        if isinstance(shared, list):
+            return copy.deepcopy(shared)
+
     now = time.monotonic()
     cached = _ACADEMIC_LEVELS_CACHE['data']
     if cached is not None and now < _ACADEMIC_LEVELS_CACHE['expires_at']:
@@ -1572,21 +1823,10 @@ def get_cached_active_academic_levels():
 
     _ACADEMIC_LEVELS_CACHE['data'] = copy.deepcopy(academic_levels)
     _ACADEMIC_LEVELS_CACHE['expires_at'] = time.monotonic() + ACADEMIC_LEVELS_CACHE_TTL
+    if cache_set:
+        cache_set('academic_levels_active', academic_levels, ACADEMIC_LEVELS_CACHE_TTL)
     return academic_levels
 
-
-def _needs_website_qr_for_request():
-    """Only build website QR on print/report surfaces that embed it."""
-    if not has_request_context():
-        return False
-    path = (request.path or '').lower()
-    needles = (
-        'academic-report', 'academic_report', 'fees-report', 'fees_report',
-        'print', 'transcript', 'exam-apply-slip', 'exam_apply_slip',
-        'letterhead', 'booklet', 'certificate', 'lpo', 'stock-print',
-        'attendance-report', 'calendar-report',
-    )
-    return any(n in path for n in needles)
 
 def _default_school_data():
     return {
@@ -1746,6 +1986,11 @@ def notification_mode_active(mode):
 
 def get_school_settings():
     """Get school settings from database (includes theme colors). Cached with TTL."""
+    if cache_get:
+        shared = cache_get('school_settings')
+        if isinstance(shared, dict) and shared.get('school_name') is not None:
+            return copy.copy(shared)
+
     now = time.monotonic()
     cached = _SCHOOL_SETTINGS_CACHE['data']
     if cached is not None and now < _SCHOOL_SETTINGS_CACHE['expires_at']:
@@ -1834,6 +2079,8 @@ def get_school_settings():
 
     _SCHOOL_SETTINGS_CACHE['data'] = copy.copy(school_data)
     _SCHOOL_SETTINGS_CACHE['expires_at'] = time.monotonic() + SCHOOL_SETTINGS_CACHE_TTL
+    if cache_set:
+        cache_set('school_settings', school_data, SCHOOL_SETTINGS_CACHE_TTL)
     return copy.copy(school_data)
 
 @app.context_processor
@@ -1843,12 +2090,19 @@ def inject_school_settings():
     employees_list = []
     viewing_as_employee_info = None
 
-    # Only open DB when technician "view as" needs employee lists, or profile pic is missing.
+    # Only open DB when technician "view as" needs employee lists, or profile pic refresh due.
     need_employee_db = False
     user_role = (session.get('role') or '').lower().strip() if session.get('user_id') else ''
+    refresh_profile = False
     if session.get('user_id') and user_role:
-        if user_role in EMPLOYEE_SUB_ROLES and not session.get('profile_picture'):
-            need_employee_db = True
+        if user_role in EMPLOYEE_SUB_ROLES:
+            last_pic_at = session.get('_profile_picture_checked_at')
+            try:
+                refresh_profile = (not last_pic_at) or (time.time() - float(last_pic_at) > 600)
+            except (TypeError, ValueError):
+                refresh_profile = True
+            if refresh_profile:
+                need_employee_db = True
         if user_role == 'technician' and session.get('viewing_as_employee_role'):
             need_employee_db = True
 
@@ -1857,7 +2111,7 @@ def inject_school_settings():
         if connection:
             try:
                 with connection.cursor() as cursor:
-                    if user_role in EMPLOYEE_SUB_ROLES and not session.get('profile_picture'):
+                    if user_role in EMPLOYEE_SUB_ROLES and refresh_profile:
                         employee_id = session.get('employee_id') or session.get('user_id')
                         cursor.execute(
                             "SELECT profile_picture FROM employees WHERE id = %s OR employee_id = %s",
@@ -1866,6 +2120,7 @@ def inject_school_settings():
                         employee = cursor.fetchone()
                         if employee and employee.get('profile_picture'):
                             session['profile_picture'] = employee.get('profile_picture')
+                        session['_profile_picture_checked_at'] = time.time()
 
                     if user_role == 'technician' and session.get('viewing_as_employee_role'):
                         viewing_as_role = session.get('viewing_as_employee_role', '').lower()
@@ -1953,9 +2208,8 @@ def inject_school_settings():
     settings = get_school_settings()
     active_font = settings.get('font_family', 'Inter')
     school_website_url = public_portal_url('home')
-    school_website_qr_data_url = (
-        _portal_qr_data_url(school_website_url) if _needs_website_qr_for_request() else ''
-    )
+    # Cached PNG — first build is expensive; later requests reuse the same data URL
+    school_website_qr_data_url = _portal_qr_data_url(school_website_url)
     return {
         'school_settings': settings,
         'school_website_url': school_website_url,
@@ -2005,6 +2259,14 @@ def inject_financial_year_session():
             'show_financial_year_session': False,
             'financial_year_session': empty,
         }
+    fy_ttl = int(os.environ.get('FINANCIAL_YEAR_SESSION_CACHE_TTL', '60'))
+    if cache_get:
+        shared = cache_get('financial_year_session')
+        if isinstance(shared, dict):
+            return {
+                'show_financial_year_session': True,
+                'financial_year_session': shared,
+            }
     snapshot = dict(empty)
     connection = get_db_connection()
     if connection:
@@ -2015,6 +2277,8 @@ def inject_financial_year_session():
             print(f"inject_financial_year_session: {e}")
         finally:
             connection.close()
+    if cache_set and snapshot:
+        cache_set('financial_year_session', snapshot, fy_ttl)
     return {
         'show_financial_year_session': True,
         'financial_year_session': snapshot,
@@ -2026,6 +2290,11 @@ def inject_accountant_accounts_sidebar():
     """Active finance accounts list for the accountant accounts sidebar."""
     if not _is_accountant_accounts_portal_page():
         return {'accountant_active_accounts': []}
+    sidebar_ttl = int(os.environ.get('ACCOUNTANT_SIDEBAR_CACHE_TTL', '60'))
+    if cache_get:
+        shared = cache_get('accountant_active_accounts')
+        if isinstance(shared, list):
+            return {'accountant_active_accounts': shared}
     connection = get_db_connection()
     if not connection:
         return {'accountant_active_accounts': []}
@@ -2036,6 +2305,8 @@ def inject_accountant_accounts_sidebar():
                 a for a in (breakdown.get('all_accounts') or [])
                 if (a.get('account_status') or '').strip().lower() == 'active'
             ]
+            if cache_set:
+                cache_set('accountant_active_accounts', active, sidebar_ttl)
             return {'accountant_active_accounts': active}
     except Exception as e:
         print(f"inject_accountant_accounts_sidebar: {e}")
@@ -2656,7 +2927,7 @@ def subject_exam_max_raw_marks(exam_total_marks_value):
 
 
 def raw_mark_to_percentage(raw_marks, exam_total_marks_value):
-    """Scale raw marks to a 0–100 percentage using the subject's exam total (default 100)."""
+    """Scale raw marks to a 0–100 percentage (nearest whole number, no decimals)."""
     mx = subject_exam_max_raw_marks(exam_total_marks_value)
     if raw_marks is None:
         return None
@@ -2666,17 +2937,17 @@ def raw_mark_to_percentage(raw_marks, exam_total_marks_value):
         return None
     if mx <= 0:
         return None
-    return round(100.0 * r / mx, 2)
+    return int(round(100.0 * r / mx))
 
 
 def combined_papers_percentage(raw_and_max_pairs):
     """
     Combined % for papers with possibly different totals (e.g. /30 and /50).
 
-    Formula:  Σ(raw_i) / Σ(max_i) × 100
+    Formula:  Σ(raw_i) / Σ(max_i) × 100, rounded to the nearest whole number.
     Equivalent to a max-weighted mean of each paper's own percentage.
-    Example: 25/30 and 40/50 → (25+40)/(30+50)×100 = 81.25%
-    (not the unweighted mean of 83.33% and 80%).
+    Example: 25/30 and 40/50 → (25+40)/(30+50)×100 = 81%
+    (not the unweighted mean of 83% and 80%).
     Members without a mark are skipped (not treated as zero).
     """
     raw_sum = 0.0
@@ -2698,13 +2969,13 @@ def combined_papers_percentage(raw_and_max_pairs):
         max_sum += mx
     if max_sum <= 0:
         return None
-    return (100.0 * raw_sum) / max_sum
+    return int(round((100.0 * raw_sum) / max_sum))
 
 
 def combined_papers_percentage_from_scaled(pct_and_max_pairs):
     """
     Same combined % as combined_papers_percentage, when each paper is already 0–100%.
-    Weight = that paper's exam total (max marks).
+    Weight = that paper's exam total (max marks). Result is nearest whole number.
     """
     weighted_sum = 0.0
     weight_sum = 0.0
@@ -2725,7 +2996,7 @@ def combined_papers_percentage_from_scaled(pct_and_max_pairs):
         weight_sum += w
     if weight_sum <= 0:
         return None
-    return weighted_sum / weight_sum
+    return int(round(weighted_sum / weight_sum))
 
 
 def round_mark_display(value):
@@ -16155,7 +16426,13 @@ def _optional_portal_registration_email(raw):
 
 
 def ensure_users_portal_login_schema(cursor):
-    """Add login_code / student_id on users for parent & student portal sign-in."""
+    """Add login_code / student_id on users for parent & student portal sign-in.
+
+    Runs at most once per process after a successful check (login is a hot path).
+    """
+    global _USERS_PORTAL_LOGIN_SCHEMA_DONE
+    if _USERS_PORTAL_LOGIN_SCHEMA_DONE:
+        return
     try:
         cursor.execute("SHOW COLUMNS FROM users LIKE 'login_code'")
         if not cursor.fetchone():
@@ -16223,6 +16500,19 @@ def ensure_users_portal_login_schema(cursor):
             cursor.execute("CREATE UNIQUE INDEX uk_users_login_code ON users (login_code)")
     except Exception as e:
         print(f"ensure_users_portal_login_schema index: {e}")
+    _USERS_PORTAL_LOGIN_SCHEMA_DONE = True
+
+
+_USERS_PORTAL_LOGIN_SCHEMA_DONE = False
+_ENSURE_FN_ONCE = {}
+
+
+def _call_ensure_once(key, fn, cursor, *args, **kwargs):
+    """Run an ensure_* helper at most once per process (hot-path friendly)."""
+    if _ENSURE_FN_ONCE.get(key):
+        return
+    fn(cursor, *args, **kwargs)
+    _ENSURE_FN_ONCE[key] = True
 
 
 def _normalize_parent_admission(raw):
@@ -17908,6 +18198,10 @@ def _portal_qr_data_url(url, box_size=6, border=2):
     target = (url or '').strip()
     if not target:
         return ''
+    with _PORTAL_QR_CACHE_LOCK:
+        cached = _PORTAL_QR_CACHE.get(target)
+        if cached is not None:
+            return cached
     try:
         import base64
         import io
@@ -17925,10 +18219,19 @@ def _portal_qr_data_url(url, box_size=6, border=2):
         img = qr.make_image(fill_color='black', back_color='white')
         buf = io.BytesIO()
         img.save(buf, format='PNG')
-        return 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+        data_url = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
     except Exception as ex:
         print(f'_portal_qr_data_url: {ex}')
-        return ''
+        data_url = ''
+    with _PORTAL_QR_CACHE_LOCK:
+        if len(_PORTAL_QR_CACHE) >= _PORTAL_QR_CACHE_MAX:
+            # Drop an arbitrary old entry to bound memory
+            try:
+                _PORTAL_QR_CACHE.pop(next(iter(_PORTAL_QR_CACHE)))
+            except StopIteration:
+                pass
+        _PORTAL_QR_CACHE[target] = data_url
+    return data_url
 
 
 def _parent_portal_setup_urls(student_id):
@@ -21562,6 +21865,18 @@ def parent_verify_student_info():
 
 
 @app.before_request
+def _track_active_employee_session():
+    """Keep the live employee-session registry fresh while staff use the app."""
+    if request.method == 'OPTIONS':
+        return None
+    try:
+        touch_active_employee_session()
+    except Exception:
+        pass
+    return None
+
+
+@app.before_request
 def _parent_require_verified_student_info():
     """Parents must complete student information review before using the portal."""
     if request.method == 'OPTIONS':
@@ -21578,13 +21893,22 @@ def _parent_require_verified_student_info():
         or path.startswith('/dashboard/parent/')
     ):
         return None
+    # Avoid a DB round-trip on every parent page for a few minutes after a clean check
+    ok_at = session.get('_parent_info_verified_at')
+    try:
+        if ok_at and (time.time() - float(ok_at)) < 300:
+            return None
+    except (TypeError, ValueError):
+        pass
     connection = get_db_connection()
     if not connection:
         return None
     try:
         with connection.cursor() as cursor:
             if _parent_requires_student_info_verification(cursor, session.get('user_id')):
+                session.pop('_parent_info_verified_at', None)
                 return redirect(parent_dashboard_path('verify-student-info'))
+            session['_parent_info_verified_at'] = time.time()
     except Exception as e:
         print(f"_parent_require_verified_student_info: {e}")
     finally:
@@ -22319,6 +22643,10 @@ def reset_password():
 
 @app.route('/logout')
 def logout():
+    try:
+        unregister_active_employee_session()
+    except Exception:
+        pass
     session.clear()
     flash('You have been logged out successfully.', 'success')
     return redirect(url_for('home'))
@@ -24202,24 +24530,14 @@ def dashboard_employee():
     teacher_profile = None
 
     is_coordinator_view = dashboard_content_role == 'curriculum coordinator'
+    # Heavy analytics load after first paint via /api/employee/home-analytics/*
     coordinator_dashboard = _curriculum_coordinator_dashboard_analytics_empty()
     coordinator_dashboard_name = None
     if isinstance(employee_data, dict):
         coordinator_dashboard_name = employee_data.get('full_name') or employee_data.get('name')
     if not coordinator_dashboard_name:
         coordinator_dashboard_name = session.get('full_name')
-
-    if is_coordinator_view:
-        cc_conn = get_db_connection()
-        if cc_conn:
-            try:
-                with cc_conn.cursor() as cursor:
-                    coordinator_dashboard = _fetch_curriculum_coordinator_dashboard_analytics(cursor)
-            except Exception as ce:
-                print(f"Curriculum coordinator dashboard load: {ce}")
-                coordinator_dashboard = _curriculum_coordinator_dashboard_analytics_empty()
-            finally:
-                cc_conn.close()
+    defer_home_analytics = True
 
     if is_teacher_view:
         if is_technician_teacher_preview:
@@ -24395,23 +24713,7 @@ def dashboard_employee():
                             print(f"Teacher dashboard in_session_by_level skipped: {_isle}")
 
                         if current_term_id and teacher_id:
-                            try:
-                                teacher_dashboard_analytics = _compute_teacher_dashboard_analytics(
-                                    cursor, teacher_id, current_term_id
-                                )
-                            except Exception as ae:
-                                import traceback
-                                print(f"Error computing teacher dashboard analytics (early): {ae}")
-                                print(traceback.format_exc())
-                                teacher_dashboard_analytics = _teacher_dashboard_analytics_empty()
-                            try:
-                                teacher_subject_progress = _fetch_teacher_dashboard_subject_progress(
-                                    cursor, teacher_id, current_term_id
-                                )
-                            except Exception as spe:
-                                print(f"Teacher dashboard subject progress: {spe}")
-                                teacher_subject_progress = _teacher_dashboard_subject_progress_empty()
-
+                            # Analytics deferred to AJAX (home-analytics/teacher) for faster first paint
                             cursor.execute("""
                                 SELECT DISTINCT t.id, t.day_of_week, t.time_slot, al.level_name,
                                        t.academic_level_id, s.subject_name, s.subject_code
@@ -24541,24 +24843,7 @@ def dashboard_employee():
             }
 
     accountant_dashboard = _accountant_dashboard_analytics_empty()
-    if dashboard_content_role == 'accountant':
-        acc_conn = get_db_connection()
-        if acc_conn:
-            try:
-                with acc_conn.cursor() as cursor:
-                    accountant_dashboard = _fetch_accountant_dashboard_analytics(cursor)
-            except Exception as acc_err:
-                print(f"Accountant dashboard analytics load: {acc_err}")
-                import traceback
-                traceback.print_exc()
-                accountant_dashboard = _accountant_dashboard_analytics_empty()
-                try:
-                    with acc_conn.cursor() as cursor:
-                        accountant_dashboard['accounts'] = _fetch_accountant_accounts_breakdown(cursor)
-                except Exception as acc_accounts_err:
-                    print(f"Accountant dashboard accounts fallback: {acc_accounts_err}")
-            finally:
-                acc_conn.close()
+    # Accountant KPIs deferred to AJAX (home-analytics/accountant)
 
     store_departments = []
     if dashboard_content_role == 'store manager':
@@ -24566,7 +24851,7 @@ def dashboard_employee():
         if sd_conn:
             try:
                 with sd_conn.cursor() as cursor:
-                    ensure_store_departments_table(cursor)
+                    _call_ensure_once('store_departments', ensure_store_departments_table, cursor)
                     sd_conn.commit()
                     store_departments = _fetch_store_departments(
                         cursor, include_suspended=True, with_item_counts=True,
@@ -24582,7 +24867,7 @@ def dashboard_employee():
         if wh_conn:
             try:
                 with wh_conn.cursor() as cursor:
-                    ensure_hostels_tables(cursor)
+                    _call_ensure_once('hostels_tables', ensure_hostels_tables, cursor)
                     wh_conn.commit()
                     warden_hostels = fetch_hostels_with_rooms(cursor)
             except Exception as wh_err:
@@ -24618,7 +24903,99 @@ def dashboard_employee():
                          store_department_categories=list(STORE_DEPARTMENT_CATEGORIES),
                          store_department_role_labels=dict(STORE_DEPARTMENT_ROLE_LABELS),
                          warden_hostels=warden_hostels,
-                         hostel_categories=list(HOSTEL_CATEGORIES))
+                         hostel_categories=list(HOSTEL_CATEGORIES),
+                         defer_home_analytics=defer_home_analytics,
+                         home_analytics_url=employee_dashboard_path('api/employee/home-analytics'))
+
+
+@app.route('/api/employee/home-analytics', methods=['GET'])
+@login_required
+def api_employee_home_analytics():
+    """Deferred KPIs for employee role homes (faster post-login first paint)."""
+    user_role = session.get('role', '').lower()
+    if user_role not in EMPLOYEE_SUB_ROLES:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    viewing_as = (session.get('viewing_as_employee_role') or '').lower()
+    is_technician = user_role == 'technician'
+    content_role = normalize_employee_dashboard_content_role(user_role, is_technician, viewing_as)
+    preview = _technician_portal_preview_role()
+    if preview:
+        content_role = preview
+
+    kind = (request.args.get('role') or content_role or '').strip().lower()
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            if kind in ('teacher', 'teachers'):
+                teacher_id = None
+                if is_technician:
+                    ref = (
+                        session.get('viewing_as_employee_id')
+                        or session.get('teacher_view_employee_id')
+                        or request.args.get('teacher_id')
+                    )
+                    try:
+                        teacher_id = int(ref) if ref else None
+                    except (TypeError, ValueError):
+                        teacher_id = None
+                else:
+                    teacher_id = session.get('user_id')
+                term_id = None
+                cursor.execute("""
+                    SELECT id FROM terms
+                    WHERE status = 'active' AND is_current = 1
+                    ORDER BY id DESC LIMIT 1
+                """)
+                row = cursor.fetchone()
+                if row:
+                    term_id = row.get('id') if isinstance(row, dict) else row[0]
+                analytics = _teacher_dashboard_analytics_empty()
+                progress = _teacher_dashboard_subject_progress_empty()
+                if teacher_id and term_id:
+                    try:
+                        analytics = _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id)
+                    except Exception as e:
+                        print(f"api_employee_home_analytics teacher: {e}")
+                    try:
+                        progress = _fetch_teacher_dashboard_subject_progress(cursor, teacher_id, term_id)
+                    except Exception as e:
+                        print(f"api_employee_home_analytics teacher progress: {e}")
+                return jsonify({
+                    'success': True,
+                    'role': 'teacher',
+                    'analytics': analytics,
+                    'subject_progress': progress,
+                })
+
+            if kind == 'curriculum coordinator':
+                data = _curriculum_coordinator_dashboard_analytics_empty()
+                try:
+                    data = _fetch_curriculum_coordinator_dashboard_analytics(cursor)
+                except Exception as e:
+                    print(f"api_employee_home_analytics coordinator: {e}")
+                return jsonify({'success': True, 'role': 'curriculum coordinator', 'analytics': data})
+
+            if kind == 'accountant':
+                data = _accountant_dashboard_analytics_empty()
+                try:
+                    data = _fetch_accountant_dashboard_analytics(cursor)
+                except Exception as e:
+                    print(f"api_employee_home_analytics accountant: {e}")
+                return jsonify({'success': True, 'role': 'accountant', 'analytics': data})
+
+        return jsonify({'success': True, 'role': kind, 'analytics': {}})
+    except Exception as e:
+        print(f"api_employee_home_analytics: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
 
 
 EMPLOYEE_TPAD_ENDPOINTS = frozenset({
@@ -31045,6 +31422,7 @@ def generate_invoice(student_id):
 
             format_type = (request.args.get('format') or 'html').lower()
             if format_type == 'pdf':
+                # PDF is CPU-heavy; prefer HTML print for interactive use. PDF builds only on explicit download.
                 pdf_bytes = _render_student_invoice_pdf(ctx)
                 response = make_response(pdf_bytes)
                 response.headers['Content-Type'] = 'application/pdf'
@@ -31052,6 +31430,13 @@ def generate_invoice(student_id):
                 if request.args.get('download', '').lower() == 'true':
                     response.headers['Content-Disposition'] = f'attachment; filename={filename}'
                 else:
+                    # Inline PDF still blocks; redirect browsers to HTML print view for snappier UX
+                    if (request.args.get('prefer_html') or '1').lower() in ('1', 'true', 'yes'):
+                        return redirect(
+                            employee_dashboard_path(
+                                f'student-fees/generate-invoice/{student_id}'
+                            ) + '?print=true'
+                        )
                     response.headers['Content-Disposition'] = f'inline; filename={filename}'
                 return response
 
@@ -86921,6 +87306,22 @@ def _make_academic_report_csv_response(bundle, report_type):
 
 def _make_academic_report_excel_response(bundle, report_type):
     """Build a real .xlsx workbook (openpyxl) so Excel does not warn about format/extension mismatch."""
+    built = _build_academic_report_excel_bytes(bundle, report_type)
+    if isinstance(built, tuple) and len(built) == 2 and isinstance(built[0], (bytes, bytearray)):
+        data, filename = built
+    else:
+        # Error response from builder
+        return built
+    output = make_response(data)
+    output.headers['Content-Type'] = (
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    output.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return output
+
+
+def _build_academic_report_excel_bytes(bundle, report_type):
+    """Build a real .xlsx workbook (openpyxl). Returns (bytes, filename) or an error Response."""
     from io import BytesIO
 
     try:
@@ -87127,14 +87528,8 @@ def _make_academic_report_excel_response(bundle, report_type):
     wb.save(buf)
     buf.seek(0)
     data = buf.getvalue()
-
-    output = make_response(data)
     safe_name = re.sub(r'[^a-zA-Z0-9_-]+', '_', report_type)[:60]
-    output.headers['Content-Type'] = (
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    output.headers['Content-Disposition'] = f'attachment; filename={safe_name}.xlsx'
-    return output
+    return data, f'{safe_name}.xlsx'
 
 
 def _build_timetable_grid(rows, teacher_mode=False, compact_class_cell=False):
@@ -89670,6 +90065,25 @@ def api_academic_reports_generate():
     if not report_type:
         return jsonify({'success': False, 'message': 'report_type is required'}), 400
 
+    # Heavy Excel builds run in a background thread so other users keep browsing.
+    if fmt in ('excel', 'xls', 'xlsx'):
+        job_id = secrets.token_hex(8)
+        _set_export_job(job_id, status='queued', message='Export queued…', progress=5)
+        thread = threading.Thread(
+            target=_run_academic_excel_export_job,
+            args=(current_app._get_current_object(), job_id, report_type, filters),
+            daemon=True,
+            name=f'academic-excel-{job_id}',
+        )
+        thread.start()
+        return jsonify({
+            'success': True,
+            'async': True,
+            'job_id': job_id,
+            'status_url': url_for('api_academic_reports_export_status', job_id=job_id),
+            'message': 'Excel export started in the background.',
+        })
+
     connection = get_db_connection()
     if not connection:
         return jsonify({'success': False, 'message': 'Database unavailable'}), 500
@@ -89689,8 +90103,6 @@ def api_academic_reports_generate():
 
             if fmt == 'csv':
                 return _make_academic_report_csv_response(bundle, report_type)
-            if fmt in ('excel', 'xls', 'xlsx'):
-                return _make_academic_report_excel_response(bundle, report_type)
 
             bundle = _trim_academic_report_json_bundle(bundle, report_type)
             title = bundle.get('title', 'Report')
@@ -89712,6 +90124,118 @@ def api_academic_reports_generate():
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         connection.close()
+
+
+# Academic report Excel export jobs (background)
+_EXPORT_JOBS = {}
+_EXPORT_JOBS_LOCK = threading.Lock()
+
+
+def _export_job_snapshot(job_id):
+    with _EXPORT_JOBS_LOCK:
+        job = _EXPORT_JOBS.get(job_id)
+        return dict(job) if job else None
+
+
+def _set_export_job(job_id, **fields):
+    with _EXPORT_JOBS_LOCK:
+        job = _EXPORT_JOBS.setdefault(job_id, {'id': job_id})
+        job.update(fields)
+        job['updated_at'] = time.time()
+
+
+def _run_academic_excel_export_job(flask_app, job_id, report_type, filters):
+    with flask_app.app_context():
+        _set_export_job(job_id, status='running', message='Building report…', progress=20)
+        connection = get_db_connection()
+        if not connection:
+            _set_export_job(job_id, status='error', message='Database unavailable', progress=100)
+            return
+        try:
+            with connection.cursor() as cursor:
+                filters = _coerce_academic_report_filters(filters or {})
+                bundle = _build_academic_report_payload(cursor, report_type, filters)
+            if not bundle or bundle.get('error'):
+                _set_export_job(
+                    job_id,
+                    status='error',
+                    message=(bundle or {}).get('error') or 'Could not build report',
+                    progress=100,
+                )
+                return
+            _set_export_job(job_id, status='running', message='Writing Excel file…', progress=70)
+            built = _build_academic_report_excel_bytes(bundle, report_type)
+            if not (isinstance(built, tuple) and len(built) == 2 and isinstance(built[0], (bytes, bytearray))):
+                _set_export_job(job_id, status='error', message='Excel export failed', progress=100)
+                return
+            data, filename = built
+            safe_job = re.sub(r'[^a-zA-Z0-9_-]+', '', job_id)[:32]
+            out_name = f'{safe_job}_{filename}'
+            filepath = os.path.join(EXPORT_FOLDER, out_name)
+            with open(filepath, 'wb') as fh:
+                fh.write(data)
+            download_url = url_for('api_academic_reports_export_download', job_id=job_id)
+            _set_export_job(
+                job_id,
+                status='success',
+                message='Excel ready',
+                progress=100,
+                filepath=filepath,
+                filename=filename,
+                download_url=download_url,
+            )
+        except Exception as e:
+            print(f'_run_academic_excel_export_job: {e}')
+            import traceback
+            traceback.print_exc()
+            _set_export_job(job_id, status='error', message=str(e), progress=100)
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+
+@app.route('/api/employee/academic-reports/export-status/<job_id>', methods=['GET'])
+@login_required
+def api_academic_reports_export_status(job_id):
+    if not _reports_access_roles_ok():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    job = _export_job_snapshot((job_id or '').strip())
+    if not job:
+        return jsonify({'success': False, 'message': 'Unknown export job.', 'status': 'unknown'}), 404
+    return jsonify({
+        'success': True,
+        'id': job.get('id'),
+        'status': job.get('status'),
+        'message': job.get('message') or '',
+        'progress': job.get('progress') or 0,
+        'download_url': job.get('download_url') or '',
+        'filename': job.get('filename') or '',
+    })
+
+
+@app.route('/api/employee/academic-reports/export-download/<job_id>', methods=['GET'])
+@login_required
+def api_academic_reports_export_download(job_id):
+    if not _reports_access_roles_ok():
+        flash('You do not have permission to download this file.', 'error')
+        return redirect(employee_dashboard_path('academic-reports'))
+    job = _export_job_snapshot((job_id or '').strip())
+    if not job or job.get('status') != 'success':
+        flash('Export is not ready yet.', 'warning')
+        return redirect(employee_dashboard_path('academic-reports'))
+    filepath = job.get('filepath') or ''
+    filename = job.get('filename') or 'report.xlsx'
+    if not filepath or not os.path.isfile(filepath):
+        flash('Export file missing.', 'error')
+        return redirect(employee_dashboard_path('academic-reports'))
+    return send_from_directory(
+        os.path.dirname(os.path.abspath(filepath)),
+        os.path.basename(filepath),
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 @app.route('/api/employee/academic-reports/search-students', methods=['POST'])
@@ -91909,6 +92433,7 @@ def register_finance_account():
                 _save_finance_account_academic_levels(cursor, account_id, level_ids)
             _save_finance_account_payment_methods(cursor, account_id, payment_records)
             connection.commit()
+            invalidate_finance_portal_caches()
             if is_petty_cash:
                 flash(f'Petty cash account "{name}" registered.', 'success')
             elif level_ids:
@@ -92008,6 +92533,7 @@ def edit_finance_account(account_id=None):
             _save_finance_account_academic_levels(cursor, account_id, level_ids)
             _save_finance_account_payment_methods(cursor, account_id, payment_records)
             connection.commit()
+            invalidate_finance_portal_caches()
             flash(f'Account "{name}" updated successfully.', 'success')
     except Exception as e:
         print(f"edit_finance_account: {e}")
@@ -94339,35 +94865,44 @@ def database_backup_restore():
         ),
         folder_tree_preview=folder_tree_preview,
         service_account_ready=gdrive_backup.service_account_configured(),
+        backup_job_id=(request.args.get('backup_job') or '').strip(),
     )
 
-# School data backup export (split files → year/term folder tree on Drive)
-@app.route('/database/backup-export', methods=['POST'])
-@login_required
-def database_backup_export():
-    """Export to categorized Excel files and upload into the Drive folder structure."""
-    has_access = check_permission_or_role(
-        'manage_backups',
-        allowed_roles=['technician', 'head of institution'],
-    )
-    if not has_access:
-        flash('You do not have permission to perform this action.', 'error')
-        return redirect(employee_dashboard_path())
 
-    if not EXCEL_AVAILABLE:
-        flash('Excel export requires openpyxl. Install it and try again.', 'error')
-        return redirect(url_for('database_backup_restore'))
+# In-process backup job tracker (one active job per app worker)
+_BACKUP_JOBS = {}
+_BACKUP_JOBS_LOCK = threading.Lock()
+
+
+def _backup_job_snapshot(job_id):
+    with _BACKUP_JOBS_LOCK:
+        job = _BACKUP_JOBS.get(job_id)
+        return dict(job) if job else None
+
+
+def _set_backup_job(job_id, **fields):
+    with _BACKUP_JOBS_LOCK:
+        job = _BACKUP_JOBS.setdefault(job_id, {'id': job_id})
+        job.update(fields)
+        job['updated_at'] = time.time()
+
+
+def _any_backup_job_running():
+    with _BACKUP_JOBS_LOCK:
+        return any(j.get('status') in ('queued', 'running') for j in _BACKUP_JOBS.values())
+
+
+def _execute_school_data_backup(school_name, created_by):
+    """
+    Build Excel slices, optionally upload to Drive, record history.
+    Returns dict: ok, message, flash_category, total_records, ...
+    """
+    import shutil
 
     connection = get_db_connection()
     if not connection:
-        flash('Database connection error.', 'error')
-        return redirect(url_for('database_backup_restore'))
+        return {'ok': False, 'message': 'Database connection error.', 'flash_category': 'error'}
 
-    import shutil
-
-    school = get_school_settings() or {}
-    school_name = school.get('school_name') or 'School'
-    created_by = session.get('full_name', 'Unknown')
     storage_location = 'local'
     drive_url = None
     drive_error = None
@@ -94474,35 +95009,136 @@ def database_backup_export():
                 pass
 
         if not history_id:
-            flash('Backup files were created but could not be saved to history. Check server logs.', 'warning')
-        elif storage_location == 'google_drive' and drive_upload_count:
-            flash(
-                f'Backup complete — {drive_upload_count} file(s) on Google Drive '
-                f'({period.get("year_name")} / {period.get("term_name")}, {total_records:,} records).',
-                'success',
-            )
-        elif drive_error:
-            flash(
-                f'Backup saved locally ({total_records:,} records). Drive: {drive_error}',
-                'warning',
-            )
-        else:
-            flash(
-                f'Backup saved locally ({total_records:,} records, {total_tables} sheets).',
-                'success',
-            )
+            return {
+                'ok': False,
+                'message': 'Backup files were created but could not be saved to history. Check server logs.',
+                'flash_category': 'warning',
+                'total_records': total_records,
+            }
+        if storage_location == 'google_drive' and drive_upload_count:
+            return {
+                'ok': True,
+                'message': (
+                    f'Backup complete — {drive_upload_count} file(s) on Google Drive '
+                    f'({period.get("year_name")} / {period.get("term_name")}, {total_records:,} records).'
+                ),
+                'flash_category': 'success',
+                'total_records': total_records,
+                'drive_upload_count': drive_upload_count,
+            }
+        if drive_error:
+            return {
+                'ok': True,
+                'message': f'Backup saved locally ({total_records:,} records). Drive: {drive_error}',
+                'flash_category': 'warning',
+                'total_records': total_records,
+            }
+        return {
+            'ok': True,
+            'message': f'Backup saved locally ({total_records:,} records, {total_tables} sheets).',
+            'flash_category': 'success',
+            'total_records': total_records,
+            'total_tables': total_tables,
+        }
     except Exception as e:
         print(f'Error exporting school backup: {e}')
         import traceback
         traceback.print_exc()
-        flash(f'Error creating backup: {e}', 'error')
+        return {
+            'ok': False,
+            'message': f'Error creating backup: {e}',
+            'flash_category': 'error',
+        }
     finally:
         try:
             connection.close()
         except Exception:
             pass
 
-    return redirect(employee_dashboard_path('database/backup-restore'))
+
+def _run_backup_export_job(flask_app, job_id, school_name, created_by):
+    with flask_app.app_context():
+        _set_backup_job(job_id, status='running', message='Building Excel backup…', progress=10)
+        try:
+            result = _execute_school_data_backup(school_name, created_by)
+            _set_backup_job(
+                job_id,
+                status='success' if result.get('ok') else 'error',
+                message=result.get('message') or 'Done',
+                flash_category=result.get('flash_category') or 'info',
+                progress=100,
+                result=result,
+            )
+        except Exception as e:
+            _set_backup_job(
+                job_id,
+                status='error',
+                message=f'Error creating backup: {e}',
+                flash_category='error',
+                progress=100,
+            )
+
+
+# School data backup export (split files → year/term folder tree on Drive)
+@app.route('/database/backup-export', methods=['POST'])
+@login_required
+def database_backup_export():
+    """Start a background export so other users are not blocked on this worker."""
+    has_access = check_permission_or_role(
+        'manage_backups',
+        allowed_roles=['technician', 'head of institution'],
+    )
+    if not has_access:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    if not EXCEL_AVAILABLE:
+        flash('Excel export requires openpyxl. Install it and try again.', 'error')
+        return redirect(employee_dashboard_path('database/backup-restore'))
+
+    if _any_backup_job_running():
+        flash('A backup is already running. Please wait for it to finish.', 'warning')
+        return redirect(employee_dashboard_path('database/backup-restore'))
+
+    school = get_school_settings() or {}
+    school_name = school.get('school_name') or 'School'
+    created_by = session.get('full_name', 'Unknown')
+    job_id = secrets.token_hex(8)
+    _set_backup_job(job_id, status='queued', message='Backup queued…', progress=0)
+
+    thread = threading.Thread(
+        target=_run_backup_export_job,
+        args=(current_app._get_current_object(), job_id, school_name, created_by),
+        daemon=True,
+        name=f'backup-export-{job_id}',
+    )
+    thread.start()
+
+    flash('Backup started in the background. This page will update when it finishes.', 'info')
+    return redirect(employee_dashboard_path('database/backup-restore') + f'?backup_job={job_id}')
+
+
+@app.route('/database/backup-export/status/<job_id>', methods=['GET'])
+@login_required
+def database_backup_export_status(job_id):
+    """Poll background backup job status (JSON)."""
+    has_access = check_permission_or_role(
+        'manage_backups',
+        allowed_roles=['technician', 'head of institution'],
+    )
+    if not has_access:
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+    job = _backup_job_snapshot((job_id or '').strip())
+    if not job:
+        return jsonify({'success': False, 'message': 'Unknown backup job.', 'status': 'unknown'}), 404
+    return jsonify({
+        'success': True,
+        'id': job.get('id'),
+        'status': job.get('status'),
+        'message': job.get('message') or '',
+        'progress': job.get('progress') or 0,
+        'flash_category': job.get('flash_category') or 'info',
+    })
 
 @app.route('/database/backup-settings', methods=['POST'])
 @login_required
@@ -94794,224 +95430,264 @@ def database_google_drive_init_folders():
         connection.close()
     return redirect(url_for('database_backup_restore'))
 
-# Database Health & Status Route
-@app.route('/database/health-status')
+# Live system health (technician health-status page)
+_APP_PROCESS_START = time.time()
+try:
+    import psutil as _psutil_boot
+    _psutil_boot.cpu_percent(interval=None)  # prime so the first live sample is meaningful
+except Exception:
+    pass
+
+
+def _format_uptime(seconds):
+    try:
+        seconds = int(max(0, seconds))
+    except (TypeError, ValueError):
+        return 'Unknown'
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, secs = divmod(rem, 60)
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m {secs}s"
+    return f"{minutes}m {secs}s"
+
+
+def _status_level_from_pct(pct, warn=75, critical=90):
+    try:
+        pct = float(pct or 0)
+    except (TypeError, ValueError):
+        return 'unknown'
+    if pct >= critical:
+        return 'critical'
+    if pct >= warn:
+        return 'warning'
+    return 'healthy'
+
+
+def _collect_live_system_health():
+    """Lightweight live metrics for CPU, memory, disk, process, and database."""
+    import platform
+    import shutil
+
+    warnings = []
+    issues = []
+    checked_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    cpu = {
+        'percent': 0.0,
+        'count': 0,
+        'load_avg': None,
+        'status': 'unknown',
+    }
+    memory = {
+        'percent': 0.0,
+        'used_gb': 0.0,
+        'total_gb': 0.0,
+        'available_gb': 0.0,
+        'status': 'unknown',
+    }
+    disk = {
+        'percent': 0.0,
+        'used_gb': 0.0,
+        'total_gb': 0.0,
+        'free_gb': 0.0,
+        'path': os.path.abspath(os.sep),
+        'status': 'unknown',
+    }
+    process = {
+        'pid': os.getpid(),
+        'uptime_seconds': int(max(0, time.time() - _APP_PROCESS_START)),
+        'uptime': _format_uptime(time.time() - _APP_PROCESS_START),
+        'memory_mb': 0.0,
+        'cpu_percent': 0.0,
+        'threads': 0,
+        'python': platform.python_version(),
+        'platform': platform.platform(),
+        'hostname': platform.node(),
+    }
+    database = {
+        'connected': False,
+        'db_name': '',
+        'mysql_version': 'Unknown',
+        'uptime': 'Unknown',
+        'uptime_seconds': 0,
+        'threads_connected': 0,
+        'threads_running': 0,
+        'questions': 0,
+        'size_mb': 0.0,
+        'tables': 0,
+        'latency_ms': None,
+        'status': 'critical',
+    }
+
+    try:
+        import psutil
+        cpu['percent'] = round(float(psutil.cpu_percent(interval=0.15)), 1)
+        cpu['count'] = int(psutil.cpu_count() or 0)
+        try:
+            la = [round(float(x), 2) for x in psutil.getloadavg()]
+            cpu['load_avg'] = la if any(v > 0 for v in la) else None
+        except (AttributeError, OSError):
+            cpu['load_avg'] = None
+        cpu['status'] = _status_level_from_pct(cpu['percent'])
+
+        vm = psutil.virtual_memory()
+        memory['percent'] = round(float(vm.percent), 1)
+        memory['total_gb'] = round(vm.total / (1024 ** 3), 2)
+        memory['used_gb'] = round(vm.used / (1024 ** 3), 2)
+        memory['available_gb'] = round(vm.available / (1024 ** 3), 2)
+        memory['status'] = _status_level_from_pct(memory['percent'])
+
+        proc = psutil.Process(os.getpid())
+        with proc.oneshot():
+            process['memory_mb'] = round(proc.memory_info().rss / (1024 ** 2), 1)
+            process['cpu_percent'] = round(float(proc.cpu_percent(interval=0.0)), 1)
+            process['threads'] = int(proc.num_threads())
+            try:
+                process['uptime_seconds'] = int(max(0, time.time() - proc.create_time()))
+                process['uptime'] = _format_uptime(process['uptime_seconds'])
+            except Exception:
+                pass
+    except Exception as e:
+        warnings.append(f"Host metrics limited: {e}")
+
+    try:
+        disk_path = os.path.abspath(os.getcwd()) or os.sep
+        usage = shutil.disk_usage(disk_path)
+        disk['path'] = disk_path
+        disk['total_gb'] = round(usage.total / (1024 ** 3), 2)
+        disk['used_gb'] = round(usage.used / (1024 ** 3), 2)
+        disk['free_gb'] = round(usage.free / (1024 ** 3), 2)
+        disk['percent'] = round((usage.used / usage.total) * 100, 1) if usage.total else 0.0
+        disk['status'] = _status_level_from_pct(disk['percent'], warn=80, critical=92)
+    except Exception as e:
+        warnings.append(f"Disk metrics unavailable: {e}")
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            t0 = time.perf_counter()
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 AS ok, DATABASE() AS db_name, VERSION() AS version")
+                row = cursor.fetchone() or {}
+                database['latency_ms'] = round((time.perf_counter() - t0) * 1000, 1)
+                database['connected'] = True
+                database['db_name'] = (row.get('db_name') if isinstance(row, dict) else None) or ''
+                database['mysql_version'] = (row.get('version') if isinstance(row, dict) else None) or 'Unknown'
+
+                def _status_value(name):
+                    cursor.execute("SHOW STATUS LIKE %s", (name,))
+                    st = cursor.fetchone()
+                    if not st:
+                        return 0
+                    if isinstance(st, dict):
+                        return st.get('Value', 0)
+                    return st[1] if len(st) > 1 else 0
+
+                uptime_seconds = int(_status_value('Uptime') or 0)
+                database['uptime_seconds'] = uptime_seconds
+                database['uptime'] = _format_uptime(uptime_seconds)
+                database['threads_connected'] = int(_status_value('Threads_connected') or 0)
+                database['threads_running'] = int(_status_value('Threads_running') or 0)
+                database['questions'] = int(_status_value('Questions') or 0)
+
+                cursor.execute("""
+                    SELECT
+                        ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS total_size_mb,
+                        COUNT(*) AS table_count
+                    FROM information_schema.TABLES
+                    WHERE table_schema = DATABASE()
+                """)
+                size_row = cursor.fetchone() or {}
+                database['size_mb'] = float(size_row.get('total_size_mb') or 0) if isinstance(size_row, dict) else 0.0
+                database['tables'] = int(size_row.get('table_count') or 0) if isinstance(size_row, dict) else 0
+
+                if database['latency_ms'] is not None and database['latency_ms'] > 500:
+                    warnings.append(f"Database latency is high ({database['latency_ms']} ms).")
+                    database['status'] = 'warning'
+                else:
+                    database['status'] = 'healthy'
+        except Exception as e:
+            issues.append(f"Database error: {e}")
+            database['connected'] = False
+            database['status'] = 'critical'
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+    else:
+        issues.append("Unable to connect to database.")
+        database['status'] = 'critical'
+
+    for label, block in (('CPU', cpu), ('Memory', memory), ('Disk', disk)):
+        if block.get('status') == 'critical':
+            issues.append(f"{label} usage is critical ({block.get('percent')}%).")
+        elif block.get('status') == 'warning':
+            warnings.append(f"{label} usage is elevated ({block.get('percent')}%).")
+
+    if issues:
+        overall = 'critical'
+    elif warnings:
+        overall = 'warning'
+    else:
+        overall = 'healthy'
+
+    try:
+        active_employees = list_active_employee_sessions()
+    except Exception as e:
+        active_employees = []
+        warnings.append(f'Could not load active employee sessions: {e}')
+
+    return {
+        'ok': overall != 'critical',
+        'overall_status': overall,
+        'checked_at': checked_at,
+        'cpu': cpu,
+        'memory': memory,
+        'disk': disk,
+        'process': process,
+        'database': database,
+        'active_employees': active_employees,
+        'active_employee_count': len(active_employees),
+        'warnings': warnings,
+        'issues': issues,
+    }
+
+
+@app.route('/health-status')
 @login_required
-def database_health_status():
-    """Database health and status analysis page for technicians and principals"""
+def health_status():
+    """Live system health analytics for technicians and heads of institution."""
     user_role = session.get('role', '').lower()
-    
-    # Only technicians and principals can access this page
     if user_role not in ['technician', 'head of institution']:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    
-    connection = get_db_connection()
-    health_status = {
-        'connection_status': False,
-        'overall_status': 'critical',
-        'db_name': '',
-        'mysql_version': 'Unknown',
-        'character_set': 'Unknown',
-        'collation': 'Unknown',
-        'uptime': 'Unknown',
-        'last_checked': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'database_size_mb': 0,
-        'data_size_mb': 0,
-        'index_size_mb': 0,
-        'total_tables': 0,
-        'total_records': 0,
-        'tables': [],
-        'largest_tables': [],
-        'missing_tables': [],
-        'required_tables_count': 0,
-        'recommendations': []
-    }
-    
-    if connection:
-        try:
-            health_status['connection_status'] = True
-            with connection.cursor() as cursor:
-                # Get database name
-                cursor.execute("SELECT DATABASE() as db_name")
-                db_result = cursor.fetchone()
-                health_status['db_name'] = db_result.get('db_name', 'Unknown') if db_result else 'Unknown'
-                
-                # Get MySQL version
-                cursor.execute("SELECT VERSION() as version")
-                version_result = cursor.fetchone()
-                health_status['mysql_version'] = version_result.get('version', 'Unknown') if version_result else 'Unknown'
-                
-                # Get character set and collation
-                cursor.execute("""
-                    SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME 
-                    FROM information_schema.SCHEMATA 
-                    WHERE SCHEMA_NAME = DATABASE()
-                """)
-                charset_result = cursor.fetchone()
-                if charset_result:
-                    health_status['character_set'] = charset_result.get('DEFAULT_CHARACTER_SET_NAME', 'Unknown')
-                    health_status['collation'] = charset_result.get('DEFAULT_COLLATION_NAME', 'Unknown')
-                
-                # Get uptime
-                try:
-                    cursor.execute("SHOW STATUS LIKE 'Uptime'")
-                    uptime_result = cursor.fetchone()
-                    if uptime_result:
-                        if isinstance(uptime_result, dict):
-                            uptime_seconds = int(uptime_result.get('Value', 0))
-                        elif isinstance(uptime_result, tuple):
-                            uptime_seconds = int(uptime_result[1] if len(uptime_result) > 1 else 0)
-                        else:
-                            uptime_seconds = 0
-                        days = uptime_seconds // 86400
-                        hours = (uptime_seconds % 86400) // 3600
-                        minutes = (uptime_seconds % 3600) // 60
-                        health_status['uptime'] = f"{days}d {hours}h {minutes}m"
-                except:
-                    health_status['uptime'] = 'Unknown'
-                
-                # Get database size
-                cursor.execute("""
-                    SELECT 
-                        ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS total_size_mb,
-                        ROUND(SUM(data_length) / 1024 / 1024, 2) AS data_size_mb,
-                        ROUND(SUM(index_length) / 1024 / 1024, 2) AS index_size_mb
-                    FROM information_schema.TABLES 
-                    WHERE table_schema = DATABASE()
-                """)
-                size_result = cursor.fetchone()
-                if size_result:
-                    health_status['database_size_mb'] = size_result.get('total_size_mb', 0) or 0
-                    health_status['data_size_mb'] = size_result.get('data_size_mb', 0) or 0
-                    health_status['index_size_mb'] = size_result.get('index_size_mb', 0) or 0
-                
-                # Get all tables
-                cursor.execute("SHOW TABLES")
-                table_results = cursor.fetchall()
-                health_status['total_tables'] = len(table_results)
-                existing_tables = set(
-                    list(t.values())[0] if isinstance(t, dict) else t[0]
-                    for t in table_results
-                )
-                # Check for required tables (from db_health)
-                try:
-                    from db_health import REQUIRED_TABLES
-                    health_status['required_tables_count'] = len(REQUIRED_TABLES)
-                    health_status['missing_tables'] = [t for t in REQUIRED_TABLES if t not in existing_tables]
-                    if health_status['missing_tables']:
-                        health_status['recommendations'].insert(0, f"Missing {len(health_status['missing_tables'])} required table(s). Run: python update_db.py or restart the app to auto-create.")
-                except ImportError:
-                    pass
-                
-                table_list = []
-                largest_tables = []
-                
-                # Analyze each table
-                for table_result in table_results:
-                    table_name = list(table_result.values())[0] if isinstance(table_result, dict) else table_result[0]
-                    
-                    # Get row count
-                    try:
-                        cursor.execute(f"SELECT COUNT(*) as count FROM `{table_name}`")
-                        count_result = cursor.fetchone()
-                        row_count = count_result.get('count', 0) if count_result else 0
-                        health_status['total_records'] += row_count
-                    except:
-                        row_count = 0
-                    
-                    # Get table size and index count
-                    cursor.execute("""
-                        SELECT 
-                            ROUND(((data_length + index_length) / 1024 / 1024), 2) AS size_mb,
-                            ROUND((data_length / 1024 / 1024), 2) AS data_mb,
-                            ROUND((index_length / 1024 / 1024), 2) AS index_mb
-                        FROM information_schema.TABLES 
-                        WHERE table_schema = DATABASE() 
-                        AND table_name = %s
-                    """, (table_name,))
-                    size_result = cursor.fetchone()
-                    size_mb = size_result.get('size_mb', 0) or 0 if size_result else 0
-                    
-                    # Get index count
-                    cursor.execute(f"SHOW INDEX FROM `{table_name}`")
-                    indexes = cursor.fetchall()
-                    index_count = len(set([idx.get('Key_name', '') if isinstance(idx, dict) else idx[2] if isinstance(idx, tuple) else '' for idx in indexes]))
-                    
-                    # Determine table status
-                    table_status = 'healthy'
-                    if size_mb > 100:  # Large table warning
-                        table_status = 'warning'
-                    if row_count == 0 and size_mb > 0:  # Empty but has size (possible issue)
-                        table_status = 'warning'
-                    
-                    table_info = {
-                        'name': table_name,
-                        'rows': row_count,
-                        'size_mb': size_mb,
-                        'index_count': index_count,
-                        'status': table_status
-                    }
-                    table_list.append(table_info)
-                    largest_tables.append(table_info)
-                
-                # Sort by size
-                largest_tables.sort(key=lambda x: x['size_mb'], reverse=True)
-                health_status['tables'] = sorted(table_list, key=lambda x: x['size_mb'], reverse=True)
-                health_status['largest_tables'] = largest_tables
-                
-                # Determine overall health status
-                issues = 0
-                warnings = 0
-                
-                # Check for large database
-                if health_status['database_size_mb'] > 1000:
-                    warnings += 1
-                    health_status['recommendations'].append(f"Database size is {health_status['database_size_mb']:.2f} MB. Consider archiving old data.")
-                
-                # Check for tables without indexes
-                tables_without_indexes = [t for t in table_list if t['index_count'] == 0 and t['rows'] > 100]
-                if tables_without_indexes:
-                    warnings += 1
-                    health_status['recommendations'].append(f"{len(tables_without_indexes)} table(s) with >100 rows have no indexes. Consider adding indexes for better performance.")
-                
-                # Check for very large tables
-                very_large_tables = [t for t in table_list if t['size_mb'] > 500]
-                if very_large_tables:
-                    warnings += 1
-                    health_status['recommendations'].append(f"{len(very_large_tables)} table(s) exceed 500 MB. Consider partitioning or archiving.")
-                
-                # Missing tables = critical
-                if health_status.get('missing_tables'):
-                    issues += 1
+    initial = _collect_live_system_health()
+    return render_template(
+        'dashboards/technician_health_status.html',
+        health=initial,
+        live_metrics_url=url_for('health_status_live_metrics'),
+    )
 
-                # Determine overall status
-                if issues > 0:
-                    health_status['overall_status'] = 'critical'
-                elif warnings > 0:
-                    health_status['overall_status'] = 'warning'
-                else:
-                    health_status['overall_status'] = 'healthy'
-                
-        except Exception as e:
-            print(f"Error analyzing database health: {e}")
-            import traceback
-            traceback.print_exc()
-            health_status['connection_status'] = False
-            health_status['overall_status'] = 'critical'
-            health_status['recommendations'].append(f"Error analyzing database: {str(e)}")
-        finally:
-            if connection:
-                try:
-                    connection.close()
-                except:
-                    pass
-    else:
-        health_status['connection_status'] = False
-        health_status['overall_status'] = 'critical'
-        health_status['recommendations'].append("Unable to connect to database. Check database configuration.")
-    
-    return render_template('dashboards/database_health_status.html', health_status=health_status)
+
+@app.route('/api/health-status/live')
+@login_required
+def health_status_live_metrics():
+    """JSON live metrics endpoint for the health-status dashboard."""
+    user_role = session.get('role', '').lower()
+    if user_role not in ['technician', 'head of institution']:
+        return jsonify({'ok': False, 'error': 'Forbidden'}), 403
+    return jsonify(_collect_live_system_health())
+
+
+@app.route('/database/health-status')
+@login_required
+def database_health_status():
+    """Legacy URL — redirect to /health-status (role-prefixed as /technician/health-status)."""
+    return redirect(employee_dashboard_path('health-status'))
 
 # Logs & Audit Trails Route
 @app.route('/database/logs-audit-trails')
@@ -95800,6 +96476,7 @@ def add_academic_level():
                 
                 connection.commit()
                 flash(f'Academic level "{level_name}" added successfully!', 'success')
+                invalidate_academic_levels_cache()
                 if new_level_id:
                     return redirect(url_for('system_settings', new_level_id=new_level_id) + '#academic-year')
         except Exception as e:
@@ -95870,6 +96547,7 @@ def toggle_academic_level_status(level_id):
             """, (new_status, level_id))
             
             connection.commit()
+            invalidate_academic_levels_cache()
             return jsonify({
                 'success': True, 
                 'message': f'Status updated to {new_status}.',
@@ -95951,6 +96629,7 @@ def update_academic_level(level_id):
             """, (level_category, level_name, level_code, level_description, level_status, level_id))
             
             connection.commit()
+            invalidate_academic_levels_cache()
             return jsonify({
                 'success': True, 
                 'message': f'Academic level "{level_name}" updated successfully!'
@@ -96003,6 +96682,7 @@ def delete_academic_level(level_id):
             cursor.execute("DELETE FROM academic_levels WHERE id = %s", (level_id,))
             
             connection.commit()
+            invalidate_academic_levels_cache()
             return jsonify({
                 'success': True, 
                 'message': f'Academic level "{level_name}" deleted successfully!'

@@ -60,4 +60,7 @@ Thumbs.db
 # Archives / backups
 *.zip
 
+# Node (Tailwind CSS build)
+node_modules/
+
 

@@ -1,0 +1,615 @@
+{% extends "base.html" %}
+
+{% block title %}System Health & Status - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% if session.get('role', '').lower() == 'technician' %}
+{% set technician_nav_scope = 'database' %}
+{% include 'dashboards/includes/technician_page_sidebar.html' %}
+{% elif session.get('role', '').lower() == 'head of institution' %}
+<a href="{{ employee_dash_url('database') }}" class="sidebar-item mb-2">
+    <i class="fas fa-database w-5"></i>
+    <span>Database Management</span>
+</a>
+<a href="{{ employee_dash_url('database/backup-restore') }}" class="sidebar-item mb-2">
+    <i class="fas fa-download w-5"></i>
+    <span>Google Drive backup</span>
+</a>
+<a href="{{ employee_dash_url('health-status') }}" class="sidebar-item sidebar-item-active">
+    <i class="fas fa-heartbeat w-5"></i>
+    <span>Health & Status</span>
+</a>
+<a href="{{ employee_dash_url('database/logs-audit-trails') }}" class="sidebar-item mb-2">
+    <i class="fas fa-history w-5"></i>
+    <span>Logs & Audit Trails</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.hs-live {
+    --hs-ok: #059669;
+    --hs-warn: #d97706;
+    --hs-crit: #dc2626;
+    --hs-muted: #64748b;
+}
+.hs-pulse {
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 9999px;
+    animation: hs-pulse 1.6s ease-in-out infinite;
+}
+@keyframes hs-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.55; transform: scale(1.25); }
+}
+.hs-gauge-wrap { position: relative; height: 9.5rem; }
+.hs-gauge-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    padding-top: 1.25rem;
+}
+.hs-gauge-value { font-size: 1.75rem; font-weight: 700; line-height: 1; }
+.hs-trend { height: 14rem; }
+.hs-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+@media (min-width: 640px) {
+    .hs-stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.hs-stat {
+    border-radius: 0.75rem;
+    padding: 0.85rem 1rem;
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+}
+.hs-stat dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
+.hs-stat dd { margin-top: 0.2rem; font-size: 1.05rem; font-weight: 600; color: #0f172a; }
+.dark .hs-stat dd { color: #f8fafc; }
+.hs-alert {
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+}
+.hs-alert--warn { background: rgba(217, 119, 6, 0.12); color: #b45309; border: 1px solid rgba(217, 119, 6, 0.25); }
+.hs-alert--crit { background: rgba(220, 38, 38, 0.12); color: #b91c1c; border: 1px solid rgba(220, 38, 38, 0.25); }
+.dark .hs-alert--warn { color: #fbbf24; }
+.dark .hs-alert--crit { color: #fca5a5; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'System Health & Status' %}
+{% set role_hero_subtitle = 'Live analytics of how the system is running' %}
+{% set role_hero_icon_class = 'fa-heartbeat' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }} hs-live"
+     id="hs-root"
+     data-metrics-url="{{ live_metrics_url }}"
+     data-initial='{{ health|tojson }}'>
+
+    <div class="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1">
+                <i class="fas fa-heartbeat text-rose-600 dark:text-rose-400 mr-2"></i>
+                Live system analytics
+            </h1>
+            <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
+                Host, process, and database metrics refresh automatically every few seconds.
+            </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                <span class="hs-pulse" id="hs-overall-dot" style="background: var(--hs-ok);"></span>
+                <span class="text-sm font-semibold text-gray-900 dark:text-white" id="hs-overall-label">Healthy</span>
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+                Updated <span id="hs-checked-at" class="font-medium text-gray-700 dark:text-gray-300">—</span>
+            </div>
+            <button type="button" id="hs-refresh-btn"
+                class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all flex items-center space-x-2 text-sm">
+                <i class="fas fa-sync-alt" id="hs-refresh-icon"></i>
+                <span>Refresh now</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="hs-alerts" class="space-y-2 mb-6"></div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200">CPU</h2>
+                <span class="text-xs text-gray-500" id="hs-cpu-meta">— cores</span>
+            </div>
+            <div class="hs-gauge-wrap">
+                <canvas id="hs-gauge-cpu" aria-label="CPU usage gauge"></canvas>
+                <div class="hs-gauge-center">
+                    <div class="hs-gauge-value text-gray-900 dark:text-white" id="hs-cpu-pct">0%</div>
+                    <div class="text-xs text-gray-500 mt-1" id="hs-cpu-status">—</div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Memory</h2>
+                <span class="text-xs text-gray-500" id="hs-mem-meta">—</span>
+            </div>
+            <div class="hs-gauge-wrap">
+                <canvas id="hs-gauge-mem" aria-label="Memory usage gauge"></canvas>
+                <div class="hs-gauge-center">
+                    <div class="hs-gauge-value text-gray-900 dark:text-white" id="hs-mem-pct">0%</div>
+                    <div class="text-xs text-gray-500 mt-1" id="hs-mem-status">—</div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Disk</h2>
+                <span class="text-xs text-gray-500" id="hs-disk-meta">—</span>
+            </div>
+            <div class="hs-gauge-wrap">
+                <canvas id="hs-gauge-disk" aria-label="Disk usage gauge"></canvas>
+                <div class="hs-gauge-center">
+                    <div class="hs-gauge-value text-gray-900 dark:text-white" id="hs-disk-pct">0%</div>
+                    <div class="text-xs text-gray-500 mt-1" id="hs-disk-status">—</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+                    <i class="fas fa-chart-line text-cyan-600 mr-2"></i>Live resource trend
+                </h2>
+                <span class="text-xs text-gray-500">Last ~60 samples</span>
+            </div>
+            <div class="hs-trend">
+                <canvas id="hs-trend-chart" aria-label="CPU and memory trend"></canvas>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-4">
+                <i class="fas fa-server text-slate-500 mr-2"></i>App process
+            </h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-3">
+                    <dt class="text-gray-500">Uptime</dt>
+                    <dd class="font-semibold text-gray-900 dark:text-white" id="hs-proc-uptime">—</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                    <dt class="text-gray-500">PID</dt>
+                    <dd class="font-semibold text-gray-900 dark:text-white" id="hs-proc-pid">—</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                    <dt class="text-gray-500">Process RAM</dt>
+                    <dd class="font-semibold text-gray-900 dark:text-white" id="hs-proc-mem">—</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                    <dt class="text-gray-500">Process CPU</dt>
+                    <dd class="font-semibold text-gray-900 dark:text-white" id="hs-proc-cpu">—</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                    <dt class="text-gray-500">Threads</dt>
+                    <dd class="font-semibold text-gray-900 dark:text-white" id="hs-proc-threads">—</dd>
+                </div>
+                <div class="flex justify-between gap-3">
+                    <dt class="text-gray-500">Python</dt>
+                    <dd class="font-semibold text-gray-900 dark:text-white" id="hs-proc-python">—</dd>
+                </div>
+                <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                    <dt class="text-gray-500 mb-1">Host</dt>
+                    <dd class="font-medium text-gray-800 dark:text-gray-200 text-xs break-all" id="hs-proc-host">—</dd>
+                </div>
+            </dl>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 sm:p-6 border border-gray-200 dark:border-gray-700 mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+                <i class="fas fa-database text-violet-600 mr-2"></i>Database
+            </h2>
+            <div class="inline-flex items-center gap-2 text-sm">
+                <span class="hs-pulse" id="hs-db-dot" style="background: var(--hs-crit);"></span>
+                <span class="font-semibold text-gray-900 dark:text-white" id="hs-db-status">Checking…</span>
+            </div>
+        </div>
+        <dl class="hs-stat-grid">
+            <div class="hs-stat">
+                <dt>Name</dt>
+                <dd id="hs-db-name">—</dd>
+            </div>
+            <div class="hs-stat">
+                <dt>Latency</dt>
+                <dd id="hs-db-latency">—</dd>
+            </div>
+            <div class="hs-stat">
+                <dt>Uptime</dt>
+                <dd id="hs-db-uptime">—</dd>
+            </div>
+            <div class="hs-stat">
+                <dt>Size</dt>
+                <dd id="hs-db-size">—</dd>
+            </div>
+            <div class="hs-stat">
+                <dt>Tables</dt>
+                <dd id="hs-db-tables">—</dd>
+            </div>
+            <div class="hs-stat">
+                <dt>Connections</dt>
+                <dd id="hs-db-threads">—</dd>
+            </div>
+            <div class="hs-stat">
+                <dt>Running</dt>
+                <dd id="hs-db-running">—</dd>
+            </div>
+            <div class="hs-stat">
+                <dt>MySQL</dt>
+                <dd id="hs-db-version">—</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 sm:p-6 border border-gray-200 dark:border-gray-700 mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+                <i class="fas fa-users text-emerald-600 mr-2"></i>Employees in session
+            </h2>
+            <div class="text-sm text-gray-600 dark:text-gray-300">
+                <span class="font-semibold text-gray-900 dark:text-white" id="hs-emp-count">0</span> active
+            </div>
+        </div>
+        <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50 dark:bg-gray-900/40 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold">Employee</th>
+                        <th class="px-4 py-3 font-semibold">Role</th>
+                        <th class="px-4 py-3 font-semibold">Staff ID</th>
+                        <th class="px-4 py-3 font-semibold">Last seen</th>
+                        <th class="px-4 py-3 font-semibold">IP</th>
+                        <th class="px-4 py-3 font-semibold">Current page</th>
+                    </tr>
+                </thead>
+                <tbody id="hs-emp-tbody" class="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tr>
+                        <td colspan="6" class="px-4 py-6 text-center text-gray-500">Loading sessions…</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            Shows employees currently signed in and recently active. Idle sessions drop after about 45 minutes.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    var root = document.getElementById('hs-root');
+    if (!root || typeof Chart === 'undefined') return;
+
+    var metricsUrl = root.getAttribute('data-metrics-url');
+    var pollMs = 2500;
+    var maxPoints = 60;
+    var history = { labels: [], cpu: [], mem: [] };
+    var gauges = {};
+    var trendChart = null;
+    var inFlight = false;
+    var timer = null;
+
+    var statusColor = {
+        healthy: getComputedStyle(root).getPropertyValue('--hs-ok').trim() || '#059669',
+        warning: getComputedStyle(root).getPropertyValue('--hs-warn').trim() || '#d97706',
+        critical: getComputedStyle(root).getPropertyValue('--hs-crit').trim() || '#dc2626',
+        unknown: getComputedStyle(root).getPropertyValue('--hs-muted').trim() || '#64748b'
+    };
+
+    function capitalize(s) {
+        s = String(s || '');
+        return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—';
+    }
+
+    function gaugeConfig(color) {
+        return {
+            type: 'doughnut',
+            data: {
+                labels: ['Used', 'Free'],
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: [color, 'rgba(148,163,184,0.18)'],
+                    borderWidth: 0,
+                    cutout: '78%',
+                    circumference: 240,
+                    rotation: 240
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                animation: { duration: 450 }
+            }
+        };
+    }
+
+    function makeGauge(id, color) {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        return new Chart(el.getContext('2d'), gaugeConfig(color));
+    }
+
+    function updateGauge(chart, pct, status) {
+        if (!chart) return;
+        var used = Math.max(0, Math.min(100, Number(pct) || 0));
+        chart.data.datasets[0].data = [used, 100 - used];
+        chart.data.datasets[0].backgroundColor[0] = statusColor[status] || statusColor.unknown;
+        chart.update('none');
+    }
+
+    function ensureTrend() {
+        if (trendChart) return trendChart;
+        var el = document.getElementById('hs-trend-chart');
+        if (!el) return null;
+        var isDark = document.documentElement.classList.contains('dark');
+        var tick = isDark ? '#94a3b8' : '#64748b';
+        var grid = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(100,116,139,0.15)';
+        trendChart = new Chart(el.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: history.labels,
+                datasets: [
+                    {
+                        label: 'CPU %',
+                        data: history.cpu,
+                        borderColor: '#0891b2',
+                        backgroundColor: 'rgba(8,145,178,0.12)',
+                        tension: 0.35,
+                        fill: true,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Memory %',
+                        data: history.mem,
+                        borderColor: '#7c3aed',
+                        backgroundColor: 'rgba(124,58,237,0.10)',
+                        tension: 0.35,
+                        fill: true,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        ticks: { color: tick, maxTicksLimit: 8 },
+                        grid: { color: grid }
+                    },
+                    y: {
+                        min: 0,
+                        max: 100,
+                        ticks: { color: tick, callback: function (v) { return v + '%'; } },
+                        grid: { color: grid }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: tick, boxWidth: 12, boxHeight: 12 }
+                    }
+                },
+                animation: { duration: 300 }
+            }
+        });
+        return trendChart;
+    }
+
+    function pushHistory(payload) {
+        var t = new Date();
+        var label = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        history.labels.push(label);
+        history.cpu.push(Number((payload.cpu && payload.cpu.percent) || 0));
+        history.mem.push(Number((payload.memory && payload.memory.percent) || 0));
+        while (history.labels.length > maxPoints) {
+            history.labels.shift();
+            history.cpu.shift();
+            history.mem.shift();
+        }
+        var chart = ensureTrend();
+        if (chart) {
+            chart.data.labels = history.labels;
+            chart.data.datasets[0].data = history.cpu;
+            chart.data.datasets[1].data = history.mem;
+            chart.update('none');
+        }
+    }
+
+    function setText(id, value) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = value;
+    }
+
+    function renderAlerts(payload) {
+        var box = document.getElementById('hs-alerts');
+        if (!box) return;
+        var issues = payload.issues || [];
+        var warnings = payload.warnings || [];
+        var html = '';
+        issues.forEach(function (msg) {
+            html += '<div class="hs-alert hs-alert--crit"><i class="fas fa-exclamation-circle mr-2"></i>' + msg + '</div>';
+        });
+        warnings.forEach(function (msg) {
+            html += '<div class="hs-alert hs-alert--warn"><i class="fas fa-exclamation-triangle mr-2"></i>' + msg + '</div>';
+        });
+        box.innerHTML = html;
+    }
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function titleCaseRole(role) {
+        return String(role || 'employee')
+            .split(/[\s_-]+/)
+            .filter(Boolean)
+            .map(function (part) { return part.charAt(0).toUpperCase() + part.slice(1); })
+            .join(' ');
+    }
+
+    function renderEmployees(payload) {
+        var tbody = document.getElementById('hs-emp-tbody');
+        var employees = payload.active_employees || [];
+        setText('hs-emp-count', String(payload.active_employee_count != null ? payload.active_employee_count : employees.length));
+        if (!tbody) return;
+        if (!employees.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-gray-500">No employees currently in session.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = employees.map(function (emp) {
+            var name = escapeHtml(emp.full_name || 'Unknown');
+            var email = escapeHtml(emp.email || '');
+            var you = emp.is_current
+                ? ' <span class="ml-1 inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">You</span>'
+                : '';
+            return '<tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">' +
+                '<td class="px-4 py-3">' +
+                    '<div class="font-semibold text-gray-900 dark:text-white">' + name + you + '</div>' +
+                    '<div class="text-xs text-gray-500">' + email + '</div>' +
+                '</td>' +
+                '<td class="px-4 py-3 text-gray-700 dark:text-gray-200">' + escapeHtml(titleCaseRole(emp.role)) + '</td>' +
+                '<td class="px-4 py-3 text-gray-700 dark:text-gray-200">' + escapeHtml(emp.employee_id || '—') + '</td>' +
+                '<td class="px-4 py-3">' +
+                    '<div class="text-gray-900 dark:text-white">' + escapeHtml(emp.last_seen_ago || '—') + '</div>' +
+                    '<div class="text-xs text-gray-500">' + escapeHtml(emp.last_seen_at || '') + '</div>' +
+                '</td>' +
+                '<td class="px-4 py-3 text-gray-700 dark:text-gray-200">' + escapeHtml(emp.ip || '—') + '</td>' +
+                '<td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 break-all max-w-xs">' + escapeHtml(emp.path || '—') + '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
+    function applyPayload(payload) {
+        if (!payload) return;
+        var overall = payload.overall_status || 'unknown';
+        var overallDot = document.getElementById('hs-overall-dot');
+        if (overallDot) overallDot.style.background = statusColor[overall] || statusColor.unknown;
+        setText('hs-overall-label', capitalize(overall));
+        setText('hs-checked-at', payload.checked_at || '—');
+
+        var cpu = payload.cpu || {};
+        var mem = payload.memory || {};
+        var disk = payload.disk || {};
+        var proc = payload.process || {};
+        var db = payload.database || {};
+
+        setText('hs-cpu-pct', (cpu.percent != null ? cpu.percent : 0) + '%');
+        setText('hs-cpu-status', capitalize(cpu.status));
+        setText('hs-cpu-meta', (cpu.count || 0) + ' cores' + (cpu.load_avg ? ' · load ' + cpu.load_avg.join('/') : ''));
+        updateGauge(gauges.cpu, cpu.percent, cpu.status);
+
+        setText('hs-mem-pct', (mem.percent != null ? mem.percent : 0) + '%');
+        setText('hs-mem-status', capitalize(mem.status));
+        setText('hs-mem-meta', (mem.used_gb || 0) + ' / ' + (mem.total_gb || 0) + ' GB');
+        updateGauge(gauges.mem, mem.percent, mem.status);
+
+        setText('hs-disk-pct', (disk.percent != null ? disk.percent : 0) + '%');
+        setText('hs-disk-status', capitalize(disk.status));
+        setText('hs-disk-meta', (disk.used_gb || 0) + ' / ' + (disk.total_gb || 0) + ' GB');
+        updateGauge(gauges.disk, disk.percent, disk.status);
+
+        setText('hs-proc-uptime', proc.uptime || '—');
+        setText('hs-proc-pid', proc.pid != null ? String(proc.pid) : '—');
+        setText('hs-proc-mem', (proc.memory_mb != null ? proc.memory_mb : 0) + ' MB');
+        setText('hs-proc-cpu', (proc.cpu_percent != null ? proc.cpu_percent : 0) + '%');
+        setText('hs-proc-threads', proc.threads != null ? String(proc.threads) : '—');
+        setText('hs-proc-python', proc.python || '—');
+        setText('hs-proc-host', (proc.hostname || '—') + (proc.platform ? ' · ' + proc.platform : ''));
+
+        var dbStatus = db.status || (db.connected ? 'healthy' : 'critical');
+        var dbDot = document.getElementById('hs-db-dot');
+        if (dbDot) dbDot.style.background = statusColor[dbStatus] || statusColor.unknown;
+        setText('hs-db-status', db.connected ? capitalize(dbStatus) : 'Disconnected');
+        setText('hs-db-name', db.db_name || '—');
+        setText('hs-db-latency', db.latency_ms != null ? db.latency_ms + ' ms' : '—');
+        setText('hs-db-uptime', db.uptime || '—');
+        setText('hs-db-size', (db.size_mb != null ? Number(db.size_mb).toFixed(2) : '0.00') + ' MB');
+        setText('hs-db-tables', db.tables != null ? String(db.tables) : '—');
+        setText('hs-db-threads', db.threads_connected != null ? String(db.threads_connected) : '—');
+        setText('hs-db-running', db.threads_running != null ? String(db.threads_running) : '—');
+        setText('hs-db-version', db.mysql_version || '—');
+
+        renderEmployees(payload);
+        renderAlerts(payload);
+        pushHistory(payload);
+    }
+
+    function setRefreshing(on) {
+        var icon = document.getElementById('hs-refresh-icon');
+        if (icon) icon.classList.toggle('fa-spin', !!on);
+    }
+
+    function fetchMetrics() {
+        if (inFlight || !metricsUrl) return;
+        inFlight = true;
+        setRefreshing(true);
+        fetch(metricsUrl, {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+        }).then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        }).then(function (data) {
+            applyPayload(data);
+        }).catch(function () {
+            /* keep last good snapshot visible */
+        }).finally(function () {
+            inFlight = false;
+            setRefreshing(false);
+        });
+    }
+
+    gauges.cpu = makeGauge('hs-gauge-cpu', statusColor.healthy);
+    gauges.mem = makeGauge('hs-gauge-mem', statusColor.healthy);
+    gauges.disk = makeGauge('hs-gauge-disk', statusColor.healthy);
+    ensureTrend();
+
+    try {
+        var initial = JSON.parse(root.getAttribute('data-initial') || '{}');
+        applyPayload(initial);
+    } catch (e) {}
+
+    var btn = document.getElementById('hs-refresh-btn');
+    if (btn) btn.addEventListener('click', fetchMetrics);
+
+    timer = setInterval(fetchMetrics, pollMs);
+    window.addEventListener('beforeunload', function () {
+        if (timer) clearInterval(timer);
+    });
+})();
+</script>
+{% endblock %}

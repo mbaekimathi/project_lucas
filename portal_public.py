@@ -5,15 +5,15 @@ from __future__ import annotations
 
 import re
 import secrets
-import threading
-import time
 
 from flask import request, session
 
-PORTAL_PASSWORD_MIN_LEN = 6
+try:
+    from shared_cache import rate_limit_hit
+except ImportError:
+    rate_limit_hit = None  # type: ignore
 
-_rate_lock = threading.Lock()
-_rate_buckets: dict = {}
+PORTAL_PASSWORD_MIN_LEN = 6
 
 
 def normalize_phone_digits(raw):
@@ -86,21 +86,14 @@ def validate_portal_csrf(form_token):
 
 def check_rate_limit(scope, limit=12, window_sec=60):
     """
-    Per-IP sliding window rate limit.
+    Per-IP rate limit.
     Returns (allowed: bool, retry_after_seconds: int|None).
-    Best-effort on single host; use Redis for multi-worker fleets.
+    Uses Redis when configured (shared across workers); otherwise process memory.
     """
     ip = (request.remote_addr or 'unknown').strip()
     key = f'{scope}:{ip}'
-    now = time.time()
-    with _rate_lock:
-        hits = _rate_buckets.get(key, [])
-        hits = [t for t in hits if now - t < window_sec]
-        if len(hits) >= limit:
-            retry = int(window_sec - (now - hits[0])) + 1
-            return False, max(1, min(retry, window_sec))
-        hits.append(now)
-        _rate_buckets[key] = hits
+    if rate_limit_hit is not None:
+        return rate_limit_hit(key, limit, window_sec)
     return True, None
 
 

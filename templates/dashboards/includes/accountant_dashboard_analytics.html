@@ -46,20 +46,20 @@
                         <div class="accounts-metrics-band px-4 py-3 space-y-2">
                             <div class="flex justify-between text-sm">
                                 <span class="text-slate-500 dark:text-slate-400">Total billed</span>
-                                <span class="font-semibold tabular-nums">KES {{ fees.sum_total_display|default('0.00') }}</span>
+                                <span class="font-semibold tabular-nums" data-home-kpi="fees.sum_total_display">KES {{ fees.sum_total_display|default('0.00') }}</span>
                             </div>
                             <div class="flex justify-between text-sm">
                                 <span class="text-slate-500 dark:text-slate-400">Collected</span>
-                                <span class="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">KES {{ fees.sum_paid_display|default('0.00') }}</span>
+                                <span class="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400" data-home-kpi="fees.sum_paid_display">KES {{ fees.sum_paid_display|default('0.00') }}</span>
                             </div>
                             <div class="flex justify-between text-sm">
                                 <span class="text-slate-500 dark:text-slate-400">Outstanding</span>
-                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-400">KES {{ fees.total_outstanding_display|default('0.00') }}</span>
+                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-400" data-home-kpi="fees.total_outstanding_display">KES {{ fees.total_outstanding_display|default('0.00') }}</span>
                             </div>
                             <div class="pt-2 border-t border-[var(--acc-line)]">
                                 <div class="flex justify-between items-center text-xs">
                                     <span class="text-slate-500">Collection rate</span>
-                                    <span class="font-bold text-teal-700 dark:text-teal-400">{{ fees.collection_pct|default(0) }}%</span>
+                                    <span class="font-bold text-teal-700 dark:text-teal-400" data-home-kpi="fees.collection_pct_label">{{ fees.collection_pct|default(0) }}%</span>
                                 </div>
                                 <div class="mt-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                                     <div class="h-full rounded-full bg-teal-500 transition-all" style="width: {{ [fees.collection_pct|default(0), 100]|min }}%;"></div>

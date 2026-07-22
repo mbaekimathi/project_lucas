@@ -153,7 +153,7 @@
                     <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Students you teach</p>
                     <span class="h-10 w-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 flex items-center justify-center"><i class="fas fa-user-graduate"></i></span>
                 </div>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ ta.get('student_count', 0) }}</p>
+                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2" data-home-kpi="student_count">{{ ta.get('student_count', 0) }}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">In session in your assigned classes.</p>
             </div>
             <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
@@ -161,7 +161,7 @@
                     <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Teaching periods</p>
                     <span class="h-10 w-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200 flex items-center justify-center"><i class="fas fa-clock"></i></span>
                 </div>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ ta.get('timetable_slot_count', 0) }}</p>
+                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2" data-home-kpi="timetable_slot_count">{{ ta.get('timetable_slot_count', 0) }}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Weekly timetable slots this term.</p>
             </div>
             <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
@@ -169,7 +169,7 @@
                     <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Class / subject groups</p>
                     <span class="h-10 w-10 rounded-xl bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-200 flex items-center justify-center"><i class="fas fa-layer-group"></i></span>
                 </div>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ ta.get('distinct_class_group_count', 0) }}</p>
+                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2" data-home-kpi="distinct_class_group_count">{{ ta.get('distinct_class_group_count', 0) }}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Unique class + subject on timetable.</p>
             </div>
             <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
@@ -179,18 +179,18 @@
                 </div>
                 {% set attended_term = ta.get('lessons_attended_term', ta.get('attendance_present_cohort', 0)) %}
                 {% set allocated_term = ta.get('lessons_allocated_term', 0) %}
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2 tabular-nums">
+                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2 tabular-nums" data-home-kpi="lessons_attended_display">
                     {{ attended_term }}{% if allocated_term %}<span class="text-lg font-semibold text-gray-400 dark:text-gray-500"> / {{ allocated_term }}</span>{% endif %}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Classes with attendance marked this term.</p>
-                <p class="text-xs font-medium text-gray-600 dark:text-gray-300 mt-2">You recorded <span class="font-bold">{{ ta.get('attendance_entries_you_recorded', 0) }}</span> register rows.</p>
+                <p class="text-xs font-medium text-gray-600 dark:text-gray-300 mt-2">You recorded <span class="font-bold" data-home-kpi="attendance_entries_you_recorded">{{ ta.get('attendance_entries_you_recorded', 0) }}</span> register rows.</p>
             </div>
             <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
                 <div class="flex items-center justify-between gap-2">
                     <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Exam supervision</p>
                     <span class="h-10 w-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 flex items-center justify-center"><i class="fas fa-user-shield"></i></span>
                 </div>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ ta.get('exams_supervise_duty_count', 0) }}</p>
+                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2" data-home-kpi="exams_supervise_duty_count">{{ ta.get('exams_supervise_duty_count', 0) }}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Exams you supervise or invigilate.</p>
             </div>
             <div class="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 text-white border border-slate-700 p-5 shadow-sm sm:col-span-2 xl:col-span-1">

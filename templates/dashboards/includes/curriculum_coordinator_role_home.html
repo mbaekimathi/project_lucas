@@ -17,27 +17,27 @@
 {% endif %}
 {% include 'dashboards/includes/role_hero.html' %}
 
-<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" id="cc-home-stats">
     <div class="role-stat border-l-4 border-l-brand-primary">
         <p class="role-stat-label">Students in session</p>
-        <p class="role-stat-value">{{ cd.students_in_session|default(0) }}</p>
+        <p class="role-stat-value" data-home-kpi="students_in_session">{{ cd.students_in_session|default(0) }}</p>
     </div>
     <div class="role-stat">
         <p class="role-stat-label">Active class levels</p>
-        <p class="role-stat-value">{{ cd.active_levels_count|default(0) }}</p>
+        <p class="role-stat-value" data-home-kpi="active_levels_count">{{ cd.active_levels_count|default(0) }}</p>
     </div>
     <div class="role-stat">
         <p class="role-stat-label">Subject–level links</p>
-        <p class="role-stat-value">{{ cd.registered_subject_links|default(0) }}</p>
+        <p class="role-stat-value" data-home-kpi="registered_subject_links">{{ cd.registered_subject_links|default(0) }}</p>
     </div>
     <div class="role-stat">
         <p class="role-stat-label">Marks entries (this term)</p>
-        <p class="role-stat-value">{{ cd.marks_entries_this_term|default(0) }}</p>
-        <p class="text-xs text-[var(--rp-muted)] mt-1">Exam rows: {{ cd.exam_rows_this_term|default(0) }}</p>
+        <p class="role-stat-value" data-home-kpi="marks_entries_this_term">{{ cd.marks_entries_this_term|default(0) }}</p>
+        <p class="text-xs text-[var(--rp-muted)] mt-1">Exam rows: <span data-home-kpi="exam_rows_this_term">{{ cd.exam_rows_this_term|default(0) }}</span></p>
     </div>
     <div class="role-stat border-l-4 border-l-brand-secondary">
         <p class="role-stat-label">Attendance cells saved</p>
-        <p class="role-stat-value">{{ cd.attendance_rows_this_term|default(0) }}</p>
+        <p class="role-stat-value" data-home-kpi="attendance_rows_this_term">{{ cd.attendance_rows_this_term|default(0) }}</p>
         <p class="text-xs text-[var(--rp-muted)] mt-1">Student–date rows this term (in-session / active).</p>
     </div>
     <div class="role-stat border-l-4 border-l-brand-primary/80">

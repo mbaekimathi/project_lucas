@@ -192,13 +192,25 @@
             <strong class="text-gray-900 dark:text-white">{{ current_period.term_name }}</strong>
         </p>
 
-        <form action="{{ employee_dash_url('database/backup-export') }}" method="POST" class="mt-4">
-            <button type="submit" {% if not excel_available %}disabled{% endif %}
+        <form action="{{ employee_dash_url('database/backup-export') }}" method="POST" class="mt-4" id="backup-export-form">
+            <button type="submit" id="backup-export-btn" {% if not excel_available %}disabled{% endif %}
                 class="bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 disabled:opacity-50 text-white font-semibold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2">
                 <i class="fas fa-cloud-arrow-up"></i>
                 Back up now
             </button>
         </form>
+
+        <div id="backup-job-status" class="mt-4 hidden rounded-lg border px-4 py-3 text-sm"
+             data-job-id="{{ backup_job_id|default('') }}"
+             data-status-url="{{ employee_dash_url('database/backup-export/status') }}">
+            <div class="flex items-center gap-2 font-medium text-gray-800 dark:text-gray-100">
+                <i class="fas fa-spinner fa-spin text-blue-600" id="backup-job-spinner"></i>
+                <span id="backup-job-message">Preparing backup…</span>
+            </div>
+            <div class="mt-2 h-2 w-full rounded bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                <div id="backup-job-bar" class="h-full bg-blue-600 transition-all duration-300" style="width: 5%"></div>
+            </div>
+        </div>
 
         {% if backup_file_info.exists %}
         <p class="mt-4 text-sm">
@@ -209,6 +221,60 @@
         </p>
         {% endif %}
     </div>
+
+    <script>
+    (function () {
+        var box = document.getElementById('backup-job-status');
+        if (!box) return;
+        var jobId = (box.getAttribute('data-job-id') || '').trim();
+        if (!jobId) return;
+        var base = (box.getAttribute('data-status-url') || '').replace(/\/$/, '');
+        var msg = document.getElementById('backup-job-message');
+        var bar = document.getElementById('backup-job-bar');
+        var spinner = document.getElementById('backup-job-spinner');
+        var btn = document.getElementById('backup-export-btn');
+        box.classList.remove('hidden');
+        if (btn) btn.disabled = true;
+
+        function paint(data) {
+            if (msg) msg.textContent = data.message || data.status || 'Working…';
+            if (bar) bar.style.width = Math.max(5, Math.min(100, Number(data.progress) || 5)) + '%';
+            var done = data.status === 'success' || data.status === 'error';
+            if (done) {
+                if (spinner) spinner.className = data.status === 'success'
+                    ? 'fas fa-check-circle text-green-600'
+                    : 'fas fa-exclamation-circle text-red-600';
+                if (bar) {
+                    bar.className = 'h-full transition-all duration-300 ' +
+                        (data.status === 'success' ? 'bg-green-600' : 'bg-red-600');
+                    bar.style.width = '100%';
+                }
+                if (btn) btn.disabled = false;
+                if (data.status === 'success') {
+                    setTimeout(function () { window.location.reload(); }, 1200);
+                }
+                return true;
+            }
+            return false;
+        }
+
+        function poll() {
+            fetch(base + '/' + encodeURIComponent(jobId), {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin'
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                if (!data || !data.success) {
+                    if (msg) msg.textContent = (data && data.message) || 'Could not read backup status.';
+                    return;
+                }
+                if (!paint(data)) setTimeout(poll, 2000);
+            }).catch(function () {
+                setTimeout(poll, 3000);
+            });
+        }
+        poll();
+    })();
+    </script>
 
     <!-- Settings -->
     <div class="mb-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5 sm:p-6">

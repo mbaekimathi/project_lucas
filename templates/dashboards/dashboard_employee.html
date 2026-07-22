@@ -328,4 +328,68 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 {% endif %}
+{% if defer_home_analytics|default(false) and current_role in ['teacher', 'teachers', 'curriculum coordinator', 'accountant'] %}
+<script>
+(function () {
+  var role = {{ current_role|tojson }};
+  var base = {{ (home_analytics_url or '')|tojson }};
+  if (!base) return;
+  var q = '?role=' + encodeURIComponent(role);
+  {% if selected_teacher_id %}
+  q += '&teacher_id={{ selected_teacher_id }}';
+  {% endif %}
+  function setKpi(key, value) {
+    document.querySelectorAll('[data-home-kpi="' + key + '"]').forEach(function (el) {
+      el.textContent = value;
+    });
+  }
+  function nestGet(obj, path) {
+    return path.split('.').reduce(function (o, k) {
+      return (o && o[k] !== undefined) ? o[k] : undefined;
+    }, obj);
+  }
+  fetch(base + q, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data || !data.success) return;
+      var a = data.analytics || {};
+      if (role === 'teacher' || role === 'teachers') {
+        setKpi('student_count', a.student_count || 0);
+        setKpi('timetable_slot_count', a.timetable_slot_count || 0);
+        setKpi('distinct_class_group_count', a.distinct_class_group_count || 0);
+        setKpi('attendance_entries_you_recorded', a.attendance_entries_you_recorded || 0);
+        setKpi('exams_supervise_duty_count', a.exams_supervise_duty_count || 0);
+        var attended = a.lessons_attended_term != null ? a.lessons_attended_term : (a.attendance_present_cohort || 0);
+        var allocated = a.lessons_allocated_term || 0;
+        var lessonsEl = document.querySelector('[data-home-kpi="lessons_attended_display"]');
+        if (lessonsEl) {
+          lessonsEl.innerHTML = allocated
+            ? (attended + '<span class="text-lg font-semibold text-gray-400 dark:text-gray-500"> / ' + allocated + '</span>')
+            : String(attended);
+        }
+      } else if (role === 'curriculum coordinator') {
+        ['students_in_session', 'active_levels_count', 'registered_subject_links',
+         'marks_entries_this_term', 'exam_rows_this_term', 'attendance_rows_this_term'].forEach(function (k) {
+          if (a[k] !== undefined) setKpi(k, a[k]);
+        });
+        var chartEl = document.getElementById('cc-coordinator-chart-data');
+        if (chartEl) {
+          chartEl.textContent = JSON.stringify({
+            level: a.level_chart || {},
+            subject: a.subject_chart || {},
+            attendance: a.attendance_by_level_chart || {}
+          });
+        }
+      } else if (role === 'accountant') {
+        var fees = a.fees || {};
+        if (fees.sum_total_display != null) setKpi('fees.sum_total_display', 'KES ' + fees.sum_total_display);
+        if (fees.sum_paid_display != null) setKpi('fees.sum_paid_display', 'KES ' + fees.sum_paid_display);
+        if (fees.total_outstanding_display != null) setKpi('fees.total_outstanding_display', 'KES ' + fees.total_outstanding_display);
+        if (fees.collection_pct != null) setKpi('fees.collection_pct_label', fees.collection_pct + '%');
+      }
+    })
+    .catch(function (err) { console.warn('home analytics', err); });
+})();
+</script>
+{% endif %}
 {% endblock %}

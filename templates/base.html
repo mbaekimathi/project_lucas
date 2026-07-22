@@ -214,34 +214,13 @@
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='pwa/favicon-16.png') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='pwa/apple-touch-icon.png') }}">
     
-    <!-- Early DNS resolution for third-party assets (reduces serial connection delay) -->
-    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+    <!-- Early DNS for remaining CDNs -->
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
     
-    <!-- Tailwind CDN: compiles utility CSS in the browser (consider a built CSS bundle for production) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'brand-primary': '{{ school_settings.primary_color|default("#800020") }}',
-                        'brand-secondary': '{{ school_settings.secondary_color|default("#A00030") }}',
-                        'brand-maroon': '{{ school_settings.primary_color|default("#800020") }}',
-                        'brand-maroon-dark': '{{ school_settings.accent_color|default("#5C0014") }}',
-                        'brand-maroon-light': '{{ school_settings.secondary_color|default("#A00030") }}',
-                    },
-                    fontFamily: {
-                        'sans': {{ portal_tailwind_font_family|tojson }},
-                        'heading': {{ portal_tailwind_font_family|tojson }},
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Prebuilt Tailwind (npm run build:css) — no browser JIT compile -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.built.css') }}">
     
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -1631,7 +1610,7 @@
         }
         
         updateCalendar();
-        setInterval(updateCalendar, 1000); // Live update every second
+        setInterval(updateCalendar, 30000); // Clock; no need for 1s UI churn on every open tab
     </script>
 </body>
 </html>
