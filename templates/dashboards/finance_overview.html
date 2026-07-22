@@ -44,4 +44,122 @@
 {% include 'dashboards/includes/payroll_accounts_styles.html' %}
 {% include 'dashboards/includes/accountant_dashboard_analytics.html' %}
 </div>
+{% if defer_finance_overview_analytics|default(false) and finance_overview_analytics_url %}
+<script>
+(function () {
+  var url = {{ finance_overview_analytics_url|tojson }};
+  var accountsBase = {{ _accounts_home_href|default(employee_dash_url('finance-overview/reports/revenue-collection'))|tojson }};
+  var canOpenAccounts = {{ can_open_accounts_portal|default(false)|tojson }};
+
+  function setKpi(key, value) {
+    document.querySelectorAll('[data-home-kpi="' + key + '"]').forEach(function (el) {
+      el.textContent = value;
+    });
+  }
+  function setBar(key, pct) {
+    var w = Math.max(0, Math.min(100, Number(pct) || 0));
+    document.querySelectorAll('[data-home-kpi-bar="' + key + '"]').forEach(function (el) {
+      el.style.width = w + '%';
+    });
+  }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function accountHref(id) {
+    if (canOpenAccounts) {
+      return {{ employee_dash_url('accounts')|tojson }} + (id ? ('/' + id) : '');
+    }
+    return accountsBase + (id ? ('?finance_account_id=' + encodeURIComponent(id)) : '');
+  }
+  function statusHtml(st) {
+    st = String(st || '').toLowerCase();
+    if (st === 'active') return '<span class="acct-status acct-status--active">Active</span>';
+    if (st === 'suspended') return '<span class="acct-status acct-status--suspended">Suspended</span>';
+    return '<span class="acct-status">' + esc((st || '').toUpperCase()) + '</span>';
+  }
+  function renderAccounts(acct) {
+    var emptyEl = document.getElementById('fo-acct-empty');
+    var filledEl = document.getElementById('fo-acct-filled');
+    var tbody = document.getElementById('fo-acct-tbody');
+    var cats = document.getElementById('fo-acct-categories');
+    var rows = (acct && (acct.all_accounts || acct.top_accounts)) || [];
+    var total = Number((acct && acct.total_accounts) || rows.length || 0);
+    if (!total) {
+      if (emptyEl) {
+        emptyEl.classList.remove('hidden');
+        emptyEl.innerHTML = '<i class="fas fa-book text-2xl mb-2 opacity-40 block"></i>No finance accounts registered yet.';
+      }
+      if (filledEl) filledEl.classList.add('hidden');
+      return;
+    }
+    if (emptyEl) emptyEl.classList.add('hidden');
+    if (filledEl) filledEl.classList.remove('hidden');
+    if (cats) {
+      cats.innerHTML = (acct.by_category || []).map(function (row) {
+        return '<span class="inline-flex items-center gap-1.5 rounded-full border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-200">' +
+          esc(row.category) + ' <span class="text-slate-400">·</span> <span class="tabular-nums">' + esc(row.count) +
+          '</span> <span class="text-slate-400">·</span> <span class="tabular-nums font-semibold text-teal-700 dark:text-teal-400">KES ' +
+          esc(row.balance_display) + '</span></span>';
+      }).join('');
+    }
+    if (tbody) {
+      tbody.innerHTML = rows.map(function (a) {
+        var href = accountHref(a.id);
+        var balCls = (Number(a.balance) < 0) ? ' text-red-600 dark:text-red-400'
+          : (Number(a.balance) > 0) ? ' text-teal-700 dark:text-teal-400' : ' text-slate-500';
+        return '<tr class="acct-breakdown-row" onclick="window.location.href=\'' + href.replace(/'/g, "\\'") + '\'" role="link" tabindex="0">' +
+          '<td class="font-semibold"><span class="acct-breakdown-link">' + esc(a.account_name) + '</span></td>' +
+          '<td class="text-slate-600 dark:text-slate-300">' + esc(a.account_category) + '</td>' +
+          '<td>' + statusHtml(a.account_status) + '</td>' +
+          '<td class="text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">' + esc(a.total_revenue_display || '0.00') + '</td>' +
+          '<td class="text-right tabular-nums font-semibold text-amber-700 dark:text-amber-400">' + esc(a.amount_used_display || '0.00') + '</td>' +
+          '<td class="text-right tabular-nums font-semibold' + balCls + '">' + esc(a.balance_display || '0.00') + '</td></tr>';
+      }).join('');
+    }
+    setKpi('acct.accounts_subtitle', 'Ledger balances by category · ' + (acct.active_accounts || 0) + ' active of ' + total + ' accounts');
+    setKpi('acct.total_accounts_label', 'Total (' + total + ' accounts)');
+    setKpi('acct.total_revenue_display', 'KES ' + (acct.total_revenue_display || '0.00'));
+    setKpi('acct.total_amount_used_display', 'KES ' + (acct.total_amount_used_display || '0.00'));
+    setKpi('acct.total_balance_display', 'KES ' + (acct.total_balance_display || '0.00'));
+    setKpi('acct.total_revenue_display_plain', acct.total_revenue_display || '0.00');
+    setKpi('acct.total_amount_used_display_plain', acct.total_amount_used_display || '0.00');
+    setKpi('acct.total_balance_display_plain', acct.total_balance_display || '0.00');
+  }
+
+  fetch(url, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data || !data.success) return;
+      var a = data.analytics || {};
+      var fees = a.fees || {};
+      var rpos = a.revenue_position || {};
+      var out = a.outflows || {};
+      if (fees.sum_total_display != null) setKpi('fees.sum_total_display', 'KES ' + fees.sum_total_display);
+      if (fees.sum_paid_display != null) setKpi('fees.sum_paid_display', 'KES ' + fees.sum_paid_display);
+      if (fees.total_outstanding_display != null) setKpi('fees.total_outstanding_display', 'KES ' + fees.total_outstanding_display);
+      if (fees.collection_pct != null) {
+        setKpi('fees.collection_pct_label', fees.collection_pct + '%');
+        setBar('fees.collection_pct', fees.collection_pct);
+      }
+      if (rpos.total_revenue_display != null) setKpi('rpos.total_revenue_display', 'KES ' + rpos.total_revenue_display);
+      if (rpos.total_outflows_display != null) setKpi('rpos.total_outflows_display', 'KES ' + rpos.total_outflows_display);
+      if (rpos.remaining_display != null) setKpi('rpos.remaining_display', 'KES ' + rpos.remaining_display);
+      if (rpos.outflow_pct != null) {
+        setKpi('rpos.outflow_pct_label', rpos.outflow_pct + '%');
+        setBar('rpos.outflow_pct', rpos.outflow_pct);
+      }
+      if (out.total_due_display != null) setKpi('out.total_due_display', 'KES ' + out.total_due_display);
+      if (out.total_disbursed_display != null) setKpi('out.total_disbursed_display', 'KES ' + out.total_disbursed_display);
+      if (out.outstanding_display != null) setKpi('out.outstanding_display', 'KES ' + out.outstanding_display);
+      if (out.disbursement_pct != null) {
+        setKpi('out.disbursement_pct_label', out.disbursement_pct + '%');
+        setBar('out.disbursement_pct', out.disbursement_pct);
+      }
+      renderAccounts(a.accounts || {});
+    })
+    .catch(function (err) { console.warn('finance overview analytics', err); });
+})();
+</script>
+{% endif %}
 {% endblock %}

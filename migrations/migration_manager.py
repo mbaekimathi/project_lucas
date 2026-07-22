@@ -245,10 +245,6 @@ def load_migration_files():
 
 def run_all_migrations():
     """Run all pending migrations automatically"""
-    print("=" * 60)
-    print("Running Database Migrations...")
-    print("=" * 60)
-
     connection = get_db_connection()
     if not connection:
         print("[FAIL] Failed to connect to database")
@@ -259,28 +255,36 @@ def run_all_migrations():
             print("[FAIL] Failed to create migrations table")
             return False
 
-        applied_migrations = get_applied_migrations(connection)
-        print(f"Found {len(applied_migrations)} already applied migrations")
-
+        applied_migrations = set(get_applied_migrations(connection))
         migration_files = load_migration_files()
-        print(f"Found {len(migration_files)} migration files")
 
         if not migration_files:
-            print("No migrations to run")
+            print("[DB] No migration files found.")
             return True
 
-        pending_count = 0
+        pending = [m for m in migration_files if m["name"] not in applied_migrations]
+        skipped_count = len(migration_files) - len(pending)
+
+        if not pending:
+            print(
+                f"[DB] Migrations up to date "
+                f"({skipped_count} applied, {len(migration_files)} files)."
+            )
+            return True
+
+        print("=" * 60)
+        print("Running Database Migrations...")
+        print("=" * 60)
+        print(
+            f"Pending: {len(pending)}  |  Already applied: {skipped_count}  |  "
+            f"Files: {len(migration_files)}"
+        )
+
         success_count = 0
         failed_count = 0
 
-        for migration in migration_files:
+        for migration in pending:
             migration_name = migration["name"]
-
-            if migration_name in applied_migrations:
-                print(f"[SKIP] Migration '{migration_name}' already applied")
-                continue
-
-            pending_count += 1
             print(f"\n>> Running migration: {migration_name}")
 
             try:
@@ -313,7 +317,6 @@ def run_all_migrations():
 
         print("\n" + "=" * 60)
         print("Migration Summary:")
-        print(f"  Pending: {pending_count}")
         print(f"  Success: {success_count}")
         print(f"  Failed: {failed_count}")
         print("=" * 60)

@@ -157,8 +157,10 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 
 /* Wide enough for Actual+Converted pairs; scroll sideways on small screens */
 .marks-sheet-table { min-width: max(100%, 42rem); }
+.marks-sheet-table--cc-converted { min-width: max(100%, 28rem); }
 @media (max-width: 767px) {
     .marks-sheet-table { min-width: 52rem; }
+    .marks-sheet-table--cc-converted { min-width: 32rem; }
 }
 .marks-sheet-table col.marks-col-actual { width: var(--ms-actual-w); }
 .marks-sheet-table col.marks-col-conv { width: var(--ms-conv-w); }
@@ -1247,7 +1249,11 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <details x-show="selectedExam" x-cloak class="ms-help-details">
             <summary>
                 <i class="fas fa-circle-info opacity-70" aria-hidden="true"></i>
+                {% if marks_display_scaled %}
+                How converted marks work
+                {% else %}
                 How Actual &amp; Converted marks work
+                {% endif %}
                 <i class="fas fa-chevron-down ms-help-chevron text-xs" aria-hidden="true"></i>
             </summary>
             <div class="ms-help-details__body">
@@ -1256,7 +1262,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 {% elif cc_single_subject_edit and can_edit %}
                 Enter the <strong>Actual</strong> score for {{ edit_subject.subject_name }}; <strong>Converted</strong> shows /100 live. Use arrow keys and Enter to move between cells.
                 {% elif marks_display_scaled %}
-                <strong>Actual</strong> shows the input mark; <strong>Converted</strong> is /100. <strong>Total</strong> sums converted marks.
+                Each subject shows the <strong>converted mark</strong> out of 100 (whole number, no %). <strong>Total</strong> sums those converted marks.
                 {% elif combined_subjects|length > 0 %}
                 <strong>Actual</strong> / paper total; <strong>Converted</strong> /100; combined Σ uses unified %. <strong>Avg%</strong> = mean of converted marks.
                 {% else %}
@@ -1338,14 +1344,14 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <!-- Marks grid: same table on phones and desktop (horizontal scroll on narrow screens) -->
         <div class="marks-sheet-wrap mb-4 w-full min-w-0 bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
             <div class="marks-sheet-horizontal-scroll overscroll-x-contain">
-                <table class="marks-sheet-table w-full text-sm border-collapse">
+                <table class="marks-sheet-table w-full text-sm border-collapse{% if marks_display_scaled %} marks-sheet-table--cc-converted{% endif %}">
                     <colgroup>
                         <col class="marks-col-idx">
                         <col class="marks-col-student">
                         {% for subject in subjects %}
                         {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
-                        {% if is_combo_total %}
-                        <col>
+                        {% if marks_display_scaled or is_combo_total %}
+                        <col class="{% if not is_combo_total %}marks-col-conv{% endif %}">
                         {% else %}
                         <col class="marks-col-actual">
                         <col class="marks-col-conv">
@@ -1357,8 +1363,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     </colgroup>
                     <thead class="bg-gray-100 dark:bg-gray-700">
                         <tr>
-                            <th rowspan="2" class="sticky-col sticky-col-1 px-1 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">#</th>
-                            <th rowspan="2" class="sticky-col sticky-col-2 px-1.5 py-2 sm:px-3 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">Student</th>
+                            <th {% if not marks_display_scaled %}rowspan="2" {% endif %}class="sticky-col sticky-col-1 px-1 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">#</th>
+                            <th {% if not marks_display_scaled %}rowspan="2" {% endif %}class="sticky-col sticky-col-2 px-1.5 py-2 sm:px-3 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">Student</th>
                             {% for subject in subjects %}
                             {% set raw_code = ((subject.subject_code or '')|trim|upper) %}
                             {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
@@ -1374,8 +1380,11 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% endif %}
                             {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
                             {% if is_combo_total %}
-                            <th rowspan="2" class="marks-th-subject marks-th-combo-total px-0.5 py-2 sm:py-3 text-center font-semibold uppercase align-middle"
-                                title="{{ subject.subject_name }} — live combined % from each paper’s percentage (weighted by paper totals)">Σ {{ subj_lbl[:6] }}</th>
+                            <th {% if not marks_display_scaled %}rowspan="2" {% endif %}class="marks-th-subject marks-th-combo-total px-0.5 py-2 sm:py-3 text-center font-semibold uppercase align-middle"
+                                title="{{ subject.subject_name }} — live combined mark from each paper (weighted by paper totals)">Σ {{ subj_lbl[:6] }}</th>
+                            {% elif marks_display_scaled %}
+                            <th class="marks-th-subject marks-td-converted px-0.5 py-2 sm:py-3 text-center font-semibold text-emerald-800 dark:text-emerald-300 uppercase bg-emerald-50 dark:bg-emerald-950/30 align-middle"
+                                title="{{ subject.subject_name }} — converted mark /100">{{ subj_lbl }}</th>
                             {% elif is_combo_member and not subject.get('is_teacher_editable', true) %}
                             <th colspan="2" class="marks-th-subject marks-th-subject-pair px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-500 dark:text-gray-400 uppercase bg-gray-100 dark:bg-gray-700 align-bottom"
                                 title="{{ subject.subject_name }} — view only (entered by another teacher) — out of {{ subj_max }}">{{ subj_lbl }} <i class="fas fa-lock text-[8px] opacity-70" aria-hidden="true"></i></th>
@@ -1385,13 +1394,14 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% endif %}
                             {% endfor %}
                             {% if marks_summary_column == 'total_scaled' %}
-                            <th rowspan="2" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Sum of converted marks (/100) across subject columns with a mark">Total</th>
+                            <th {% if not marks_display_scaled %}rowspan="2" {% endif %}class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Sum of converted marks (/100) across subject columns with a mark">Total</th>
                             {% else %}
-                            <th rowspan="2" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Mean percentage across subjects with a mark">Avg%</th>
+                            <th {% if not marks_display_scaled %}rowspan="2" {% endif %}class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Mean percentage across subjects with a mark">Avg%</th>
                             {% endif %}
-                            <th rowspan="2" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="{% if uses_class_grading_setting and grading_setting_name %}Grade code from {{ grading_setting_name }}{% else %}Grade code from school default bands{% endif %}">Code</th>
-                            <th rowspan="2" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[9px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="Allocation points from Grades Registration for that band">Points</th>
+                            <th {% if not marks_display_scaled %}rowspan="2" {% endif %}class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="{% if uses_class_grading_setting and grading_setting_name %}Grade code from {{ grading_setting_name }}{% else %}Grade code from school default bands{% endif %}">Code</th>
+                            <th {% if not marks_display_scaled %}rowspan="2" {% endif %}class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[9px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="Allocation points from Grades Registration for that band">Points</th>
                         </tr>
+                        {% if not marks_display_scaled %}
                         <tr class="marks-header-type-row">
                             {% for subject in subjects %}
                             {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
@@ -1409,6 +1419,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% endif %}
                             {% endfor %}
                         </tr>
+                        {% endif %}
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                         <template x-for="(student, rowIdx) in sortedStudents()" :key="student.student_id">
@@ -1424,6 +1435,11 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 <span class="marks-combo-total-cell"
                                       :title="comboTotalTitle(student.student_id, {{ subject.id }})"
                                       x-text="getComboTotalDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
+                            </td>
+                            {% elif marks_display_scaled %}
+                            <td class="marks-td-subject marks-td-converted py-1 sm:py-1 text-center align-middle text-xs sm:text-sm"
+                                title="Converted mark /100">
+                                <span x-text="livePctLabel(student.student_id, {{ subject.id }}) || '—'"></span>
                             </td>
                             {% else %}
                             <td class="marks-td-subject marks-th-subject-pair py-1 sm:py-1 text-center align-middle">
@@ -1486,7 +1502,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <td class="sticky-col sticky-col-2 px-1.5 py-2 text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-200 leading-tight">Mean</td>
                             {% for subject in subjects %}
                             {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
-                            {% if is_combo_total %}
+                            {% if marks_display_scaled or is_combo_total %}
                             <td class="marks-td-subject px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-indigo-700 dark:text-indigo-300 tabular-nums"
                                 x-text="getSubjectMean({{ subject.id }})"></td>
                             {% else %}
@@ -1508,7 +1524,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <td class="sticky-col sticky-col-2 px-1.5 py-2 text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-200 leading-tight">Grd</td>
                             {% for subject in subjects %}
                             {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
-                            {% if is_combo_total %}
+                            {% if marks_display_scaled or is_combo_total %}
                             <td class="marks-td-subject px-0.5 py-2 text-center text-[10px] sm:text-sm font-extrabold text-violet-700 dark:text-violet-300"
                                 x-text="getSubjectGrade({{ subject.id }}) || '-'"></td>
                             {% else %}
@@ -2499,16 +2515,21 @@ function marksSheet() {
             this.marksBaseline = { ...this.marksBaseline, [sid]: row };
         },
 
-        /** Converted /100 label — always nearest whole number (no decimals). */
+        /** Converted /100 label — nearest whole number. Curriculum view: mark only (no %). */
         livePctLabel(studentId, subjectId) {
             // Prefer live Actual ÷ Out of so Converted tracks what is typed.
             const entryPct = this.entryPctFor(studentId, subjectId);
+            let n = null;
             if (entryPct !== null && entryPct !== undefined) {
-                return String(Math.round(Number(entryPct))) + '%';
+                n = Math.round(Number(entryPct));
+            } else {
+                const pct = this.getScaledPct(studentId, subjectId);
+                if (pct === null || pct === undefined) return '';
+                n = Math.round(Number(pct));
             }
-            const pct = this.getScaledPct(studentId, subjectId);
-            if (pct === null || pct === undefined) return '';
-            return String(Math.round(Number(pct))) + '%';
+            // Curriculum coordinator (displayScaled): show mark only, not "75%"
+            if (this.displayScaled) return String(n);
+            return String(n) + '%';
         },
 
         /** Percentage of the current entry “out of” (typed ÷ outOf × 100), nearest whole number. */

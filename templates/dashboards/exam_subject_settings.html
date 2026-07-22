@@ -10,59 +10,175 @@
 {% block content %}
 {% set role_theme = portal_page_variant|default('default') %}
 {% set role_hero_title = 'Exam subject settings' %}
-{% set role_hero_subtitle = 'Set the out-of total for each subject. Scores convert to /100 on reports.' %}
+{% set role_hero_subtitle = 'Set paper totals and column order by academic level category. Scores convert to /100 on reports.' %}
 {% set role_hero_icon_class = 'fa-clipboard-check' %}
 {% include 'dashboards/includes/role_hero.html' %}
 
-<div class="max-w-2xl mx-auto px-3 sm:px-6 pb-8 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+<div class="max-w-2xl mx-auto px-3 sm:px-6 pb-8 space-y-5 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
 
-    {% if subjects_rows %}
+    {# ——— Column order (drag within each academic category) ——— #}
+    <section id="exam-column-order" class="scroll-mt-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+        <div class="px-4 py-3 sm:px-5 border-b border-gray-100 dark:border-gray-800">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <i class="fas fa-sort-amount-down text-brand-primary text-sm" aria-hidden="true"></i>
+                Column order
+            </h2>
+            <p class="mt-0.5 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                Drag or use the arrows to set <strong>first → last</strong> order within each academic level category.
+                This order is used on marks sheets, curriculum views, and report cards.
+                Combined subjects move as one row.
+            </p>
+        </div>
+        <div class="p-3 sm:p-5">
+            {% if exam_column_order_by_category and exam_column_order_by_category|length > 0 %}
+            <form id="exam-order-form" method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="space-y-4">
+                <input type="hidden" name="exam_order_action" value="save_order">
+                <input type="hidden" name="exam_column_order_json" id="exam_column_order_json" value="">
+                <div id="exam-column-order-root" class="space-y-4 max-h-[28rem] overflow-y-auto" aria-label="Exam column order by academic level category">
+                    {% for section in exam_column_order_by_category %}
+                    <div class="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
+                        <div class="px-3 py-2 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-100 dark:border-gray-800">
+                            <h3 class="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 flex items-center gap-2">
+                                <i class="fas fa-layer-group text-brand-primary opacity-80" aria-hidden="true"></i>
+                                {{ section.category }}
+                                <span class="font-normal normal-case tracking-normal text-gray-400 dark:text-gray-500">
+                                    ({{ section.slots|length }} column{{ '' if section.slots|length == 1 else 's' }})
+                                </span>
+                            </h3>
+                        </div>
+                        <ul class="exam-column-order-list divide-y divide-gray-100 dark:divide-gray-800"
+                            data-category="{{ section.category }}"
+                            aria-label="Column order for {{ section.category }}">
+                            {% for slot in section.slots %}
+                            <li draggable="true"
+                                data-slot="1"
+                                data-type="{{ slot.type }}"
+                                data-id="{{ slot.id }}"
+                                class="exam-order-item flex items-center gap-2 px-3 py-2.5 bg-white dark:bg-gray-900 cursor-grab active:cursor-grabbing select-none {% if slot.type == 'combo' %}bg-violet-50/40 dark:bg-violet-950/20{% endif %}">
+                                <span class="text-gray-300 dark:text-gray-600 shrink-0" aria-hidden="true">
+                                    <i class="fas fa-grip-vertical text-sm"></i>
+                                </span>
+                                <span class="flex-1 min-w-0">
+                                    <span class="block text-sm font-medium text-gray-900 dark:text-white truncate">{{ slot.label }}</span>
+                                    {% if slot.type == 'combo' %}
+                                    <span class="inline-flex items-center gap-1.5 mt-0.5">
+                                        <span class="text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-200">Combined</span>
+                                        {% if slot.members_label and slot.members_label != slot.label %}
+                                        <span class="text-[10px] text-gray-400 truncate">{{ slot.members_label }}</span>
+                                        {% endif %}
+                                    </span>
+                                    {% endif %}
+                                </span>
+                                <span class="flex items-center gap-1 shrink-0">
+                                    <button type="button"
+                                            class="exam-ord-up inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                            title="Move up in {{ section.category }}"
+                                            aria-label="Move up">
+                                        <i class="fas fa-chevron-up text-xs" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button"
+                                            class="exam-ord-down inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                            title="Move down in {{ section.category }}"
+                                            aria-label="Move down">
+                                        <i class="fas fa-chevron-down text-xs" aria-hidden="true"></i>
+                                    </button>
+                                </span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button type="submit"
+                        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-600 dark:hover:bg-slate-500 shadow-sm">
+                    <i class="fas fa-save text-xs" aria-hidden="true"></i>
+                    Save column order
+                </button>
+            </form>
+            {% else %}
+            <p class="text-sm text-gray-500 dark:text-gray-400">No subjects available to order yet.</p>
+            {% endif %}
+        </div>
+    </section>
+
+    {# ——— Out of totals (same category grouping) ——— #}
+    {% set category_sections = subjects_by_category if subjects_by_category else [] %}
+    {% if not category_sections and subjects_rows %}
+        {% set category_sections = [{'category': 'All subjects', 'subjects': subjects_rows}] %}
+    {% endif %}
+
+    {% if category_sections %}
     <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
         <div class="px-4 py-3 sm:px-5 border-b border-gray-100 dark:border-gray-800">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">Out of total</h2>
             <p class="mt-0.5 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                Subjects are grouped by <strong>academic level category</strong>.
                 Enter the paper total for each subject (e.g. 20, 50, 100). Leave blank to use 100.
                 Changing a total does <strong>not</strong> change actual marks already entered — only the converted /100% updates.
             </p>
         </div>
 
-        <form method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="p-3 sm:p-5" novalidate>
-            <div class="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="bg-gray-50 dark:bg-gray-800/80 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            <th class="px-3 py-2.5 font-semibold">Subject</th>
-                            <th class="px-3 py-2.5 font-semibold text-center w-32">Out of</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                        {% for s in subjects_rows %}
-                        <tr class="bg-white dark:bg-gray-900">
-                            <td class="px-3 py-2.5 min-w-0">
-                                <p class="font-medium text-gray-900 dark:text-white truncate">{{ s.subject_name }}</p>
-                                {% if s.subject_code %}<p class="text-xs font-mono text-gray-400 truncate">{{ s.subject_code }}</p>{% endif %}
-                            </td>
-                            <td class="px-3 py-2.5 text-center">
-                                <label class="sr-only" for="exam_total_marks_{{ s.id }}">Out of for {{ s.subject_name }}</label>
-                                <input id="exam_total_marks_{{ s.id }}"
-                                       type="number"
-                                       name="exam_total_marks_{{ s.id }}"
-                                       inputmode="decimal"
-                                       min="1"
-                                       max="1000"
-                                       step="any"
-                                       autocomplete="off"
-                                       placeholder="100"
-                                       value="{% if s.exam_total_marks is not none %}{{ s.exam_total_marks }}{% endif %}"
-                                       class="w-24 mx-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2 py-2 text-sm text-center font-semibold tabular-nums focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        <form method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="p-3 sm:p-5 space-y-4" novalidate>
+            {% for section in category_sections %}
+            <div class="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
+                <div class="px-3 py-2.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-100 dark:border-gray-800">
+                    <h3 class="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 flex items-center gap-2">
+                        <i class="fas fa-layer-group text-brand-primary opacity-80" aria-hidden="true"></i>
+                        {{ section.category }}
+                        <span class="font-normal normal-case tracking-normal text-gray-400 dark:text-gray-500">
+                            ({{ section.subjects|length }} subject{{ '' if section.subjects|length == 1 else 's' }})
+                        </span>
+                    </h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-white dark:bg-gray-900 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                                <th class="px-3 py-2 font-semibold">Subject</th>
+                                <th class="px-3 py-2 font-semibold text-center w-32">Out of</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                            {% for s in section.subjects %}
+                            <tr class="bg-white dark:bg-gray-900">
+                                <td class="px-3 py-2.5 min-w-0">
+                                    <p class="font-medium text-gray-900 dark:text-white truncate">{{ s.subject_name }}</p>
+                                    <div class="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                        {% if s.subject_code %}
+                                        <p class="text-xs font-mono text-gray-400 truncate">{{ s.subject_code }}</p>
+                                        {% endif %}
+                                        {% if s.level_categories and s.level_categories|length > 1 %}
+                                        <span class="inline-flex flex-wrap gap-1">
+                                            {% for lc in s.level_categories %}
+                                            <span class="text-[10px] rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-gray-500 dark:text-gray-400">{{ lc }}</span>
+                                            {% endfor %}
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td class="px-3 py-2.5 text-center">
+                                    <label class="sr-only" for="exam_total_marks_{{ s.id }}">Out of for {{ s.subject_name }}</label>
+                                    <input id="exam_total_marks_{{ s.id }}"
+                                           type="number"
+                                           name="exam_total_marks_{{ s.id }}"
+                                           inputmode="decimal"
+                                           min="1"
+                                           max="1000"
+                                           step="any"
+                                           autocomplete="off"
+                                           placeholder="100"
+                                           value="{% if s.exam_total_marks is not none %}{{ s.exam_total_marks }}{% endif %}"
+                                           class="w-24 mx-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2 py-2 text-sm text-center font-semibold tabular-nums focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+            {% endfor %}
 
-            <div class="flex flex-col-reverse sm:flex-row sm:items-center gap-2 pt-4">
+            <div class="flex flex-col-reverse sm:flex-row sm:items-center gap-2 pt-1">
                 <a href="{{ employee_dash_url('exam-evaluation') }}" class="text-center sm:text-left text-sm text-gray-500 hover:text-brand-primary py-2">Cancel</a>
                 <button type="submit"
                         class="w-full sm:w-auto sm:ml-auto inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-sm">
@@ -71,10 +187,241 @@
             </div>
         </form>
     </section>
-    {% else %}
+    {% elif not exam_column_order_by_category %}
     <div class="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-8 text-center text-sm text-gray-500">
         No active subjects. Add them under Classes &amp; subjects first.
     </div>
     {% endif %}
+
+    {# ——— Combine subjects + edit combined code ——— #}
+    {% set combo_member_ids = combined_member_ids if combined_member_ids is defined else [] %}
+
+    <section id="combine-exam-subjects" class="scroll-mt-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+        <div class="px-4 py-3 sm:px-5 border-b border-gray-100 dark:border-gray-800">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <i class="fas fa-object-group text-brand-primary text-sm" aria-hidden="true"></i>
+                Combined subjects
+            </h2>
+            <p class="mt-0.5 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                Combine papers into <strong>one column</strong> on marks sheets and reports.
+                Set the <strong>combined code / name</strong> used as that column label (e.g. <span class="font-mono">MATH/SCI</span> or <span class="font-mono">Integrated Science</span>).
+            </p>
+        </div>
+        <div class="p-3 sm:p-5 space-y-5">
+            {% if combinations_display %}
+            <div class="space-y-3">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Current combinations</h3>
+                {% for c in combinations_display %}
+                <form method="post" action="{{ employee_dash_url('exam-subject-settings') }}#combine-exam-subjects"
+                      class="rounded-lg border border-violet-100 dark:border-violet-900/40 bg-violet-50/30 dark:bg-violet-950/20 p-3 space-y-3">
+                    <input type="hidden" name="combination_id" value="{{ c.id }}">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900 dark:text-white">{{ c.label_name }}</p>
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                            Papers: {{ c.member_codes | join(' / ') if c.member_codes else '—' }}
+                            {% if c.member_totals %} · Out of {{ c.member_totals | join('/') }}{% endif %}
+                        </p>
+                    </div>
+                    <label class="block">
+                        <span class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Combined code / name</span>
+                        <input type="text"
+                               name="update_combined_code"
+                               maxlength="64"
+                               value="{{ c.label_code }}"
+                               autocomplete="off"
+                               spellcheck="false"
+                               placeholder="{{ c.default_code or 'e.g. MATH/SCI' }}"
+                               class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-mono text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-transparent">
+                    </label>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="submit" name="combine_action" value="update_code"
+                                class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-600 dark:hover:bg-slate-500">
+                            <i class="fas fa-save text-xs" aria-hidden="true"></i> Save code
+                        </button>
+                        <button type="submit" name="combine_action" value="delete"
+                                class="rounded-lg px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                onclick="return confirm('Remove this combination? Marks already entered stay on each subject.');">
+                            Remove
+                        </button>
+                    </div>
+                </form>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if subjects_by_category %}
+            <form id="combine-subjects-form" method="post" action="{{ employee_dash_url('exam-subject-settings') }}#combine-exam-subjects" class="space-y-3">
+                <input type="hidden" name="combine_action" value="create">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">New combination</h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Tick at least two subjects (order of ticks defines the default joined code).</p>
+                <div id="combine-subject-picks" class="space-y-3 max-h-64 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 p-2">
+                    {% for section in subjects_by_category %}
+                    {% set section_available = namespace(count=0) %}
+                    {% for s in section.subjects %}
+                        {% if s.id not in combo_member_ids %}{% set section_available.count = section_available.count + 1 %}{% endif %}
+                    {% endfor %}
+                    {% if section_available.count > 0 %}
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 px-2 mb-1">{{ section.category }}</p>
+                        <div class="space-y-0.5">
+                            {% for s in section.subjects %}
+                            {% if s.id not in combo_member_ids %}
+                            <label class="flex items-start gap-2.5 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer">
+                                <input type="checkbox"
+                                       name="subject_pick"
+                                       value="{{ s.id }}"
+                                       class="combine-subject-cb mt-1 rounded border-gray-300 dark:border-gray-600"
+                                       data-subject-code="{{ s.subject_code or '' }}"
+                                       data-subject-name="{{ s.subject_name or '' }}">
+                                <span class="min-w-0 text-sm text-gray-900 dark:text-white">
+                                    <span class="font-medium">{{ s.subject_name }}</span>
+                                    {% if s.subject_code %}<span class="text-xs font-mono text-gray-400 ml-1.5">{{ s.subject_code }}</span>{% endif %}
+                                </span>
+                            </label>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                <label class="block">
+                    <span class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Combined code / name</span>
+                    <input type="text"
+                           id="new_combined_code"
+                           name="combined_code"
+                           maxlength="64"
+                           autocomplete="off"
+                           spellcheck="false"
+                           placeholder="Auto from selected codes"
+                           class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-mono text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-transparent">
+                </label>
+                <button type="submit"
+                        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-sm">
+                    <i class="fas fa-link text-xs" aria-hidden="true"></i>
+                    Save combination
+                </button>
+            </form>
+            {% elif not combinations_display %}
+            <p class="text-sm text-gray-500 dark:text-gray-400">No active subjects to combine.</p>
+            {% endif %}
+        </div>
+    </section>
 </div>
+
+<script>
+(function () {
+  var root = document.getElementById('exam-column-order-root');
+  var jsonInput = document.getElementById('exam_column_order_json');
+  var orderForm = document.getElementById('exam-order-form');
+  if (!root || !jsonInput || !orderForm) return;
+
+  function listForItem(li) {
+    return li ? li.closest('ul.exam-column-order-list') : null;
+  }
+
+  function serializeOrder() {
+    var slots = [];
+    root.querySelectorAll('ul.exam-column-order-list').forEach(function (ul) {
+      ul.querySelectorAll('li.exam-order-item').forEach(function (li) {
+        var t = (li.getAttribute('data-type') || '').trim().toLowerCase();
+        var id = parseInt(li.getAttribute('data-id'), 10);
+        if ((t === 'subject' || t === 'combo') && !isNaN(id)) {
+          slots.push({ type: t, id: id });
+        }
+      });
+    });
+    jsonInput.value = JSON.stringify(slots);
+  }
+
+  orderForm.addEventListener('submit', function () {
+    serializeOrder();
+  });
+
+  root.addEventListener('click', function (e) {
+    var btn = e.target.closest('.exam-ord-up, .exam-ord-down');
+    if (!btn || !root.contains(btn)) return;
+    var li = btn.closest('li.exam-order-item');
+    var ul = listForItem(li);
+    if (!li || !ul) return;
+    if (btn.classList.contains('exam-ord-up') && li.previousElementSibling) {
+      ul.insertBefore(li, li.previousElementSibling);
+    } else if (btn.classList.contains('exam-ord-down') && li.nextElementSibling) {
+      ul.insertBefore(li.nextElementSibling, li);
+    }
+  });
+
+  var dragEl = null;
+  var dragList = null;
+  root.addEventListener('dragstart', function (e) {
+    var li = e.target.closest('li.exam-order-item');
+    if (!li || !root.contains(li)) return;
+    dragEl = li;
+    dragList = listForItem(li);
+    li.classList.add('opacity-60');
+    try {
+      e.dataTransfer.setData('text/plain', String(li.getAttribute('data-id') || ''));
+      e.dataTransfer.effectAllowed = 'move';
+    } catch (err) {}
+  });
+  root.addEventListener('dragend', function (e) {
+    var li = e.target.closest('li.exam-order-item');
+    if (li) li.classList.remove('opacity-60');
+    dragEl = null;
+    dragList = null;
+  });
+  root.addEventListener('dragover', function (e) {
+    var li = e.target.closest('li.exam-order-item');
+    if (!li || !dragEl || listForItem(li) !== dragList) return;
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+  });
+  root.addEventListener('drop', function (e) {
+    e.preventDefault();
+    if (!dragEl || !dragList) return;
+    var target = e.target.closest('li.exam-order-item');
+    if (!target || target === dragEl || listForItem(target) !== dragList) return;
+    var rect = target.getBoundingClientRect();
+    var before = (e.clientY - rect.top) < rect.height / 2;
+    if (before) {
+      dragList.insertBefore(dragEl, target);
+    } else {
+      dragList.insertBefore(dragEl, target.nextElementSibling);
+    }
+  });
+})();
+
+(function () {
+  var picksRoot = document.getElementById('combine-subject-picks');
+  var codeInput = document.getElementById('new_combined_code');
+  if (!picksRoot || !codeInput) return;
+
+  var userEdited = false;
+  codeInput.addEventListener('input', function () { userEdited = true; });
+
+  function codePartFromCb(cb) {
+    var cd = (cb.getAttribute('data-subject-code') || '').trim();
+    if (cd) return cd;
+    var nm = (cb.getAttribute('data-subject-name') || '').trim();
+    return nm ? nm.slice(0, 12) : '—';
+  }
+
+  function refreshSuggestion() {
+    if (userEdited) return;
+    var parts = [];
+    picksRoot.querySelectorAll('.combine-subject-cb:checked').forEach(function (cb) {
+      parts.push(codePartFromCb(cb));
+    });
+    codeInput.value = parts.join('/');
+  }
+
+  picksRoot.addEventListener('change', function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains('combine-subject-cb')) {
+      refreshSuggestion();
+    }
+  });
+  refreshSuggestion();
+})();
+</script>
 {% endblock %}
+

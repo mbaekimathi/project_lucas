@@ -381,15 +381,21 @@
         {% set lid_key = (st.academic_level_id ~ '') if st.academic_level_id is not none else '' %}
         {% set student_grade_bands = class_grade_bands[lid_key] if lid_key and class_grade_bands and lid_key in class_grade_bands else default_grade_bands %}
         {% for m in st.marks %}
-            {% set subj = (m.subject_code or m.subject_name or 'Subject')|trim %}
+            {% set subj = (m.subject_name or m.subject_code or 'Subject')|trim %}
             {% if subj not in ns.subject_map %}
-                {% set _ = ns.subject_map.update({subj: {'marks': [], 'subject_id': m.subject_id, 'history': []}}) %}
+                {% set _ = ns.subject_map.update({subj: {'marks': [], 'subject_id': m.subject_id, 'history': [], 'exam_display_order': m.exam_display_order if m.exam_display_order is defined else 1000000000}}) %}
             {% endif %}
             {% set markv = m.marks|float if m.marks is not none and m.marks != '' else none %}
             {% if markv is not none %}
                 {% set _ = ns.subject_map[subj]['marks'].append(markv) %}
                 {% set _ = ns.subject_map[subj]['history'].append({'mark': markv, 'exam_name': m.exam_name, 'exam_date': m.exam_date}) %}
                 {% set _ = ns.all_marks.append(markv) %}
+            {% endif %}
+            {% if m.exam_display_order is defined and m.exam_display_order is not none %}
+                {% set cur_edo = ns.subject_map[subj]['exam_display_order'] %}
+                {% if cur_edo is none or (m.exam_display_order|int) < (cur_edo|int) %}
+                    {% set _ = ns.subject_map[subj].update({'exam_display_order': m.exam_display_order}) %}
+                {% endif %}
             {% endif %}
             {% if ns.exam_label == '-' and m.exam_name %}
                 {% set ns.exam_label = m.exam_name %}
@@ -408,7 +414,9 @@
             {% endfor %}
         {% endif %}
         {% set subjects_passed = namespace(count=0) %}
-        {% for subject_name, subdata in ns.subject_map|dictsort %}
+        {% set ordered_subject_items = ns.subject_map.items()|list|sort(attribute='1.exam_display_order') %}
+        {# Preserve exam_display_order (set column order) — do not alphabetical-sort #}
+        {% for subject_name, subdata in ordered_subject_items %}
             {% set marks = subdata['marks'] %}
             {% if marks|length %}
                 {% set avg = (marks|sum) / (marks|length) %}
@@ -497,7 +505,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for subject_name, subdata in ns.subject_map|dictsort %}
+                            {% for subject_name, subdata in ordered_subject_items %}
                             {% set marks = subdata['marks'] %}
                             {% set avg = ((marks|sum) / (marks|length)) if marks|length else none %}
                             {% set grade = '-' %}

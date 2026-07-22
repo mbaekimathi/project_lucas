@@ -318,158 +318,10 @@
     </div>
     {% endif %}
 
-    <div id="exam-tt-root" data-loading="0">
-        {% if not timetable_by_date %}
+    <div id="exam-tt-root" data-loading="1">
         <div class="exam-tt-empty rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-10 text-center text-gray-600 dark:text-gray-400">
-            No exam timetables match this filter.
+            <i class="fas fa-spinner fa-spin mr-2 opacity-60"></i>Loading exam timetable…
         </div>
-        {% else %}
-        {# Timetable per class: each class gets its own grid (days x sessions) #}
-        {% set ns = namespace(class_map={}) %}
-        {% for day in timetable_by_date %}
-            {% for slot in day.slots %}
-                {% set ck = (slot.level_id|string) if slot.level_id is not none else (slot.level_name or 'unknown') %}
-                {% if ck not in ns.class_map %}
-                    {% set _ = ns.class_map.update({ ck: {'id': slot.level_id, 'name': slot.level_name or '—', 'category': slot.level_category or ''} }) %}
-                {% endif %}
-            {% endfor %}
-        {% endfor %}
-        {% set class_keys = ns.class_map.keys()|list|sort %}
-
-        <div class="space-y-8 exam-tt-sheet">
-            {% for ck in class_keys %}
-            {% set cls = ns.class_map[ck] %}
-
-            {# sessions for this class only #}
-            {% set nsS = namespace(session_map={}) %}
-            {% for day in timetable_by_date %}
-                {% for slot in day.slots %}
-                    {% if (slot.level_id|string) == (cls.id|string) %}
-                        {% set sk = (slot.start_time or '') ~ '-' ~ (slot.end_time or '') ~ '|' ~ (slot.session_type or '') %}
-                        {% if sk not in nsS.session_map %}
-                            {% set _ = nsS.session_map.update({ sk: {'start': slot.start_time or '', 'end': slot.end_time or '', 'type': slot.session_type or ''} }) %}
-                        {% endif %}
-                    {% endif %}
-                {% endfor %}
-            {% endfor %}
-            {# Build a sortable session list for stable time-row ordering #}
-            {% set session_list = [] %}
-            {% for _k, _v in nsS.session_map.items() %}
-                {% set st = (_v.start or '') %}
-                {% set en = (_v.end or '') %}
-                {% set ty = (_v.type or '') %}
-                {% set sort_key = (st ~ '|' ~ en ~ '|' ~ ty) %}
-                {% set _ = session_list.append({'k': _k, 'v': _v, 'sort': sort_key}) %}
-            {% endfor %}
-            {% set session_list = session_list|sort(attribute='sort') %}
-
-            <section class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
-                <div class="px-4 sm:px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-baseline justify-between gap-3">
-                    <div class="text-base sm:text-lg font-black text-gray-900 dark:text-gray-100">
-                        {{ cls.name }}
-                        {% if cls.category %}<span class="exam-tt-muted font-semibold"> ({{ cls.category }})</span>{% endif %}
-                    </div>
-                    <div class="exam-tt-muted font-semibold text-xs">
-                        {{ session_list|length }} session{{ '' if session_list|length == 1 else 's' }}
-                    </div>
-                </div>
-
-                <div class="exam-tt-table-wrap shadow-inner">
-                    <table class="exam-tt-table" style="min-width: 60rem;">
-                        <thead>
-                            <tr>
-                                <th class="exam-tt-period" style="width: 14rem; text-align:left;">Day</th>
-                                {% for sess in session_list %}
-                                {% set s = sess.v %}
-                                <th>
-                                    <span class="exam-tt-time font-extrabold">
-                                        {% if s.start or s.end %}{{ s.start or '—' }}–{{ s.end or '—' }}{% else %}—{% endif %}
-                                    </span>
-                                    {% if s.type %}<div class="exam-tt-muted font-semibold mt-0.5">{{ s.type }}</div>{% endif %}
-                                </th>
-                                {% endfor %}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for day in timetable_by_date %}
-                            <tr>
-                                <td class="text-gray-900 dark:text-gray-100">
-                                    <div class="font-extrabold">
-                                        {% if day.weekday %}{{ day.weekday }}{% endif %}
-                                        {% if day.weekday %}<span class="exam-tt-muted font-semibold"> · </span>{% endif %}
-                                        <span class="opacity-95">{{ day.date_heading }}</span>
-                                    </div>
-                                    <div class="exam-tt-muted font-semibold mt-0.5">
-                                        {{ day.slots|length }} slot{{ '' if day.slots|length == 1 else 's' }}
-                                    </div>
-                                </td>
-                                {% for sess in session_list %}
-                                {% set sk = sess.k %}
-                                <td>
-                                    {% set ns2 = namespace(items=[]) %}
-                                    {% for slot in day.slots %}
-                                        {% if (slot.level_id|string) == (cls.id|string) %}
-                                            {% set sk2 = (slot.start_time or '') ~ '-' ~ (slot.end_time or '') ~ '|' ~ (slot.session_type or '') %}
-                                            {% if sk2 == sk %}
-                                                {% set _ = ns2.items.append(slot) %}
-                                            {% endif %}
-                                        {% endif %}
-                                    {% endfor %}
-
-                                    {% if not ns2.items %}
-                                        <span class="exam-tt-muted">—</span>
-                                    {% else %}
-                                        <div class="space-y-2">
-                                            {% for slot in ns2.items %}
-                                            <div
-                                                class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 p-2.5 {% if management_mode and not slot.exam_is_locked %}cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-900/10{% endif %}"
-                                                {% if management_mode and not slot.exam_is_locked %}
-                                                data-exam-id="{{ slot.id }}"
-                                                data-level-id="{{ slot.level_id }}"
-                                                data-exam-date="{{ slot.exam_date }}"
-                                                data-session-type="{{ slot.session_type }}"
-                                                data-subject-id="{{ slot.subject_id or '' }}"
-                                                data-supervisor-id="{{ slot.supervisor_id or '' }}"
-                                                data-venue="{{ slot.venue or '' }}"
-                                                onclick="window.__openExamTTEdit && window.__openExamTTEdit(this)"
-                                                {% endif %}
-                                            >
-                                                <div class="flex items-start justify-between gap-2">
-                                                    <div class="text-xs font-extrabold text-gray-900 dark:text-gray-100">
-                                                        {{ slot.subject_code or slot.subject_name or '—' }}
-                                                    </div>
-                                                    {% if management_mode %}
-                                                        {% if slot.exam_is_locked %}
-                                                        <i class="fas fa-lock text-[11px] text-gray-500 dark:text-gray-300" title="Locked"></i>
-                                                        {% else %}
-                                                        <i class="fas fa-pen text-[11px] text-amber-700 dark:text-amber-300" title="Click to edit"></i>
-                                                        {% endif %}
-                                                    {% endif %}
-                                                </div>
-                                                <div class="mt-1 text-[12px] text-gray-700 dark:text-gray-200">
-                                                    <span class="font-semibold">{{ slot.teacher_name or '—' }}</span>
-                                                    {% if slot.teacher_employee_id or slot.teacher_code %}
-                                                    <span class="exam-tt-code"> ({{ slot.teacher_employee_id or slot.teacher_code }})</span>
-                                                    {% endif %}
-                                                    {% if slot.venue %}
-                                                    <span class="exam-tt-muted"> · {{ slot.venue }}</span>
-                                                    {% endif %}
-                                                </div>
-                                            </div>
-                                            {% endfor %}
-                                        </div>
-                                    {% endif %}
-                                </td>
-                                {% endfor %}
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-            {% endfor %}
-        </div>
-        {% endif %}
     </div>
 
     {% if management_mode %}
@@ -760,7 +612,7 @@
     </script>
     {% endif %}
 </div>
-<script type="application/json" id="exam-tt-bootstrap">{{ {'api_url': employee_dash_url('exam-timetable/api'), 'timetable_by_date': timetable_by_date, 'total_slots': total_slots, 'days_count': timetable_by_date|length, 'exams_for_filter': exams_for_filter}|tojson|safe }}</script>
+<script type="application/json" id="exam-tt-bootstrap">{{ {'api_url': employee_dash_url('exam-timetable/api'), 'exams_for_filter': exams_for_filter}|tojson|safe }}</script>
 <script>
 (function () {
     const boot = JSON.parse(document.getElementById('exam-tt-bootstrap').textContent || '{}');
@@ -1051,6 +903,9 @@
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(function () { reloadTimetable(); }, 180);
     }
+
+    // Initial load via API (shell page no longer embeds the wall HTML)
+    reloadTimetable();
 
     ['exam-tt-year', 'exam-tt-term', 'exam-tt-exam', 'exam-tt-class'].forEach(function (id) {
         const el = document.getElementById(id);

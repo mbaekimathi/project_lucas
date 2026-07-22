@@ -2472,6 +2472,62 @@ else:
 if is_hosted():
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = int(os.environ.get('STATIC_MAX_AGE', '86400'))
 
+def _mysql_errno(exc):
+    """Best-effort MySQL errno from pymysql / MariaDB exceptions."""
+    args = getattr(exc, 'args', None) or ()
+    if args and isinstance(args[0], int):
+        return args[0]
+    return None
+
+
+def _is_benign_schema_error(exc):
+    """
+    True for expected idempotent-schema failures (column/key/constraint already present).
+    Keeps startup logs clean when init_db re-runs ALTER/ADD on an existing DB.
+    """
+    errno = _mysql_errno(exc)
+    # 1060 duplicate column, 1061 duplicate key name, 1050 table exists,
+    # 1022/121 duplicate key on write (FK/constraint name clash), 1826 duplicate FK
+    if errno in (1050, 1060, 1061, 1022, 121, 1826):
+        return True
+    msg = str(exc).lower()
+    markers = (
+        'duplicate column',
+        'duplicate key name',
+        'duplicate key on write',
+        'already exists',
+        'errno: 121',
+        'multiple primary key',
+        'check that column/key exists',
+        "can't drop",  # DROP INDEX when missing
+        'check that it exists',
+    )
+    return any(m in msg for m in markers)
+
+
+def _schema_ignore_existing(exc, label=None):
+    """Swallow duplicate-schema errors; log unexpected ones only."""
+    if _is_benign_schema_error(exc):
+        return
+    if label:
+        print(f"Schema note ({label}): {exc}")
+    else:
+        print(f"Schema note: {exc}")
+
+
+def _row_count_value(row):
+    """Read COUNT(*) / count from a cursor row (dict or tuple)."""
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        if 'count' in row:
+            return row['count']
+        if 'COUNT(*)' in row:
+            return row['COUNT(*)']
+        return next(iter(row.values()), None)
+    return row[0]
+
+
 def ensure_database_exists():
     """Check if database exists, create it if it doesn't"""
     db_name = DB_CONFIG['database']
@@ -2490,8 +2546,6 @@ def ensure_database_exists():
                 cursor.execute(f"CREATE DATABASE {db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
                 connection.commit()
                 print(f"Database '{db_name}' created successfully.")
-            else:
-                print(f"Database '{db_name}' already exists.")
         connection.close()
         return True
     except Exception as e:
@@ -3975,7 +4029,7 @@ def ensure_student_attendance_subject_column(cursor):
                 ADD COLUMN subject_id INT NOT NULL DEFAULT 0
             """)
         except Exception as e:
-            print(f"ensure_student_attendance_subject_column add column: {e}")
+            _schema_ignore_existing(e, 'student_attendance subject_id')
     try:
         cursor.execute("""
             ALTER TABLE student_attendance_records
@@ -4029,7 +4083,7 @@ def ensure_student_attendance_session_slot_column(cursor):
                 ADD COLUMN session_slot VARCHAR(20) NOT NULL DEFAULT ''
             """)
         except Exception as e:
-            print(f"ensure_student_attendance_session_slot_column add column: {e}")
+            _schema_ignore_existing(e, 'student_attendance session_slot')
     try:
         cursor.execute("""
             ALTER TABLE student_attendance_records
@@ -4045,7 +4099,7 @@ def ensure_student_attendance_session_slot_column(cursor):
             )
         """)
     except Exception as e:
-        print(f"ensure_student_attendance_session_slot_column unique key: {e}")
+        _schema_ignore_existing(e, 'student_attendance unique key')
 
 
 def ensure_student_attendance_schema(cursor):
@@ -6834,7 +6888,7 @@ def _migrate_legacy_class_grade_overrides_to_profiles(cursor):
                 ON DUPLICATE KEY UPDATE profile_id = VALUES(profile_id)
             """, (lid, pid))
     except Exception as e:
-        print(f"Note: legacy class grade override migration skipped: {e}")
+        _schema_ignore_existing(e, 'legacy class grade override migration skipped')
 
 
 def build_class_grade_bands_from_profiles(cursor):
@@ -6864,7 +6918,7 @@ def build_class_grade_bands_from_profiles(cursor):
                 continue
             class_grade_bands.setdefault(lid, []).append(band)
     except Exception as e:
-        print(f"Note: class grade setting profiles lookup skipped: {e}")
+        _schema_ignore_existing(e, 'class grade setting profiles lookup skipped')
     return class_grade_bands
 
 
@@ -6986,7 +7040,7 @@ def load_class_grade_setting_assignments_map(cursor):
             if lid > 0 and pid > 0:
                 out[lid] = pid
     except Exception as e:
-        print(f"Note: class_grade_setting_assignments lookup skipped: {e}")
+        _schema_ignore_existing(e, 'class_grade_setting_assignments lookup skipped')
     return out
 
 
@@ -7237,7 +7291,7 @@ def ensure_grade_code_remarks_table(cursor):
             )
             print("OK: Created grade_code_remarks table")
     except Exception as e:
-        print(f"Note: ensure_grade_code_remarks_table skipped: {e}")
+        _schema_ignore_existing(e, 'ensure_grade_code_remarks_table skipped')
 
 
 def _coerce_int_or_none(v):
@@ -7563,12 +7617,12 @@ def restore_subject_totals_from_combination_snapshot(cursor, snapshot_json_str):
 
 
 def fetch_subject_exam_combinations(cursor):
-    """Return [{'id': combo_id, 'member_subject_ids': [..ordered..], 'display_order': int|None}, ...]."""
+    """Return [{'id', 'member_subject_ids', 'display_order', 'combined_code'?}, ...]."""
     ensure_subject_exam_combination_tables(cursor)
     ensure_subject_exam_display_order_columns(cursor)
     cursor.execute(
         """
-        SELECT m.combination_id, m.subject_id, m.sort_order, c.display_order
+        SELECT m.combination_id, m.subject_id, m.sort_order, c.display_order, c.combined_code
         FROM subject_exam_combination_members m
         INNER JOIN subject_exam_combinations c ON c.id = m.combination_id
         ORDER BY COALESCE(c.display_order, c.id) ASC, c.id ASC, m.sort_order ASC, m.subject_id ASC
@@ -7576,10 +7630,12 @@ def fetch_subject_exam_combinations(cursor):
     )
     grouped = {}
     disp = {}
+    codes = {}
     for row in cursor.fetchall() or []:
         cid = row.get('combination_id') if isinstance(row, dict) else row[0]
         sid = row.get('subject_id') if isinstance(row, dict) else row[1]
         dord = row.get('display_order') if isinstance(row, dict) else (row[3] if len(row) > 3 else None)
+        ccode = row.get('combined_code') if isinstance(row, dict) else (row[4] if len(row) > 4 else None)
         if cid is None or sid is None:
             continue
         cid = int(cid)
@@ -7590,14 +7646,23 @@ def fetch_subject_exam_combinations(cursor):
                 disp[cid] = int(dord)
             except (TypeError, ValueError):
                 pass
+        if ccode and str(ccode).strip():
+            codes[cid] = str(ccode).strip()
     def _combo_key(item):
         cid, mids = item
         return (disp.get(cid) if cid in disp else 10**9 + cid, cid)
 
-    return [
-        {'id': cid, 'member_subject_ids': mids, 'display_order': disp.get(cid)}
-        for cid, mids in sorted(grouped.items(), key=_combo_key)
-    ]
+    out = []
+    for cid, mids in sorted(grouped.items(), key=_combo_key):
+        row = {
+            'id': cid,
+            'member_subject_ids': mids,
+            'display_order': disp.get(cid),
+        }
+        if codes.get(cid):
+            row['combined_code'] = codes[cid]
+        out.append(row)
+    return out
 
 
 EXAM_CONTEXT_SETTINGS_VERSION = 2
@@ -8122,6 +8187,7 @@ def fetch_academic_level_combinations_for_context(
 def sort_subjects_list_for_exam_columns_for_context(
     cursor, subjects, exam_name=None, academic_year_id=None, term_id=None,
     academic_level_id=None, registered_current=None, exam_type=None,
+    force_group_category=None,
 ):
     """
     Sort subject columns using frozen exam-subject-settings when exam is not current.
@@ -8131,12 +8197,17 @@ def sort_subjects_list_for_exam_columns_for_context(
         cursor, exam_name, academic_year_id, term_id, academic_level_id,
         registered_current, exam_type,
     )
+    forced = (force_group_category or '').strip() or None
     if not snap:
-        return sort_subjects_list_for_exam_columns(cursor, subjects)
+        return sort_subjects_list_for_exam_columns(
+            cursor, subjects, force_group_category=forced,
+        )
 
     edo_map = snap.get('subject_exam_display_order') or {}
     if snap.get('version', 1) < 2 or 'subject_id_to_group_category' not in snap:
-        id_to_gc, section_order = sort_subjects_list_for_exam_columns(cursor, subjects)
+        id_to_gc, section_order = sort_subjects_list_for_exam_columns(
+            cursor, subjects, force_group_category=forced,
+        )
         if edo_map:
             for s in subjects or []:
                 try:
@@ -8155,33 +8226,40 @@ def sort_subjects_list_for_exam_columns_for_context(
         try:
             sid = int(s.get('id'))
         except (TypeError, ValueError):
-            s['group_category'] = 'Uncategorized'
+            s['group_category'] = forced or 'Uncategorized'
             continue
         if sid <= 0:
-            s['group_category'] = 'Uncategorized'
+            s['group_category'] = forced or 'Uncategorized'
             continue
         sk = str(sid)
         if sk in edo_map:
             s['exam_display_order'] = edo_map[sk]
-        id_to_gc[sid] = gc_map.get(sk) or 'Uncategorized'
-        s['group_category'] = id_to_gc[sid]
-    missing = [
-        s.get('id') for s in (subjects or [])
-        if int(s.get('id') or 0) > 0 and int(s.get('id')) not in id_to_gc
-    ]
-    if missing:
-        for sid, gc in fetch_subject_id_to_exam_group_category(cursor, missing).items():
-            id_to_gc[int(sid)] = gc
-    for s in subjects or []:
-        try:
-            sid = int(s.get('id'))
-            if sid > 0:
-                s['group_category'] = id_to_gc.get(sid, s.get('group_category') or 'Uncategorized')
-        except (TypeError, ValueError):
-            pass
-    section_order = build_exam_subject_section_order(
-        set(id_to_gc.values()) or {'Uncategorized'}, base,
-    )
+        if forced:
+            id_to_gc[sid] = forced
+            s['group_category'] = forced
+        else:
+            id_to_gc[sid] = gc_map.get(sk) or 'Uncategorized'
+            s['group_category'] = id_to_gc[sid]
+    if not forced:
+        missing = [
+            s.get('id') for s in (subjects or [])
+            if int(s.get('id') or 0) > 0 and int(s.get('id')) not in id_to_gc
+        ]
+        if missing:
+            for sid, gc in fetch_subject_id_to_exam_group_category(cursor, missing).items():
+                id_to_gc[int(sid)] = gc
+        for s in subjects or []:
+            try:
+                sid = int(s.get('id'))
+                if sid > 0:
+                    s['group_category'] = id_to_gc.get(sid, s.get('group_category') or 'Uncategorized')
+            except (TypeError, ValueError):
+                pass
+        section_order = build_exam_subject_section_order(
+            set(id_to_gc.values()) or {'Uncategorized'}, base,
+        )
+    else:
+        section_order = [forced]
     subjects.sort(key=lambda s: exam_subject_column_sort_key(s, section_order))
     return id_to_gc, section_order
 
@@ -8615,7 +8693,7 @@ def build_exam_subject_section_order(keys_set, base_category_order):
 
 def fetch_subject_id_to_exam_group_category(cursor, subject_ids):
     """Map subject id -> group_category using the same rules as exam_subject_settings."""
-    subject_ids = []
+    normalized_ids = []
     seen = set()
     for x in subject_ids or []:
         try:
@@ -8624,11 +8702,11 @@ def fetch_subject_id_to_exam_group_category(cursor, subject_ids):
             continue
         if sid > 0 and sid not in seen:
             seen.add(sid)
-            subject_ids.append(sid)
-    if not subject_ids:
+            normalized_ids.append(sid)
+    if not normalized_ids:
         return {}
     base_category_order = fetch_base_academic_level_category_order(cursor)
-    placeholders = ','.join(['%s'] * len(subject_ids))
+    placeholders = ','.join(['%s'] * len(normalized_ids))
     cursor.execute(
         f"""
         SELECT s.id,
@@ -8640,7 +8718,7 @@ def fetch_subject_id_to_exam_group_category(cursor, subject_ids):
         WHERE s.id IN ({placeholders})
         GROUP BY s.id
         """,
-        tuple(subject_ids),
+        tuple(normalized_ids),
     )
     id_to_gc = {}
     for row in cursor.fetchall() or []:
@@ -8667,6 +8745,20 @@ def fetch_subject_id_to_exam_group_category(cursor, subject_ids):
     return id_to_gc
 
 
+def _coerce_exam_display_order(eo, default=1000000000):
+    """Parse exam_display_order from DB/JSON (int, Decimal, '10', '10.0')."""
+    if eo is None or eo == '':
+        return default
+    try:
+        return int(eo)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(float(eo))
+    except (TypeError, ValueError):
+        return default
+
+
 def exam_subject_column_sort_key(subject_row, section_order):
     """Sort tuple: category section, exam_display_order, name, id (matches marks sheet / reports)."""
     gc = (subject_row or {}).get('group_category') or 'Uncategorized'
@@ -8674,11 +8766,7 @@ def exam_subject_column_sort_key(subject_row, section_order):
         cat_i = section_order.index(gc)
     except ValueError:
         cat_i = len(section_order)
-    eo = (subject_row or {}).get('exam_display_order')
-    try:
-        eo_n = int(eo)
-    except (TypeError, ValueError):
-        eo_n = 1000000000
+    eo_n = _coerce_exam_display_order((subject_row or {}).get('exam_display_order'))
     try:
         sid = int((subject_row or {}).get('id'))
     except (TypeError, ValueError):
@@ -8687,14 +8775,34 @@ def exam_subject_column_sort_key(subject_row, section_order):
     return (cat_i, eo_n, name, sid)
 
 
-def sort_subjects_list_for_exam_columns(cursor, subjects):
+def sort_subjects_list_for_exam_columns(cursor, subjects, force_group_category=None):
     """
     Mutates subjects (each dict must have 'id'): sets group_category, sorts by
     exam-subject-settings category order then exam_display_order.
+    When force_group_category is set (per-class marks sheet / reports), all subjects
+    use that category so the saved exam_display_order sequence is preserved.
     Returns (id_to_gc, section_order).
     """
     if not subjects:
         return {}, []
+    forced = (force_group_category or '').strip() or None
+    if forced:
+        id_to_gc = {}
+        for s in subjects:
+            try:
+                sid = int(s.get('id'))
+            except (TypeError, ValueError):
+                s['group_category'] = forced
+                continue
+            if sid > 0:
+                id_to_gc[sid] = forced
+                s['group_category'] = forced
+            else:
+                s['group_category'] = forced
+        section_order = [forced]
+        subjects.sort(key=lambda s: exam_subject_column_sort_key(s, section_order))
+        return id_to_gc, section_order
+
     id_to_gc = fetch_subject_id_to_exam_group_category(cursor, [s.get('id') for s in subjects])
     base = fetch_base_academic_level_category_order(cursor)
     section_order = build_exam_subject_section_order(set(id_to_gc.values()) or {'Uncategorized'}, base)
@@ -8784,10 +8892,20 @@ def _build_exam_column_order_slots(name_map, combinations_raw, base_category_ord
         except (TypeError, ValueError):
             continue
         label_parts = []
+        code_parts = []
         for mid in mids:
             inf = name_map.get(int(mid))
             label_parts.append((inf.get('subject_name') or '').strip() or '—' if inf else '—')
-        label = '/'.join(label_parts)
+            if inf:
+                cd = (inf.get('subject_code') or '').strip()
+                code_parts.append(cd if cd else (((inf.get('subject_name') or '')[:12]) or '—'))
+            else:
+                code_parts.append('—')
+        members_label = '/'.join(label_parts)
+        auto_code = '/'.join(code_parts)
+        custom_code = (c.get('combined_code') or '').strip()
+        # Prefer saved combined code (used on marks sheets / reports); fall back to joined names.
+        label = custom_code or members_label
         dord = c.get('display_order')
         try:
             o = int(dord) if dord is not None else None
@@ -8809,7 +8927,16 @@ def _build_exam_column_order_slots(name_map, combinations_raw, base_category_ord
             cat_i = section_order.index(combo_gc)
         except ValueError:
             cat_i = len(section_order)
-        slots.append({'type': 'combo', 'id': cid, 'label': label, '_ord': o, '_cat_i': cat_i})
+        slots.append({
+            'type': 'combo',
+            'id': cid,
+            'label': label,
+            'members_label': members_label,
+            'combined_code': custom_code or auto_code,
+            'default_code': auto_code,
+            '_ord': o,
+            '_cat_i': cat_i,
+        })
     slots.sort(key=lambda z: (z['_cat_i'], z['_ord'], str(z.get('label') or '').lower()))
     for s in slots:
         s.pop('_ord', None)
@@ -8849,9 +8976,7 @@ def ensure_exams_marks_lock_at_column(cursor):
     try:
         cursor.execute("ALTER TABLE exams ADD COLUMN marks_lock_at DATETIME NULL")
     except Exception as e:
-        msg = str(e).lower()
-        if 'duplicate column' not in msg and 'already exists' not in msg:
-            print(f"Note: exams.marks_lock_at column: {e}")
+        _schema_ignore_existing(e, 'exams.marks_lock_at column')
 
 
 def ensure_exams_submitted_status_enum(cursor):
@@ -8869,7 +8994,7 @@ def ensure_exams_gazetted_status_enum(cursor):
             ) DEFAULT 'scheduled'
         """)
     except Exception as e:
-        print(f"Note: exams.status gazetted enum: {e}")
+        _schema_ignore_existing(e, 'exams.status gazetted enum')
 
 
 def ensure_exams_results_gazetted_columns(cursor):
@@ -8877,15 +9002,11 @@ def ensure_exams_results_gazetted_columns(cursor):
     try:
         cursor.execute("ALTER TABLE exams ADD COLUMN results_gazetted_at DATETIME NULL")
     except Exception as e:
-        msg = str(e).lower()
-        if 'duplicate column' not in msg and 'already exists' not in msg:
-            print(f"Note: exams.results_gazetted_at: {e}")
+        _schema_ignore_existing(e, 'exams.results_gazetted_at')
     try:
         cursor.execute("ALTER TABLE exams ADD COLUMN results_gazetted_by INT NULL")
     except Exception as e:
-        msg = str(e).lower()
-        if 'duplicate column' not in msg and 'already exists' not in msg:
-            print(f"Note: exams.results_gazetted_by: {e}")
+        _schema_ignore_existing(e, 'exams.results_gazetted_by')
 
 
 def _exam_group_is_submitted(cursor, exam_name, academic_year_id, term_id):
@@ -9495,7 +9616,7 @@ def ensure_student_marks_foreign_keys(cursor):
             cursor.execute(sql)
             print(f"OK: Added constraint {constraint_name} on student_marks")
         except Exception as e:
-            print(f"Migration note (student_marks {constraint_name}): {e}")
+            _schema_ignore_existing(e, f'student_marks {constraint_name}')
 
 
 def ensure_exam_marks_audit_table(cursor):
@@ -10280,7 +10401,6 @@ def _registered_subject_labels_by_level_id(cursor):
                 pass
     all_sids = list(set(all_sids))
     edo_by_sid = {}
-    id_to_gc = {}
     if all_sids:
         try:
             ph = ','.join(['%s'] * len(all_sids))
@@ -10294,31 +10414,28 @@ def _registered_subject_labels_by_level_id(cursor):
                     edo_by_sid[int(eid)] = (
                         er.get('exam_display_order') if isinstance(er, dict) else (er[1] if len(er) > 1 else None)
                     )
-            id_to_gc = fetch_subject_id_to_exam_group_category(cursor, all_sids)
         except Exception as e:
             print(f"_registered_subject_labels_by_level_id meta: {e}")
-    base_cs = fetch_base_academic_level_category_order(cursor)
-    sec_cs = build_exam_subject_section_order(
-        set(id_to_gc.values()) or {'Uncategorized'}, base_cs
-    )
 
-    def _sub_sort_key(sub):
-        try:
-            sid = int(sub.get('id') or 0)
-        except (TypeError, ValueError):
-            sid = 0
-        gc = id_to_gc.get(sid, 'Uncategorized')
-        try:
-            ci = sec_cs.index(gc)
-        except ValueError:
-            ci = len(sec_cs)
-        eo = edo_by_sid.get(sid)
-        try:
-            edo = int(eo) if eo is not None and str(eo).strip() != '' else 10**9
-        except (TypeError, ValueError):
-            edo = 10**9
-        label = subject_display_label(sub.get('subject_code'), sub.get('subject_name'))
-        return (ci, edo, label.lower(), sid)
+    lid_to_cat = {}
+    try:
+        cursor.execute(
+            """
+            SELECT id, level_category
+            FROM academic_levels
+            WHERE COALESCE(level_status, 'active') = 'active'
+            """
+        )
+        for lr in cursor.fetchall() or []:
+            try:
+                lid_to_cat[int(lr.get('id') if isinstance(lr, dict) else lr[0])] = (
+                    str((lr.get('level_category') if isinstance(lr, dict) else (lr[1] if len(lr) > 1 else '')) or '').strip()
+                    or 'Uncategorized'
+                )
+            except (TypeError, ValueError):
+                continue
+    except Exception:
+        lid_to_cat = {}
 
     out = {}
     for lid_key, subs in lib.items():
@@ -10326,6 +10443,19 @@ def _registered_subject_labels_by_level_id(cursor):
             lid_i = int(lid_key)
         except (TypeError, ValueError):
             continue
+        level_cat = lid_to_cat.get(lid_i) or 'Uncategorized'
+        section_order = [level_cat]
+
+        def _sub_sort_key(sub, _sec=section_order):
+            try:
+                sid = int(sub.get('id') or 0)
+            except (TypeError, ValueError):
+                sid = 0
+            eo = edo_by_sid.get(sid)
+            edo = _coerce_exam_display_order(eo)
+            label = subject_display_label(sub.get('subject_code'), sub.get('subject_name'))
+            return (0, edo, label.lower(), sid)
+
         labels = []
         seen = set()
         for s in sorted(subs, key=_sub_sort_key):
@@ -10385,6 +10515,26 @@ def _merged_registered_subject_labels_by_level_id(cursor):
 
     labels_by_lid = {}
     plan_by_lid = {}
+    lid_to_cat = {}
+    try:
+        cursor.execute(
+            """
+            SELECT id, level_category
+            FROM academic_levels
+            WHERE COALESCE(level_status, 'active') = 'active'
+            """
+        )
+        for lr in cursor.fetchall() or []:
+            try:
+                lid_to_cat[int(lr.get('id') if isinstance(lr, dict) else lr[0])] = (
+                    str((lr.get('level_category') if isinstance(lr, dict) else (lr[1] if len(lr) > 1 else '')) or '').strip()
+                    or 'Uncategorized'
+                )
+            except (TypeError, ValueError):
+                continue
+    except Exception:
+        lid_to_cat = {}
+
     for lid_key, subs in lib.items():
         try:
             lid_i = int(lid_key)
@@ -10409,7 +10559,10 @@ def _merged_registered_subject_labels_by_level_id(cursor):
             labels_by_lid[lid_i] = []
             plan_by_lid[lid_i] = {'sid_to_label': {}, 'label_members': {}, 'edo_by_label': {}}
             continue
-        id_to_gc, section_order = sort_subjects_list_for_exam_columns(cursor, subjects_flat)
+        level_cat = lid_to_cat.get(lid_i) or 'Uncategorized'
+        id_to_gc, section_order = sort_subjects_list_for_exam_columns(
+            cursor, subjects_flat, force_group_category=level_cat,
+        )
         merged = merge_subjects_with_exam_combinations(
             subjects_flat,
             combinations,
@@ -10427,10 +10580,7 @@ def _merged_registered_subject_labels_by_level_id(cursor):
                 continue
             seen.add(label)
             labels.append(label)
-            try:
-                edo_by_label[label] = int(row.get('exam_display_order') or 10**9)
-            except (TypeError, ValueError):
-                edo_by_label[label] = 10**9
+            edo_by_label[label] = _coerce_exam_display_order(row.get('exam_display_order'))
             if row.get('combination_id'):
                 mids = [int(x) for x in (row.get('member_subject_ids') or [])]
                 label_members[label] = mids
@@ -14522,10 +14672,9 @@ def init_db():
             # Migrate existing parents table to allow NULL email (if table exists)
             try:
                 cursor.execute("ALTER TABLE parents MODIFY COLUMN email VARCHAR(255) NULL")
-                print("Parents table email column updated to allow NULL.")
             except Exception as e:
                 # Column might already be nullable or table might not exist yet
-                pass
+                _schema_ignore_existing(e, 'parents.email nullable')
             
             # Keep admissions table for backward compatibility (optional - can be removed later)
             cursor.execute("""
@@ -14902,31 +15051,31 @@ def init_db():
             try:
                 cursor.execute("ALTER TABLE academic_coordinator_settings MODIFY COLUMN class_time_allocation TEXT")
             except Exception as e:
-                print(f"Note: class_time_allocation column may already be TEXT: {e}")
+                _schema_ignore_existing(e, 'class_time_allocation column may already be TEXT')
             
             # Add activity_time_allocation column as TEXT if it doesn't exist or is VARCHAR
             try:
                 cursor.execute("ALTER TABLE academic_coordinator_settings MODIFY COLUMN activity_time_allocation TEXT")
             except Exception as e:
-                print(f"Note: activity_time_allocation column may already be TEXT: {e}")
+                _schema_ignore_existing(e, 'activity_time_allocation column may already be TEXT')
 
             # Add applicable_levels column if it doesn't exist
             try:
                 cursor.execute("ALTER TABLE academic_coordinator_settings ADD COLUMN applicable_levels TEXT AFTER study_days")
             except Exception as e:
-                print(f"Note: applicable_levels column may already exist: {e}")
+                _schema_ignore_existing(e, 'applicable_levels column may already exist')
 
             # Add profile_name column if it doesn't exist
             try:
                 cursor.execute("ALTER TABLE academic_coordinator_settings ADD COLUMN profile_name VARCHAR(255) DEFAULT 'Default Profile' AFTER id")
             except Exception as e:
-                print(f"Note: profile_name column may already exist: {e}")
+                _schema_ignore_existing(e, 'profile_name column may already exist')
 
             # Add is_active flag if it doesn't exist
             try:
                 cursor.execute("ALTER TABLE academic_coordinator_settings ADD COLUMN is_active TINYINT(1) DEFAULT 0 AFTER profile_name")
             except Exception as e:
-                print(f"Note: is_active column may already exist: {e}")
+                _schema_ignore_existing(e, 'is_active column may already exist')
             
             # Insert default settings if not exists
             cursor.execute("SELECT COUNT(*) as count FROM academic_coordinator_settings")
@@ -14997,7 +15146,7 @@ def init_db():
                     connection.commit()
                     print("OK: Migrated academic_levels.status to level_status")
             except Exception as e:
-                print(f"Migration note: {e}")
+                _schema_ignore_existing(e)
                 pass
 
             # Add level_code to academic_levels if missing
@@ -15007,7 +15156,7 @@ def init_db():
                     cursor.execute("ALTER TABLE academic_levels ADD COLUMN level_code VARCHAR(50) NULL AFTER level_name")
                     print("OK: Added level_code column to academic_levels")
             except Exception as e:
-                print(f"Migration note for academic_levels.level_code: {e}")
+                _schema_ignore_existing(e, 'academic_levels.level_code')
                 pass
             
             # Create subjects table (must be before exams, teacher_subject_assignments)
@@ -15030,7 +15179,7 @@ def init_db():
                 ensure_subject_exam_display_order_columns(cursor)
                 ensure_subject_exam_combination_tables(cursor)
             except Exception as e:
-                print(f"Migration note (subjects.exam_total_marks): {e}")
+                _schema_ignore_existing(e, 'subjects.exam_total_marks')
 
             ensure_library_books_table(cursor)
             
@@ -15062,7 +15211,7 @@ def init_db():
                     cursor.execute("ALTER TABLE academic_years ADD INDEX idx_is_locked (is_locked)")
                     print("OK: Added is_locked and locked_at columns to academic_years table")
             except Exception as e:
-                print(f"Migration note for academic_years.is_locked: {e}")
+                _schema_ignore_existing(e, 'academic_years.is_locked')
                 pass
             
             try:
@@ -15072,7 +15221,7 @@ def init_db():
                     cursor.execute("ALTER TABLE academic_years MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
                     print("OK: Updated academic_years.status enum to include 'suspended'")
             except Exception as e:
-                print(f"Migration note for academic_years.status enum: {e}")
+                _schema_ignore_existing(e, 'academic_years.status enum')
                 pass
             
             # Create terms table (must be before timetables, exams, term_academic_levels)
@@ -15107,7 +15256,7 @@ def init_db():
                     cursor.execute("ALTER TABLE terms ADD INDEX idx_is_locked (is_locked)")
                     print("OK: Added is_locked and locked_at columns to terms table")
             except Exception as e:
-                print(f"Migration note for terms.is_locked: {e}")
+                _schema_ignore_existing(e, 'terms.is_locked')
                 pass
 
             ensure_student_attendance_records_table(cursor)
@@ -15120,7 +15269,7 @@ def init_db():
                     cursor.execute("ALTER TABLE terms MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
                     print("OK: Updated terms.status enum to include 'suspended'")
             except Exception as e:
-                print(f"Migration note for terms.status enum: {e}")
+                _schema_ignore_existing(e, 'terms.status enum')
                 pass
             
             try:
@@ -15130,7 +15279,7 @@ def init_db():
                     cursor.execute("ALTER TABLE terms ADD INDEX idx_is_current (is_current)")
                     print("OK: Added is_current column to terms")
             except Exception as e:
-                print(f"Migration note for terms.is_current: {e}")
+                _schema_ignore_existing(e, 'terms.is_current')
                 pass
             
             # Create term_academic_levels junction table
@@ -15178,15 +15327,15 @@ def init_db():
             try:
                 cursor.execute("ALTER TABLE timetables MODIFY COLUMN created_by INT NULL")
             except Exception as e:
-                print(f"Note: created_by column may already allow NULL: {e}")
+                _schema_ignore_existing(e, 'created_by column may already allow NULL')
             try:
                 cursor.execute("ALTER TABLE timetables ADD COLUMN subject_id INT NULL AFTER teacher_id")
             except Exception as e:
-                print(f"Note: timetables.subject_id may already exist: {e}")
+                _schema_ignore_existing(e, 'timetables.subject_id may already exist')
             try:
                 cursor.execute("ALTER TABLE timetables ADD INDEX idx_subject_id (subject_id)")
             except Exception as e:
-                print(f"Note: timetables.idx_subject_id may already exist: {e}")
+                _schema_ignore_existing(e, 'timetables.idx_subject_id may already exist')
             try:
                 cursor.execute("""
                     ALTER TABLE timetables
@@ -15194,7 +15343,7 @@ def init_db():
                     FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE SET NULL
                 """)
             except Exception as e:
-                print(f"Note: timetables.fk_timetables_subject may already exist: {e}")
+                _schema_ignore_existing(e, 'timetables.fk_timetables_subject may already exist')
             try:
                 # Data-fix migration: remove legacy timetable rows that don't meet
                 # current one-session/one-subject/one-teacher allocation rules.
@@ -15209,7 +15358,7 @@ def init_db():
                        OR tsa.id IS NULL
                 """)
             except Exception as e:
-                print(f"Note: timetable allocation data-fix skipped: {e}")
+                _schema_ignore_existing(e, 'timetable allocation data-fix skipped')
             
             # Create exams table
             cursor.execute("""
@@ -15249,16 +15398,16 @@ def init_db():
             try:
                 cursor.execute("ALTER TABLE exams ADD COLUMN session_type VARCHAR(20) NULL AFTER exam_date")
             except Exception as e:
-                print(f"Note: exams.session_type may already exist: {e}")
+                _schema_ignore_existing(e, 'exams.session_type may already exist')
             try:
                 cursor.execute("ALTER TABLE exams ADD COLUMN supervisor_id INT NULL AFTER duration_minutes")
             except Exception as e:
-                print(f"Note: exams.supervisor_id may already exist: {e}")
+                _schema_ignore_existing(e, 'exams.supervisor_id may already exist')
             # Add index for supervisor/time conflict checks
             try:
                 cursor.execute("ALTER TABLE exams ADD INDEX idx_supervisor_time (supervisor_id, exam_date, start_time)")
             except Exception as e:
-                print(f"Note: idx_supervisor_time may already exist: {e}")
+                _schema_ignore_existing(e, 'idx_supervisor_time may already exist')
             # Add FK for supervisor_id if missing
             try:
                 cursor.execute("""
@@ -15267,19 +15416,19 @@ def init_db():
                     FOREIGN KEY (supervisor_id) REFERENCES employees(id) ON DELETE SET NULL
                 """)
             except Exception as e:
-                print(f"Note: fk_exams_supervisor may already exist: {e}")
+                _schema_ignore_existing(e, 'fk_exams_supervisor may already exist')
             try:
                 cursor.execute("ALTER TABLE exams ADD COLUMN is_locked BOOLEAN DEFAULT FALSE")
             except Exception as e:
-                print(f"Note: exams.is_locked may already exist: {e}")
+                _schema_ignore_existing(e, 'exams.is_locked may already exist')
             try:
                 cursor.execute("ALTER TABLE exams ADD COLUMN locked_at TIMESTAMP NULL")
             except Exception as e:
-                print(f"Note: exams.locked_at may already exist: {e}")
+                _schema_ignore_existing(e, 'exams.locked_at may already exist')
             try:
                 cursor.execute("ALTER TABLE exams ADD COLUMN marks_lock_at DATETIME NULL")
             except Exception as e:
-                print(f"Note: exams.marks_lock_at may already exist: {e}")
+                _schema_ignore_existing(e, 'exams.marks_lock_at may already exist')
             ensure_exams_gazetted_status_enum(cursor)
             
             # Create exam_supervisors table
@@ -15366,23 +15515,23 @@ def init_db():
             try:
                 cursor.execute("ALTER TABLE grade_registrations MODIFY COLUMN academic_level_id INT NULL")
             except Exception as e:
-                print(f"Note: grade_registrations.academic_level_id may already be nullable: {e}")
+                _schema_ignore_existing(e, 'grade_registrations.academic_level_id may already be nullable')
             try:
                 cursor.execute("ALTER TABLE grade_registrations ADD COLUMN start_mark DECIMAL(5,2) NULL AFTER academic_level_id")
             except Exception as e:
-                print(f"Note: grade_registrations.start_mark may already exist: {e}")
+                _schema_ignore_existing(e, 'grade_registrations.start_mark may already exist')
             try:
                 cursor.execute("ALTER TABLE grade_registrations ADD COLUMN end_mark DECIMAL(5,2) NULL AFTER start_mark")
             except Exception as e:
-                print(f"Note: grade_registrations.end_mark may already exist: {e}")
+                _schema_ignore_existing(e, 'grade_registrations.end_mark may already exist')
             try:
                 cursor.execute("ALTER TABLE grade_registrations ADD COLUMN level_label VARCHAR(100) NULL AFTER end_mark")
             except Exception as e:
-                print(f"Note: grade_registrations.level_label may already exist: {e}")
+                _schema_ignore_existing(e, 'grade_registrations.level_label may already exist')
             try:
                 cursor.execute("ALTER TABLE grade_registrations ADD COLUMN allocation_points DECIMAL(6,2) NULL AFTER description")
             except Exception as e:
-                print(f"Note: grade_registrations.allocation_points may already exist: {e}")
+                _schema_ignore_existing(e, 'grade_registrations.allocation_points may already exist')
 
             # Subject-specific grade overrides; used only when a subject is edited.
             cursor.execute("""
@@ -15426,15 +15575,15 @@ def init_db():
             try:
                 cursor.execute("ALTER TABLE subject_grade_mark_overrides ADD COLUMN allocation_points DECIMAL(6,2) NULL AFTER end_mark")
             except Exception as e:
-                print(f"Note: subject_grade_mark_overrides.allocation_points may already exist: {e}")
+                _schema_ignore_existing(e, 'subject_grade_mark_overrides.allocation_points may already exist')
             try:
                 cursor.execute("ALTER TABLE subject_grade_mark_overrides ADD COLUMN level_label VARCHAR(255) NULL AFTER code")
             except Exception as e:
-                print(f"Note: subject_grade_mark_overrides.level_label may already exist: {e}")
+                _schema_ignore_existing(e, 'subject_grade_mark_overrides.level_label may already exist')
             try:
                 cursor.execute("ALTER TABLE subject_grade_mark_overrides ADD COLUMN meaning VARCHAR(255) NULL AFTER level_label")
             except Exception as e:
-                print(f"Note: subject_grade_mark_overrides.meaning may already exist: {e}")
+                _schema_ignore_existing(e, 'subject_grade_mark_overrides.meaning may already exist')
 
             ensure_grade_setting_profile_tables(cursor)
 
@@ -15561,7 +15710,7 @@ def init_db():
                     print("OK: Migrated academic_levels.status to level_status")
             except Exception as e:
                 # Column might not exist or already renamed
-                print(f"Migration note: {e}")
+                _schema_ignore_existing(e)
                 pass
             
             # Create fee_structures table
@@ -15613,7 +15762,7 @@ def init_db():
                     cursor.execute("ALTER TABLE fee_structures ADD INDEX idx_academic_year (academic_year_id)")
                     print("OK: Added term_id and academic_year_id to fee_structures")
             except Exception as e:
-                print(f"Migration note for fee_structures: {e}")
+                _schema_ignore_existing(e, 'fee_structures')
                 pass
             
             # Add category column to fee_structures if it doesn't exist
@@ -15623,7 +15772,7 @@ def init_db():
                     cursor.execute("ALTER TABLE fee_structures ADD COLUMN category VARCHAR(50) NULL DEFAULT 'both' AFTER fee_name")
                     print("OK: Added category column to fee_structures")
             except Exception as e:
-                print(f"Migration note for fee_structures category: {e}")
+                _schema_ignore_existing(e, 'fee_structures category')
                 pass
 
             try:
@@ -15639,7 +15788,7 @@ def init_db():
                     )
                     print("OK: Added finance_account_id column to fee_structures")
             except Exception as e:
-                print(f"Migration note for fee_structures finance_account_id: {e}")
+                _schema_ignore_existing(e, 'fee_structures finance_account_id')
                 pass
             
             # Add student_category and sponsor_name columns to students table if they don't exist
@@ -15652,12 +15801,11 @@ def init_db():
                     AND COLUMN_NAME = 'student_category'
                 """)
                 result = cursor.fetchone()
-                if result and result[0] == 0:
+                if _row_count_value(result) == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN student_category VARCHAR(50) NULL AFTER special_needs")
                     print("OK: Added student_category column to students table")
             except Exception as e:
-                print(f"Migration note for student_category: {e}")
-                pass
+                _schema_ignore_existing(e, 'student_category')
             
             try:
                 cursor.execute("""
@@ -15668,12 +15816,11 @@ def init_db():
                     AND COLUMN_NAME = 'sponsor_name'
                 """)
                 result = cursor.fetchone()
-                if result and result[0] == 0:
+                if _row_count_value(result) == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_name VARCHAR(255) NULL AFTER student_category")
                     print("OK: Added sponsor_name column to students table")
             except Exception as e:
-                print(f"Migration note for sponsor_name: {e}")
-                pass
+                _schema_ignore_existing(e, 'sponsor_name')
             
             # Add sponsor_phone column to students table if it doesn't exist
             try:
@@ -15685,12 +15832,11 @@ def init_db():
                     AND COLUMN_NAME = 'sponsor_phone'
                 """)
                 result = cursor.fetchone()
-                if result and result[0] == 0:
+                if _row_count_value(result) == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_phone VARCHAR(50) NULL AFTER sponsor_name")
                     print("OK: Added sponsor_phone column to students table")
             except Exception as e:
-                print(f"Migration note for sponsor_phone: {e}")
-                pass
+                _schema_ignore_existing(e, 'sponsor_phone')
             
             # Add sponsor_email column to students table if it doesn't exist
             try:
@@ -15702,12 +15848,11 @@ def init_db():
                     AND COLUMN_NAME = 'sponsor_email'
                 """)
                 result = cursor.fetchone()
-                if result and result[0] == 0:
+                if _row_count_value(result) == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_email VARCHAR(255) NULL AFTER sponsor_phone")
                     print("OK: Added sponsor_email column to students table")
             except Exception as e:
-                print(f"Migration note for sponsor_email: {e}")
-                pass
+                _schema_ignore_existing(e, 'sponsor_email')
             
             # Add assessment_number column to students table if it doesn't exist
             try:
@@ -15719,12 +15864,11 @@ def init_db():
                     AND COLUMN_NAME = 'assessment_number'
                 """)
                 result = cursor.fetchone()
-                if result and result[0] == 0:
+                if _row_count_value(result) == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN assessment_number VARCHAR(100) NULL AFTER previous_school")
                     print("OK: Added assessment_number column to students table")
             except Exception as e:
-                print(f"Migration note for assessment_number: {e}")
-                pass
+                _schema_ignore_existing(e, 'assessment_number')
             
             # Update students table status ENUM to include 'transferred'
             try:
@@ -15746,7 +15890,7 @@ def init_db():
                         """)
                         print("OK: Updated students.status ENUM to include 'transferred'")
             except Exception as e:
-                print(f"Migration note for students.status ENUM: {e}")
+                _schema_ignore_existing(e, 'students.status ENUM')
                 pass
             
             # Normalize engines for FK parents (errno 150 if parents are not InnoDB)
@@ -15754,7 +15898,7 @@ def init_db():
                 try:
                     cursor.execute(f"ALTER TABLE `{_tbl}` ENGINE=InnoDB")
                 except Exception as e:
-                    print(f"Migration note ({_tbl} ENGINE=InnoDB): {e}")
+                    _schema_ignore_existing(e, '{_tbl} ENGINE=InnoDB')
 
             # student_marks: create without inline FKs — avoids errno 150 when charset/engine
             # on parent columns does not match; constraints added in ensure_student_marks_foreign_keys.
@@ -15777,27 +15921,27 @@ def init_db():
             try:
                 cursor.execute("ALTER TABLE student_marks ENGINE=InnoDB")
             except Exception as e:
-                print(f"Migration note (student_marks ENGINE=InnoDB): {e}")
+                _schema_ignore_existing(e, 'student_marks ENGINE=InnoDB')
 
             try:
                 ensure_student_marks_foreign_keys(cursor)
             except Exception as e:
-                print(f"Migration note (ensure_student_marks_foreign_keys): {e}")
+                _schema_ignore_existing(e, 'ensure_student_marks_foreign_keys')
             
             try:
                 ensure_users_portal_login_schema(cursor)
             except Exception as e:
-                print(f"Migration note for users portal login columns: {e}")
+                _schema_ignore_existing(e, 'users portal login columns')
             
             try:
                 ensure_school_general_settings_columns(cursor)
             except Exception as e:
-                print(f"Migration note for school_settings general columns: {e}")
+                _schema_ignore_existing(e, 'school_settings general columns')
 
             try:
                 ensure_exam_timetable_settings_columns(cursor)
             except Exception as e:
-                print(f"Migration note for school_settings exam timetable columns: {e}")
+                _schema_ignore_existing(e, 'school_settings exam timetable columns')
             
             connection.commit()
             
@@ -15812,7 +15956,7 @@ def init_db():
                 print(f"Warning: Some tables could not be created: {', '.join(missing_tables)}")
                 return False
             
-            print("All database tables verified/created successfully.")
+            print("[DB] Core tables verified.")
             return True
     except Exception as e:
         print(f"Database initialization error: {e}")
@@ -15850,7 +15994,7 @@ def _create_db_pool():
     except ImportError:
         print('DBUtils not installed — using unpooled MySQL connections. pip install DBUtils')
         return None
-    maxconn = max(1, int(os.environ.get('DB_POOL_SIZE', '8')))
+    maxconn = max(1, int(os.environ.get('DB_POOL_SIZE', '24')))
     maxcached = max(1, min(4, maxconn))
     return PooledDB(
         creator=pymysql,
@@ -19756,57 +19900,101 @@ def generate_web_push_vapid_keys():
     return redirect(url_for('system_settings') + '#general-settings')
 
 
-@app.route('/')
-def home():
-    # Staff who signed in via the employee portal have employees.employee_id in session (not parent/student users).
-    employee_in_portal = bool(session.get('employee_id'))
+HOME_PREVIEW_CACHE_TTL = int(os.environ.get('HOME_PREVIEW_CACHE_TTL', '60'))
+
+
+def _load_home_public_previews():
+    """Team / news / courses counts for the public home page (DB-backed)."""
     team_total = 0
     news_upcoming_count = 0
     news_spotlight_title = ''
     courses_count = 0
     connection = get_db_connection()
-    if connection:
+    if not connection:
+        return {
+            'team_total': team_total,
+            'news_upcoming_count': news_upcoming_count,
+            'news_spotlight_title': news_spotlight_title,
+            'courses_count': courses_count,
+        }
+    try:
+        with connection.cursor() as cursor:
+            try:
+                _, team_members = _fetch_public_team_groups(cursor)
+                team_total = len(team_members)
+            except Exception as e:
+                print(f"home team preview: {e}")
+            try:
+                ensure_academic_calendar_activities_table(cursor)
+                ensure_academic_calendar_activity_levels_table(cursor)
+                selected_year_id, academic_years = _resolve_calendar_year_id(cursor, None)
+                selected_year = None
+                if selected_year_id:
+                    for y in academic_years:
+                        if int(y.get('id')) == int(selected_year_id):
+                            selected_year = y
+                            break
+                    raw = _fetch_academic_calendar_activities(cursor, selected_year_id, term_id=None)
+                    raw = _merge_term_dates_into_calendar_activities(cursor, selected_year_id, raw)
+                    raw = _attach_calendar_activity_levels(cursor, raw)
+                    news_payload = _prepare_public_calendar_news(raw, selected_year)
+                    news_upcoming_count = news_payload.get('upcoming_count') or 0
+                    spotlight = news_payload.get('spotlight') or {}
+                    news_spotlight_title = (spotlight.get('activity_title') or '').strip()
+            except Exception as e:
+                print(f"home news preview: {e}")
+            try:
+                courses_count = len(_fetch_public_course_subjects(cursor))
+            except Exception as e:
+                print(f"home courses preview: {e}")
+    except Exception as e:
+        print(f"home preview: {e}")
+    finally:
         try:
-            with connection.cursor() as cursor:
-                try:
-                    _, team_members = _fetch_public_team_groups(cursor)
-                    team_total = len(team_members)
-                except Exception as e:
-                    print(f"home team preview: {e}")
-                try:
-                    ensure_academic_calendar_activities_table(cursor)
-                    ensure_academic_calendar_activity_levels_table(cursor)
-                    selected_year_id, academic_years = _resolve_calendar_year_id(cursor, None)
-                    selected_year = None
-                    if selected_year_id:
-                        for y in academic_years:
-                            if int(y.get('id')) == int(selected_year_id):
-                                selected_year = y
-                                break
-                        raw = _fetch_academic_calendar_activities(cursor, selected_year_id, term_id=None)
-                        raw = _merge_term_dates_into_calendar_activities(cursor, selected_year_id, raw)
-                        raw = _attach_calendar_activity_levels(cursor, raw)
-                        news_payload = _prepare_public_calendar_news(raw, selected_year)
-                        news_upcoming_count = news_payload.get('upcoming_count') or 0
-                        spotlight = news_payload.get('spotlight') or {}
-                        news_spotlight_title = (spotlight.get('activity_title') or '').strip()
-                except Exception as e:
-                    print(f"home news preview: {e}")
-                try:
-                    courses_count = len(_fetch_public_course_subjects(cursor))
-                except Exception as e:
-                    print(f"home courses preview: {e}")
-        except Exception as e:
-            print(f"home preview: {e}")
-        finally:
             connection.close()
+        except Exception:
+            pass
+    return {
+        'team_total': team_total,
+        'news_upcoming_count': news_upcoming_count,
+        'news_spotlight_title': news_spotlight_title,
+        'courses_count': courses_count,
+    }
+
+
+def get_home_public_previews():
+    """Cached public home previews — cuts DB work under concurrent sessions."""
+    if cache_get:
+        cached = cache_get('home_public_previews')
+        if isinstance(cached, dict):
+            return cached
+    payload = _load_home_public_previews()
+    if cache_set:
+        cache_set('home_public_previews', payload, HOME_PREVIEW_CACHE_TTL)
+    return payload
+
+
+def invalidate_home_public_previews():
+    """Clear home preview cache after admin edits that affect public landing stats."""
+    if cache_delete:
+        try:
+            cache_delete('home_public_previews')
+        except Exception:
+            pass
+
+
+@app.route('/')
+def home():
+    # Staff who signed in via the employee portal have employees.employee_id in session (not parent/student users).
+    employee_in_portal = bool(session.get('employee_id'))
+    previews = get_home_public_previews()
     return render_template(
         'home.html',
         employee_in_portal=employee_in_portal,
-        team_total=team_total,
-        news_upcoming_count=news_upcoming_count,
-        news_spotlight_title=news_spotlight_title,
-        courses_count=courses_count,
+        team_total=previews.get('team_total') or 0,
+        news_upcoming_count=previews.get('news_upcoming_count') or 0,
+        news_spotlight_title=previews.get('news_spotlight_title') or '',
+        courses_count=previews.get('courses_count') or 0,
         progress_current_year=date_cls.today().year,
     )
 
@@ -24117,7 +24305,7 @@ def ensure_student_attendance_records_table(cursor):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
     except Exception as e:
-        print(f"ensure_student_attendance_records_table: {e}")
+        _schema_ignore_existing(e, 'student_attendance_records table')
 
 
 def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
@@ -28473,6 +28661,7 @@ def finance_overview():
         or viewing_as_role in ('head of institution', 'deputy head of institution')
     )
 
+    # Heavy KPIs load via AJAX (finance-overview/analytics) — keep page shell fast.
     accountant_dashboard = _accountant_dashboard_analytics_empty()
     filter_options = {
         'class_options': [],
@@ -28492,19 +28681,9 @@ def finance_overview():
     if connection:
         try:
             with connection.cursor() as cursor:
-                accountant_dashboard = _fetch_accountant_dashboard_analytics(cursor)
                 filter_options = _load_finance_overview_filter_options(cursor)
         except Exception as e:
-            print(f"finance_overview: {e}")
-            import traceback
-            traceback.print_exc()
-            accountant_dashboard = _accountant_dashboard_analytics_empty()
-            try:
-                with connection.cursor() as cursor:
-                    accountant_dashboard['accounts'] = _fetch_accountant_accounts_breakdown(cursor)
-                    filter_options = _load_finance_overview_filter_options(cursor)
-            except Exception as accounts_err:
-                print(f"finance_overview accounts fallback: {accounts_err}")
+            print(f"finance_overview filters: {e}")
         finally:
             connection.close()
 
@@ -28514,9 +28693,44 @@ def finance_overview():
         is_secretary_finance=is_secretary,
         can_open_accounts_portal=is_accountant or is_leadership_finance,
         accountant_dashboard=accountant_dashboard,
+        finance_overview_analytics_url=employee_dashboard_path('finance-overview/analytics'),
+        defer_finance_overview_analytics=True,
         finance_report_nav=finance_reports_mod.FINANCE_REPORT_NAV,
         filter_options=filter_options,
     )
+
+
+FINANCE_OVERVIEW_ANALYTICS_CACHE_TTL = int(os.environ.get('FINANCE_OVERVIEW_ANALYTICS_CACHE_TTL', '60'))
+
+
+@app.route('/dashboard/employee/finance-overview/analytics', methods=['GET'])
+@login_required
+def finance_overview_analytics():
+    """Cached accountant-style KPIs for finance overview (AJAX)."""
+    if not _finance_overview_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    cache_key = 'finance_overview_accountant_analytics'
+    if cache_get:
+        cached = cache_get(cache_key)
+        if isinstance(cached, dict):
+            return jsonify({'success': True, 'analytics': cached, 'cached': True})
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            analytics = _fetch_accountant_dashboard_analytics(cursor)
+        if cache_set and isinstance(analytics, dict):
+            cache_set(cache_key, analytics, FINANCE_OVERVIEW_ANALYTICS_CACHE_TTL)
+        return jsonify({'success': True, 'analytics': analytics, 'cached': False})
+    except Exception as e:
+        print(f"finance_overview_analytics: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not load analytics'}), 500
+    finally:
+        connection.close()
+
 
 
 @app.route('/dashboard/employee/finance-overview/reports/<report_slug>')
@@ -28952,7 +29166,10 @@ def _student_fees_payment_status(fee_structure, balance):
     return 'pending'
 
 
-def _student_fees_row_payload(cursor, row, cy, ct, level_by_name):
+def _student_fees_row_payload(
+    cursor, row, cy, ct, level_by_name,
+    structure_cache=None, payments_all=None, payments_by_fs=None,
+):
     """One in-session student row for the fees register (JSON-safe)."""
     if isinstance(row, dict):
         student_id = row.get('student_id')
@@ -28977,22 +29194,31 @@ def _student_fees_row_payload(cursor, row, cy, ct, level_by_name):
 
     fee_structure = None
     if level_id:
-        fee_structure = _reports_select_fee_structure_for_student(
-            cursor, level_id, student_category, cy, ct,
-        )
+        cache_key = (int(level_id), (student_category or '').lower().strip())
+        if structure_cache is not None and cache_key in structure_cache:
+            fee_structure = structure_cache[cache_key]
+        else:
+            fee_structure = _reports_select_fee_structure_for_student(
+                cursor, level_id, student_category, cy, ct,
+            )
+            if structure_cache is not None:
+                structure_cache[cache_key] = fee_structure
 
-    cursor.execute(
-        """
-        SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
-        FROM student_payments
-        WHERE student_id = %s
-        """,
-        (student_id,),
-    )
-    all_pay = cursor.fetchone()
-    total_paid_all = float(
-        (all_pay.get('total_paid') if isinstance(all_pay, dict) else all_pay[0]) or 0
-    ) if all_pay else 0.0
+    if payments_all is not None:
+        total_paid_all = float(payments_all.get(str(student_id), 0) or 0)
+    else:
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+            FROM student_payments
+            WHERE student_id = %s
+            """,
+            (student_id,),
+        )
+        all_pay = cursor.fetchone()
+        total_paid_all = float(
+            (all_pay.get('total_paid') if isinstance(all_pay, dict) else all_pay[0]) or 0
+        ) if all_pay else 0.0
 
     carry_forward = 0.0
     previous_term_balance = 0.0
@@ -29000,8 +29226,13 @@ def _student_fees_row_payload(cursor, row, cy, ct, level_by_name):
     balance = 0.0
 
     if fee_structure:
+        fs_id = fee_structure.get('id')
+        paid_override = None
+        if payments_by_fs is not None and fs_id is not None:
+            paid_override = float(payments_by_fs.get((str(student_id), int(fs_id)), 0) or 0)
         amounts = _reports_compute_student_fee_balance(
             cursor, student_id, student_category, level_id, fee_structure,
+            paid_amount_override=paid_override,
         )
         if amounts:
             total_amount_due = float(amounts.get('total_amount') or 0)
@@ -29092,26 +29323,78 @@ def _fetch_student_fees_students_page(cursor, page=1, per_page=50, q='', grade='
     cursor.execute(
         f"""
         SELECT s.student_id, s.full_name, s.current_grade, s.status, s.student_category,
-               (
-                   SELECT p.full_name FROM parents p
-                   WHERE p.student_id = s.student_id
-                   ORDER BY p.id ASC LIMIT 1
-               ) AS parent_name,
-               (
-                   SELECT p.phone FROM parents p
-                   WHERE p.student_id = s.student_id
-                   ORDER BY p.id ASC LIMIT 1
-               ) AS parent_phone
+               p.full_name AS parent_name, p.phone AS parent_phone
         FROM students s
+        LEFT JOIN parents p ON p.id = (
+            SELECT p2.id FROM parents p2
+            WHERE p2.student_id = s.student_id
+            ORDER BY p2.id ASC LIMIT 1
+        )
         {where_sql}
         ORDER BY {order_col} {order_dir}, s.student_id ASC
         LIMIT %s OFFSET %s
         """,
         tuple(params) + (per_page, offset),
     )
+    rows = list(cursor.fetchall() or [])
+    student_ids = []
+    for r in rows:
+        sid = r.get('student_id') if isinstance(r, dict) else (r[0] if r else None)
+        if sid is not None:
+            student_ids.append(str(sid))
+
+    payments_all = {}
+    payments_by_fs = {}
+    if student_ids:
+        placeholders = ','.join(['%s'] * len(student_ids))
+        cursor.execute(
+            f"""
+            SELECT student_id, COALESCE(SUM(amount_paid), 0) AS total_paid
+            FROM student_payments
+            WHERE student_id IN ({placeholders})
+            GROUP BY student_id
+            """,
+            tuple(student_ids),
+        )
+        for pay in cursor.fetchall() or []:
+            if isinstance(pay, dict):
+                payments_all[str(pay.get('student_id'))] = float(pay.get('total_paid') or 0)
+            else:
+                payments_all[str(pay[0])] = float(pay[1] or 0)
+        cursor.execute(
+            f"""
+            SELECT student_id, fee_structure_id, COALESCE(SUM(amount_paid), 0) AS total_paid
+            FROM student_payments
+            WHERE student_id IN ({placeholders})
+            GROUP BY student_id, fee_structure_id
+            """,
+            tuple(student_ids),
+        )
+        for pay in cursor.fetchall() or []:
+            if isinstance(pay, dict):
+                sid = str(pay.get('student_id'))
+                fsid = pay.get('fee_structure_id')
+                amt = float(pay.get('total_paid') or 0)
+            else:
+                sid = str(pay[0])
+                fsid = pay[1]
+                amt = float(pay[2] or 0)
+            if fsid is None:
+                continue
+            try:
+                payments_by_fs[(sid, int(fsid))] = amt
+            except (TypeError, ValueError):
+                continue
+
+    structure_cache = {}
     students = [
-        _student_fees_row_payload(cursor, r, cy, ct, level_by_name)
-        for r in (cursor.fetchall() or [])
+        _student_fees_row_payload(
+            cursor, r, cy, ct, level_by_name,
+            structure_cache=structure_cache,
+            payments_all=payments_all,
+            payments_by_fs=payments_by_fs,
+        )
+        for r in rows
     ]
     pages = max(1, (total + per_page - 1) // per_page) if total else 1
     if page > pages:
@@ -38904,7 +39187,7 @@ def _get_teacher_level_ids(teacher_user_id):
                     if ln:
                         level_names.add(str(ln).strip())
         except Exception as e:
-            print(f"Note: _get_teacher_level_ids union query: {e}")
+            _schema_ignore_existing(e, '_get_teacher_level_ids union query')
             try:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -47330,7 +47613,7 @@ def system_settings():
                         current_academic_year = None
                 except Exception as e:
                     # Tables might not exist yet
-                    print(f"Note: academic_years table may not exist yet: {e}")
+                    _schema_ignore_existing(e, 'academic_years table may not exist yet')
                     academic_years = []
                 
                 # Get terms with their academic levels
@@ -47396,7 +47679,7 @@ def system_settings():
                         terms.append(term_dict)
                 except Exception as e:
                     # Tables might not exist yet
-                    print(f"Note: terms table may not exist yet: {e}")
+                    _schema_ignore_existing(e, 'terms table may not exist yet')
                     terms = []
 
                 if is_technician:
@@ -47634,7 +47917,7 @@ def _load_schedule_profiles_and_settings(cursor, selected_profile_id: str):
                     'activities': parsed_activities
                 }
     except Exception as e:
-        print(f"Note: schedule settings unavailable: {e}")
+        _schema_ignore_existing(e, 'schedule settings unavailable')
     return schedule_settings, schedule_profiles
 
 
@@ -48126,7 +48409,7 @@ def academic_settings():
                         if year_dict.get('is_current'):
                             current_academic_year = year_dict
                 except Exception as e:
-                    print(f"Note: academic_years table may not exist yet: {e}")
+                    _schema_ignore_existing(e, 'academic_years table may not exist yet')
                     academic_years = []
                 
                 # Get terms with their academic levels
@@ -48152,7 +48435,7 @@ def academic_settings():
                         }
                         terms.append(term_dict)
                 except Exception as e:
-                    print(f"Note: terms table may not exist yet: {e}")
+                    _schema_ignore_existing(e, 'terms table may not exist yet')
                     terms = []
 
         except Exception as e:
@@ -48297,7 +48580,7 @@ def subject_class_allocation():
                             'status': row.get('status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
                         })
                 except Exception as e:
-                    print(f"Note: subjects table may not exist yet: {e}")
+                    _schema_ignore_existing(e, 'subjects table may not exist yet')
                     subjects = []
 
                 # Map registered subjects per academic level (source of truth for class registration)
@@ -48321,7 +48604,7 @@ def subject_class_allocation():
                             'status': row.get('status', 'active') if isinstance(row, dict) else (row[5] if len(row) > 5 else 'active')
                         })
                 except Exception as e:
-                    print(f"Note: subject_academic_levels map unavailable: {e}")
+                    _schema_ignore_existing(e, 'subject_academic_levels map unavailable')
                     subjects_by_level = {}
                 
                 # Get teachers
@@ -48371,7 +48654,7 @@ def subject_class_allocation():
                             'employee_id': row.get('employee_id', '') if isinstance(row, dict) else row[9]
                         })
                 except Exception as e:
-                    print(f"Note: teacher_subject_assignments table may not exist yet: {e}")
+                    _schema_ignore_existing(e, 'teacher_subject_assignments table may not exist yet')
                     assignments = []
         except Exception as e:
             print(f"Error fetching data: {e}")
@@ -49446,7 +49729,7 @@ def exam_evaluation():
                             'subject_code': row.get('subject_code', '') if isinstance(row, dict) else row[2]
                         })
                 except Exception as e:
-                    print(f"Note: subjects table may not exist: {e}")
+                    _schema_ignore_existing(e, 'subjects table may not exist')
                 
                 # Get teachers
                 cursor.execute(f"""
@@ -49617,7 +49900,7 @@ def exam_evaluation():
                             'supervisor_employee_id': row.get('supervisor_employee_id', '') if isinstance(row, dict) else ''
                         })
                 except Exception as e:
-                    print(f"Note: exams table may not exist yet: {e}")
+                    _schema_ignore_existing(e, 'exams table may not exist yet')
                     exams = []
                 registered_current_exam = load_registered_current_exam_dict(cursor)
                 exam_apply_rules_map = fetch_all_exam_apply_rules_map(cursor)
@@ -50374,6 +50657,17 @@ def exam_subject_settings():
         for section in (exam_column_order_by_category or [])
         for slot in (section.get('slots') or [])
     ]
+    combined_member_ids = []
+    seen_mid = set()
+    for c in combinations_display or []:
+        for mid in c.get('member_ids') or []:
+            try:
+                mid_i = int(mid)
+            except (TypeError, ValueError):
+                continue
+            if mid_i not in seen_mid:
+                seen_mid.add(mid_i)
+                combined_member_ids.append(mid_i)
 
     return render_template(
         'dashboards/exam_subject_settings.html',
@@ -50381,6 +50675,7 @@ def exam_subject_settings():
         subjects_rows=subjects_rows,
         subjects_by_category=subjects_by_category,
         combinations_display=combinations_display,
+        combined_member_ids=combined_member_ids,
         exam_column_order_by_category=exam_column_order_by_category,
         exam_column_order_slots=exam_column_order_slots,
     )
@@ -54502,7 +54797,7 @@ def _fetch_academic_levels_with_subject_allocations(cursor):
                     'subject_code': (arow.get('subject_code', '') if isinstance(arow, dict) else (arow[3] if len(arow) > 3 else '')) or '',
                 }
     except Exception as e:
-        print(f"Note: subject_academic_levels for level subjects: {e}")
+        _schema_ignore_existing(e, 'subject_academic_levels for level subjects')
 
     try:
         cursor.execute("""
@@ -54532,7 +54827,7 @@ def _fetch_academic_levels_with_subject_allocations(cursor):
                     'subject_code': (trow.get('subject_code', '') if isinstance(trow, dict) else (trow[3] if len(trow) > 3 else '')) or '',
                 }
     except Exception as e:
-        print(f"Note: teacher_subject_assignments fallback for level subjects: {e}")
+        _schema_ignore_existing(e, 'teacher_subject_assignments fallback for level subjects')
 
     ensure_subject_exam_display_order_columns(cursor)
     all_level_sids = set()
@@ -79633,6 +79928,14 @@ def exam_timetable():
         restrict_to_supervisor=restrict_sup,
     )
     ctx['role'] = user_role
+    # Defer the heavy wall grid to exam-timetable/api?live=1 (was ~3MB HTML).
+    ctx['timetable_by_date'] = []
+    ctx['total_slots'] = 0
+    ctx['supervision_duty_summary_rows'] = []
+    ctx['teacher_assignment_exam_rows'] = []
+    ctx['supervision_duty_matrix'] = {'cols': [], 'days': []}
+    ctx['teacher_assignment_matrix'] = {'cols': [], 'days': []}
+    ctx['defer_timetable_grid'] = True
     return render_template('dashboards/exams_timetable_all.html', **ctx)
 
 
@@ -79746,6 +80049,10 @@ def exam_timetable_management():
 
     ctx['subjects_for_edit'] = subjects_for_edit
     ctx['teachers_for_edit'] = teachers_for_edit
+    # Defer wall HTML; client loads via exam-timetable/api?live=1
+    ctx['timetable_by_date'] = []
+    ctx['total_slots'] = 0
+    ctx['defer_timetable_grid'] = True
 
     return render_template('dashboards/exams_timetable_all.html', **ctx)
 
@@ -80045,7 +80352,7 @@ def exam_analytics_detail(exam_id):
                 # Top ranking teachers (by subject mean grade)
                 top_teachers = [{'position': s['position'], 'subject_name': s['subject_name'], 'supervisor_name': s['supervisor_name'] or '—', 'mean_grade': s['mean_grade']} for s in slots_sorted]
         except Exception as e:
-            print(f"Note: student_marks or mean computation: {e}")
+            _schema_ignore_existing(e, 'student_marks or mean computation')
             for slot in slots:
                 slot['mean_grade'] = 0.0
                 slot['count_marks'] = 0
@@ -80460,7 +80767,7 @@ def exam_analytics_detail(exam_id):
                     'grade': t.get('grade', '')
                 } for i, t in enumerate(teacher_analytics_list, 1)]
         except Exception as e:
-            print(f"Note: students_marks/subject_analytics: {e}")
+            _schema_ignore_existing(e, 'students_marks/subject_analytics')
             students_marks = []
             subject_analytics = []
             class_mean = 0.0
@@ -80950,12 +81257,16 @@ def students_by_academic_level(level_id):
                     registered_current=registered_current_exam_pick,
                     exam_type=sheet_exam_type,
                 )
+                level_cat = (academic_level.get('level_category') or '').strip() or 'Uncategorized'
                 id_to_gc, section_order = sort_subjects_list_for_exam_columns_for_context(
                     cursor, subjects_flat,
                     sheet_exam_name, sheet_year_id, sheet_term_id, level_id,
                     registered_current=registered_current_exam_pick,
                     exam_type=sheet_exam_type,
+                    force_group_category=level_cat,
                 )
+                # Keep the subject picker / edit list in the same set column order.
+                subjects_for_edit = [{**s} for s in subjects_flat]
                 subject_exam_max_map_base = {
                     int(s['id']): subject_exam_max_raw_marks(s.get('exam_total_marks'))
                     for s in subjects_flat
@@ -81001,7 +81312,7 @@ def students_by_academic_level(level_id):
                             exam_name=sheet_exam_name,
                         )
                 except Exception as e:
-                    print(f"Note: initial grade remarks skipped: {e}")
+                    _schema_ignore_existing(e, 'initial grade remarks skipped')
                     initial_grade_code_remarks = {}
 
         except Exception as e:
@@ -81461,7 +81772,7 @@ def students_by_level_subject_edit(level_id, subject_id):
                 finally:
                     connection2.close()
     except Exception as e:
-        print(f"Note: initial grade remarks skipped: {e}")
+        _schema_ignore_existing(e, 'initial grade remarks skipped')
 
     return render_template(
         'dashboards/students_by_level.html',
@@ -84091,7 +84402,10 @@ def _reports_select_fee_structure_for_student(cursor, academic_level_id, student
     )
 
 
-def _reports_compute_student_fee_balance(cursor, student_id, student_category, academic_level_id, fee_structure):
+def _reports_compute_student_fee_balance(
+    cursor, student_id, student_category, academic_level_id, fee_structure,
+    paid_amount_override=None,
+):
     """Amounts for current structure + carry/previous terms — mirrors student_fees.
 
     Returns dict: total_amount (due), paid_amount (payments on current structure + carry-forward credits), balance.
@@ -84103,17 +84417,20 @@ def _reports_compute_student_fee_balance(cursor, student_id, student_category, a
     previous_term_balance = 0.0
     student_category = (student_category or '').lower().strip() if student_category else ''
     try:
-        cursor.execute(
-            """
-            SELECT COALESCE(SUM(amount_paid), 0) as total_paid
-            FROM student_payments
-            WHERE student_id = %s AND fee_structure_id = %s
-            """,
-            (student_id, fee_structure.get('id')),
-        )
-        payment_result = cursor.fetchone()
-        if payment_result:
-            total_paid = float(payment_result.get('total_paid', 0) if isinstance(payment_result, dict) else payment_result[0] or 0)
+        if paid_amount_override is not None:
+            total_paid = float(paid_amount_override or 0)
+        else:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount_paid), 0) as total_paid
+                FROM student_payments
+                WHERE student_id = %s AND fee_structure_id = %s
+                """,
+                (student_id, fee_structure.get('id')),
+            )
+            payment_result = cursor.fetchone()
+            if payment_result:
+                total_paid = float(payment_result.get('total_paid', 0) if isinstance(payment_result, dict) else payment_result[0] or 0)
 
         if academic_level_id:
             current_start_date = fee_structure.get('start_date')
@@ -88912,7 +89229,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                     f"{k[0]}::{k[1]}": v for k, v in (_rmap or {}).items()
                 }
         except Exception as e:
-            print(f"Note: grade_code_remarks for all-students report: {e}")
+            _schema_ignore_existing(e, 'grade_code_remarks for all-students report')
         if all_exams_mode:
             ew = _exam_window_from_report_columns(meta.get('exam_columns'))
             if ew:
@@ -89402,7 +89719,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'student_photo': photo_url,
                 'subject_id': subject_id_val,
                 'grade_code': grade_code,
-                'exam_display_order': int(exam_ord_val) if exam_ord_val is not None and str(exam_ord_val).strip().isdigit() else (int(exam_ord_val) if isinstance(exam_ord_val, int) else 1000000000),
+                'exam_display_order': _coerce_exam_display_order(exam_ord_val),
             }
             rows.append(row_out)
         # Fill grade remarks (saved per grade code), else use the default grade meaning from Grades Registration.
@@ -89422,7 +89739,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                     exam_name=exam_name,
                 )
         except Exception as e:
-            print(f"Note: grade remark lookup skipped: {e}")
+            _schema_ignore_existing(e, 'grade remark lookup skipped')
             remarks_map = {}
         for rw in rows:
             try:
@@ -89509,7 +89826,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             meta['subject_columns_by_class'] = subject_columns_by_class_ind
             meta['subject_columns_by_level_id'] = subject_columns_by_level_id_ind
         except Exception as e:
-            print(f"Note: subject column order meta for individual report: {e}")
+            _schema_ignore_existing(e, 'subject column order meta for individual report')
         title = 'Individual student — exam performance' if report_type == 'exam_individual_performance' else 'Individual exam performance'
         return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -97561,12 +97878,20 @@ def _ensure_db_schema_once():
 app.wsgi_app = RootRolePathRewriteMiddleware(DashboardRolePathRewriteMiddleware(app.wsgi_app))
 
 # Hosted: defer heavy DB init to first request (avoids Passenger broken-pipe/timeouts on import).
+# Local with debug reloader: only init in the child process (WERKZEUG_RUN_MAIN=true) so logs
+# and schema work are not duplicated by the reloader parent.
 if is_hosted():
     @app.before_request
     def _hosted_deferred_db_schema():
         _ensure_db_schema_once()
-else:
+elif os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     _ensure_db_schema_once()
+else:
+    # No reloader child yet (or reloader parent): init on first request.
+    # The reloader parent does not serve requests, so it will not run this.
+    @app.before_request
+    def _local_deferred_db_schema():
+        _ensure_db_schema_once()
 
 
 @app.cli.command('update-db')

@@ -5167,7 +5167,7 @@
     const examSeen = {};
     const examCols = [];
     (rows || []).forEach(function(r) {
-      const subject = String(r.subject_code || r.subject_name || '').trim() || 'Subject';
+      const subject = reportCardSubjectLabel(r);
       const mark = r.marks;
       if (mark === '' || mark == null) return;
       const eid = r.exam_id != null && r.exam_id !== '' ? String(r.exam_id) : '';
@@ -5841,8 +5841,21 @@
     var list = (names || []).map(function(n) { return String(n || '').trim(); }).filter(Boolean);
     if (!list.length) return [];
     var base = reportSettingsSubjectOrder(meta, levelId, classKeys);
+    // Use settings column order only when every subject label matches (same as marks sheet).
+    // Individual report cards list member subjects while settings may use combined labels
+    // (e.g. MATH/SCI) — partial matches would shove unmatched subjects to the end and
+    // break the saved exam_display_order. In that case prefer the fallback sorter.
+    var allInBase = base.length > 0 && list.every(function(n) { return base.indexOf(n) >= 0; });
+    if (allInBase) {
+      return base.filter(function(n) { return list.indexOf(n) >= 0; });
+    }
+    if (typeof fallbackSorter === 'function') {
+      return fallbackSorter(list.slice());
+    }
     if (!base.length) {
-      return typeof fallbackSorter === 'function' ? fallbackSorter(list.slice()) : list.slice();
+      return list.slice().sort(function(a, b) {
+        return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+      });
     }
     var seen = {};
     var out = [];
@@ -5854,14 +5867,31 @@
     });
     var extras = list.filter(function(n) { return !seen[n]; });
     if (extras.length) {
-      extras = typeof fallbackSorter === 'function'
-        ? fallbackSorter(extras)
-        : extras.sort(function(a, b) {
-            return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
-          });
+      extras.sort(function(a, b) {
+        return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+      });
       out = out.concat(extras);
     }
     return out;
+  }
+
+  /** Sort subject labels by exam_display_order (set column order), then name. */
+  function sortSubjectLabelsByExamDisplayOrder(names, orderByLabel) {
+    var map = orderByLabel || {};
+    return (names || []).slice().sort(function(a, b) {
+      var ea = map[a] != null && !isNaN(map[a]) ? map[a] : 1000000000;
+      var eb = map[b] != null && !isNaN(map[b]) ? map[b] : 1000000000;
+      if (ea !== eb) return ea - eb;
+      return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+    });
+  }
+
+  /** Prefer display label (matches subject_columns / set order), then code. */
+  function reportCardSubjectLabel(row) {
+    if (!row) return 'Subject';
+    var name = String(row.subject_name || '').trim();
+    var code = String(row.subject_code || '').trim();
+    return name || code || 'Subject';
   }
 
   function renderAllStudentsPerformance(bundle) {
@@ -5953,6 +5983,19 @@
       if (baseOrder.length) {
         var ordered = baseOrder.filter(function(col) { return withMarks[col]; });
         var extra = Object.keys(withMarks).filter(function(c) { return ordered.indexOf(c) === -1; });
+        // Partial label mismatch (e.g. combined vs member subjects): keep set order via base
+        // only when every marked subject appears in settings order; otherwise sort extras
+        // after matched columns without scrambling matched positions.
+        if (extra.length && ordered.length && extra.length >= ordered.length) {
+          return Object.keys(withMarks).sort(function(a, b) {
+            var ia = baseOrder.indexOf(a);
+            var ib = baseOrder.indexOf(b);
+            if (ia === -1) ia = 1e9;
+            if (ib === -1) ib = 1e9;
+            if (ia !== ib) return ia - ib;
+            return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+          });
+        }
         if (extra.length) {
           extra.sort(function(a, b) {
             var ia = baseOrder.indexOf(a);
@@ -7551,11 +7594,14 @@
       const orderedExamCols = prepareIndividualReportExamCols(multiExamCols, subjectMarksByExam);
       const subjectOrderMap = {};
       rows.forEach(function(r) {
-        const s = String(r.subject_code || r.subject_name || '').trim() || 'Subject';
+        const s = reportCardSubjectLabel(r);
         const eo = parseInt(String(r.exam_display_order || ''), 10);
         if (!subjectOrderMap[s] || (!isNaN(eo) && eo < subjectOrderMap[s])) {
           subjectOrderMap[s] = isNaN(eo) ? 1000000000 : eo;
         }
+      });
+      Object.keys(subjectMarksByExam).forEach(function(s) {
+        if (subjectOrderMap[s] == null) subjectOrderMap[s] = 1000000000;
       });
       const subjectOrder = orderSubjectLabelsByReportSettings(
         Object.keys(subjectMarksByExam),
@@ -7563,12 +7609,7 @@
         studentLevelId,
         classKeysForSubjectOrder(first, first.level_name, af),
         function(names) {
-          return names.sort(function(a, b) {
-            const ea = subjectOrderMap[a] != null ? subjectOrderMap[a] : 1000000000;
-            const eb = subjectOrderMap[b] != null ? subjectOrderMap[b] : 1000000000;
-            if (ea !== eb) return ea - eb;
-            return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
-          });
+          return sortSubjectLabelsByExamDisplayOrder(names, subjectOrderMap);
         }
       );
       const syntheticRow = { subject_marks_by_exam: subjectMarksByExam };
@@ -7636,7 +7677,7 @@
     }
 
     rows.forEach(function(r) {
-      const subject = String(r.subject_code || r.subject_name || '').trim() || 'Subject';
+      const subject = reportCardSubjectLabel(r);
       const mark = Number(r.marks);
       if (!bySubject[subject]) {
         bySubject[subject] = {
@@ -7647,7 +7688,7 @@
           minExamOrder: null
         };
       }
-      // Preserve the exam subject order (same as exam subject report / marks sheet ordering).
+      // Preserve the exam subject order (same as exam subject settings / marks sheet).
       if (r.exam_display_order !== undefined && r.exam_display_order !== null && r.exam_display_order !== '') {
         const eo = parseInt(String(r.exam_display_order), 10);
         if (!isNaN(eo)) {
@@ -7669,18 +7710,19 @@
       }
     });
 
+    const subjectOrderMap = {};
+    Object.keys(bySubject).forEach(function(s) {
+      subjectOrderMap[s] = (bySubject[s] && bySubject[s].minExamOrder != null)
+        ? bySubject[s].minExamOrder
+        : 1000000000;
+    });
     const subjectNames = orderSubjectLabelsByReportSettings(
       Object.keys(bySubject),
       meta,
       studentLevelId,
       classKeysForSubjectOrder(first, first.level_name, af),
       function(names) {
-        return names.sort(function(a, b) {
-          const ea = (bySubject[a] && bySubject[a].minExamOrder != null) ? bySubject[a].minExamOrder : 1000000000;
-          const eb = (bySubject[b] && bySubject[b].minExamOrder != null) ? bySubject[b].minExamOrder : 1000000000;
-          if (ea !== eb) return ea - eb;
-          return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
-        });
+        return sortSubjectLabelsByExamDisplayOrder(names, subjectOrderMap);
       }
     );
     const subjects = subjectNames.map(function(subject) {

@@ -62,7 +62,7 @@
                                     <span class="font-bold text-teal-700 dark:text-teal-400" data-home-kpi="fees.collection_pct_label">{{ fees.collection_pct|default(0) }}%</span>
                                 </div>
                                 <div class="mt-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                                    <div class="h-full rounded-full bg-teal-500 transition-all" style="width: {{ [fees.collection_pct|default(0), 100]|min }}%;"></div>
+                                    <div class="h-full rounded-full bg-teal-500 transition-all" data-home-kpi-bar="fees.collection_pct" style="width: {{ [fees.collection_pct|default(0), 100]|min }}%;"></div>
                                 </div>
                             </div>
                         </div>
@@ -76,25 +76,25 @@
                         <div class="accounts-metrics-band px-4 py-3 space-y-2">
                             <div class="flex justify-between text-sm">
                                 <span class="text-slate-500 dark:text-slate-400">Total revenue</span>
-                                <span class="font-semibold tabular-nums">KES {{ rpos.total_revenue_display|default('0.00') }}</span>
+                                <span class="font-semibold tabular-nums" data-home-kpi="rpos.total_revenue_display">KES {{ rpos.total_revenue_display|default('0.00') }}</span>
                             </div>
                             <div class="flex justify-between text-sm">
                                 <span class="text-slate-500 dark:text-slate-400">Outflows</span>
-                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-400">KES {{ rpos.total_outflows_display|default('0.00') }}</span>
+                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-400" data-home-kpi="rpos.total_outflows_display">KES {{ rpos.total_outflows_display|default('0.00') }}</span>
                             </div>
                             <div class="flex justify-between text-sm">
                                 <span class="text-slate-500 dark:text-slate-400">Remaining</span>
-                                <span class="font-semibold tabular-nums {% if (rpos.remaining|default(0)) >= 0 %}text-emerald-700 dark:text-emerald-400{% else %}text-red-600 dark:text-red-400{% endif %}">
+                                <span class="font-semibold tabular-nums {% if (rpos.remaining|default(0)) >= 0 %}text-emerald-700 dark:text-emerald-400{% else %}text-red-600 dark:text-red-400{% endif %}" data-home-kpi="rpos.remaining_display">
                                     KES {{ rpos.remaining_display|default('0.00') }}
                                 </span>
                             </div>
                             <div class="pt-2 border-t border-[var(--acc-line)]">
                                 <div class="flex justify-between items-center text-xs">
                                     <span class="text-slate-500">Outflow share of revenue</span>
-                                    <span class="font-bold text-teal-700 dark:text-teal-400">{{ rpos.outflow_pct|default(0) }}%</span>
+                                    <span class="font-bold text-teal-700 dark:text-teal-400" data-home-kpi="rpos.outflow_pct_label">{{ rpos.outflow_pct|default(0) }}%</span>
                                 </div>
                                 <div class="mt-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                                    <div class="h-full rounded-full bg-amber-500 transition-all" style="width: {{ [rpos.outflow_pct|default(0), 100]|min }}%;"></div>
+                                    <div class="h-full rounded-full bg-amber-500 transition-all" data-home-kpi-bar="rpos.outflow_pct" style="width: {{ [rpos.outflow_pct|default(0), 100]|min }}%;"></div>
                                 </div>
                             </div>
                         </div>
@@ -108,23 +108,23 @@
                         <div class="accounts-metrics-band px-4 py-3 space-y-2">
                             <div class="flex justify-between text-sm">
                                 <span class="text-slate-500 dark:text-slate-400">Total to disburse</span>
-                                <span class="font-semibold tabular-nums">KES {{ out.total_due_display|default('0.00') }}</span>
+                                <span class="font-semibold tabular-nums" data-home-kpi="out.total_due_display">KES {{ out.total_due_display|default('0.00') }}</span>
                             </div>
                             <div class="flex justify-between text-sm">
                                 <span class="text-slate-500 dark:text-slate-400">Disbursed</span>
-                                <span class="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">KES {{ out.total_disbursed_display|default('0.00') }}</span>
+                                <span class="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400" data-home-kpi="out.total_disbursed_display">KES {{ out.total_disbursed_display|default('0.00') }}</span>
                             </div>
                             <div class="flex justify-between text-sm">
                                 <span class="text-slate-500 dark:text-slate-400">Outstanding</span>
-                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-400">KES {{ out.outstanding_display|default('0.00') }}</span>
+                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-400" data-home-kpi="out.outstanding_display">KES {{ out.outstanding_display|default('0.00') }}</span>
                             </div>
                             <div class="pt-2 border-t border-[var(--acc-line)]">
                                 <div class="flex justify-between items-center text-xs">
                                     <span class="text-slate-500">Disbursement rate</span>
-                                    <span class="font-bold text-teal-700 dark:text-teal-400">{{ out.disbursement_pct|default(0) }}%</span>
+                                    <span class="font-bold text-teal-700 dark:text-teal-400" data-home-kpi="out.disbursement_pct_label">{{ out.disbursement_pct|default(0) }}%</span>
                                 </div>
                                 <div class="mt-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                                    <div class="h-full rounded-full bg-teal-500 transition-all" style="width: {{ [out.disbursement_pct|default(0), 100]|min }}%;"></div>
+                                    <div class="h-full rounded-full bg-teal-500 transition-all" data-home-kpi-bar="out.disbursement_pct" style="width: {{ [out.disbursement_pct|default(0), 100]|min }}%;"></div>
                                 </div>
                             </div>
                         </div>
@@ -141,7 +141,7 @@
                         <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100 group-hover:text-teal-800 dark:group-hover:text-teal-300 transition">
                             Accounts breakdown
                         </h2>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400 group-hover:text-teal-700/80 dark:group-hover:text-teal-400/90 transition">
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 group-hover:text-teal-700/80 dark:group-hover:text-teal-400/90 transition" data-home-kpi="acct.accounts_subtitle">
                             Ledger balances by category · {{ acct.active_accounts|default(0) }} active of {{ acct.total_accounts|default(0) }} accounts
                         </p>
                     </a>
@@ -157,21 +157,24 @@
                     <div class="flex flex-wrap gap-6">
                         <div>
                             <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total revenue</p>
-                            <p class="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-400">KES {{ acct.total_revenue_display|default('0.00') }}</p>
+                            <p class="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-400" data-home-kpi="acct.total_revenue_display">KES {{ acct.total_revenue_display|default('0.00') }}</p>
                         </div>
                         <div>
                             <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Amount used</p>
-                            <p class="text-lg font-bold tabular-nums text-amber-700 dark:text-amber-400">KES {{ acct.total_amount_used_display|default('0.00') }}</p>
+                            <p class="text-lg font-bold tabular-nums text-amber-700 dark:text-amber-400" data-home-kpi="acct.total_amount_used_display">KES {{ acct.total_amount_used_display|default('0.00') }}</p>
                         </div>
                         <div>
                             <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total balance</p>
-                            <p class="text-lg font-bold tabular-nums text-teal-800 dark:text-teal-300">KES {{ acct.total_balance_display|default('0.00') }}</p>
+                            <p class="text-lg font-bold tabular-nums text-teal-800 dark:text-teal-300" data-home-kpi="acct.total_balance_display">KES {{ acct.total_balance_display|default('0.00') }}</p>
                         </div>
                     </div>
                 </div>
 
-                {% if acct.total_accounts|default(0) == 0 %}
-                <div class="text-center py-8 text-sm text-slate-500 dark:text-slate-400">
+                <div id="fo-acct-empty" class="text-center py-8 text-sm text-slate-500 dark:text-slate-400{% if not (defer_finance_overview_analytics|default(false)) and (acct.total_accounts|default(0) > 0) %} hidden{% endif %}">
+                    {% if defer_finance_overview_analytics|default(false) %}
+                    <i class="fas fa-spinner fa-spin text-2xl mb-2 opacity-40 block"></i>
+                    Loading accounts…
+                    {% else %}
                     <i class="fas fa-book text-2xl mb-2 opacity-40 block"></i>
                     No finance accounts registered yet.
                     <a href="{{ _accounts_home_href }}"
@@ -179,10 +182,11 @@
                         {% if _can_open_accounts %}Open accounts{% else %}View reports{% endif %}
                         <i class="fas fa-arrow-right text-[10px] opacity-80"></i>
                     </a>
+                    {% endif %}
                 </div>
-                {% else %}
-                {% if acct.by_category %}
-                <div class="flex flex-wrap gap-2 mb-4">
+                <div id="fo-acct-filled"{% if defer_finance_overview_analytics|default(false) or (acct.total_accounts|default(0) == 0) %} class="hidden"{% endif %}>
+                <div id="fo-acct-categories" class="flex flex-wrap gap-2 mb-4">
+                    {% if acct.by_category %}
                     {% for row in acct.by_category %}
                     <span class="inline-flex items-center gap-1.5 rounded-full border border-[var(--acc-line)] bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-200">
                         {{ row.category }}
@@ -192,8 +196,8 @@
                         <span class="tabular-nums font-semibold text-teal-700 dark:text-teal-400">KES {{ row.balance_display }}</span>
                     </span>
                     {% endfor %}
+                    {% endif %}
                 </div>
-                {% endif %}
 
                 <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">All accounts</p>
                 <div class="acct-breakdown-table-wrap rounded-lg border border-[var(--acc-line)] overflow-x-auto">
@@ -208,7 +212,7 @@
                                 <th class="text-right">Total balance (KES)</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="fo-acct-tbody">
                             {% for a in acct.all_accounts|default(acct.top_accounts|default([])) %}
                             {% set _acct_href = fo_account_href(a.id) %}
                             <tr class="acct-breakdown-row"
@@ -244,22 +248,22 @@
                         <tfoot>
                             <tr class="acct-breakdown-row" onclick="window.location.href='{{ _accounts_home_href }}'" role="link" tabindex="0">
                                 <td colspan="3" class="font-bold">
-                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link">Total ({{ acct.total_accounts|default(0) }} accounts)</a>
+                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link" data-home-kpi="acct.total_accounts_label">Total ({{ acct.total_accounts|default(0) }} accounts)</a>
                                 </td>
                                 <td class="text-right font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
-                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link">{{ acct.total_revenue_display|default('0.00') }}</a>
+                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link" data-home-kpi="acct.total_revenue_display_plain">{{ acct.total_revenue_display|default('0.00') }}</a>
                                 </td>
                                 <td class="text-right font-bold tabular-nums text-amber-700 dark:text-amber-400">
-                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link">{{ acct.total_amount_used_display|default('0.00') }}</a>
+                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link" data-home-kpi="acct.total_amount_used_display_plain">{{ acct.total_amount_used_display|default('0.00') }}</a>
                                 </td>
                                 <td class="text-right font-bold tabular-nums">
-                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link">{{ acct.total_balance_display|default('0.00') }}</a>
+                                    <a href="{{ _accounts_home_href }}" class="acct-breakdown-link" data-home-kpi="acct.total_balance_display_plain">{{ acct.total_balance_display|default('0.00') }}</a>
                                 </td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
-                {% endif %}
+                </div>
             </div>
         </section>
 
