@@ -7278,10 +7278,10 @@ def fetch_grade_code_remarks_map(cursor, academic_year_id, term_id, academic_lev
 
 
 def sql_scaled_exam_mark_pct(sm_alias='sm', sub_alias='sub'):
-    """SQL expression: student_marks.marks as 0–100 % using subjects.exam_total_marks."""
+    """SQL expression: student_marks.marks as 0–100 % (nearest whole number)."""
     return (
-        f"(100 * CAST({sm_alias}.marks AS DECIMAL(16,8))) "
-        f"/ COALESCE(NULLIF({sub_alias}.exam_total_marks, 0), 100)"
+        f"ROUND((100 * CAST({sm_alias}.marks AS DECIMAL(16,8))) "
+        f"/ COALESCE(NULLIF({sub_alias}.exam_total_marks, 0), 100))"
     )
 
 
@@ -50139,8 +50139,15 @@ def exam_subject_settings():
                             "UPDATE subjects SET exam_total_marks = %s WHERE id = %s",
                             (val, sid),
                         )
+                # Intentionally do not UPDATE student_marks — actual scores stay as entered;
+                # only conversion to /100 uses the new out-of totals.
                 connection.commit()
-            flash('Exam total marks per subject were saved.' + post_freeze_suffix, 'success')
+            flash(
+                'Out of totals saved. Existing actual marks were not changed — '
+                'only converted percentages use the new totals.'
+                + post_freeze_suffix,
+                'success',
+            )
         except Exception as e:
             print(f"exam_subject_settings save: {e}")
             try:
@@ -80222,12 +80229,12 @@ def exam_analytics_detail(exam_id):
                                             p = None
                                         if p is not None:
                                             pcts_m.append(p)
-                                p_avg = round(sum(pcts_m) / len(pcts_m), 2) if pcts_m else None
+                                p_avg = round_mark_display(sum(pcts_m) / len(pcts_m)) if pcts_m else None
                                 if p_avg is not None:
                                     pairs.append((p_avg, float(w)))
                             # Σ(raw)/Σ(max)×100 via max-weighted mean of per-paper %
                             combo_pct = combined_papers_percentage_from_scaled(pairs)
-                            total_for_subject = round(combo_pct, 2) if combo_pct is not None else None
+                            total_for_subject = round_mark_display(combo_pct) if combo_pct is not None else None
                         # Look up by (student_id, subject_id) and exam_id IN all slots – so marks saved under any slot (e.g. same exam_id for all subjects on exams-assessments) are found
                         elif all_slot_ids and subj.get('subject_id') is not None:
                             placeholders = ','.join(['%s'] * len(all_slot_ids))
@@ -80248,7 +80255,7 @@ def exam_analytics_detail(exam_id):
                                         p = None
                                     if p is not None:
                                         pcts.append(p)
-                            total_for_subject = round(sum(pcts) / len(pcts), 2) if pcts else None
+                            total_for_subject = round_mark_display(sum(pcts) / len(pcts)) if pcts else None
                         else:
                             # Fallback: match by exam_id only (one slot per subject)
                             pcts_fb = []
@@ -80270,7 +80277,7 @@ def exam_analytics_detail(exam_id):
                                             p = None
                                         if p is not None:
                                             pcts_fb.append(p)
-                            total_for_subject = round(sum(pcts_fb) / len(pcts_fb), 2) if pcts_fb else None
+                            total_for_subject = round_mark_display(sum(pcts_fb) / len(pcts_fb)) if pcts_fb else None
                         grade_value = _grade_for_mark(
                             subj.get('subject_id'), total_for_subject, level_id=student_level_by_id.get(sid)
                         )
@@ -80289,7 +80296,7 @@ def exam_analytics_detail(exam_id):
                     ]
                     scored_subjects = len(pct_vals)
                     if scored_subjects > 0:
-                        sm['total_marks'] = round(sum(pct_vals) / float(scored_subjects), 2)
+                        sm['total_marks'] = round_mark_display(sum(pct_vals) / float(scored_subjects))
                         sm['total_percent'] = sm['total_marks']
                         sm['total_grade'] = _grade_for_mark(
                             None, sm['total_percent'], level_id=student_level_by_id.get(sm.get('student_id'))

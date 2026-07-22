@@ -27,11 +27,34 @@
 <style>
 /* Responsive sizing variables (keeps sticky offsets consistent) */
 .marks-sheet-page {
-    --ms-idx-w: 2.5rem;
-    --ms-student-w: clamp(10.5rem, 22vw, 16rem);
-    --ms-total-w: 3.25rem;
-    --ms-code-w: 2.75rem;
-    --ms-pts-w: 3rem;
+    --ms-idx-w: 2.25rem;
+    --ms-student-w: clamp(7.5rem, 28vw, 11rem);
+    --ms-total-w: 3rem;
+    --ms-code-w: 2.5rem;
+    --ms-pts-w: 2.75rem;
+    --ms-actual-w: 3.4rem;
+    --ms-conv-w: 3rem;
+    --ms-sheet-max-h: min(68dvh, calc(100dvh - 13rem));
+}
+@media (min-width: 640px) {
+    .marks-sheet-page {
+        --ms-idx-w: 2.5rem;
+        --ms-student-w: clamp(10rem, 18vw, 14rem);
+        --ms-total-w: 3.25rem;
+        --ms-code-w: 2.75rem;
+        --ms-pts-w: 3rem;
+        --ms-actual-w: 3.75rem;
+        --ms-conv-w: 3.25rem;
+        --ms-sheet-max-h: min(72dvh, calc(100dvh - 12rem));
+    }
+}
+@media (min-width: 1024px) {
+    .marks-sheet-page {
+        --ms-student-w: clamp(12rem, 16vw, 18rem);
+        --ms-actual-w: 4.25rem;
+        --ms-conv-w: 3.5rem;
+        --ms-sheet-max-h: min(75dvh, calc(100dvh - 11rem));
+    }
 }
 
 /* Marks lock countdown — teleported to body so it sits above app chrome (main is z-10, header z-50) */
@@ -132,21 +155,26 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 .marks-sheet-table col.marks-col-code { width: var(--ms-code-w); }
 .marks-sheet-table col.marks-col-pts { width: var(--ms-pts-w); }
 
-/* Small screens: stop over-squeezing columns; allow gentle horizontal scroll */
+/* Wide enough for Actual+Converted pairs; scroll sideways on small screens */
+.marks-sheet-table { min-width: max(100%, 42rem); }
 @media (max-width: 767px) {
-    .marks-sheet-table { min-width: 980px; }
+    .marks-sheet-table { min-width: 52rem; }
 }
-@media (max-width: 420px) {
-    .marks-sheet-table { min-width: 860px; }
-}
-.marks-sheet-table col.marks-col-actual { width: 3.25rem; }
-.marks-sheet-table col.marks-col-conv { width: 3rem; }
+.marks-sheet-table col.marks-col-actual { width: var(--ms-actual-w); }
+.marks-sheet-table col.marks-col-conv { width: var(--ms-conv-w); }
 .marks-th-pair-label {
     font-size: 0.55rem;
     font-weight: 800;
     letter-spacing: 0.02em;
     line-height: 1.1;
     text-transform: uppercase;
+}
+.marks-th-pair-label .ms-label-full { display: none; }
+.marks-th-pair-label .ms-label-short { display: inline; }
+@media (min-width: 768px) {
+    .marks-th-pair-label { font-size: 0.625rem; }
+    .marks-th-pair-label .ms-label-full { display: inline; }
+    .marks-th-pair-label .ms-label-short { display: none; }
 }
 .marks-td-converted {
     color: #047857;
@@ -160,6 +188,34 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 .dark .marks-th-subject-pair {
     border-left-color: #374151;
 }
+
+/* Sticky header / footer while scrolling inside the sheet */
+.marks-sheet-table thead th {
+    position: sticky;
+    z-index: 14;
+    box-shadow: 0 1px 0 #e5e7eb;
+}
+.dark .marks-sheet-table thead th {
+    box-shadow: 0 1px 0 #374151;
+}
+.marks-sheet-table thead tr:nth-child(1) th { top: 0; }
+.marks-sheet-table thead tr:nth-child(2) th { top: 2.15rem; }
+@media (min-width: 640px) {
+    .marks-sheet-table thead tr:nth-child(2) th { top: 2.35rem; }
+}
+.marks-sheet-table thead .sticky-col { z-index: 26; }
+.marks-sheet-table tfoot tr:last-child td {
+    position: sticky;
+    bottom: 0;
+    z-index: 12;
+    background: #f8fafc;
+    box-shadow: 0 -1px 0 #d1d5db;
+}
+.dark .marks-sheet-table tfoot tr:last-child td {
+    background: #111827;
+    box-shadow: 0 -1px 0 #4b5563;
+}
+.marks-sheet-table tfoot tr:last-child .sticky-col { z-index: 24; }
 .marks-sheet-table .marks-th-subject,
 .marks-sheet-table .marks-td-subject {
     padding-left: 0.125rem;
@@ -282,11 +338,12 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    overflow-x: auto;
-    overflow-y: visible;
+    max-height: var(--ms-sheet-max-h);
+    overflow: auto;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
+    overscroll-behavior: contain;
     touch-action: pan-x pan-y;
+    border-radius: inherit;
 }
 
 /* Dashboard main column uses overflow-x-hidden; that eats sideways gestures on nested scrollers (esp. iOS). */
@@ -590,8 +647,17 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     gap: 0.5rem;
     align-items: end;
 }
+@media (min-width: 640px) {
+    .ms-filter-grid { gap: 0.625rem; }
+}
 @media (min-width: 768px) {
     .ms-filter-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.ms-filter-grid .ms-filter-exam {
+    grid-column: 1 / -1;
+}
+@media (min-width: 768px) {
+    .ms-filter-grid .ms-filter-exam { grid-column: auto; }
 }
 .ms-filter-grid .ms-filter-reset {
     grid-column: 1 / -1;
@@ -656,19 +722,23 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 }
 .dark .marks-th-outof { color: #7dd3fc; }
 .marks-outof-input {
-    width: 2.75rem;
+    width: 3.25rem;
     max-width: 100%;
-    margin: 0 auto;
-    padding: 0.15rem 0.2rem;
+    margin: 0;
+    padding: 0.35rem 0.35rem;
     text-align: center;
-    font-size: 0.65rem;
+    font-size: 0.8125rem;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
-    border-radius: 0.3rem;
+    border-radius: 0.4rem;
     border: 1px solid #7dd3fc;
     background: #fff;
     color: #0369a1;
     line-height: 1.2;
+    min-height: 2.25rem;
+}
+@media (min-width: 640px) {
+    .marks-outof-input { width: 3.5rem; font-size: 0.75rem; min-height: 2rem; }
 }
 .dark .marks-outof-input {
     background: rgba(15, 23, 42, 0.65);
@@ -684,79 +754,189 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     opacity: 0.55;
     cursor: not-allowed;
 }
-.marks-entry-scale-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem 0.75rem;
+
+/* Out of controls sit above the Student column area (not inside subject cells) */
+.ms-outof-panel {
     margin-bottom: 0.75rem;
-    padding: 0.65rem 0.85rem;
-    border-radius: 0.625rem;
-    border: 1px solid #38bdf8;
-    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 55%, #f8fafc 100%);
+    padding: 0.65rem 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid #bae6fd;
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f8fafc 100%);
+    max-width: min(100%, 22rem);
 }
-.dark .marks-entry-scale-bar {
+.dark .ms-outof-panel {
     border-color: #0369a1;
-    background: linear-gradient(135deg, rgba(12,74,110,0.4) 0%, rgba(15,23,42,0.55) 100%);
+    background: linear-gradient(135deg, rgba(12, 74, 110, 0.35) 0%, rgba(15, 23, 42, 0.55) 100%);
 }
-.marks-entry-scale-bar__label {
+.ms-outof-panel__title {
+    margin: 0 0 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #0369a1;
+}
+.dark .ms-outof-panel__title { color: #7dd3fc; }
+.ms-outof-panel__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.ms-outof-panel__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-width: 0;
+}
+.ms-outof-panel__subj {
+    min-width: 0;
+    flex: 1 1 auto;
     font-size: 0.75rem;
     font-weight: 700;
     color: #0c4a6e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-.dark .marks-entry-scale-bar__label { color: #bae6fd; }
-.marks-entry-scale-bar__input {
-    width: 4.5rem;
-    min-height: 2.25rem;
-    padding: 0.35rem 0.5rem;
-    text-align: center;
-    font-size: 0.875rem;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    border-radius: 0.5rem;
-    border: 1px solid #7dd3fc;
-    background: #fff;
-    color: #0c4a6e;
-}
-.dark .marks-entry-scale-bar__input {
-    background: rgba(15, 23, 42, 0.7);
-    border-color: #0284c7;
-    color: #e0f2fe;
-}
-.marks-entry-scale-bar__presets {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-}
-.marks-entry-scale-bar__preset {
-    min-height: 2rem;
-    padding: 0.25rem 0.55rem;
-    border-radius: 9999px;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    border: 1px solid #7dd3fc;
-    background: #fff;
-    color: #075985;
-    cursor: pointer;
-}
-.dark .marks-entry-scale-bar__preset {
-    background: rgba(15, 23, 42, 0.55);
-    border-color: #0284c7;
-    color: #bae6fd;
-}
-.marks-entry-scale-bar__preset:hover,
-.marks-entry-scale-bar__preset.is-active {
-    background: #0284c7;
-    border-color: #0284c7;
-    color: #fff;
-}
-.marks-entry-scale-bar__hint {
-    font-size: 0.6875rem;
-    color: #0369a1;
+.dark .ms-outof-panel__subj { color: #e0f2fe; }
+.ms-outof-panel__hint {
+    margin: 0.45rem 0 0;
+    font-size: 0.625rem;
     line-height: 1.35;
-    flex: 1 1 12rem;
+    color: #0369a1;
 }
-.dark .marks-entry-scale-bar__hint { color: #7dd3fc; }
+.dark .ms-outof-panel__hint { color: #7dd3fc; }
+
+.ms-help-details {
+    margin-bottom: 0.75rem;
+    border-radius: 0.625rem;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    overflow: hidden;
+}
+.dark .ms-help-details {
+    border-color: #374151;
+    background: #111827;
+}
+.ms-help-details > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    touch-action: manipulation;
+    user-select: none;
+}
+.ms-help-details > summary::-webkit-details-marker { display: none; }
+.dark .ms-help-details > summary { color: #cbd5e1; }
+.ms-help-details > summary .ms-help-chevron {
+    margin-left: auto;
+    transition: transform 0.15s ease;
+    opacity: 0.7;
+}
+.ms-help-details[open] > summary .ms-help-chevron { transform: rotate(180deg); }
+.ms-help-details__body {
+    padding: 0 0.75rem 0.65rem;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: #64748b;
+}
+.dark .ms-help-details__body { color: #94a3b8; }
+@media (min-width: 768px) {
+    .ms-help-details > summary { font-size: 0.8125rem; }
+    .ms-help-details__body { font-size: 0.8125rem; }
+}
+
+.ms-toolbar-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+}
+.dark .ms-toolbar-row {
+    border-color: #374151;
+    background: #1f2937;
+}
+@media (min-width: 640px) {
+    .ms-toolbar-row {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.55rem 0.75rem;
+    }
+}
+
+/* Mobile sticky submit dock */
+.marks-mobile-submit-dock {
+    display: none;
+}
+@media (max-width: 639px) {
+    .marks-sheet-page {
+        padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+    }
+    .marks-mobile-submit-dock {
+        display: flex;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 90;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.65rem 0.85rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
+        background: rgba(255, 255, 255, 0.96);
+        border-top: 1px solid #e2e8f0;
+        box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
+        backdrop-filter: blur(8px);
+    }
+    .dark .marks-mobile-submit-dock {
+        background: rgba(17, 24, 39, 0.96);
+        border-top-color: #374151;
+        box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    }
+    .marks-mobile-submit-dock .marks-toolbar-btn-save {
+        flex: 1 1 auto;
+        min-height: 2.75rem;
+    }
+    .marks-save-bar { display: none; }
+    .ms-toolbar-row .marks-toolbar-btn-save { display: none; }
+}
+
+.ms-remarks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+@media (min-width: 768px) {
+    .ms-remarks-list { display: none; }
+}
+.ms-remarks-item {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 0.65rem 0.75rem;
+    background: #f8fafc;
+}
+.dark .ms-remarks-item {
+    border-color: #374151;
+    background: #0f172a;
+}
+.ms-remarks-table-wrap { display: none; }
+@media (min-width: 768px) {
+    .ms-remarks-table-wrap { display: block; }
+}
 .marks-cell-stack {
     display: flex;
     flex-direction: column;
@@ -821,19 +1001,6 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     .marks-th-outof { font-size: 0.65rem; }
 }
 
-.ms-toolbar-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-}
-@media (min-width: 640px) {
-    .ms-toolbar-row {
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-    }
-}
 .ms-sort-select {
     width: 100%;
     min-height: 2.75rem;
@@ -886,10 +1053,19 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     justify-content: center;
     gap: 0.35rem;
     margin-bottom: 0.5rem;
-    padding: 0.35rem;
+    padding: 0.4rem 0.55rem;
     font-size: 0.6875rem;
-    color: #64748b;
+    font-weight: 600;
+    color: #475569;
     text-align: center;
+    border-radius: 0.5rem;
+    background: #f1f5f9;
+    border: 1px dashed #cbd5e1;
+}
+.dark .marks-sheet-page .marks-scroll-hint {
+    color: #94a3b8;
+    background: #0f172a;
+    border-color: #334155;
 }
 @media (min-width: 768px) {
     .marks-sheet-page .marks-scroll-hint { display: none; }
@@ -908,7 +1084,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 {% endblock %}
 
 {% block content %}
-<div x-data="marksSheet()" x-init="init()" class="marks-sheet-page{% if is_teacher %} marks-sheet-page--teacher{% endif %} role-page role-page--{% if is_teacher %}teacher{% else %}{{ portal_page_variant|default('default') }}{% endif %} min-w-0 max-w-7xl mx-auto">
+<div x-data="marksSheet()" x-init="init()" class="marks-sheet-page{% if is_teacher %} marks-sheet-page--teacher{% endif %} role-page role-page--{% if is_teacher %}teacher{% else %}{{ portal_page_variant|default('default') }}{% endif %} min-w-0 w-full max-w-none mx-auto">
     <template x-teleport="body">
         <div x-show="marksCountdownVisible"
              x-cloak
@@ -1011,7 +1187,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                         </template>
                     </select>
                 </div>
-                <div class="min-w-0">
+                <div class="min-w-0 ms-filter-exam">
                     <label class="filter-label block" for="marks-filter-exam">Exam</label>
                     <select id="marks-filter-exam"
                             :key="examSelectKey"
@@ -1068,72 +1244,44 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <p x-show="selectedExam && examIsLocked" x-cloak class="ms-banner ms-banner--amber">
             <i class="fas fa-lock mr-1.5 opacity-80" aria-hidden="true"></i>Exam allocations are locked — you can view marks here; editing is disabled until an administrator unlocks allocations.
         </p>
-        {% if can_edit %}
-        <div x-show="!examIsLocked" x-cloak class="marks-entry-scale-bar" role="group" aria-label="Mark entry scale">
-            <span class="marks-entry-scale-bar__label">
-                <i class="fas fa-percentage mr-1 opacity-80" aria-hidden="true"></i>
-                I am entering marks out of
-            </span>
-            <input type="number"
-                   min="1"
-                   max="1000"
-                   step="any"
-                   inputmode="decimal"
-                   class="marks-entry-scale-bar__input touch-manipulation"
-                   x-model="bulkEntryOutOf"
-                   @change="applyBulkEntryOutOf()"
-                   @keydown.enter.prevent="applyBulkEntryOutOf()"
-                   :disabled="examIsLocked"
-                   title="Set the paper total for every editable subject column"
-                   aria-label="Marks out of">
-            <div class="marks-entry-scale-bar__presets" role="group" aria-label="Quick out-of presets">
-                <template x-for="preset in entryOutOfPresets" :key="preset">
-                    <button type="button"
-                            class="marks-entry-scale-bar__preset touch-manipulation"
-                            :class="{ 'is-active': String(bulkEntryOutOf) === String(preset) }"
-                            @click="bulkEntryOutOf = String(preset); applyBulkEntryOutOf()"
-                            :disabled="examIsLocked"
-                            x-text="preset"></button>
-                </template>
+        <details x-show="selectedExam" x-cloak class="ms-help-details">
+            <summary>
+                <i class="fas fa-circle-info opacity-70" aria-hidden="true"></i>
+                How Actual &amp; Converted marks work
+                <i class="fas fa-chevron-down ms-help-chevron text-xs" aria-hidden="true"></i>
+            </summary>
+            <div class="ms-help-details__body">
+                {% if can_edit and not cc_single_subject_edit %}
+                Each subject has <strong>Actual</strong> (what you enter) and <strong>Converted</strong> (/100, whole number). Converted drives {% if marks_summary_column == 'total_scaled' %}<strong>Total</strong>{% else %}<strong>Avg%</strong>{% endif %}, <strong>Code</strong>, and <strong>Points</strong> (<a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>).
+                {% elif cc_single_subject_edit and can_edit %}
+                Enter the <strong>Actual</strong> score for {{ edit_subject.subject_name }}; <strong>Converted</strong> shows /100 live. Use arrow keys and Enter to move between cells.
+                {% elif marks_display_scaled %}
+                <strong>Actual</strong> shows the input mark; <strong>Converted</strong> is /100. <strong>Total</strong> sums converted marks.
+                {% elif combined_subjects|length > 0 %}
+                <strong>Actual</strong> / paper total; <strong>Converted</strong> /100; combined Σ uses unified %. <strong>Avg%</strong> = mean of converted marks.
+                {% else %}
+                <strong>Actual</strong> out of each subject&apos;s exam total; <strong>Converted</strong> /100. <strong>Avg%</strong> = mean of converted marks.
+                {% endif %}
             </div>
-            <p class="marks-entry-scale-bar__hint m-0">
-                Type the score in <strong>Actual</strong>; <strong>Converted</strong> updates live to <strong>/100%</strong> and that percentage is what grades use.
-                Changing <strong>Out of</strong> keeps the scores you typed and only recalculates Converted against each subject&apos;s set exam total.
-                You can also set <strong>Out of</strong> per subject in the table header.
-            </p>
-        </div>
-        {% endif %}
-        <p x-show="selectedExam" x-cloak class="ms-banner ms-banner--slate">
-            {% if can_edit and not cc_single_subject_edit %}
-            Each subject has <strong>Actual</strong> (what you enter) and <strong>Converted</strong> (/100%). Converted drives {% if marks_summary_column == 'total_scaled' %}<strong>Total</strong>{% else %}<strong>Avg%</strong>{% endif %}, <strong>Code</strong>, and <strong>Points</strong> (<a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>).
-            {% elif cc_single_subject_edit and can_edit %}
-            Enter the <strong>Actual</strong> score for {{ edit_subject.subject_name }}; <strong>Converted</strong> shows /100% live. Use arrow keys and Enter to move between cells.
-            {% elif marks_display_scaled %}
-            <strong>Actual</strong> shows the input mark; <strong>Converted</strong> is /100. <strong>Total</strong> sums converted marks.
-            {% elif combined_subjects|length > 0 %}
-            <strong>Actual</strong> / paper total; <strong>Converted</strong> /100%; combined Σ uses unified %. <strong>Avg%</strong> = mean of converted marks.
-            {% else %}
-            <strong>Actual</strong> out of each subject&apos;s exam total; <strong>Converted</strong> /100%. <strong>Avg%</strong> = mean of converted marks.
-            {% endif %}
-        </p>
+        </details>
 
         {% if not cc_single_subject_edit %}
-        <p class="marks-scroll-hint md:hidden"><i class="fas fa-arrows-alt-h" aria-hidden="true"></i> Swipe sideways for more subjects</p>
+        <p class="marks-scroll-hint md:hidden"><i class="fas fa-arrows-alt-h" aria-hidden="true"></i> Swipe the table sideways · headers stay pinned while you scroll</p>
         {% endif %}
 
         <div class="ms-toolbar-row">
-            <div class="flex items-center gap-2 min-w-0">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
                 <label for="marks-student-sort" class="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">Sort</label>
                 <select id="marks-student-sort"
                         x-model="studentSort"
-                        class="ms-sort-select touch-manipulation">
+                        class="ms-sort-select touch-manipulation flex-1 min-w-0">
                     <option value="name_asc">Name A → Z</option>
                     <option value="name_desc">Name Z → A</option>
                     <option value="marks_asc">Marks low → high</option>
                     <option value="marks_desc">Marks high → low</option>
                 </select>
             </div>
-            <div x-show="canEnterMarks && selectedExam && !examIsLocked" x-cloak class="flex items-center gap-2 shrink-0">
+            <div x-show="canEnterMarks && selectedExam && !examIsLocked" x-cloak class="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                 <span class="text-xs text-slate-500 dark:text-slate-400" x-show="marksSaveStatus" x-text="marksSaveStatus"></span>
                 <button type="button"
                         @click="saveAll()"
@@ -1144,6 +1292,48 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 </button>
             </div>
         </div>
+
+        {% if can_edit %}
+        <div x-show="selectedExam && !examIsLocked" x-cloak class="ms-outof-panel" role="group" aria-label="Out of totals by subject">
+            <p class="ms-outof-panel__title">Out of</p>
+            <ul class="ms-outof-panel__list">
+                {% for subject in subjects %}
+                {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
+                {% if not is_combo_total %}
+                {% set raw_code = ((subject.subject_code or '')|trim|upper) %}
+                {% if raw_code %}
+                    {% set subj_lbl = raw_code[:8] %}
+                {% else %}
+                    {% set subj_lbl = (subject.subject_name[:12]) if subject.subject_name else 'Subject' %}
+                {% endif %}
+                {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
+                {% set subj_max_disp = subj_max|int if subj_max == subj_max|int else subj_max %}
+                <li class="ms-outof-panel__row" x-show="canSetEntryOutOf({{ subject.id }})">
+                    <span class="ms-outof-panel__subj" title="{{ subject.subject_name }}">{{ subj_lbl }}</span>
+                    <label class="sr-only" for="marks-outof-{{ subject.id }}">Out of for {{ subject.subject_name }}</label>
+                    <input type="number"
+                           id="marks-outof-{{ subject.id }}"
+                           class="marks-outof-input touch-manipulation"
+                           min="1"
+                           max="1000"
+                           step="any"
+                           inputmode="decimal"
+                           :value="entryOutOfFor({{ subject.id }})"
+                           @change="setEntryOutOf({{ subject.id }}, $event.target.value)"
+                           @blur="setEntryOutOf({{ subject.id }}, $event.target.value)"
+                           :disabled="examIsLocked"
+                           :title="'Actual scores for {{ subject.subject_name }} are out of this total'">
+                </li>
+                <li class="ms-outof-panel__row" x-show="!canSetEntryOutOf({{ subject.id }})" x-cloak>
+                    <span class="ms-outof-panel__subj" title="{{ subject.subject_name }}">{{ subj_lbl }}</span>
+                    <span class="text-xs font-bold text-sky-700 dark:text-sky-300 tabular-nums">/{{ subj_max_disp }}</span>
+                </li>
+                {% endif %}
+                {% endfor %}
+            </ul>
+            <p class="ms-outof-panel__hint">Changing Out of keeps Actual scores; only Converted /100 updates.</p>
+        </div>
+        {% endif %}
 
         <!-- Marks grid: same table on phones and desktop (horizontal scroll on narrow screens) -->
         <div class="marks-sheet-wrap mb-4 w-full min-w-0 bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
@@ -1167,8 +1357,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     </colgroup>
                     <thead class="bg-gray-100 dark:bg-gray-700">
                         <tr>
-                            <th rowspan="3" class="sticky-col sticky-col-1 px-1 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">#</th>
-                            <th rowspan="3" class="sticky-col sticky-col-2 px-1.5 py-2 sm:px-3 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">Student</th>
+                            <th rowspan="2" class="sticky-col sticky-col-1 px-1 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">#</th>
+                            <th rowspan="2" class="sticky-col sticky-col-2 px-1.5 py-2 sm:px-3 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">Student</th>
                             {% for subject in subjects %}
                             {% set raw_code = ((subject.subject_code or '')|trim|upper) %}
                             {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
@@ -1184,72 +1374,37 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% endif %}
                             {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
                             {% if is_combo_total %}
-                            <th rowspan="3" class="marks-th-subject marks-th-combo-total px-0.5 py-2 sm:py-3 text-center font-semibold uppercase align-middle"
+                            <th rowspan="2" class="marks-th-subject marks-th-combo-total px-0.5 py-2 sm:py-3 text-center font-semibold uppercase align-middle"
                                 title="{{ subject.subject_name }} — live combined % from each paper’s percentage (weighted by paper totals)">Σ {{ subj_lbl[:6] }}</th>
                             {% elif is_combo_member and not subject.get('is_teacher_editable', true) %}
                             <th colspan="2" class="marks-th-subject marks-th-subject-pair px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-500 dark:text-gray-400 uppercase bg-gray-100 dark:bg-gray-700 align-bottom"
                                 title="{{ subject.subject_name }} — view only (entered by another teacher) — out of {{ subj_max }}">{{ subj_lbl }} <i class="fas fa-lock text-[8px] opacity-70" aria-hidden="true"></i></th>
                             {% else %}
                             <th colspan="2" class="marks-th-subject marks-th-subject-pair px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom"
-                                title="{{ subject.subject_name }} — Actual (input) and Converted (/100) using exam total {{ subj_max }}">{{ subj_lbl }}</th>
+                                title="{{ subject.subject_name }} — Actual and Converted (/100)">{{ subj_lbl }}</th>
                             {% endif %}
                             {% endfor %}
                             {% if marks_summary_column == 'total_scaled' %}
-                            <th rowspan="3" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Sum of converted marks (/100) across subject columns with a mark">Total</th>
+                            <th rowspan="2" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Sum of converted marks (/100) across subject columns with a mark">Total</th>
                             {% else %}
-                            <th rowspan="3" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Mean percentage across subjects with a mark">Avg%</th>
+                            <th rowspan="2" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Mean percentage across subjects with a mark">Avg%</th>
                             {% endif %}
-                            <th rowspan="3" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="{% if uses_class_grading_setting and grading_setting_name %}Grade code from {{ grading_setting_name }}{% else %}Grade code from school default bands{% endif %}">Code</th>
-                            <th rowspan="3" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[9px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="Allocation points from Grades Registration for that band">Points</th>
+                            <th rowspan="2" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="{% if uses_class_grading_setting and grading_setting_name %}Grade code from {{ grading_setting_name }}{% else %}Grade code from school default bands{% endif %}">Code</th>
+                            <th rowspan="2" class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[9px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="Allocation points from Grades Registration for that band">Points</th>
                         </tr>
                         <tr class="marks-header-type-row">
                             {% for subject in subjects %}
                             {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
                             {% if not is_combo_total %}
-                            <th class="marks-th-subject marks-th-subject-pair px-0.5 py-1 text-center bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 marks-th-pair-label"
-                                title="Actual input mark (score as entered)">Actual</th>
-                            <th class="marks-th-subject px-0.5 py-1 text-center bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 marks-th-pair-label"
-                                title="Converted mark out of 100">Converted</th>
-                            {% endif %}
-                            {% endfor %}
-                        </tr>
-                        <tr class="marks-header-outof-row">
-                            {% for subject in subjects %}
-                            {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
-                            {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
-                            {% set subj_max_disp = subj_max|int if subj_max == subj_max|int else subj_max %}
-                            {% if is_combo_total %}
-                            {% else %}
-                            <th class="marks-th-subject marks-th-outof marks-th-subject-pair px-0.5 py-1 text-center bg-gray-50 dark:bg-gray-800/80 align-middle">
-                                {% if can_edit and (subject.combination_role == 'member' or not subject.combination_id or (subject.combination_id and not subject.combination_role)) %}
-                                <template x-if="canSetEntryOutOf({{ subject.id }})">
-                                    <span class="inline-flex flex-col items-center gap-0.5">
-                                        <label class="sr-only" :for="'marks-outof-' + {{ subject.id }}">Out of for {{ subject.subject_name }}</label>
-                                        <input type="number"
-                                               :id="'marks-outof-' + {{ subject.id }}"
-                                               class="marks-outof-input touch-manipulation"
-                                               min="1"
-                                               max="1000"
-                                               step="any"
-                                               inputmode="decimal"
-                                               :value="entryOutOfFor({{ subject.id }})"
-                                               @change="setEntryOutOf({{ subject.id }}, $event.target.value)"
-                                               @blur="setEntryOutOf({{ subject.id }}, $event.target.value)"
-                                               :disabled="examIsLocked"
-                                               :title="'Enter Actual scores out of this total; Converted updates to /100%'">
-                                    </span>
-                                </template>
-                                <template x-if="!canSetEntryOutOf({{ subject.id }})">
-                                    <span class="text-[9px] sm:text-[10px] font-semibold text-sky-700 dark:text-sky-300">/{{ subj_max_disp }}</span>
-                                </template>
-                                {% elif subject.combination_id %}
-                                <span class="text-[9px] sm:text-[10px] font-semibold text-sky-700 dark:text-sky-300">0–100%</span>
-                                {% else %}
-                                <span class="text-[9px] sm:text-[10px] font-semibold text-sky-700 dark:text-sky-300">/{{ subj_max_disp }}</span>
-                                {% endif %}
+                            <th class="marks-th-subject marks-th-subject-pair px-0.5 py-1 text-center bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 marks-th-pair-label align-middle"
+                                title="Actual input mark (score as entered)">
+                                <span class="ms-label-short">Act</span><span class="ms-label-full">Actual</span>
+                                <span class="block marks-th-outof mt-0.5 font-bold" x-text="'/' + _formatOutOfNumber(entryOutOfFor({{ subject.id }}))"></span>
                             </th>
-                            <th class="marks-th-subject marks-th-outof px-0.5 py-1 text-center bg-gray-50 dark:bg-gray-800/80 align-middle">
-                                <span class="text-[9px] sm:text-[10px] font-bold text-emerald-700 dark:text-emerald-300">/100</span>
+                            <th class="marks-th-subject px-0.5 py-1 text-center bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 marks-th-pair-label align-middle"
+                                title="Converted mark out of 100">
+                                <span class="ms-label-short">Conv</span><span class="ms-label-full">Converted</span>
+                                <span class="block text-[9px] font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">/100</span>
                             </th>
                             {% endif %}
                             {% endfor %}
@@ -1379,7 +1534,25 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <p class="text-xs text-slate-500 dark:text-slate-400 m-0">Included when you press Submit</p>
             </div>
             <div class="ms-remarks-card__body">
-                <div class="overflow-x-auto">
+                <div class="ms-remarks-list">
+                    <template x-for="band in (defaultGradeBands || [])" :key="'m-' + band.code">
+                        <div class="ms-remarks-item">
+                            <div class="flex items-center gap-2 mb-1.5">
+                                <span class="inline-flex items-center px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold text-xs"
+                                      x-text="(band.code || '').toUpperCase()"></span>
+                                <span class="text-xs text-slate-600 dark:text-slate-300" x-text="band.label || ''"></span>
+                            </div>
+                            <label class="sr-only" :for="'remark-m-' + (band.code || '')">Remark for <span x-text="band.code"></span></label>
+                            <input type="text"
+                                   :id="'remark-m-' + (band.code || '')"
+                                   class="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 touch-manipulation"
+                                   :placeholder="band.label || 'Optional remark'"
+                                   x-model="gradeRemarksByCode[(band.code || '').toUpperCase()]"
+                                   @input="markRemarksDirty()">
+                        </div>
+                    </template>
+                </div>
+                <div class="ms-remarks-table-wrap overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="text-[11px] sm:text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -1421,6 +1594,23 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     :disabled="marksSaving || !hasUnsavedChanges"
                     class="marks-toolbar-btn-save touch-manipulation"
                     title="Submit all changed marks and remarks to the database">
+                <i class="fas fa-save text-xs" aria-hidden="true"></i> Submit
+            </button>
+        </div>
+
+        <div x-show="canEnterMarks && selectedExam && !examIsLocked"
+             x-cloak
+             class="marks-mobile-submit-dock"
+             role="region"
+             aria-label="Submit marks">
+            <span class="text-xs text-slate-500 dark:text-slate-400 shrink-0 max-w-[40%] truncate"
+                  x-show="marksSaveStatus"
+                  x-text="marksSaveStatus"></span>
+            <button type="button"
+                    @click="saveAll()"
+                    :disabled="marksSaving || !hasUnsavedChanges"
+                    class="marks-toolbar-btn-save touch-manipulation"
+                    title="Submit all changed marks and remarks">
                 <i class="fas fa-save text-xs" aria-hidden="true"></i> Submit
             </button>
         </div>
@@ -1543,8 +1733,6 @@ function marksSheet() {
         subjectExamMax: {{ (subject_exam_max_map or {})|tojson|safe }},
         /** Per-subject “I am entering out of X” — converts live to /100%. */
         entryOutOfBySubject: {},
-        bulkEntryOutOf: '100',
-        entryOutOfPresets: [20, 25, 40, 50, 60, 80, 100],
         columnMembers: {{ (combination_column_members or {})|tojson|safe }},
         teacherEditableSubjectIds: {{ (teacher_editable_subject_ids or [])|tojson|safe }},
 
@@ -2032,42 +2220,15 @@ function marksSheet() {
             if (!Number.isFinite(n) || n <= 0) return;
             const clamped = Math.min(1000, Math.max(0.01, n));
             const oldOutOf = this.entryOutOfFor(subjectId);
-            if (Math.abs(oldOutOf - clamped) < 1e-9) {
-                this.bulkEntryOutOf = this._formatOutOfNumber(clamped);
-                return;
-            }
-            // Snapshot typed scores under the OLD out-of, then only re-convert % / stored.
+            if (Math.abs(oldOutOf - clamped) < 1e-9) return;
+            // Snapshot Actual scores under the OLD out-of first — never alter those numbers.
             this._ensureTypedMarksForSubjects([subjectId]);
             this.entryOutOfBySubject = {
                 ...this.entryOutOfBySubject,
                 [String(subjectId)]: clamped,
             };
-            this.bulkEntryOutOf = this._formatOutOfNumber(clamped);
+            // Only recalculate stored conversion / live %; typed Actual stays put.
             this._reconvertTypedMarksForSubjects([subjectId]);
-        },
-
-        applyBulkEntryOutOf() {
-            const n = parseFloat(String(this.bulkEntryOutOf || '').trim().replace(',', '.'));
-            if (!Number.isFinite(n) || n <= 0) return;
-            const clamped = Math.min(1000, Math.max(0.01, n));
-            const next = { ...this.entryOutOfBySubject };
-            const editableIds = this.teacherEditableSubjectIds || [];
-            const changingIds = [];
-            for (const sid of this.subjectIds) {
-                if (Number(sid) < 0 && !this.getCombinationMembers(sid)) continue;
-                if (this.isTeacherMarks && editableIds.length) {
-                    const sidN = Number(sid);
-                    const allowed = editableIds.some((x) => Number(x) === sidN) || this._storesAsPercent(sid);
-                    if (!allowed) continue;
-                }
-                const old = this.entryOutOfFor(sid);
-                if (Math.abs(old - clamped) >= 1e-9) changingIds.push(sid);
-                next[String(sid)] = clamped;
-            }
-            this._ensureTypedMarksForSubjects(changingIds);
-            this.entryOutOfBySubject = next;
-            this.bulkEntryOutOf = this._formatOutOfNumber(clamped);
-            this._reconvertTypedMarksForSubjects(changingIds);
         },
 
         _getTypedMark(studentId, subjectId) {
@@ -2143,8 +2304,8 @@ function marksSheet() {
         },
 
         /**
-         * Keep typed input scores; re-convert to stored using current out-of → subject exam total.
-         * This updates live % only; inputs stay the same.
+         * Keep Actual (typed) scores unchanged; only refresh stored conversion for grades / Submit.
+         * Never writes to typedMarks — Actual inputs must not be altered when Out of changes.
          */
         _reconvertTypedMarksForSubjects(subjectIds) {
             if (!this.selectedExam || !subjectIds || !subjectIds.length) return;
@@ -2153,6 +2314,7 @@ function marksSheet() {
                 for (const student of (this.studentsList || [])) {
                     const studentId = student.student_id;
                     const typed = this._getTypedMark(studentId, subjectId);
+                    // Keep typed as-is even if it is above the new out-of; Converted caps at 100%.
                     const stored = (typed === null) ? null : this.entryToStored(subjectId, typed);
                     if (!this.marks[studentId]) this.marks[studentId] = {};
                     if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
@@ -2165,6 +2327,36 @@ function marksSheet() {
             this._tick = Date.now();
         },
 
+        /**
+         * When exam subject settings out-of totals change, keep Actual inputs.
+         * If a column's entry out-of was locked to the old settings total, move it to the new
+         * total so Converted = Actual ÷ newOutOf — without rewriting typedMarks from stored.
+         */
+        _onSubjectExamMaxUpdated(prevMax) {
+            const ids = (this.subjectIds || []).filter((sid) => !this.isComboTotalColumn(sid));
+            this._ensureTypedMarksForSubjects(ids);
+            const nextOut = { ...(this.entryOutOfBySubject || {}) };
+            const changing = [];
+            for (const sid of ids) {
+                const key = String(sid);
+                const oldMx = Number(prevMax?.[key] ?? prevMax?.[sid]);
+                const newMx = this.subjectExamMaxFor(sid);
+                const curOut = Number(nextOut[key] ?? nextOut[sid]);
+                if (!Number.isFinite(newMx) || newMx <= 0) continue;
+                if (Number.isFinite(oldMx) && Number.isFinite(curOut) && Math.abs(curOut - oldMx) < 1e-9
+                    && Math.abs(curOut - newMx) >= 1e-9) {
+                    nextOut[key] = newMx;
+                    changing.push(sid);
+                }
+            }
+            this.entryOutOfBySubject = nextOut;
+            if (changing.length) {
+                this._reconvertTypedMarksForSubjects(changing);
+            } else {
+                this._tick = Date.now();
+            }
+        },
+
         _formatOutOfNumber(n) {
             if (!Number.isFinite(n)) return '';
             return Math.round(n) === n ? String(Math.round(n)) : String(n);
@@ -2172,17 +2364,14 @@ function marksSheet() {
 
         _initEntryOutOfFromSettings() {
             const next = {};
-            let first = null;
             for (const sid of this.subjectIds) {
                 const members = this.getCombinationMembers(sid);
                 const def = (members && members.length && Number(sid) < 0)
                     ? 100
                     : this.subjectExamMaxFor(sid);
                 next[String(sid)] = def;
-                if (first === null) first = def;
             }
             this.entryOutOfBySubject = next;
-            this.bulkEntryOutOf = this._formatOutOfNumber(first != null ? first : 100);
         },
 
         /** True when this column stores a unified 0–100% (combined subject column). */
@@ -2191,26 +2380,26 @@ function marksSheet() {
             return !!(members && members.length && Number(subjectId) < 0);
         },
 
-        /** Convert typed score (out of entryOutOf) → stored value used by the system. */
+        /** Convert typed score (out of entryOutOf) → stored value used by the system.
+         * Converted % is always the nearest whole number; stored raw is derived from that. */
         entryToStored(subjectId, entered) {
             if (entered === null || entered === undefined || entered === '') return null;
             const n = Number(entered);
             if (!Number.isFinite(n)) return null;
             const outOf = this.entryOutOfFor(subjectId);
             if (!outOf) return null;
+            const wholePct = Math.round(Math.max(0, Math.min(100, (n / outOf) * 100)));
             if (this._storesAsPercent(subjectId)) {
-                const pct = Math.max(0, Math.min(100, (n / outOf) * 100));
-                return Math.round(pct);
+                return wholePct;
             }
             const mxSettings = this.subjectExamMaxFor(subjectId);
             const mxStore = this.maxAllowedMarkFor(subjectId);
-            // Same scale as subject settings → keep the typed value (preserves prior marks).
+            // Same scale as subject settings → keep the typed Actual mark (may have decimals).
             if (Math.abs(outOf - mxSettings) < 1e-9 || Math.abs(outOf - mxStore) < 1e-9) {
                 return Math.round(Math.max(0, Math.min(mxStore, n)) * 100) / 100;
             }
-            const pct = (n / outOf) * 100;
-            const clampedPct = Math.max(0, Math.min(100, pct));
-            return Math.round((clampedPct / 100) * mxStore * 100) / 100;
+            // Different entry scale → store raw that maps to the whole Converted %.
+            return Math.round((wholePct / 100) * mxStore * 100) / 100;
         },
 
         /** Convert stored mark → display score on the current entry “out of” scale. */
@@ -2307,12 +2496,17 @@ function marksSheet() {
             this.marksBaseline = { ...this.marksBaseline, [sid]: row };
         },
 
-        /** Live /100% label under a cell (what grades / averages use). */
+        /** Converted /100 label — always nearest whole number (no decimals). */
         livePctLabel(studentId, subjectId) {
             void this._tick;
+            // Prefer live Actual ÷ Out of so Converted tracks what is typed.
+            const entryPct = this.entryPctFor(studentId, subjectId);
+            if (entryPct !== null && entryPct !== undefined) {
+                return String(Math.round(Number(entryPct))) + '%';
+            }
             const pct = this.getScaledPct(studentId, subjectId);
             if (pct === null || pct === undefined) return '';
-            return String(pct) + '%';
+            return String(Math.round(Number(pct))) + '%';
         },
 
         /** Percentage of the current entry “out of” (typed ÷ outOf × 100), nearest whole number. */
@@ -2834,15 +3028,25 @@ function marksSheet() {
         },
 
         roundWhole(n) {
-            if (n === null || n === undefined || Number.isNaN(Number(n))) return null;
-            return Math.round(Number(n));
+            if (n === null || n === undefined || n === '') return null;
+            const num = Number(n);
+            if (!Number.isFinite(num)) return null;
+            return Math.round(num);
         },
 
-        /** Scaled mark 0–100 using exam subject settings (combined columns already return %). */
+        /** Scaled / converted mark 0–100 — nearest whole number. Prefers live Actual ÷ Out of. */
         getScaledPct(studentId, subjectId) {
+            if (this.isComboTotalColumn(subjectId)) {
+                const raw = this.getMarkNumeric(studentId, subjectId);
+                return raw === null ? null : this.roundWhole(raw);
+            }
+            // When an Actual score is on screen, Converted must follow Out of — not a stale stored value.
+            const entryPct = this.entryPctFor(studentId, subjectId);
+            if (entryPct !== null && entryPct !== undefined) {
+                return this.roundWhole(entryPct);
+            }
             const raw = this.getMarkNumeric(studentId, subjectId);
             if (raw === null) return null;
-            if (this.isComboTotalColumn(subjectId)) return this.roundWhole(raw);
             const members = this.getCombinationMembers(subjectId);
             if (members && members.length && Number(subjectId) < 0) return this.roundWhole(raw);
             const mx = this.subjectExamMaxFor(subjectId);
@@ -2857,7 +3061,9 @@ function marksSheet() {
                 return w === null ? '' : String(w);
             }
             if (Number.isInteger(n)) return String(n);
-            return String(n);
+            const rounded = Math.round(Number(n) * 100) / 100;
+            if (Number.isInteger(rounded)) return String(rounded);
+            return String(rounded);
         },
 
         /** Sum of raw marks for this exam, one count per paper (combined columns sum their members). */
@@ -3261,9 +3467,10 @@ function marksSheet() {
                     this.marksSaveStatus = '';
                     this.marksEntryReadonly = !!result.teacher_marks_readonly;
                     if (result.subject_exam_max && typeof result.subject_exam_max === 'object') {
+                        const prevMax = { ...(this.subjectExamMax || {}) };
                         this.subjectExamMax = { ...this.subjectExamMax, ...result.subject_exam_max };
-                        // Re-sync typed display after max map refresh (same stored → entry scale).
-                        this._syncTypedMarksFromStored();
+                        // Keep Actual inputs; only Converted % follows any new out-of totals.
+                        this._onSubjectExamMaxUpdated(prevMax);
                     }
                     this.$nextTick(() => this._maybeOpenMarksPeriodClosedModal());
                 }
