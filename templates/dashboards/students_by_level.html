@@ -412,6 +412,44 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 .dark .marks-toolbar-btn-reset:hover {
     box-shadow: 0 4px 18px rgb(16 185 129 / 0.15);
 }
+.marks-toolbar-btn-save {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(180deg, rgb(5 150 105) 0%, rgb(4 120 87) 100%);
+    border: 1px solid rgb(16 185 129);
+    box-shadow: 0 1px 2px rgb(16 185 129 / 0.2);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+.marks-toolbar-btn-save:hover:not(:disabled) {
+    filter: brightness(1.05);
+    box-shadow: 0 4px 14px rgb(16 185 129 / 0.25);
+}
+.marks-toolbar-btn-save:active:not(:disabled) {
+    transform: scale(0.98);
+}
+.marks-toolbar-btn-save:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+@media (min-width: 640px) {
+    .marks-toolbar-btn-save { min-height: 2.375rem; }
+}
+.marks-save-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin: 0.75rem 0 1rem;
+}
 
 /* —— Simplified page shell (responsive) —— */
 .marks-sheet-page {
@@ -588,57 +626,6 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     border: 1px solid #bae6fd;
 }
 .dark .ms-banner--sky { color: #bae6fd; background: rgba(12,74,110,0.3); border-color: #0369a1; }
-.marks-scale-guide {
-    margin-bottom: 0.75rem;
-    padding: 0.75rem 1rem;
-    border-radius: 0.625rem;
-    border: 1px solid #0ea5e9;
-    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-    color: #0c4a6e;
-}
-.dark .marks-scale-guide {
-    color: #e0f2fe;
-    background: linear-gradient(135deg, rgba(12,74,110,0.35) 0%, rgba(3,105,161,0.2) 100%);
-    border-color: #0369a1;
-}
-.marks-scale-guide__title {
-    font-size: 0.8125rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-}
-.marks-scale-guide__list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-.marks-scale-guide__chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.2rem 0.55rem;
-    border-radius: 9999px;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    background: #fff;
-    border: 1px solid #7dd3fc;
-    color: #075985;
-}
-.dark .marks-scale-guide__chip {
-    background: rgba(15,23,42,0.5);
-    border-color: #0284c7;
-    color: #bae6fd;
-}
-.marks-scale-guide__chip strong {
-    font-weight: 800;
-    color: #0369a1;
-}
-.dark .marks-scale-guide__chip strong { color: #7dd3fc; }
 .marks-th-outof {
     font-size: 0.6rem;
     line-height: 1.1;
@@ -648,6 +635,130 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     text-transform: none;
 }
 .dark .marks-th-outof { color: #7dd3fc; }
+.marks-outof-input {
+    width: 2.75rem;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 0.15rem 0.2rem;
+    text-align: center;
+    font-size: 0.65rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    border-radius: 0.3rem;
+    border: 1px solid #7dd3fc;
+    background: #fff;
+    color: #0369a1;
+    line-height: 1.2;
+}
+.dark .marks-outof-input {
+    background: rgba(15, 23, 42, 0.65);
+    border-color: #0284c7;
+    color: #7dd3fc;
+}
+.marks-outof-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.35);
+    border-color: #0284c7;
+}
+.marks-outof-input:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.marks-entry-scale-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 0.625rem;
+    border: 1px solid #38bdf8;
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 55%, #f8fafc 100%);
+}
+.dark .marks-entry-scale-bar {
+    border-color: #0369a1;
+    background: linear-gradient(135deg, rgba(12,74,110,0.4) 0%, rgba(15,23,42,0.55) 100%);
+}
+.marks-entry-scale-bar__label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #0c4a6e;
+}
+.dark .marks-entry-scale-bar__label { color: #bae6fd; }
+.marks-entry-scale-bar__input {
+    width: 4.5rem;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.5rem;
+    text-align: center;
+    font-size: 0.875rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    border-radius: 0.5rem;
+    border: 1px solid #7dd3fc;
+    background: #fff;
+    color: #0c4a6e;
+}
+.dark .marks-entry-scale-bar__input {
+    background: rgba(15, 23, 42, 0.7);
+    border-color: #0284c7;
+    color: #e0f2fe;
+}
+.marks-entry-scale-bar__presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+.marks-entry-scale-bar__preset {
+    min-height: 2rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    border: 1px solid #7dd3fc;
+    background: #fff;
+    color: #075985;
+    cursor: pointer;
+}
+.dark .marks-entry-scale-bar__preset {
+    background: rgba(15, 23, 42, 0.55);
+    border-color: #0284c7;
+    color: #bae6fd;
+}
+.marks-entry-scale-bar__preset:hover,
+.marks-entry-scale-bar__preset.is-active {
+    background: #0284c7;
+    border-color: #0284c7;
+    color: #fff;
+}
+.marks-entry-scale-bar__hint {
+    font-size: 0.6875rem;
+    color: #0369a1;
+    line-height: 1.35;
+    flex: 1 1 12rem;
+}
+.dark .marks-entry-scale-bar__hint { color: #7dd3fc; }
+.marks-cell-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    width: 100%;
+}
+.marks-live-pct {
+    font-size: 0.5625rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #047857;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    min-height: 0.7rem;
+}
+.dark .marks-live-pct { color: #6ee7b7; }
+.marks-live-pct.is-empty { visibility: hidden; }
+@media (min-width: 768px) {
+    .marks-outof-input { width: 3.1rem; font-size: 0.7rem; }
+    .marks-live-pct { font-size: 0.625rem; }
+}
 .marks-cell-readonly {
     display: inline-block;
     width: 100%;
@@ -835,7 +946,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     <header class="ms-page-head">
         <div class="ms-page-head__row">
             {% if cc_single_subject_edit %}
-            <a href="{{ sheet_back_url }}" class="ms-back touch-manipulation" title="Back to full marks sheet" aria-label="Back to full marks sheet">
+            <a href="{{ sheet_back_url }}" @click="navigateWithUnsavedCheck($event)" class="ms-back touch-manipulation" title="Back to full marks sheet" aria-label="Back to full marks sheet">
                 <i class="fas fa-arrow-left" aria-hidden="true"></i>
             </a>
             <div class="ms-page-head__title-wrap">
@@ -846,7 +957,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <p class="ms-page-head__meta">{{ academic_level.level_name }} · {{ students|length }} students · out of {{ edit_subject_exam_max|int if edit_subject_exam_max == edit_subject_exam_max|int else edit_subject_exam_max }}</p>
             </div>
             {% else %}
-            <a href="{{ employee_dash_url('exams-assessments') }}" class="ms-back touch-manipulation" title="Back to exams" aria-label="Back to exams">
+            <a href="{{ employee_dash_url('exams-assessments') }}" @click="navigateWithUnsavedCheck($event)" class="ms-back touch-manipulation" title="Back to exams" aria-label="Back to exams">
                 <i class="fas fa-arrow-left" aria-hidden="true"></i>
             </a>
             <div class="ms-page-head__title-wrap">
@@ -860,7 +971,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <div class="min-w-0">
                     <label class="filter-label block" for="marks-filter-year">Year</label>
                     <select id="marks-filter-year"
-                            x-model="selectedAcademicYearId" @change="onAcademicYearChange()"
+                            x-model="selectedAcademicYearId" @change="onAcademicYearFilterChange()"
                             class="marks-toolbar-select touch-manipulation">
                         <option value="" disabled>Year…</option>
                         <template x-for="year in academicYears" :key="year.id">
@@ -871,7 +982,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <div class="min-w-0">
                     <label class="filter-label block" for="marks-filter-term">Term</label>
                     <select id="marks-filter-term"
-                            x-model="selectedTermId" @change="onTermChange()"
+                            x-model="selectedTermId" @change="onTermFilterChange()"
                             :disabled="!filteredTerms.length"
                             class="marks-toolbar-select touch-manipulation">
                         <option value="" disabled x-text="filteredTerms.length ? 'Term…' : 'No terms'"></option>
@@ -884,7 +995,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     <label class="filter-label block" for="marks-filter-exam">Exam</label>
                     <select id="marks-filter-exam"
                             :key="examSelectKey"
-                            x-model="selectedExam" @change="onExamSelected()"
+                            x-model="selectedExam" @change="onExamFilterChange()"
                             :disabled="!filteredExams.length || !filtersReady"
                             class="marks-toolbar-select touch-manipulation">
                         <option value="" disabled x-text="filteredExams.length ? 'Exam…' : 'No exams'"></option>
@@ -937,45 +1048,46 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <p x-show="selectedExam && examIsLocked" x-cloak class="ms-banner ms-banner--amber">
             <i class="fas fa-lock mr-1.5 opacity-80" aria-hidden="true"></i>Exam allocations are locked — you can view marks here; editing is disabled until an administrator unlocks allocations.
         </p>
-        {% if can_edit and not cc_single_subject_edit %}
-        <div x-show="selectedExam && !examIsLocked" x-cloak class="marks-scale-guide" role="note" aria-label="Mark entry scale guide">
-            <p class="marks-scale-guide__title">
-                <i class="fas fa-ruler-combined text-sky-600 dark:text-sky-400" aria-hidden="true"></i>
-                Enter each mark <strong>out of</strong> the exam total shown below
-            </p>
-            <ul class="marks-scale-guide__list">
-                {% for subject in subjects %}
-                {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
-                {% set subj_max_disp = subj_max|int if subj_max == subj_max|int else subj_max %}
-                <li class="marks-scale-guide__chip">
-                    <span>{{ subject.subject_code or subject.subject_name }}</span>
-                    {% if subject.combination_role == 'total' %}
-                    <strong>combined %</strong>
-                    <span class="opacity-75 font-normal">(live)</span>
-                    {% elif subject.combination_role == 'member' and not subject.get('is_teacher_editable', true) %}
-                    <strong>0–{{ subj_max_disp }}</strong>
-                    <span class="opacity-75 font-normal">(view only)</span>
-                    {% elif subject.combination_id and not subject.combination_role %}
-                    <strong>0–100%</strong>
-                    <span class="opacity-75 font-normal">(combined)</span>
-                    {% else %}
-                    <strong>0–{{ subj_max_disp }}</strong>
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-            <p class="text-[10px] sm:text-xs mt-2 opacity-80 leading-snug">
-                Totals come from <a href="{{ employee_dash_url('exam-subject-settings') }}" class="underline font-semibold">Exam subject settings</a>.
-                Combined groups show each paper; the <strong>combined %</strong> column updates live as marks are entered.
-                Grey cells are other teachers&apos; subjects (view only).
+        {% if can_edit %}
+        <div x-show="!examIsLocked" x-cloak class="marks-entry-scale-bar" role="group" aria-label="Mark entry scale">
+            <span class="marks-entry-scale-bar__label">
+                <i class="fas fa-percentage mr-1 opacity-80" aria-hidden="true"></i>
+                I am entering marks out of
+            </span>
+            <input type="number"
+                   min="1"
+                   max="1000"
+                   step="any"
+                   inputmode="decimal"
+                   class="marks-entry-scale-bar__input touch-manipulation"
+                   x-model="bulkEntryOutOf"
+                   @change="applyBulkEntryOutOf()"
+                   @keydown.enter.prevent="applyBulkEntryOutOf()"
+                   :disabled="examIsLocked"
+                   title="Set the paper total for every editable subject column"
+                   aria-label="Marks out of">
+            <div class="marks-entry-scale-bar__presets" role="group" aria-label="Quick out-of presets">
+                <template x-for="preset in entryOutOfPresets" :key="preset">
+                    <button type="button"
+                            class="marks-entry-scale-bar__preset touch-manipulation"
+                            :class="{ 'is-active': String(bulkEntryOutOf) === String(preset) }"
+                            @click="bulkEntryOutOf = String(preset); applyBulkEntryOutOf()"
+                            :disabled="examIsLocked"
+                            x-text="preset"></button>
+                </template>
+            </div>
+            <p class="marks-entry-scale-bar__hint m-0">
+                Type the score from the paper; the system converts live to <strong>/100%</strong> (shown under each cell) and that percentage is what grades use.
+                Changing <strong>Out of</strong> keeps the scores you typed and only recalculates % against each subject&apos;s set exam total.
+                You can also set <strong>Out of</strong> per subject in the table header.
             </p>
         </div>
         {% endif %}
         <p x-show="selectedExam" x-cloak class="ms-banner ms-banner--slate">
             {% if can_edit and not cc_single_subject_edit %}
-            Type raw marks in each cell (see scale above and <strong>/ total</strong> under each column). {% if marks_summary_column == 'total_scaled' %}<strong>Total</strong>{% else %}<strong>Avg%</strong>{% endif %}, <strong>Code</strong>, and <strong>Points</strong> update from <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>.
+            Enter scores using your chosen <strong>out of</strong>; live <strong>%</strong> under each cell is what {% if marks_summary_column == 'total_scaled' %}<strong>Total</strong>{% else %}<strong>Avg%</strong>{% endif %}, <strong>Code</strong>, and <strong>Points</strong> use (<a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>).
             {% elif cc_single_subject_edit and can_edit %}
-            Enter marks <strong>out of {{ edit_subject_exam_max|int if edit_subject_exam_max == edit_subject_exam_max|int else edit_subject_exam_max }}</strong> for {{ edit_subject.subject_name }}. <strong>Avg%</strong>, <strong>Code</strong>, and <strong>Points</strong> update from <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold">Grades Registration</a>. Use arrow keys and Enter to move between cells.
+            Enter scores out of your chosen scale for {{ edit_subject.subject_name }}; they convert live to <strong>/100%</strong>. Use arrow keys and Enter to move between cells.
             {% elif marks_display_scaled %}
             Scaled <strong>/100</strong> view; <strong>Total</strong> sums converted marks. Teachers enter raw marks when editing.
             {% elif combined_subjects|length > 0 %}
@@ -990,15 +1102,27 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         {% endif %}
 
         <div class="ms-toolbar-row">
-            <label for="marks-student-sort" class="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">Sort</label>
-            <select id="marks-student-sort"
-                    x-model="studentSort"
-                    class="ms-sort-select touch-manipulation">
-                <option value="name_asc">Name A → Z</option>
-                <option value="name_desc">Name Z → A</option>
-                <option value="marks_asc">Marks low → high</option>
-                <option value="marks_desc">Marks high → low</option>
-            </select>
+            <div class="flex items-center gap-2 min-w-0">
+                <label for="marks-student-sort" class="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">Sort</label>
+                <select id="marks-student-sort"
+                        x-model="studentSort"
+                        class="ms-sort-select touch-manipulation">
+                    <option value="name_asc">Name A → Z</option>
+                    <option value="name_desc">Name Z → A</option>
+                    <option value="marks_asc">Marks low → high</option>
+                    <option value="marks_desc">Marks high → low</option>
+                </select>
+            </div>
+            <div x-show="canEnterMarks && selectedExam && !examIsLocked" x-cloak class="flex items-center gap-2 shrink-0">
+                <span class="text-xs text-slate-500 dark:text-slate-400" x-show="marksSaveStatus" x-text="marksSaveStatus"></span>
+                <button type="button"
+                        @click="saveAll()"
+                        :disabled="marksSaving || !hasUnsavedChanges"
+                        class="marks-toolbar-btn-save touch-manipulation"
+                        title="Save entered marks and grade remarks">
+                    <i class="fas fa-save text-xs" aria-hidden="true"></i> Save
+                </button>
+            </div>
         </div>
 
         <!-- Marks grid: same table on phones and desktop (horizontal scroll on narrow screens) -->
@@ -1021,7 +1145,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <th class="sticky-col sticky-col-2 px-1.5 py-2 sm:px-3 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">Student</th>
                             {% for subject in subjects %}
                             {% set raw_code = ((subject.subject_code or '')|trim|upper) %}
-                            {% set is_combo_total = subject.combination_role == 'total' %}
+                            {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
                             {% set is_combo_member = subject.combination_role == 'member' %}
                             {% if subject.combination_id and (is_combo_total or not subject.combination_role) %}
                                 {% set subj_lbl = raw_code if raw_code else ((subject.subject_name|upper) if subject.subject_name else '') %}
@@ -1035,7 +1159,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
                             {% if is_combo_total %}
                             <th class="marks-th-subject marks-th-combo-total px-0.5 py-2 sm:py-3 text-center font-semibold uppercase align-bottom"
-                                title="{{ subject.subject_name }} — live combined % (weighted from all papers in this group)">Σ {{ subj_lbl[:6] }}</th>
+                                title="{{ subject.subject_name }} — live combined % = Σ(paper marks) ÷ Σ(paper totals) × 100 (e.g. /30 + /50)">Σ {{ subj_lbl[:6] }}</th>
                             {% elif is_combo_member and not subject.get('is_teacher_editable', true) %}
                             <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-500 dark:text-gray-400 uppercase bg-gray-100 dark:bg-gray-700 align-bottom"
                                 title="{{ subject.subject_name }} — view only (entered by another teacher) — out of {{ subj_max }}">{{ subj_lbl }} <i class="fas fa-lock text-[8px] opacity-70" aria-hidden="true"></i></th>
@@ -1063,11 +1187,30 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% for subject in subjects %}
                             {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
                             {% set subj_max_disp = subj_max|int if subj_max == subj_max|int else subj_max %}
-                            <th class="marks-th-subject marks-th-outof px-0.5 py-1 text-center bg-gray-50 dark:bg-gray-800/80 align-middle{% if subject.combination_role == 'total' %} text-emerald-700 dark:text-emerald-300{% endif %}">
-                                {% if subject.combination_role == 'total' %}
-                                live %
-                                {% elif subject.combination_role == 'member' or not subject.combination_id %}
-                                /{{ subj_max_disp }}
+                            <th class="marks-th-subject marks-th-outof px-0.5 py-1 text-center bg-gray-50 dark:bg-gray-800/80 align-middle{% if subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %} text-emerald-700 dark:text-emerald-300{% endif %}">
+                                {% if subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
+                                Σraw/Σmax
+                                {% elif can_edit and (subject.combination_role == 'member' or not subject.combination_id or (subject.combination_id and not subject.combination_role)) %}
+                                <template x-if="canSetEntryOutOf({{ subject.id }})">
+                                    <span class="inline-flex flex-col items-center gap-0.5">
+                                        <label class="sr-only" :for="'marks-outof-' + {{ subject.id }}">Out of for {{ subject.subject_name }}</label>
+                                        <input type="number"
+                                               :id="'marks-outof-' + {{ subject.id }}"
+                                               class="marks-outof-input touch-manipulation"
+                                               min="1"
+                                               max="1000"
+                                               step="any"
+                                               inputmode="decimal"
+                                               :value="entryOutOfFor({{ subject.id }})"
+                                               @change="setEntryOutOf({{ subject.id }}, $event.target.value)"
+                                               @blur="setEntryOutOf({{ subject.id }}, $event.target.value)"
+                                               :disabled="examIsLocked"
+                                               :title="'Enter scores out of this total; converts live to /100%'">
+                                    </span>
+                                </template>
+                                <template x-if="!canSetEntryOutOf({{ subject.id }})">
+                                    <span>/{{ subj_max_disp }}</span>
+                                </template>
                                 {% elif subject.combination_id %}
                                 0–100%
                                 {% else %}
@@ -1088,40 +1231,50 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 <span class="font-medium text-gray-900 dark:text-white text-xs sm:text-sm leading-snug max-md:line-clamp-2" x-text="student.full_name"></span>
                             </td>
                             {% for subject in subjects %}
-                            {% set is_combo_total = subject.combination_role == 'total' %}
+                            {% set is_combo_total = subject.combination_role == 'total' or ((subject.id|int) < 0 and subject.combination_id) %}
                             <td class="marks-td-subject py-1 sm:py-1 text-center align-middle{% if is_combo_total %} bg-emerald-50/50 dark:bg-emerald-900/10{% endif %}">
                                 {% if is_combo_total %}
                                 <span class="marks-combo-total-cell"
-                                      :title="'Combined % from all papers in ' + {{ (subject.subject_name or '')|tojson }}"
+                                      :title="comboTotalTitle(student.student_id, {{ subject.id }})"
                                       x-text="getComboTotalDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
                                 {% elif can_edit %}
                                 <template x-if="canEnterMarks && canEditSubjectCell({{ subject.id }})">
-                                    <input type="text"
-                                           inputmode="decimal"
-                                           maxlength="8"
-                                           :data-row-index="rowIdx"
-                                           data-col-index="{{ loop.index0 }}"
-                                           :value="getMemberRawDisplay(student.student_id, {{ subject.id }})"
-                                           @input="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
-                                           @blur="saveMark(student.student_id, {{ subject.id }}, $event.target.value)"
-                                           @keydown.enter="handleEnterKey($event)"
-                                           @keydown.up.prevent="handleArrowKey($event)"
-                                           @keydown.down.prevent="handleArrowKey($event)"
-                                           @keydown.left.prevent="handleArrowKey($event)"
-                                           @keydown.right.prevent="handleArrowKey($event)"
-                                           @keypress="allowMarkChar($event, {{ subject.id }})"
-                                           :disabled="!selectedExam"
-                                           placeholder=""
-                                           :title="'Enter mark out of ' + maxAllowedMarkFor({{ subject.id }}) + ' (max 100)'"
-                                           :class="getStatusClass(student.student_id, {{ subject.id }})"
-                                           class="mark-input touch-manipulation"
-                                           autocomplete="off"
-                                           enterkeyhint="next">
+                                    <div class="marks-cell-stack">
+                                        <input type="text"
+                                               inputmode="decimal"
+                                               maxlength="8"
+                                               :data-row-index="rowIdx"
+                                               data-col-index="{{ loop.index0 }}"
+                                               :value="getMemberRawDisplay(student.student_id, {{ subject.id }})"
+                                               @input="markCellDirty(student.student_id, {{ subject.id }}); onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
+                                               @keydown.enter="handleEnterKey($event)"
+                                               @keydown.up.prevent="handleArrowKey($event)"
+                                               @keydown.down.prevent="handleArrowKey($event)"
+                                               @keydown.left.prevent="handleArrowKey($event)"
+                                               @keydown.right.prevent="handleArrowKey($event)"
+                                               @keypress="allowMarkChar($event, {{ subject.id }})"
+                                               :disabled="!selectedExam"
+                                               placeholder=""
+                                               :title="'Enter mark out of ' + entryOutOfFor({{ subject.id }}) + ' → converts to /100%'"
+                                               :class="getStatusClass(student.student_id, {{ subject.id }})"
+                                               class="mark-input touch-manipulation"
+                                               autocomplete="off"
+                                               enterkeyhint="next">
+                                        <span class="marks-live-pct"
+                                              :class="{ 'is-empty': !livePctLabel(student.student_id, {{ subject.id }}) }"
+                                              :title="'Converted to subject exam total → /100% (typed ÷ out of × 100)'"
+                                              x-text="livePctLabel(student.student_id, {{ subject.id }}) || '—%'"></span>
+                                    </div>
                                 </template>
                                 <template x-if="canEnterMarks && !canEditSubjectCell({{ subject.id }})">
-                                    <span class="marks-cell-readonly"
-                                          title="Entered by another teacher — view only"
-                                          x-text="getMemberRawDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
+                                    <div class="marks-cell-stack">
+                                        <span class="marks-cell-readonly"
+                                              title="Entered by another teacher — view only"
+                                              x-text="getMemberRawDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
+                                        <span class="marks-live-pct"
+                                              :class="{ 'is-empty': !livePctLabel(student.student_id, {{ subject.id }}) }"
+                                              x-text="livePctLabel(student.student_id, {{ subject.id }}) || '—%'"></span>
+                                    </div>
                                 </template>
                                 <template x-if="!canEnterMarks">
                                     <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums"
@@ -1177,15 +1330,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <div x-show="selectedExam" x-cloak class="ms-remarks-card mt-4">
             <div class="ms-remarks-card__head">
                 <h3 class="text-sm font-bold text-slate-900 dark:text-white m-0">Grade remarks (report cards)</h3>
-                <div class="flex items-center gap-2 shrink-0">
-                    <span class="text-xs text-slate-500 dark:text-slate-400" x-show="gradeRemarksStatus" x-text="gradeRemarksStatus"></span>
-                    <button type="button"
-                            @click="saveGradeRemarks()"
-                            :disabled="gradeRemarksSaving"
-                            class="inline-flex items-center justify-center gap-1.5 min-h-[2.5rem] px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60 touch-manipulation">
-                        <i class="fas fa-save text-xs" aria-hidden="true"></i> Save
-                    </button>
-                </div>
+                <p class="text-xs text-slate-500 dark:text-slate-400 m-0">Saved with marks via the Save button</p>
             </div>
             <div class="ms-remarks-card__body">
                 <div class="overflow-x-auto">
@@ -1213,7 +1358,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                                class="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 touch-manipulation"
                                                :placeholder="band.label || ''"
                                                x-model="gradeRemarksByCode[(band.code || '').toUpperCase()]"
-                                               @input="gradeRemarksStatus = 'Unsaved changes'">
+                                               @input="markRemarksDirty()">
                                     </td>
                                 </tr>
                             </template>
@@ -1221,6 +1366,17 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     </table>
                 </div>
             </div>
+        </div>
+
+        <div x-show="canEnterMarks && selectedExam && !examIsLocked" x-cloak class="marks-save-bar">
+            <span class="text-xs text-slate-500 dark:text-slate-400" x-show="marksSaveStatus" x-text="marksSaveStatus"></span>
+            <button type="button"
+                    @click="saveAll()"
+                    :disabled="marksSaving || !hasUnsavedChanges"
+                    class="marks-toolbar-btn-save touch-manipulation"
+                    title="Save entered marks and grade remarks">
+                <i class="fas fa-save text-xs" aria-hidden="true"></i> Save
+            </button>
         </div>
 
         <!-- Loading Indicator -->
@@ -1301,9 +1457,23 @@ function marksSheet() {
         schoolTermId: "{{ selected_term_id if selected_term_id is not none else '' }}",
         schoolDefaultExamId: "{{ selected_exam_id if selected_exam_id is not none else '' }}",
         marks: {},
+        /** Last loaded/saved stored marks — used so blur never rewrites unchanged cells. */
+        marksBaseline: {},
+        /** Cells the user actually edited this session (studentId_subjectId → true). */
+        marksDirty: {},
+        /**
+         * Typed scores shown in inputs (studentId_subjectId → number|null).
+         * Kept separate from stored marks so changing “Out of” does not rescale the input —
+         * only the converted % / stored value against the subject exam total updates.
+         */
+        typedMarks: {},
         filtersReady: false,
         loading: false,
         saveStatus: {},
+        marksSaving: false,
+        marksSaveStatus: '',
+        _filterSnapshot: { year: '', term: '', exam: '', ccSubject: '' },
+        _beforeUnloadBound: false,
         lockedModal: false,
         marksPeriodClosedModalOpen: false,
         dismissedMarksClosedForExamId: '',
@@ -1325,6 +1495,10 @@ function marksSheet() {
         gradeRemarksStatus: '',
         academicLevelId: {{ academic_level_id|default('null') }},
         subjectExamMax: {{ (subject_exam_max_map or {})|tojson|safe }},
+        /** Per-subject “I am entering out of X” — converts live to /100%. */
+        entryOutOfBySubject: {},
+        bulkEntryOutOf: '100',
+        entryOutOfPresets: [20, 25, 40, 50, 60, 80, 100],
         columnMembers: {{ (combination_column_members or {})|tojson|safe }},
         teacherEditableSubjectIds: {{ (teacher_editable_subject_ids or [])|tojson|safe }},
 
@@ -1349,6 +1523,23 @@ function marksSheet() {
         summaryMode: {{ (marks_summary_column or 'avg_pct')|tojson }},
         /** View-only: show each cell as scaled /100; teachers still enter raw marks. */
         displayScaled: {{ 'true' if marks_display_scaled else 'false' }},
+
+        get hasUnsavedMarks() {
+            return Object.keys(this.marksDirty || {}).length > 0;
+        },
+
+        get hasUnsavedRemarks() {
+            return this.gradeRemarksStatus === 'Unsaved changes';
+        },
+
+        get hasUnsavedChanges() {
+            return this.hasUnsavedMarks || this.hasUnsavedRemarks;
+        },
+
+        markRemarksDirty() {
+            this.gradeRemarksStatus = 'Unsaved changes';
+            if (!this.marksSaving) this.marksSaveStatus = 'Unsaved changes';
+        },
 
         currentExamName() {
             const ex = this._selectedExamMeta();
@@ -1386,7 +1577,89 @@ function marksSheet() {
                 this.ccSelectedSubjectId = '';
                 return;
             }
+            if (!this.confirmDiscardUnsaved()) {
+                this.ccSelectedSubjectId = this._filterSnapshot.ccSubject || '';
+                return;
+            }
             window.location.href = this.ccSubjectEditUrl();
+        },
+
+        navigateWithUnsavedCheck(event) {
+            if (!this.confirmDiscardUnsaved()) {
+                event.preventDefault();
+            }
+        },
+
+        confirmDiscardUnsaved() {
+            if (!this.hasUnsavedChanges) return true;
+            return window.confirm('You have unsaved changes. Leave without saving? Your changes may be lost.');
+        },
+
+        _syncFilterSnapshot() {
+            this._filterSnapshot = {
+                year: String(this.selectedAcademicYearId || ''),
+                term: String(this.selectedTermId || ''),
+                exam: String(this.selectedExam || ''),
+                ccSubject: String(this.ccSelectedSubjectId || ''),
+            };
+        },
+
+        _bindUnsavedLeaveGuard() {
+            if (this._beforeUnloadBound) return;
+            this._beforeUnloadBound = true;
+            window.addEventListener('beforeunload', (e) => {
+                if (!this.hasUnsavedChanges) return;
+                e.preventDefault();
+                e.returnValue = '';
+            });
+        },
+
+        async saveAll() {
+            if (!this.canEnterMarks || !this.selectedExam || this.examIsLocked) return;
+            if (!this.hasUnsavedChanges) return;
+            this.marksSaving = true;
+            this.marksSaveStatus = 'Saving…';
+            let marksFailed = false;
+            let remarksFailed = false;
+            try {
+                if (this.hasUnsavedMarks) {
+                    const dirtyKeys = [...Object.keys(this.marksDirty || {})];
+                    for (const key of dirtyKeys) {
+                        const sep = key.lastIndexOf('_');
+                        if (sep < 1) continue;
+                        const studentId = key.slice(0, sep);
+                        const subjectId = key.slice(sep + 1);
+                        if (!this.isMarkCellDirty(studentId, subjectId)) continue;
+                        const typed = this._getTypedMark(studentId, subjectId);
+                        const display = typed === null ? '' : this._formatOutOfNumber(typed);
+                        await this.saveMark(studentId, subjectId, display);
+                        if (this.isMarkCellDirty(studentId, subjectId)) marksFailed = true;
+                    }
+                }
+                if (this.hasUnsavedRemarks) {
+                    const remarksOk = await this.saveGradeRemarks({ silent: true });
+                    if (!remarksOk) remarksFailed = true;
+                }
+                if (marksFailed || remarksFailed) {
+                    this.marksSaveStatus = 'Save failed';
+                } else if (!this.hasUnsavedChanges) {
+                    this.marksSaveStatus = 'Saved';
+                    setTimeout(() => {
+                        if (this.marksSaveStatus === 'Saved') this.marksSaveStatus = '';
+                    }, 2000);
+                } else {
+                    this.marksSaveStatus = 'Save failed';
+                }
+            } catch (e) {
+                console.error('saveAll error:', e);
+                this.marksSaveStatus = 'Save failed';
+            } finally {
+                this.marksSaving = false;
+            }
+        },
+
+        async saveAllMarks() {
+            return this.saveAll();
         },
 
         _applyInitialGradeRemarksIfEmpty() {
@@ -1436,12 +1709,15 @@ function marksSheet() {
             }
         },
 
-        async saveGradeRemarks() {
-            if (!this.selectedExam) return;
+        async saveGradeRemarks(opts = {}) {
+            const silent = !!(opts && opts.silent);
+            if (!this.selectedExam) return false;
             const examName = this.currentExamName();
-            if (!examName || !this.academicLevelId) return;
-            this.gradeRemarksSaving = true;
-            this.gradeRemarksStatus = 'Saving…';
+            if (!examName || !this.academicLevelId) return false;
+            if (!silent) {
+                this.gradeRemarksSaving = true;
+                this.gradeRemarksStatus = 'Saving…';
+            }
             try {
                 const payload = {};
                 for (const band of (this.defaultGradeBands || [])) {
@@ -1463,17 +1739,21 @@ function marksSheet() {
                 const json = await res.json();
                 if (!json || !json.success) {
                     this.gradeRemarksStatus = 'Save failed';
-                    return;
+                    return false;
                 }
-                this.gradeRemarksStatus = 'Saved';
-                setTimeout(() => {
-                    if (this.gradeRemarksStatus === 'Saved') this.gradeRemarksStatus = '';
-                }, 2000);
+                this.gradeRemarksStatus = silent ? '' : 'Saved';
+                if (!silent) {
+                    setTimeout(() => {
+                        if (this.gradeRemarksStatus === 'Saved') this.gradeRemarksStatus = '';
+                    }, 2000);
+                }
+                return true;
             } catch (e) {
                 console.error('saveGradeRemarks error:', e);
                 this.gradeRemarksStatus = 'Save failed';
+                return false;
             } finally {
-                this.gradeRemarksSaving = false;
+                if (!silent) this.gradeRemarksSaving = false;
             }
         },
 
@@ -1615,9 +1895,315 @@ function marksSheet() {
             return (Number.isFinite(n) && n > 0) ? n : 100;
         },
 
-        /** Hard ceiling: subject exam total, never above 100. */
+        /** Storage ceiling for a subject (settings total, never above 100). */
         maxAllowedMarkFor(subjectId) {
             return Math.min(this.subjectExamMaxFor(subjectId), 100);
+        },
+
+        /** User-chosen paper total for typing scores (defaults to subject settings). */
+        entryOutOfFor(subjectId) {
+            const k = String(subjectId);
+            const v = this.entryOutOfBySubject[k] ?? this.entryOutOfBySubject[subjectId];
+            const n = Number(v);
+            if (Number.isFinite(n) && n > 0) return n;
+            const members = this.getCombinationMembers(subjectId);
+            if (members && members.length && Number(subjectId) < 0) return 100;
+            return this.subjectExamMaxFor(subjectId);
+        },
+
+        setEntryOutOf(subjectId, value) {
+            const n = parseFloat(String(value || '').trim().replace(',', '.'));
+            if (!Number.isFinite(n) || n <= 0) return;
+            const clamped = Math.min(1000, Math.max(0.01, n));
+            const oldOutOf = this.entryOutOfFor(subjectId);
+            if (Math.abs(oldOutOf - clamped) < 1e-9) {
+                this.bulkEntryOutOf = this._formatOutOfNumber(clamped);
+                return;
+            }
+            // Snapshot typed scores under the OLD out-of, then only re-convert % / stored.
+            this._ensureTypedMarksForSubjects([subjectId]);
+            this.entryOutOfBySubject = {
+                ...this.entryOutOfBySubject,
+                [String(subjectId)]: clamped,
+            };
+            this.bulkEntryOutOf = this._formatOutOfNumber(clamped);
+            this._reconvertTypedMarksForSubjects([subjectId]);
+        },
+
+        applyBulkEntryOutOf() {
+            const n = parseFloat(String(this.bulkEntryOutOf || '').trim().replace(',', '.'));
+            if (!Number.isFinite(n) || n <= 0) return;
+            const clamped = Math.min(1000, Math.max(0.01, n));
+            const next = { ...this.entryOutOfBySubject };
+            const editableIds = this.teacherEditableSubjectIds || [];
+            const changingIds = [];
+            for (const sid of this.subjectIds) {
+                if (Number(sid) < 0 && !this.getCombinationMembers(sid)) continue;
+                if (this.isTeacherMarks && editableIds.length) {
+                    const sidN = Number(sid);
+                    const allowed = editableIds.some((x) => Number(x) === sidN) || this._storesAsPercent(sid);
+                    if (!allowed) continue;
+                }
+                const old = this.entryOutOfFor(sid);
+                if (Math.abs(old - clamped) >= 1e-9) changingIds.push(sid);
+                next[String(sid)] = clamped;
+            }
+            this._ensureTypedMarksForSubjects(changingIds);
+            this.entryOutOfBySubject = next;
+            this.bulkEntryOutOf = this._formatOutOfNumber(clamped);
+            this._reconvertTypedMarksForSubjects(changingIds);
+        },
+
+        _getTypedMark(studentId, subjectId) {
+            const k = this._markCellKey(studentId, subjectId);
+            if (Object.prototype.hasOwnProperty.call(this.typedMarks || {}, k)) {
+                const v = this.typedMarks[k];
+                if (v === null || v === undefined || v === '') return null;
+                const n = Number(v);
+                return Number.isFinite(n) ? n : null;
+            }
+            const raw = this._rawStoredMark(studentId, subjectId);
+            if (raw === null) return null;
+            return this.storedToEntry(subjectId, raw);
+        },
+
+        _setTypedMark(studentId, subjectId, value) {
+            const k = this._markCellKey(studentId, subjectId);
+            const next = { ...(this.typedMarks || {}) };
+            if (value === null || value === undefined || value === '') {
+                next[k] = null;
+            } else {
+                const n = Number(value);
+                next[k] = Number.isFinite(n) ? n : null;
+            }
+            this.typedMarks = next;
+        },
+
+        /** Fill typedMarks from current stored→entry so out-of changes keep the on-screen scores. */
+        _ensureTypedMarksForSubjects(subjectIds) {
+            if (!this.selectedExam || !subjectIds || !subjectIds.length) return;
+            const next = { ...(this.typedMarks || {}) };
+            let changed = false;
+            for (const subjectId of subjectIds) {
+                if (this.isComboTotalColumn(subjectId)) continue;
+                for (const student of (this.studentsList || [])) {
+                    const studentId = student.student_id;
+                    const k = this._markCellKey(studentId, subjectId);
+                    if (Object.prototype.hasOwnProperty.call(next, k)) continue;
+                    const raw = this._rawStoredMark(studentId, subjectId);
+                    if (raw === null) {
+                        next[k] = null;
+                    } else {
+                        const entry = this.storedToEntry(subjectId, raw);
+                        next[k] = entry;
+                    }
+                    changed = true;
+                }
+            }
+            if (changed) this.typedMarks = next;
+        },
+
+        /** Rebuild all typed scores from stored marks (after load / exam change). */
+        _syncTypedMarksFromStored() {
+            const next = {};
+            if (!this.selectedExam) {
+                this.typedMarks = next;
+                return;
+            }
+            for (const subjectId of (this.subjectIds || [])) {
+                if (this.isComboTotalColumn(subjectId)) continue;
+                for (const student of (this.studentsList || [])) {
+                    const studentId = student.student_id;
+                    const k = this._markCellKey(studentId, subjectId);
+                    const raw = this._rawStoredMark(studentId, subjectId);
+                    if (raw === null) {
+                        next[k] = null;
+                    } else {
+                        next[k] = this.storedToEntry(subjectId, raw);
+                    }
+                }
+            }
+            this.typedMarks = next;
+        },
+
+        /**
+         * Keep typed input scores; re-convert to stored using current out-of → subject exam total.
+         * This updates live % only; inputs stay the same.
+         */
+        _reconvertTypedMarksForSubjects(subjectIds) {
+            if (!this.selectedExam || !subjectIds || !subjectIds.length) return;
+            for (const subjectId of subjectIds) {
+                if (this.isComboTotalColumn(subjectId)) continue;
+                for (const student of (this.studentsList || [])) {
+                    const studentId = student.student_id;
+                    const typed = this._getTypedMark(studentId, subjectId);
+                    const stored = (typed === null) ? null : this.entryToStored(subjectId, typed);
+                    if (!this.marks[studentId]) this.marks[studentId] = {};
+                    if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
+                    this.marks[studentId][subjectId][this.selectedExam] = stored;
+                    if (!this._marksValuesEqual(stored, this._baselineStoredMark(studentId, subjectId))) {
+                        this.markCellDirty(studentId, subjectId);
+                    }
+                }
+            }
+        },
+
+        _formatOutOfNumber(n) {
+            if (!Number.isFinite(n)) return '';
+            return Math.round(n) === n ? String(Math.round(n)) : String(n);
+        },
+
+        _initEntryOutOfFromSettings() {
+            const next = {};
+            let first = null;
+            for (const sid of this.subjectIds) {
+                const members = this.getCombinationMembers(sid);
+                const def = (members && members.length && Number(sid) < 0)
+                    ? 100
+                    : this.subjectExamMaxFor(sid);
+                next[String(sid)] = def;
+                if (first === null) first = def;
+            }
+            this.entryOutOfBySubject = next;
+            this.bulkEntryOutOf = this._formatOutOfNumber(first != null ? first : 100);
+        },
+
+        /** True when this column stores a unified 0–100% (combined subject column). */
+        _storesAsPercent(subjectId) {
+            const members = this.getCombinationMembers(subjectId);
+            return !!(members && members.length && Number(subjectId) < 0);
+        },
+
+        /** Convert typed score (out of entryOutOf) → stored value used by the system. */
+        entryToStored(subjectId, entered) {
+            if (entered === null || entered === undefined || entered === '') return null;
+            const n = Number(entered);
+            if (!Number.isFinite(n)) return null;
+            const outOf = this.entryOutOfFor(subjectId);
+            if (!outOf) return null;
+            if (this._storesAsPercent(subjectId)) {
+                const pct = Math.max(0, Math.min(100, (n / outOf) * 100));
+                return Math.round(pct * 100) / 100;
+            }
+            const mxSettings = this.subjectExamMaxFor(subjectId);
+            const mxStore = this.maxAllowedMarkFor(subjectId);
+            // Same scale as subject settings → keep the typed value (preserves prior marks).
+            if (Math.abs(outOf - mxSettings) < 1e-9 || Math.abs(outOf - mxStore) < 1e-9) {
+                return Math.round(Math.max(0, Math.min(mxStore, n)) * 100) / 100;
+            }
+            const pct = (n / outOf) * 100;
+            const clampedPct = Math.max(0, Math.min(100, pct));
+            return Math.round((clampedPct / 100) * mxStore * 100) / 100;
+        },
+
+        /** Convert stored mark → display score on the current entry “out of” scale. */
+        storedToEntry(subjectId, stored) {
+            if (stored === null || stored === undefined || stored === '') return null;
+            const n = Number(stored);
+            if (!Number.isFinite(n)) return null;
+            const outOf = this.entryOutOfFor(subjectId);
+            if (!outOf) return null;
+            if (this._storesAsPercent(subjectId)) {
+                return Math.round(((n / 100) * outOf) * 100) / 100;
+            }
+            const mx = this.subjectExamMaxFor(subjectId);
+            if (!mx) return null;
+            // Same scale → show stored value as-is (no float drift on existing marks).
+            if (Math.abs(outOf - mx) < 1e-9) {
+                return Math.round(n * 100) / 100;
+            }
+            const pct = (100 * n) / mx;
+            const entry = (pct / 100) * outOf;
+            return Math.round(entry * 100) / 100;
+        },
+
+        _markCellKey(studentId, subjectId) {
+            return `${studentId}_${subjectId}`;
+        },
+
+        _marksValuesEqual(a, b) {
+            if (a === null || a === undefined || a === '') {
+                return b === null || b === undefined || b === '';
+            }
+            if (b === null || b === undefined || b === '') return false;
+            const na = Number(a);
+            const nb = Number(b);
+            if (!Number.isFinite(na) || !Number.isFinite(nb)) return false;
+            return Math.abs(na - nb) < 1e-6;
+        },
+
+        _syncMarksBaselineFromMarks() {
+            const out = {};
+            const exam = this.selectedExam;
+            const src = this.marks || {};
+            for (const sid of Object.keys(src)) {
+                const bySub = src[sid] || {};
+                out[sid] = {};
+                for (const subId of Object.keys(bySub)) {
+                    const cell = bySub[subId];
+                    let val = null;
+                    if (cell && typeof cell === 'object') {
+                        val = exam != null ? (cell[exam] ?? cell[String(exam)]) : null;
+                    } else {
+                        val = cell;
+                    }
+                    out[sid][subId] = (val === '' || val == null) ? null : Number(val);
+                }
+            }
+            this.marksBaseline = out;
+            this.marksDirty = {};
+        },
+
+        _baselineStoredMark(studentId, subjectId) {
+            const row = this.marksBaseline[studentId] || this.marksBaseline[String(studentId)];
+            if (!row) return null;
+            const v = row[subjectId] ?? row[String(subjectId)];
+            if (v === '' || v == null) return null;
+            const n = Number(v);
+            return Number.isFinite(n) ? n : null;
+        },
+
+        markCellDirty(studentId, subjectId) {
+            const k = this._markCellKey(studentId, subjectId);
+            if (this.marksDirty[k]) return;
+            this.marksDirty = { ...this.marksDirty, [k]: true };
+            if (!this.marksSaving) this.marksSaveStatus = 'Unsaved changes';
+        },
+
+        isMarkCellDirty(studentId, subjectId) {
+            return !!this.marksDirty[this._markCellKey(studentId, subjectId)];
+        },
+
+        clearMarkCellDirty(studentId, subjectId) {
+            const k = this._markCellKey(studentId, subjectId);
+            if (!this.marksDirty[k]) return;
+            const next = { ...this.marksDirty };
+            delete next[k];
+            this.marksDirty = next;
+        },
+
+        _setBaselineStoredMark(studentId, subjectId, value) {
+            const sid = String(studentId);
+            const sub = String(subjectId);
+            const row = { ...(this.marksBaseline[sid] || this.marksBaseline[studentId] || {}) };
+            row[sub] = value;
+            this.marksBaseline = { ...this.marksBaseline, [sid]: row };
+        },
+
+        /** Live /100% label under a cell (what grades / averages use). */
+        livePctLabel(studentId, subjectId) {
+            const pct = this.getScaledPct(studentId, subjectId);
+            if (pct === null || pct === undefined) return '';
+            return String(pct) + '%';
+        },
+
+        /** Percentage of the current entry “out of” (typed ÷ outOf × 100). */
+        entryPctFor(studentId, subjectId) {
+            const typed = this._getTypedMark(studentId, subjectId);
+            if (typed === null) return null;
+            const outOf = this.entryOutOfFor(subjectId);
+            if (!outOf) return null;
+            return Math.max(0, Math.min(100, (typed / outOf) * 100));
         },
 
         isComboTotalColumn(subjectId) {
@@ -1645,26 +2231,61 @@ function marksSheet() {
             return true;
         },
 
+        /** Whether this column’s “out of” scale can be set (assignment-based; not locked to exam). */
+        canSetEntryOutOf(subjectId) {
+            if (!this.canEdit) return false;
+            if (this.isComboTotalColumn(subjectId) && !this._storesAsPercent(subjectId)) return false;
+            const ids = this.teacherEditableSubjectIds || [];
+            if (this.isTeacherMarks && ids.length) {
+                const sid = Number(subjectId);
+                return ids.some((x) => Number(x) === sid) || this._storesAsPercent(subjectId);
+            }
+            return true;
+        },
+
         getMemberRawDisplay(studentId, subjectId) {
-            const raw = this._rawStoredMark(studentId, subjectId);
-            if (raw === null) return '';
-            return this.formatMarkDisplay(raw, false);
+            const typed = this._getTypedMark(studentId, subjectId);
+            if (typed === null) return '';
+            return this.formatMarkDisplay(typed, false);
         },
 
         getComboTotalPct(studentId, columnSubjectId) {
+            // Combined % = Σ(raw) / Σ(max) × 100 for papers with marks.
+            // Example: 25/30 + 40/50 → (25+40)/(30+50)×100 = 81.25%
             const members = this.getCombinationMembers(columnSubjectId);
             if (!members || !members.length) return null;
-            let weightedSum = 0;
-            let weightSum = 0;
+            let rawSum = 0;
+            let maxSum = 0;
             for (const mid of members) {
                 const raw = this._rawStoredMark(studentId, mid);
-                if (raw !== null) {
-                    const w = this.subjectExamMaxFor(mid);
-                    weightedSum += ((100 * raw) / w) * w;
-                    weightSum += w;
+                if (raw === null) continue;
+                const mx = this.subjectExamMaxFor(mid);
+                if (!mx || mx <= 0) continue;
+                rawSum += raw;
+                maxSum += mx;
+            }
+            return maxSum ? ((100 * rawSum) / maxSum) : null;
+        },
+
+        comboTotalTitle(studentId, columnSubjectId) {
+            const members = this.getCombinationMembers(columnSubjectId);
+            if (!members || !members.length) return 'Combined %';
+            const parts = [];
+            let scored = 0;
+            for (const mid of members) {
+                const raw = this._rawStoredMark(studentId, mid);
+                const mx = this.subjectExamMaxFor(mid);
+                if (raw === null) {
+                    parts.push('—/' + this._formatOutOfNumber(mx));
+                } else {
+                    scored += 1;
+                    parts.push(this._formatOutOfNumber(raw) + '/' + this._formatOutOfNumber(mx));
                 }
             }
-            return weightSum ? (weightedSum / weightSum) : null;
+            const pct = this.getComboTotalPct(studentId, columnSubjectId);
+            const pctTxt = pct === null ? '—' : String(this.roundWhole(pct)) + '%';
+            const incomplete = scored > 0 && scored < members.length ? ' (partial — missing paper not counted as 0)' : '';
+            return 'Combined % = Σ marks ÷ Σ paper totals × 100 → ' + parts.join(' + ') + ' = ' + pctTxt + incomplete;
         },
 
         getComboTotalDisplay(studentId, columnSubjectId) {
@@ -1682,23 +2303,24 @@ function marksSheet() {
         onMarkInput(studentId, subjectId, value, event) {
             if (!this.selectedExam || !this.canEditSubjectCell(subjectId)) return;
             const trimmed = (value || '').trim().replace(',', '.');
-            let numValue = null;
+            let entryValue = null;
             if (trimmed) {
-                numValue = parseFloat(trimmed);
-                if (Number.isNaN(numValue)) return;
-                const max = this.maxAllowedMarkFor(subjectId);
-                if (numValue > max) {
-                    numValue = max;
+                entryValue = parseFloat(trimmed);
+                if (Number.isNaN(entryValue)) return;
+                const max = this.entryOutOfFor(subjectId);
+                if (entryValue > max) {
+                    entryValue = max;
                     if (event && event.target) {
-                        const disp = Math.round(max) === max ? String(Math.round(max)) : String(max);
-                        event.target.value = disp;
+                        event.target.value = this._formatOutOfNumber(max);
                     }
                 }
-                if (numValue < 0) numValue = 0;
+                if (entryValue < 0) entryValue = 0;
             }
+            this._setTypedMark(studentId, subjectId, trimmed ? entryValue : null);
+            const stored = trimmed ? this.entryToStored(subjectId, entryValue) : null;
             if (!this.marks[studentId]) this.marks[studentId] = {};
             if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
-            this.marks[studentId][subjectId][this.selectedExam] = numValue;
+            this.marks[studentId][subjectId][this.selectedExam] = stored;
         },
 
         getCombinationMembers(subjectId) {
@@ -1734,7 +2356,7 @@ function marksSheet() {
             const start = el.selectionStart != null ? el.selectionStart : cur.length;
             const end = el.selectionEnd != null ? el.selectionEnd : cur.length;
             const trial = cur.slice(0, start) + ch + cur.slice(end);
-            const max = this.maxAllowedMarkFor(subjectId);
+            const max = this.entryOutOfFor(subjectId);
             if (ch >= '0' && ch <= '9') {
                 const num = parseFloat(trial.replace(',', '.'));
                 if (!Number.isNaN(num) && num > max + 1e-9) {
@@ -1909,6 +2531,7 @@ function marksSheet() {
 
         async init() {
             this._applyInitialGradeRemarksIfEmpty();
+            this._initEntryOutOfFromSettings();
             const honorUrlFilters = !!this.explicitMarksFilters;
             if (!honorUrlFilters) {
                 this._applyRegisteredYearTerm();
@@ -1923,6 +2546,8 @@ function marksSheet() {
             await this.$nextTick();
             await this._syncSelectedExamToDropdown(honorUrlFilters);
             this.explicitMarksFilters = false;
+            this._syncFilterSnapshot();
+            this._bindUnsavedLeaveGuard();
             setInterval(() => {
                 this._tick = Date.now();
                 this._maybeOpenMarksPeriodClosedModal();
@@ -1939,6 +2564,33 @@ function marksSheet() {
             if (!this.isTeacherMarks || !this.selectedExam || !this.teacherMarksPeriodClosed) return;
             if (String(this.dismissedMarksClosedForExamId) === String(this.selectedExam)) return;
             this.marksPeriodClosedModalOpen = true;
+        },
+
+        async onAcademicYearFilterChange() {
+            if (!this.confirmDiscardUnsaved()) {
+                this.selectedAcademicYearId = this._filterSnapshot.year;
+                return;
+            }
+            await this.onAcademicYearChange();
+            this._syncFilterSnapshot();
+        },
+
+        async onTermFilterChange() {
+            if (!this.confirmDiscardUnsaved()) {
+                this.selectedTermId = this._filterSnapshot.term;
+                return;
+            }
+            await this.onTermChange();
+            this._syncFilterSnapshot();
+        },
+
+        async onExamFilterChange() {
+            if (!this.confirmDiscardUnsaved()) {
+                this.selectedExam = this._filterSnapshot.exam;
+                return;
+            }
+            await this.onExamSelected();
+            this._syncFilterSnapshot();
         },
 
         async onAcademicYearChange() {
@@ -1962,6 +2614,7 @@ function marksSheet() {
         },
 
         async resetToSchoolCurrent() {
+            if (!this.confirmDiscardUnsaved()) return;
             this._applyRegisteredYearTerm();
             if (!this.registeredCurrentExam) {
                 const resolveYearId = () => {
@@ -1993,6 +2646,7 @@ function marksSheet() {
             await this.$nextTick();
             await this.onExamSelected();
             this.syncDefaultsFromUi();
+            this._syncFilterSnapshot();
         },
 
         async loadExamsForFilters() {
@@ -2035,21 +2689,6 @@ function marksSheet() {
         getMarkNumeric(studentId, subjectId) {
             if (this.isComboTotalColumn(subjectId)) {
                 return this.getComboTotalPct(studentId, subjectId);
-            }
-            const members = this.getCombinationMembers(subjectId);
-            if (members && members.length && Number(subjectId) < 0) {
-                let weightedSum = 0;
-                let weightSum = 0;
-                for (const mid of members) {
-                    const raw = this._rawStoredMark(studentId, mid);
-                    if (raw !== null) {
-                        const w = this.subjectExamMaxFor(mid);
-                        const pct = (100 * raw) / w;
-                        weightedSum += pct * w;
-                        weightSum += w;
-                    }
-                }
-                return weightSum ? (weightedSum / weightSum) : null;
             }
             return this._rawStoredMark(studentId, subjectId);
         },
@@ -2383,7 +3022,7 @@ function marksSheet() {
             const colIndex = Number(currentInput.dataset.colIndex);
             const movingUp = event.shiftKey;
 
-            // Blur triggers @blur save on the current input.
+            // Blur current input before moving to the next cell.
             currentInput.blur();
 
             // Move vertically in the same subject column:
@@ -2444,24 +3083,58 @@ function marksSheet() {
                 return;
             }
             if (this.marksInputsDisabled) return;
+            if (!this.isMarkCellDirty(studentId, columnSubjectId)) return;
             const members = this.getCombinationMembers(columnSubjectId);
             if (!members || !members.length) return;
             const cid = Math.abs(Number(columnSubjectId));
             const key = `${studentId}_${columnSubjectId}`;
             const trimmed = (value || '').trim().replace(',', '.');
+            let entryValue = null;
             let numValue = null;
             if (trimmed) {
-                numValue = parseFloat(trimmed);
-                if (Number.isNaN(numValue)) {
+                entryValue = parseFloat(trimmed);
+                if (Number.isNaN(entryValue)) {
                     this.saveStatus[key] = 'error';
                     setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
                     return;
                 }
-                if (numValue < 0 || numValue > 100 + 1e-6) {
+                const maxEntry = this.entryOutOfFor(columnSubjectId);
+                if (entryValue < 0 || entryValue > maxEntry + 1e-6) {
                     this.saveStatus[key] = 'error';
                     setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
                     return;
                 }
+                numValue = this.entryToStored(columnSubjectId, entryValue);
+            }
+            // Do not rewrite DB when conversion leaves the combined % unchanged.
+            let baselineComboPct = null;
+            {
+                let rawSum = 0;
+                let maxSum = 0;
+                let anyMember = false;
+                for (const mid of members) {
+                    const raw = this._baselineStoredMark(studentId, mid);
+                    if (raw !== null) {
+                        const w = this.subjectExamMaxFor(mid);
+                        if (w > 0) {
+                            rawSum += raw;
+                            maxSum += w;
+                            anyMember = true;
+                        }
+                    }
+                }
+                if (anyMember && maxSum) baselineComboPct = (100 * rawSum) / maxSum;
+            }
+            const bothEmpty = numValue === null && baselineComboPct === null;
+            if (bothEmpty || this._marksValuesEqual(numValue, baselineComboPct)) {
+                if (!this.marks[studentId]) this.marks[studentId] = {};
+                for (const mid of members) {
+                    const b = this._baselineStoredMark(studentId, mid);
+                    if (!this.marks[studentId][mid]) this.marks[studentId][mid] = {};
+                    this.marks[studentId][mid][this.selectedExam] = b;
+                }
+                this.clearMarkCellDirty(studentId, columnSubjectId);
+                return;
             }
             this.saveStatus[key] = 'saving';
             if (!this.marks[studentId]) this.marks[studentId] = {};
@@ -2495,6 +3168,14 @@ function marksSheet() {
                 } else {
                     this.saveStatus[key] = result.success ? 'saved' : 'error';
                     if (!result.success) await this.loadMarks();
+                    else {
+                        for (const mid of members) {
+                            const mx = this.subjectExamMaxFor(mid);
+                            const rw = numValue === null ? null : Math.round((numValue / 100) * mx * 100) / 100;
+                            this._setBaselineStoredMark(studentId, mid, rw);
+                        }
+                        this.clearMarkCellDirty(studentId, columnSubjectId);
+                    }
                 }
             } catch (error) {
                 this.saveStatus[key] = 'error';
@@ -2517,25 +3198,35 @@ function marksSheet() {
                 return this.saveCombinationMark(studentId, subjectId, value);
             }
 
+            if (!this.isMarkCellDirty(studentId, subjectId)) return;
+
             const key = `${studentId}_${subjectId}`;
             const trimmed = (value || '').trim().replace(',', '.');
             let numValue = null;
             if (trimmed) {
-                numValue = parseFloat(trimmed);
-                if (Number.isNaN(numValue)) {
+                const entryValue = parseFloat(trimmed);
+                if (Number.isNaN(entryValue)) {
                     this.saveStatus[key] = 'error';
                     setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
                     return;
                 }
-                if (numValue < 0) {
+                if (entryValue < 0) {
                     this.saveStatus[key] = 'error';
                     setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
                     return;
                 }
-                const mx = this.maxAllowedMarkFor(subjectId);
-                if (numValue > mx + 1e-6) {
-                    numValue = mx;
-                }
+                const maxEntry = this.entryOutOfFor(subjectId);
+                const clampedEntry = entryValue > maxEntry + 1e-6 ? maxEntry : entryValue;
+                numValue = this.entryToStored(subjectId, clampedEntry);
+            }
+
+            const baseline = this._baselineStoredMark(studentId, subjectId);
+            if (this._marksValuesEqual(numValue, baseline)) {
+                if (!this.marks[studentId]) this.marks[studentId] = {};
+                if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
+                this.marks[studentId][subjectId][this.selectedExam] = baseline;
+                this.clearMarkCellDirty(studentId, subjectId);
+                return;
             }
 
             this.saveStatus[key] = 'saving';
@@ -2568,6 +3259,10 @@ function marksSheet() {
                 } else {
                     this.saveStatus[key] = result.success ? 'saved' : 'error';
                     if (!result.success) await this.loadMarks();
+                    else {
+                        this._setBaselineStoredMark(studentId, subjectId, numValue);
+                        this.clearMarkCellDirty(studentId, subjectId);
+                    }
                 }
             } catch (error) {
                 this.saveStatus[key] = 'error';
@@ -2581,6 +3276,9 @@ function marksSheet() {
             if (!this.selectedExam) {
                 // Never show stale/all-exam marks when no exam is selected.
                 this.marks = {};
+                this.marksBaseline = {};
+                this.marksDirty = {};
+                this.typedMarks = {};
                 this.marksEntryReadonly = false;
                 return;
             }
@@ -2598,9 +3296,15 @@ function marksSheet() {
                 const result = await response.json();
                 if (result.success) {
                     this.marks = result.marks || {};
+                    this._syncMarksBaselineFromMarks();
+                    this._syncTypedMarksFromStored();
+                    this.marksDirty = {};
+                    this.marksSaveStatus = '';
                     this.marksEntryReadonly = !!result.teacher_marks_readonly;
                     if (result.subject_exam_max && typeof result.subject_exam_max === 'object') {
                         this.subjectExamMax = { ...this.subjectExamMax, ...result.subject_exam_max };
+                        // Re-sync typed display after max map refresh (same stored → entry scale).
+                        this._syncTypedMarksFromStored();
                     }
                     this.$nextTick(() => this._maybeOpenMarksPeriodClosedModal());
                 }
