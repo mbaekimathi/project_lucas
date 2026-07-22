@@ -22,6 +22,8 @@
             <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
                  alt="{{ school_settings.school_name or 'School logo' }}"
                  class="acr-print-letterhead__logo">
+            {% else %}
+            <span class="acr-print-letterhead__wordmark" aria-label="Educentric">EDUCENTRIC</span>
             {% endif %}
         </div>
         <div class="acr-print-letterhead__school-block">

@@ -6169,7 +6169,7 @@ def _get_class_teacher_class_level_options(teacher_id, academic_year_id=None):
 
 
 def _fetch_class_teacher_assignments_map(cursor, academic_year_id):
-    """Return {level_id: {teacher_id, teacher_name, employee_id, level_name, ...}}."""
+    """Return {level_id: {teacher_id, teacher_name, employee_id, credentials, level_name, ...}}."""
     out = {}
     ensure_class_teacher_assignments_table(cursor)
     if not academic_year_id:
@@ -6177,10 +6177,12 @@ def _fetch_class_teacher_assignments_map(cursor, academic_year_id):
     if not academic_year_id:
         return out
     try:
-        cursor.execute("""
+        staff_sql = _employee_staff_identity_sql('e')
+        cursor.execute(f"""
             SELECT cta.academic_level_id, cta.teacher_id,
                    al.level_name, al.level_category,
-                   e.full_name AS teacher_name, e.employee_id
+                   e.full_name AS teacher_name, e.employee_id,
+                   {staff_sql} AS staff_number
             FROM class_teacher_assignments cta
             INNER JOIN academic_levels al ON al.id = cta.academic_level_id
             LEFT JOIN employees e ON e.id = cta.teacher_id
@@ -6190,17 +6192,70 @@ def _fetch_class_teacher_assignments_map(cursor, academic_year_id):
             lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
             if lid is None:
                 continue
+            teacher_name = (row.get('teacher_name') if isinstance(row, dict) else row[4]) or ''
+            employee_code = (row.get('employee_id') if isinstance(row, dict) else row[5]) or ''
+            staff_number = ''
+            if isinstance(row, dict):
+                staff_number = row.get('staff_number') or ''
+            elif len(row) > 6:
+                staff_number = row[6] or ''
+            credentials = (str(staff_number).strip() or str(employee_code).strip())
             out[int(lid)] = {
                 'academic_level_id': int(lid),
                 'teacher_id': row.get('teacher_id') if isinstance(row, dict) else row[1],
                 'level_name': (row.get('level_name') if isinstance(row, dict) else row[2]) or '',
                 'level_category': (row.get('level_category') if isinstance(row, dict) else row[3]) or '',
-                'teacher_name': (row.get('teacher_name') if isinstance(row, dict) else row[4]) or '',
-                'employee_id': (row.get('employee_id') if isinstance(row, dict) else row[5]) or '',
+                'teacher_name': teacher_name,
+                'employee_id': employee_code,
+                'credentials': credentials,
             }
     except Exception as e:
         print(f"_fetch_class_teacher_assignments_map: {e}")
     return out
+
+
+def _fetch_head_of_institution_signatory(cursor):
+    """Active head of institution name + staff credentials for report signatures."""
+    try:
+        staff_sql = _employee_staff_identity_sql('e')
+        cursor.execute(
+            f"""
+            SELECT e.full_name, e.employee_id, {staff_sql} AS staff_number
+            FROM employees e
+            WHERE e.role = 'head of institution' AND e.status = 'active'
+            ORDER BY e.id ASC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+        if not row:
+            return {'name': '', 'employee_id': '', 'credentials': ''}
+        if isinstance(row, dict):
+            name = (row.get('full_name') or '').strip()
+            employee_code = (row.get('employee_id') or '').strip()
+            staff_number = (row.get('staff_number') or '').strip()
+        else:
+            name = (row[0] or '').strip() if len(row) > 0 else ''
+            employee_code = (row[1] or '').strip() if len(row) > 1 else ''
+            staff_number = (row[2] or '').strip() if len(row) > 2 else ''
+        return {
+            'name': name,
+            'employee_id': employee_code,
+            'credentials': staff_number or employee_code,
+        }
+    except Exception as e:
+        print(f"_fetch_head_of_institution_signatory: {e}")
+        return {'name': '', 'employee_id': '', 'credentials': ''}
+
+
+def _fetch_head_of_institution_name(cursor):
+    """Active head of institution name for document sign-off hints."""
+    try:
+        info = _fetch_head_of_institution_signatory(cursor)
+        return (info.get('name') or '').strip()
+    except Exception as e:
+        print(f"_fetch_head_of_institution_name: {e}")
+        return ''
 
 
 def _get_current_academic_year_and_term(cursor):
@@ -50038,6 +50093,311 @@ def exam_subject_settings():
                 pass
 
         combine_action = (request.form.get('combine_action') or '').strip().lower()
+        settings_action = (request.form.get('settings_action') or '').strip().lower()
+
+        if settings_action == 'save_all':
+            messages = []
+            errors = []
+            try:
+                with connection.cursor() as cursor:
+                    ensure_subject_exam_total_marks_column(cursor)
+                    ensure_subject_exam_display_order_columns(cursor)
+                    ensure_subject_exam_combination_schema(cursor)
+
+                    # 1) Column order (optional — skip if empty/invalid payload)
+                    raw_json = (request.form.get('exam_column_order_json') or '').strip()
+                    if raw_json:
+                        try:
+                            slots = json.loads(raw_json)
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            slots = None
+                            errors.append('Invalid column order payload.')
+                        if isinstance(slots, list) and slots:
+                            cursor.execute(
+                                "SELECT id FROM subjects WHERE COALESCE(status, 'active') = 'active'"
+                            )
+                            valid_sids = {
+                                int(r.get('id') if isinstance(r, dict) else r[0])
+                                for r in (cursor.fetchall() or [])
+                                if (r.get('id') if isinstance(r, dict) else r[0]) is not None
+                            }
+                            combos_loaded = fetch_subject_exam_combinations(cursor)
+                            valid_cids = {int(c['id']) for c in combos_loaded}
+                            member_of = set()
+                            combo_members = {}
+                            for c in combos_loaded:
+                                cid = int(c['id'])
+                                mids = [int(x) for x in (c.get('member_subject_ids') or [])]
+                                combo_members[cid] = mids
+                                for mid in mids:
+                                    member_of.add(int(mid))
+                            order_ok = True
+                            try:
+                                for slot in slots:
+                                    if not isinstance(slot, dict):
+                                        raise ValueError('invalid slot')
+                                    st = (slot.get('type') or '').strip().lower()
+                                    try:
+                                        sid_int = int(slot.get('id'))
+                                    except (TypeError, ValueError):
+                                        raise ValueError('invalid id')
+                                    if st not in ('subject', 'combo'):
+                                        raise ValueError('invalid type')
+                                    if st == 'subject' and sid_int in member_of:
+                                        raise ValueError('subject is part of a combination')
+                                    if st == 'subject' and sid_int not in valid_sids:
+                                        raise ValueError('unknown subject')
+                                    if st == 'combo' and sid_int not in valid_cids:
+                                        raise ValueError('unknown combination')
+                                for i, slot in enumerate(slots):
+                                    st = (slot.get('type') or '').strip().lower()
+                                    sid_int = int(slot['id'])
+                                    ordv = (i + 1) * 10
+                                    if st == 'subject':
+                                        cursor.execute(
+                                            "UPDATE subjects SET exam_display_order = %s WHERE id = %s",
+                                            (ordv, sid_int),
+                                        )
+                                    else:
+                                        cursor.execute(
+                                            "UPDATE subject_exam_combinations SET display_order = %s WHERE id = %s",
+                                            (ordv, sid_int),
+                                        )
+                                        for mid in combo_members.get(sid_int, []):
+                                            cursor.execute(
+                                                "UPDATE subjects SET exam_display_order = %s WHERE id = %s",
+                                                (ordv, mid),
+                                            )
+                                messages.append('Column order saved.')
+                            except ValueError:
+                                order_ok = False
+                                errors.append('Could not save column order.')
+                            if not order_ok:
+                                pass
+
+                    # 2) Out of totals
+                    cursor.execute(
+                        """
+                        SELECT id FROM subjects
+                        WHERE COALESCE(status, 'active') = 'active'
+                        """
+                    )
+                    id_rows = cursor.fetchall() or []
+                    subject_ids = []
+                    for r in id_rows:
+                        sid = r.get('id') if isinstance(r, dict) else r[0]
+                        if sid is not None:
+                            subject_ids.append(int(sid))
+                    totals_ok = True
+                    parsed = {}
+                    for sid in subject_ids:
+                        raw = (request.form.get(f'exam_total_marks_{sid}') or '').strip()
+                        if raw == '':
+                            parsed[sid] = None
+                            continue
+                        try:
+                            val = float(raw)
+                            if val < 1 or val > 1000:
+                                raise ValueError('out of range')
+                            parsed[sid] = val
+                        except (TypeError, ValueError):
+                            totals_ok = False
+                            errors.append(
+                                f'Invalid total marks for one or more subjects (ID {sid}). '
+                                'Use a number between 1 and 1000, or leave blank for default (100).'
+                            )
+                            break
+                    if totals_ok:
+                        for sid, val in parsed.items():
+                            if val is None:
+                                cursor.execute(
+                                    "UPDATE subjects SET exam_total_marks = NULL WHERE id = %s",
+                                    (sid,),
+                                )
+                            else:
+                                cursor.execute(
+                                    "UPDATE subjects SET exam_total_marks = %s WHERE id = %s",
+                                    (val, sid),
+                                )
+                        messages.append('Out of totals saved.')
+
+                    # 3) Combined codes for existing combinations
+                    combos_for_codes = fetch_subject_exam_combinations(cursor)
+                    codes_updated = 0
+                    for c in combos_for_codes:
+                        cid = int(c['id'])
+                        field = request.form.get(f'combined_code_{cid}')
+                        if field is None:
+                            continue
+                        mids = [int(x) for x in (c.get('member_subject_ids') or [])]
+                        if len(mids) < 2:
+                            continue
+                        placeholders = ','.join(['%s'] * len(mids))
+                        cursor.execute(
+                            f"""
+                            SELECT id, subject_name, subject_code FROM subjects
+                            WHERE id IN ({placeholders})
+                            """,
+                            tuple(mids),
+                        )
+                        name_map = {}
+                        for r in cursor.fetchall() or []:
+                            sid = int(r.get('id') if isinstance(r, dict) else r[0])
+                            name_map[sid] = {
+                                'subject_name': r.get('subject_name') if isinstance(r, dict) else r[1],
+                                'subject_code': r.get('subject_code') if isinstance(r, dict) else r[2],
+                            }
+                        member_infos = [name_map.get(mid) for mid in mids]
+                        fallback = auto_combined_subject_code_from_members(member_infos)
+                        new_code = normalize_combined_subject_code(field, fallback)
+                        if not new_code:
+                            continue
+                        old_code = (c.get('combined_code') or '').strip()
+                        if new_code != old_code:
+                            cursor.execute(
+                                """
+                                UPDATE subject_exam_combinations
+                                SET combined_code = %s
+                                WHERE id = %s
+                                """,
+                                (new_code, cid),
+                            )
+                            codes_updated += 1
+                    if codes_updated:
+                        messages.append(
+                            f'Updated {codes_updated} combined code{"s" if codes_updated != 1 else ""}.'
+                        )
+
+                    # 4) Optional new combination (if enough subjects picked)
+                    raw_ids = request.form.getlist('subject_pick')
+                    sid_order = []
+                    seen = set()
+                    for x in raw_ids:
+                        try:
+                            sid = int(x)
+                            if sid not in seen:
+                                seen.add(sid)
+                                sid_order.append(sid)
+                        except (TypeError, ValueError):
+                            continue
+                    if len(sid_order) >= 2:
+                        placeholders = ','.join(['%s'] * len(sid_order))
+                        cursor.execute(
+                            f"""
+                            SELECT id FROM subjects
+                            WHERE id IN ({placeholders}) AND COALESCE(status, 'active') = 'active'
+                            """,
+                            tuple(sid_order),
+                        )
+                        ok_active = {
+                            r.get('id') if isinstance(r, dict) else r[0]
+                            for r in (cursor.fetchall() or [])
+                        }
+                        sid_order = [s for s in sid_order if s in ok_active]
+                        if len(sid_order) < 2:
+                            errors.append('Need at least two active subjects to combine.')
+                        else:
+                            cursor.execute(
+                                f"""
+                                SELECT subject_id FROM subject_exam_combination_members
+                                WHERE subject_id IN ({placeholders})
+                                """,
+                                tuple(sid_order),
+                            )
+                            if cursor.fetchall():
+                                errors.append(
+                                    'One or more selected subjects are already part of another combination. '
+                                    'Remove that combination first.'
+                                )
+                            else:
+                                cursor.execute(
+                                    "INSERT INTO subject_exam_combinations (created_at) VALUES (CURRENT_TIMESTAMP)"
+                                )
+                                combo_id = cursor.lastrowid
+                                totals_snapshot = normalize_subject_totals_for_exam_combination(cursor, sid_order)
+                                codes_snapshot = normalize_subject_codes_for_exam_combination(cursor, sid_order)
+                                cursor.execute(
+                                    f"""
+                                    SELECT id, subject_name, subject_code FROM subjects
+                                    WHERE id IN ({placeholders})
+                                    """,
+                                    tuple(sid_order),
+                                )
+                                pick_map = {}
+                                for r in cursor.fetchall() or []:
+                                    sid = int(r.get('id') if isinstance(r, dict) else r[0])
+                                    pick_map[sid] = {
+                                        'subject_name': r.get('subject_name') if isinstance(r, dict) else r[1],
+                                        'subject_code': r.get('subject_code') if isinstance(r, dict) else r[2],
+                                    }
+                                auto_code = auto_combined_subject_code_from_members(
+                                    [pick_map.get(s) for s in sid_order]
+                                )
+                                combined_code = normalize_combined_subject_code(
+                                    request.form.get('combined_code'), auto_code
+                                )
+                                cursor.execute(
+                                    "SELECT COALESCE(MAX(COALESCE(display_order, 0)), 0) + 10 AS nx FROM subject_exam_combinations"
+                                )
+                                nxrow = cursor.fetchone()
+                                next_ord = int(
+                                    (nxrow.get('nx') if isinstance(nxrow, dict) else (nxrow[0] if nxrow else 0)) or 0
+                                ) or 10
+                                cursor.execute(
+                                    """
+                                    UPDATE subject_exam_combinations
+                                    SET totals_snapshot_json = %s,
+                                        codes_snapshot_json = %s,
+                                        combined_code = %s,
+                                        display_order = %s
+                                    WHERE id = %s
+                                    """,
+                                    (
+                                        json.dumps(totals_snapshot),
+                                        json.dumps(codes_snapshot),
+                                        combined_code,
+                                        next_ord,
+                                        combo_id,
+                                    ),
+                                )
+                                ph_ord = ','.join(['%s'] * len(sid_order))
+                                cursor.execute(
+                                    f"UPDATE subjects SET exam_display_order = %s WHERE id IN ({ph_ord})",
+                                    (next_ord,) + tuple(sid_order),
+                                )
+                                for order_idx, sid in enumerate(sid_order):
+                                    cursor.execute(
+                                        """
+                                        INSERT INTO subject_exam_combination_members (combination_id, subject_id, sort_order)
+                                        VALUES (%s, %s, %s)
+                                        """,
+                                        (combo_id, sid, order_idx),
+                                    )
+                                messages.append('Subjects combined for marks entry.')
+
+                    if errors and not messages:
+                        connection.rollback()
+                    else:
+                        connection.commit()
+            except Exception as e:
+                print(f"exam_subject_settings save_all: {e}")
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                errors.append('Could not save settings. Please try again.')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            if messages:
+                flash(' '.join(messages) + post_freeze_suffix, 'success')
+            for err in errors:
+                flash(err, 'error')
+            if not messages and not errors:
+                flash('Nothing to save.' + post_freeze_suffix, 'info')
+            return redirect(settings_anchor)
 
         if combine_action == 'update_code':
             try:
@@ -50625,6 +50985,28 @@ def exam_subject_settings():
                         totals.append('100')
                 auto_code = sep.join(codes)
                 stored_code = (c.get('combined_code') or '').strip()
+                combo_cats = []
+                seen_combo_cat = set()
+                for mid in mids:
+                    info = name_map.get(mid)
+                    if not info:
+                        continue
+                    gc = (info.get('group_category') or '').strip() or 'Uncategorized'
+                    if gc not in seen_combo_cat:
+                        seen_combo_cat.add(gc)
+                        combo_cats.append(gc)
+                    for lc in (info.get('level_categories') or []):
+                        lc_s = str(lc or '').strip()
+                        if lc_s and lc_s not in seen_combo_cat:
+                            seen_combo_cat.add(lc_s)
+                            combo_cats.append(lc_s)
+                if not combo_cats:
+                    combo_cats = ['Uncategorized']
+                primary_cat = combo_cats[0]
+                for preferred in base_category_order:
+                    if preferred in seen_combo_cat:
+                        primary_cat = preferred
+                        break
                 combinations_display.append({
                     'id': c['id'],
                     'label_name': sep.join(names),
@@ -50634,6 +51016,8 @@ def exam_subject_settings():
                     'member_codes': member_codes_original,
                     'member_totals': totals,
                     'member_ids': mids,
+                    'group_category': primary_cat,
+                    'categories': combo_cats,
                 })
             exam_column_order_by_category = _build_exam_column_order_by_category(
                 name_map, combos_loaded, base_category_order
@@ -75260,27 +75644,6 @@ def _generate_store_lpo_serial(cursor):
     return f'LPO-{next_num:06d}'
 
 
-def _fetch_head_of_institution_name(cursor):
-    """Active head of institution name for document sign-off hints."""
-    try:
-        cursor.execute(
-            """
-            SELECT full_name FROM employees
-            WHERE role = 'head of institution' AND status = 'active'
-            ORDER BY id ASC
-            LIMIT 1
-            """
-        )
-        row = cursor.fetchone()
-        if not row:
-            return ''
-        name = row.get('full_name') if isinstance(row, dict) else row[0]
-        return (name or '').strip()
-    except Exception as e:
-        print(f"_fetch_head_of_institution_name: {e}")
-        return ''
-
-
 def _fetch_store_lpos_recent(cursor, limit=50):
     ensure_store_lpo_lines_table(cursor)
     rows = []
@@ -87404,7 +87767,7 @@ def _trim_academic_report_json_bundle(bundle, report_type):
             continue
         slim = {}
         for k, v in row.items():
-            if k in ('rank_sort_total', 'rank_sort_mean', 'subject_grades', 'class_subject_columns'):
+            if k in ('rank_sort_total', 'rank_sort_mean', 'subject_grades'):
                 continue
             if k in subject_cols and isinstance(row.get('subject_marks'), dict):
                 continue
@@ -88517,6 +88880,22 @@ def _build_academic_report_payload(cursor, report_type, f):
                 meta['exam_window'] = exam_window
                 if not all_exams_report:
                     meta['applied_filters']['exam_name'] = exam_window.get('label') or 'All exams'
+        try:
+            ct_map = _fetch_class_teacher_assignments_map(cursor, ay)
+            meta['class_teachers_by_level'] = {
+                str(int(ct_lid)): {
+                    'name': (ct_info.get('teacher_name') or '').strip(),
+                    'credentials': (ct_info.get('credentials') or ct_info.get('employee_id') or '').strip(),
+                    'employee_id': (ct_info.get('employee_id') or '').strip(),
+                }
+                for ct_lid, ct_info in (ct_map or {}).items()
+                if ct_lid is not None and isinstance(ct_info, dict)
+            }
+            meta['head_of_institution'] = _fetch_head_of_institution_signatory(cursor)
+        except Exception as e:
+            print(f"class_teachers_by_level for academic reports: {e}")
+            meta['class_teachers_by_level'] = {}
+            meta['head_of_institution'] = {'name': '', 'employee_id': '', 'credentials': ''}
 
     if report_type == 'class_list_exam':
         title = 'Class list — exam entry'
@@ -88928,7 +89307,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             except (TypeError, ValueError):
                 sid_i = None
             try:
-                eo_i = int(eo_raw)
+                eo_i = _coerce_exam_display_order(eo_raw)
             except (TypeError, ValueError):
                 eo_i = 1000000000
             if admission_number not in grouped:
@@ -89013,23 +89392,27 @@ def _build_academic_report_payload(cursor, report_type, f):
             set(id_to_gc_all_perf.values()) or {'Uncategorized'}, base_cs_perf
         )
 
+        try:
+            lid_int = int(lid) if lid is not None else None
+        except (TypeError, ValueError):
+            lid_int = None
+
         def _all_students_subj_col_sort(lbl):
             m = subject_meta.get(lbl) or {}
+            edo = _coerce_exam_display_order(m.get('edo'))
+            # Single-class reports: follow set exam_display_order only (ignore cross-level category).
+            if lid_int is not None or (level_ids and len(level_ids) == 1):
+                return (edo, str(lbl or '').lower())
             sid = m.get('sid')
             if not sid:
-                return (10**9, 10**9, lbl.lower())
+                return (10**9, 10**9, str(lbl or '').lower())
             gc = id_to_gc_all_perf.get(sid, 'Uncategorized')
             try:
                 ci = sec_cs_perf.index(gc)
             except ValueError:
                 ci = len(sec_cs_perf)
-            edo = int(m.get('edo') or 1000000000)
-            return (ci, edo, lbl.lower())
+            return (ci, edo, str(lbl or '').lower())
 
-        try:
-            lid_int = int(lid) if lid is not None else None
-        except (TypeError, ValueError):
-            lid_int = None
         if is_combined_level and level_ids:
             merged_labels = []
             seen_lbl = set()
@@ -89061,6 +89444,9 @@ def _build_academic_report_payload(cursor, report_type, f):
         pre_rows = []
         for student in grouped.values():
             if is_combined_level:
+                cols_for_student = list(subject_columns)
+            elif lid_int is not None and subject_columns:
+                # Selected class: use the same set-order columns as the class matrix.
                 cols_for_student = list(subject_columns)
             else:
                 ck = _student_class_key(student.get('current_grade'), student.get('level_name'))
@@ -89358,7 +89744,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             eo_raw = r.get('subject_exam_display_order') if isinstance(r, dict) else (r[5] if len(r) > 5 else None)
             disp = subject_display_label(sc, sn, 'N/A')
             try:
-                eo = int(eo_raw)
+                eo = _coerce_exam_display_order(eo_raw)
             except (TypeError, ValueError):
                 eo = 1000000000
             if sid_raw is not None:
@@ -89374,16 +89760,34 @@ def _build_academic_report_payload(cursor, report_type, f):
                 grp_subj[disp].append(mv)
 
         int_sids_rep = [k for k in subj_name_by_id if isinstance(k, int)]
-        id_to_gc_rep = fetch_subject_id_to_exam_group_category(cursor, int_sids_rep) if int_sids_rep else {}
-        base_cat_rep = fetch_base_academic_level_category_order(cursor)
-        sec_order_rep = build_exam_subject_section_order(
-            set(id_to_gc_rep.values()) or {'Uncategorized'}, base_cat_rep
-        )
+        force_cat = None
+        if level_ids and len(level_ids) == 1:
+            try:
+                cursor.execute(
+                    "SELECT level_category FROM academic_levels WHERE id = %s",
+                    (int(level_ids[0]),),
+                )
+                _lcr = cursor.fetchone()
+                if _lcr:
+                    force_cat = str(
+                        (_lcr.get('level_category') if isinstance(_lcr, dict) else _lcr[0]) or ''
+                    ).strip() or 'Uncategorized'
+            except Exception:
+                force_cat = None
+        if force_cat:
+            id_to_gc_rep = {sid: force_cat for sid in int_sids_rep}
+            sec_order_rep = [force_cat]
+        else:
+            id_to_gc_rep = fetch_subject_id_to_exam_group_category(cursor, int_sids_rep) if int_sids_rep else {}
+            base_cat_rep = fetch_base_academic_level_category_order(cursor)
+            sec_order_rep = build_exam_subject_section_order(
+                set(id_to_gc_rep.values()) or {'Uncategorized'}, base_cat_rep
+            )
 
         def _level_subj_sort_key(k):
             ln, k2 = k
             if isinstance(k2, int):
-                gc = id_to_gc_rep.get(k2, 'Uncategorized')
+                gc = id_to_gc_rep.get(k2, force_cat or 'Uncategorized')
                 try:
                     ci = sec_order_rep.index(gc)
                 except ValueError:
@@ -89394,7 +89798,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 return (
                     str(ln or '').lower(),
                     ci,
-                    int(subj_ord.get(k2, 1000000000)),
+                    _coerce_exam_display_order(subj_ord.get(k2)),
                     disp.lower(),
                     k2,
                 )
@@ -89402,7 +89806,7 @@ def _build_academic_report_payload(cursor, report_type, f):
 
         def _subj_perf_sort_key(k):
             if isinstance(k, int):
-                gc = id_to_gc_rep.get(k, 'Uncategorized')
+                gc = id_to_gc_rep.get(k, force_cat or 'Uncategorized')
                 try:
                     ci = sec_order_rep.index(gc)
                 except ValueError:
@@ -89410,7 +89814,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 disp = subject_display_label(
                     subj_code_by_id.get(k), subj_name_by_id.get(k), 'N/A'
                 )
-                return (ci, int(subj_ord.get(k, 1000000000)), disp.lower(), k)
+                return (ci, _coerce_exam_display_order(subj_ord.get(k)), disp.lower(), k)
             return (10**9, 1000000000, str(k).lower(), 0)
 
         if report_type == 'exam_class_performance':

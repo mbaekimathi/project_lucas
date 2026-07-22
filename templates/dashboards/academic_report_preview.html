@@ -446,7 +446,7 @@
                     {% if school_settings.school_logo %}
                     <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="School logo" class="w-14 h-14 object-contain rounded-md border border-gray-200 bg-white">
                     {% else %}
-                    <div class="w-14 h-14 rounded-md border border-dashed border-white/50"></div>
+                    <span class="w-14 h-14 inline-flex items-center justify-center rounded-md border border-white/40 bg-white/10 text-[0.55rem] font-extrabold tracking-wide text-white text-center leading-tight px-1" aria-label="Educentric">EDUCENTRIC</span>
                     {% endif %}
                 </div>
             </div>
@@ -557,20 +557,35 @@
                     <p class="text-sm text-gray-500 dark:text-gray-400">............................................................................................................................</p>
                 </div>
                 <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-600 dark:text-gray-400">
+                    {% set af_marks = meta.applied_filters if meta and meta.applied_filters else {} %}
+                    {% set ct_map_marks = meta.class_teachers_by_level if meta and meta.class_teachers_by_level else {} %}
+                    {% set ct_raw_marks = ct_map_marks.get(st.academic_level_id|string, {}) if st.academic_level_id is not none else {} %}
+                    {% if ct_raw_marks is string %}
+                        {% set ct_name_marks = ct_raw_marks %}
+                        {% set ct_cred_marks = '' %}
+                    {% else %}
+                        {% set ct_name_marks = ct_raw_marks.name if ct_raw_marks else '' %}
+                        {% set ct_cred_marks = (ct_raw_marks.credentials or ct_raw_marks.employee_id or '') if ct_raw_marks else '' %}
+                    {% endif %}
+                    {% set head_marks = meta.head_of_institution if meta and meta.head_of_institution else {} %}
+                    {% set generated_marks_raw = af_marks.generated_at if af_marks and af_marks.generated_at else '' %}
+                    {% set generated_marks = generated_marks_raw.split(' ')[0] if generated_marks_raw else '' %}
                     <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                        <p class="font-semibold uppercase mb-6">Parent acknowledgement</p>
+                        <p class="font-semibold uppercase mb-2">Parent acknowledgement</p>
                         <p>Signature: ____________________</p>
                         <p class="mt-2">Date: ____________________</p>
                     </div>
                     <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                        <p class="font-semibold uppercase mb-6">Class teacher</p>
-                        <p>Signature: ____________________</p>
-                        <p class="mt-2">Date: ____________________</p>
+                        <p class="font-semibold uppercase mb-2">Class teacher</p>
+                        <p class="font-semibold text-gray-900 dark:text-gray-100">{{ ct_name_marks or '—' }}</p>
+                        <p class="mt-2">Signature: ____________________</p>
+                        <p class="mt-2">Date: {{ generated_marks or '____________________' }}</p>
                     </div>
                     <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                        <p class="font-semibold uppercase mb-6">Principal signature / stamp</p>
-                        <p>Signature: ____________________</p>
-                        <p class="mt-2">Date: ____________________</p>
+                        <p class="font-semibold uppercase mb-2">Head of institution</p>
+                        <p class="font-semibold text-gray-900 dark:text-gray-100">{{ head_marks.name if head_marks else '—' }}</p>
+                        <p class="mt-2">Signature / stamp: ____________________</p>
+                        <p class="mt-2">Date: {{ generated_marks or '____________________' }}</p>
                     </div>
                 </div>
             </div>
@@ -615,7 +630,7 @@
                                     {% if school_settings.school_logo %}
                                     <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="School logo" class="ar-rc-logo">
                                     {% else %}
-                                    <span class="text-[10px] font-semibold text-slate-400 tracking-wide">LOGO</span>
+                                    <span class="ar-rc-logo-wordmark" aria-label="Educentric">EDUCENTRIC</span>
                                     {% endif %}
                                 </div>
                                 <div class="ar-rc-title-block">
@@ -830,18 +845,76 @@
                         {% for gb in meta.grade_bands %}{{ (gb.code or gb.label or '-') }}: {{ gb.start }}-{{ gb.end }}{% if not loop.last %}, {% endif %}{% endfor %}
                     {% else %}Configured grade settings{% endif %}
                 </p>
+                {% set mean_fb = row.mean|round|int if row.mean is not none and row.mean != '' else none %}
+                {% set tone_fb = namespace(val='Keep believing in yourself — steady effort brings growth.') %}
+                {% if mean_fb is not none %}
+                    {% if mean_fb >= 80 %}{% set tone_fb.val = 'Keep shining — excellence like this inspires others.' %}
+                    {% elif mean_fb >= 70 %}{% set tone_fb.val = 'Well done — stay focused and keep climbing higher.' %}
+                    {% elif mean_fb >= 60 %}{% set tone_fb.val = 'Good progress — believe in yourself and aim for the next level.' %}
+                    {% elif mean_fb >= 50 %}{% set tone_fb.val = 'You have great potential — keep practising and you will rise further.' %}
+                    {% elif mean_fb >= 40 %}{% set tone_fb.val = 'Stay determined — every effort moves you forward.' %}
+                    {% else %}{% set tone_fb.val = 'Never give up — with consistent work, improvement will come.' %}
+                    {% endif %}
+                {% endif %}
+                {% set exam_avg_parts = namespace(items=[]) %}
+                {% if multi_exam_cards and row.subject_marks_by_exam is mapping and exam_cols %}
+                    {% set smb = row.subject_marks_by_exam %}
+                    {% for ecol in exam_cols %}
+                        {% set ecol_name = ecol.label or ecol.exam_name or 'Exam' %}
+                        {% set ecol_nums = namespace(count=0, total=0) %}
+                        {% for sc, entries in smb.items() %}
+                            {% for ex in entries %}
+                                {% if ex.mark is not none and ex.mark != '' and (
+                                    (ecol.exam_id is defined and ecol.exam_id is not none and ex.exam_id is defined and ex.exam_id == ecol.exam_id)
+                                    or ((ex.exam_name or '') == (ecol.exam_name or ''))
+                                ) %}
+                                    {% set ecol_nums.count = ecol_nums.count + 1 %}
+                                    {% set ecol_nums.total = ecol_nums.total + (ex.mark|float) %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endfor %}
+                        {% if ecol_nums.count %}
+                            {% set exam_avg_parts.items = exam_avg_parts.items + [(ecol_name ~ ': ' ~ ((ecol_nums.total / ecol_nums.count)|round|int) ~ '%')] %}
+                        {% endif %}
+                    {% endfor %}
+                {% elif mean_fb is not none %}
+                    {% set single_exam_label = row.card_exam_label if row.card_exam_label is defined and row.card_exam_label else (af.exam_name if af.exam_name and af.exam_name not in ('All exams', '') else 'Exam') %}
+                    {% set exam_avg_parts.items = exam_avg_parts.items + [(single_exam_label ~ ' average: ' ~ mean_fb ~ '%')] %}
+                {% endif %}
                 <div class="ar-rc-feedback">
-                    <p class="ar-rc-feedback-title">General comments</p>
-                    <div class="ar-rc-feedback-lines ar-rc-feedback-lines--sheet">
-                        <div class="ar-rc-feedback-line"></div>
-                        <div class="ar-rc-feedback-line"></div>
-                        <div class="ar-rc-feedback-line"></div>
+                    <p class="ar-rc-feedback-title">Teacher's feedback</p>
+                    <div class="ar-rc-feedback-lines ar-rc-feedback-lines--sheet ar-rc-feedback-lines--filled">
+                        <p class="ar-rc-feedback-body">The learner achieved{% if mean_fb is not none %} an overall mean {{ mean_fb }}%{% if grade.val and grade.val != '-' %}, grade {{ grade.val }}{% endif %}{% if overall_points.val and overall_points.val != '-' %}, GP {{ overall_points.val }}{% endif %}{% else %} assessed exam results{% endif %}.{% if exam_avg_parts.items|length > 1 %} Exam averages — {{ exam_avg_parts.items|join('; ') }}.{% elif exam_avg_parts.items|length == 1 %} {{ exam_avg_parts.items[0] }}.{% endif %} {{ tone_fb.val }}</p>
                     </div>
                 </div>
                 <div class="ar-rc-signatures">
-                    <div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Parent acknowledgement</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>
-                    <div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Class teacher</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>
-                    <div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Principal</p><p>Signature / stamp: ____________________</p><p>Date: ____________________</p></div>
+                    {% set ct_sig = meta.class_teachers_by_level.get(row.academic_level_id|string, {}) if meta and meta.class_teachers_by_level and row.academic_level_id is not none else {} %}
+                    {% if ct_sig is string %}
+                        {% set ct_sig_name = ct_sig %}
+                    {% else %}
+                        {% set ct_sig_name = ct_sig.name if ct_sig else '' %}
+                    {% endif %}
+                    {% set head_sig = meta.head_of_institution if meta and meta.head_of_institution else {} %}
+                    {% set head_sig_name = head_sig.name if head_sig else '' %}
+                    {% set generated_at_raw = af.generated_at if af and af.generated_at else '' %}
+                    {% set generated_at = generated_at_raw.split(' ')[0] if generated_at_raw else '' %}
+                    <div class="ar-rc-sig-block">
+                        <p class="ar-rc-sig-title">Parent acknowledgement</p>
+                        <p>Signature: ____________________</p>
+                        <p>Date: ____________________</p>
+                    </div>
+                    <div class="ar-rc-sig-block">
+                        <p class="ar-rc-sig-title">Class teacher</p>
+                        <p class="ar-rc-sig-name">{{ ct_sig_name or '—' }}</p>
+                        <p>Signature: ____________________</p>
+                        <p>Date: {{ generated_at or '____________________' }}</p>
+                    </div>
+                    <div class="ar-rc-sig-block">
+                        <p class="ar-rc-sig-title">Head of institution</p>
+                        <p class="ar-rc-sig-name">{{ head_sig_name or '—' }}</p>
+                        <p>Signature / stamp: ____________________</p>
+                        <p>Date: {{ generated_at or '____________________' }}</p>
+                    </div>
                 </div>
             </div>
         </article>
@@ -1010,6 +1083,16 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 .ar-report-preview-page .ar-rc-logo { max-width: 100%; max-height: 100%; object-fit: contain; }
+.ar-report-preview-page .ar-rc-logo-wordmark {
+    display: block;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1.15;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--ar-rc-navy, #1e3a5f);
+}
 .ar-report-preview-page .ar-rc-kicker {
     font-size: 0.625rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase;
     color: rgba(255, 255, 255, 0.72); margin: 0 0 0.35rem;
@@ -1113,6 +1196,14 @@
 }
 .ar-report-preview-page .ar-rc-feedback-line { border-bottom: 1px solid #cbd5e1; height: 1.35rem; margin-bottom: 0.35rem; }
 .ar-report-preview-page .ar-rc-feedback-line:last-child { margin-bottom: 0; border-bottom: none; }
+.ar-report-preview-page .ar-rc-feedback-lines--filled { min-height: auto; }
+.ar-report-preview-page .ar-rc-feedback-body {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: #1f2937;
+    white-space: pre-wrap;
+}
 .ar-report-preview-page .ar-rc-feedback-row {
     display: grid;
     grid-template-columns: minmax(4.5rem, 34%) 1fr;
@@ -1138,7 +1229,13 @@
 .ar-report-preview-page .ar-rc-sig-title {
     font-family: var(--ar-rc-font-display);
     font-size: 0.625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;
-    color: #475569; margin: 0 0 1.25rem;
+    color: #475569; margin: 0 0 0.35rem;
+}
+.ar-report-preview-page .ar-rc-sig-name {
+    margin: 0 0 0.15rem; font-size: 0.72rem; font-weight: 600; color: #0f172a; line-height: 1.3;
+}
+.ar-report-preview-page .ar-rc-sig-cred {
+    margin: 0 0 0.55rem; font-size: 0.65rem; color: #64748b; line-height: 1.3;
 }
 .ar-report-preview-page .ar-rc-photo {
     width: 4.5rem; height: 5.5rem; object-fit: cover; border: 2px solid #d1d5db; border-radius: 4px; background: #fff;

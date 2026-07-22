@@ -126,6 +126,26 @@ html.acr-accounts-print-measure body {
     margin: 0;
 }
 
+.acr-print-letterhead__wordmark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 5rem;
+    min-height: 5rem;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0.25rem;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1.15;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--print-brand-primary, #800020);
+    word-break: break-word;
+}
+
 .acr-print-letterhead__contact-row {
     display: flex;
     flex-wrap: wrap;
@@ -528,6 +548,13 @@ html.acr-accounts-print-measure body {
         height: 26mm;
         max-width: 26mm;
         max-height: 26mm;
+    }
+
+    .acr-print-letterhead__wordmark {
+        width: 26mm;
+        min-height: 26mm;
+        font-size: 7pt;
+        letter-spacing: 0.05em;
     }
 
     .acr-print-letterhead__school-contact {

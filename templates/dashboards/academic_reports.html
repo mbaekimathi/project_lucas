@@ -1092,6 +1092,12 @@
         height: 6mm !important;
         margin-bottom: 1.5mm !important;
     }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-feedback-body,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-feedback-body {
+        font-size: 8.5pt !important;
+        line-height: 1.35 !important;
+        margin: 0 !important;
+    }
     #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-signatures,
     #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-signatures {
         flex: 0 0 auto !important;
@@ -1103,7 +1109,18 @@
     #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-sig-title,
     #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-sig-title {
         font-size: 8pt !important;
-        margin-bottom: 4mm !important;
+        margin-bottom: 1.5mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-sig-name,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-sig-name {
+        font-size: 8.5pt !important;
+        font-weight: 600 !important;
+        margin: 0.5mm 0 !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-sig-cred,
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-sig-cred {
+        font-size: 7.5pt !important;
+        margin: 0 0 2mm !important;
     }
     #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-sig-block p,
     #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-sig-block p {
@@ -2418,6 +2435,16 @@
     margin-bottom: 0;
     border-bottom: none;
 }
+.ar-rc-feedback-lines--filled {
+    min-height: auto;
+}
+.ar-rc-feedback-body {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: #1f2937;
+    white-space: pre-wrap;
+}
 .ar-rc-grade-scale {
     font-size: 0.68rem;
     color: #4b5563;
@@ -2451,7 +2478,20 @@
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: #475569;
-    margin: 0 0 1.25rem;
+    margin: 0 0 0.35rem;
+}
+.ar-rc-sig-name {
+    margin: 0 0 0.15rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.3;
+}
+.ar-rc-sig-cred {
+    margin: 0 0 0.55rem;
+    font-size: 0.65rem;
+    color: #64748b;
+    line-height: 1.3;
 }
 .ar-rc-photo {
     width: 4.5rem;
@@ -3398,6 +3438,8 @@
                         <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
                              alt="{{ school_settings.school_name or 'School logo' }}"
                              class="w-14 h-14 shrink-0 object-contain rounded-xl border border-slate-200 dark:border-slate-600 bg-white shadow-sm">
+                        {% else %}
+                        <span class="w-14 h-14 shrink-0 inline-flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-600 bg-white shadow-sm text-[0.55rem] font-extrabold tracking-wide text-brand-primary text-center leading-tight px-1">EDUCENTRIC</span>
                         {% endif %}
                         <div class="min-w-0">
                             <p class="no-print text-[11px] font-bold uppercase tracking-wider text-brand-primary">Preview</p>
@@ -5314,13 +5356,47 @@
       '</div>';
   }
 
-  function renderReportCardSignatures() {
+  function renderReportCardSignatures(opts) {
+    opts = opts || {};
+    const metaObj = opts.meta || {};
+    const levelId = opts.levelId;
+    const ct = classTeacherInfoForLevel(metaObj, levelId);
+    const head = (metaObj.head_of_institution && typeof metaObj.head_of_institution === 'object')
+      ? metaObj.head_of_institution
+      : {};
+    const headName = String(head.name || '').trim() || '—';
+    const ctName = String(ct.name || '').trim() || '—';
+    const af = metaObj.applied_filters || {};
+    const dateLine = reportGeneratedDateOnly(opts.generatedAt || af.generated_at) || '____________________';
     return '' +
       '<div class="ar-rc-signatures">' +
-        '<div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Parent acknowledgement</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>' +
-        '<div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Class teacher</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>' +
-        '<div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Principal</p><p>Signature / stamp: ____________________</p><p>Date: ____________________</p></div>' +
+        '<div class="ar-rc-sig-block">' +
+          '<p class="ar-rc-sig-title">Parent acknowledgement</p>' +
+          '<p>Signature: ____________________</p>' +
+          '<p>Date: ____________________</p>' +
+        '</div>' +
+        '<div class="ar-rc-sig-block">' +
+          '<p class="ar-rc-sig-title">Class teacher</p>' +
+          '<p class="ar-rc-sig-name">' + escapeHtml(ctName) + '</p>' +
+          '<p>Signature: ____________________</p>' +
+          '<p>Date: ' + escapeHtml(dateLine) + '</p>' +
+        '</div>' +
+        '<div class="ar-rc-sig-block">' +
+          '<p class="ar-rc-sig-title">Head of institution</p>' +
+          '<p class="ar-rc-sig-name">' + escapeHtml(headName) + '</p>' +
+          '<p>Signature / stamp: ____________________</p>' +
+          '<p>Date: ' + escapeHtml(dateLine) + '</p>' +
+        '</div>' +
       '</div>';
+  }
+
+  function reportGeneratedDateOnly(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (iso) return iso[1];
+    const parts = s.split(/\s+/);
+    return parts[0] || s;
   }
 
   /** Whole-number % for grade band lookup (matches marks sheet: 89.8 → 89). */
@@ -5414,19 +5490,155 @@
     return meaning || '—';
   }
 
-  function renderReportCardFeedback(descriptorText) {
+  function classTeacherInfoForLevel(metaObj, levelId) {
+    const map = (metaObj && metaObj.class_teachers_by_level) || {};
+    if (levelId == null || levelId === '') return { name: '', credentials: '', employee_id: '' };
+    const raw = map[String(levelId)];
+    if (!raw) return { name: '', credentials: '', employee_id: '' };
+    if (typeof raw === 'string') {
+      return { name: String(raw).trim(), credentials: '', employee_id: '' };
+    }
+    return {
+      name: String(raw.name || raw.teacher_name || '').trim(),
+      credentials: String(raw.credentials || raw.employee_id || '').trim(),
+      employee_id: String(raw.employee_id || '').trim(),
+    };
+  }
+
+  function classTeacherNameForLevel(metaObj, levelId) {
+    return classTeacherInfoForLevel(metaObj, levelId).name;
+  }
+
+  function studentFeedbackDisplayName(fullName) {
+    return 'The learner';
+  }
+
+  function feedbackExamLabel(label) {
+    var s = String(label || '').trim();
+    if (!s) return 'Exam';
+    s = shortExamLabel(s) || s;
+    // Drop leading term labels so feedback does not start with "Term …"
+    s = s.replace(/^(term\s*\d+\s*[·\-–:|]\s*)/i, '');
+    s = s.replace(/^(term\s*\d+\s+)/i, '');
+    s = s.trim();
+    return s || 'Exam';
+  }
+
+  function overallFeedbackToneFromAverageGp(mean, gp) {
+    const m = parseFloat(mean);
+    const g = parseFloat(gp);
+    const score = !isNaN(m) ? m : (!isNaN(g) ? (g <= 12 ? (g / 12) * 100 : g) : NaN);
+    if (isNaN(score)) return 'Keep believing in yourself — steady effort brings growth.';
+    if (score >= 80) return 'Keep shining — excellence like this inspires others.';
+    if (score >= 70) return 'Well done — stay focused and keep climbing higher.';
+    if (score >= 60) return 'Good progress — believe in yourself and aim for the next level.';
+    if (score >= 50) return 'You have great potential — keep practising and you will rise further.';
+    if (score >= 40) return 'Stay determined — every effort moves you forward.';
+    return 'Never give up — with consistent work, improvement will come.';
+  }
+
+  function examAveragePercentsFromDetail(detail, examCols) {
+    const out = [];
+    (examCols || []).forEach(function(col) {
+      const nums = [];
+      Object.keys(detail || {}).forEach(function(subj) {
+        (detail[subj] || []).forEach(function(ex) {
+          if (!examEntryMatchesExamCol(ex, col)) return;
+          const n = parseFloat(ex.mark);
+          if (!isNaN(n)) nums.push(n);
+        });
+      });
+      if (!nums.length) return;
+      const avg = nums.reduce(function(a, b) { return a + b; }, 0) / nums.length;
+      out.push({
+        label: feedbackExamLabel(col.label || col.exam_name || 'Exam'),
+        avg: Math.round(avg),
+      });
+    });
+    return out;
+  }
+
+  function examAveragePercentsFromHistory(bySubject) {
+    const byExam = {};
+    Object.keys(bySubject || {}).forEach(function(subj) {
+      (bySubject[subj].history || []).forEach(function(h) {
+        const key = String(h.examName || '').trim() || 'Exam';
+        if (!byExam[key]) {
+          byExam[key] = {
+            label: feedbackExamLabel(key),
+            nums: [],
+            date: String(h.examDate || '').trim(),
+          };
+        }
+        const n = parseFloat(h.mark);
+        if (!isNaN(n)) byExam[key].nums.push(n);
+        const d = String(h.examDate || '').trim();
+        if (d && (!byExam[key].date || d < byExam[key].date)) byExam[key].date = d;
+      });
+    });
+    return Object.keys(byExam)
+      .map(function(k) {
+        const e = byExam[k];
+        if (!e.nums.length) return null;
+        return {
+          label: e.label,
+          avg: Math.round(e.nums.reduce(function(a, b) { return a + b; }, 0) / e.nums.length),
+          date: e.date || '',
+        };
+      })
+      .filter(Boolean)
+      .sort(function(a, b) {
+        return String(a.date || '').localeCompare(String(b.date || ''));
+      });
+  }
+
+  function buildClassTeacherOverallFeedback(opts) {
+    opts = opts || {};
+    const mean = opts.mean;
+    const gp = opts.gp;
+    const grade = String(opts.grade || '').trim();
+    const examAvgs = Array.isArray(opts.examAverages) ? opts.examAverages : [];
+    const meanNum = parseFloat(mean);
+    const meanTxt = !isNaN(meanNum) ? (String(Math.round(meanNum)) + '%') : '';
+    const gpTxt = (gp != null && gp !== '' && String(gp) !== '—' && !isNaN(parseFloat(gp)))
+      ? String(gp)
+      : '';
+    const gradeTxt = (grade && grade !== '-' && grade !== '—') ? grade : '';
+    const bits = [];
+    if (meanTxt) bits.push('mean ' + meanTxt);
+    if (gradeTxt) bits.push('grade ' + gradeTxt);
+    if (gpTxt) bits.push('GP ' + gpTxt);
+    const perf = bits.length ? (' an overall ' + bits.join(', ')) : '';
+    let examPart = '';
+    if (examAvgs.length > 1) {
+      examPart = ' Exam averages — ' + examAvgs.map(function(e) {
+        return feedbackExamLabel(e.label) + ': ' + String(e.avg) + '%';
+      }).join('; ') + '.';
+    } else if (examAvgs.length === 1) {
+      examPart = ' ' + feedbackExamLabel(examAvgs[0].label) + ' average: ' + String(examAvgs[0].avg) + '%.';
+    }
+    const tone = overallFeedbackToneFromAverageGp(mean, gp);
+    return 'The learner achieved' + (perf || ' assessed exam results') + '.' + examPart + ' ' + tone;
+  }
+
+  function renderReportCardFeedback(feedbackText, descriptorText) {
+    const body = String(feedbackText || '').trim();
     return '' +
       '<div class="ar-rc-feedback">' +
         '<p class="ar-rc-feedback-title">Teacher\'s feedback</p>' +
         (descriptorText
           ? '<p class="text-xs text-gray-600 mb-2"><span class="font-bold">Descriptor:</span> ' + escapeHtml(descriptorText) + '</p>'
           : '') +
-        '<div class="ar-rc-feedback-lines ar-rc-feedback-lines--sheet">' +
-          '<div class="ar-rc-feedback-line"></div>' +
-          '<div class="ar-rc-feedback-line"></div>' +
-          '<div class="ar-rc-feedback-line"></div>' +
-          '<div class="ar-rc-feedback-line"></div>' +
-        '</div>' +
+        (body
+          ? '<div class="ar-rc-feedback-lines ar-rc-feedback-lines--sheet ar-rc-feedback-lines--filled">' +
+              '<p class="ar-rc-feedback-body">' + escapeHtml(body) + '</p>' +
+            '</div>'
+          : '<div class="ar-rc-feedback-lines ar-rc-feedback-lines--sheet">' +
+              '<div class="ar-rc-feedback-line"></div>' +
+              '<div class="ar-rc-feedback-line"></div>' +
+              '<div class="ar-rc-feedback-line"></div>' +
+              '<div class="ar-rc-feedback-line"></div>' +
+            '</div>') +
       '</div>';
   }
 
@@ -5955,12 +6167,6 @@
       var row0 = (list && list.length) ? list[0] : null;
       var levelId = row0 && row0.academic_level_id != null ? row0.academic_level_id : null;
       var classKeys = classKeysForSubjectOrder(row0, k, af);
-      var baseOrder = reportSettingsSubjectOrder(meta, levelId, classKeys);
-      if (!baseOrder.length && mergeSingleCohort && subjectColumns.length) {
-        baseOrder = subjectColumns.slice();
-      } else if (!baseOrder.length && subjectColumns.length) {
-        baseOrder = subjectColumns.slice();
-      }
       var withMarks = {};
       (list || []).forEach(function(row) {
         if (!row) return;
@@ -5980,22 +6186,26 @@
           });
         }
       });
+
+      // Prefer server set order: per-row class columns, then report subject_columns,
+      // then exam-subject-settings order by level/class.
+      var baseOrder = [];
+      if (row0 && Array.isArray(row0.class_subject_columns) && row0.class_subject_columns.length) {
+        baseOrder = row0.class_subject_columns.slice();
+      }
+      if (!baseOrder.length && subjectColumns.length) {
+        baseOrder = subjectColumns.slice();
+      }
+      if (!baseOrder.length) {
+        baseOrder = reportSettingsSubjectOrder(meta, levelId, classKeys);
+      }
+      if (!baseOrder.length && mergeSingleCohort && subjectColumns.length) {
+        baseOrder = subjectColumns.slice();
+      }
+
       if (baseOrder.length) {
         var ordered = baseOrder.filter(function(col) { return withMarks[col]; });
         var extra = Object.keys(withMarks).filter(function(c) { return ordered.indexOf(c) === -1; });
-        // Partial label mismatch (e.g. combined vs member subjects): keep set order via base
-        // only when every marked subject appears in settings order; otherwise sort extras
-        // after matched columns without scrambling matched positions.
-        if (extra.length && ordered.length && extra.length >= ordered.length) {
-          return Object.keys(withMarks).sort(function(a, b) {
-            var ia = baseOrder.indexOf(a);
-            var ib = baseOrder.indexOf(b);
-            if (ia === -1) ia = 1e9;
-            if (ib === -1) ib = 1e9;
-            if (ia !== ib) return ia - ib;
-            return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
-          });
-        }
         if (extra.length) {
           extra.sort(function(a, b) {
             var ia = baseOrder.indexOf(a);
@@ -6136,6 +6346,26 @@
         : 'ar-rc-table ar-rc-table--subjects';
       const tableHtml =
         '<div class="ar-rc-table-scroll"><table class="' + tableClass + '"><thead><tr>' + subjectTable.head + '</tr></thead><tbody>' + subjectTable.html + '</tbody></table></div>';
+      let examAveragesForFeedback = [];
+      if (useMultiExam) {
+        examAveragesForFeedback = examAveragePercentsFromDetail(row.subject_marks_by_exam || {}, multiExamCols);
+      } else if (row.mean != null && row.mean !== '' && !isNaN(parseFloat(row.mean))) {
+        const singleLabel = examLabelOverride
+          ? String(examLabelOverride).trim()
+          : (reportCardTermExamLine(af, ew, null) || 'Exam');
+        examAveragesForFeedback = [{
+          label: shortExamLabel(singleLabel) || singleLabel || 'Exam',
+          avg: Math.round(parseFloat(row.mean)),
+        }];
+      }
+      const overallFeedbackText = buildClassTeacherOverallFeedback({
+        studentName: row.full_name,
+        teacherName: classTeacherNameForLevel(meta, row.academic_level_id),
+        mean: row.mean,
+        gp: overallPoints,
+        grade: grade,
+        examAverages: examAveragesForFeedback,
+      });
       return '' +
         '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(studentSheetIndex) + '" data-student-id="' + escapeHtml(studentGroupKey(row)) + '">' +
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
@@ -6159,8 +6389,8 @@
               '</div>' +
             '</div>' +
             '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegend + '</p>' +
-            renderReportCardFeedback('') +
-            renderReportCardSignatures() +
+            renderReportCardFeedback(overallFeedbackText) +
+            renderReportCardSignatures({ meta: meta, levelId: row.academic_level_id }) +
           '</div>' +
         '</article>';
 
@@ -7643,6 +7873,14 @@
         : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
       const gradeLegendMulti = gradeLegendHtmlFromMeta(meta);
       const examReferenceLegend = renderNumberedExamReferenceLegend(orderedExamCols);
+      const overallFeedbackMulti = buildClassTeacherOverallFeedback({
+        studentName: first.full_name,
+        teacherName: classTeacherNameForLevel(meta, studentLevelId),
+        mean: overallAvgMulti,
+        gp: overallPointsMulti,
+        grade: overallGradeMulti,
+        examAverages: examAveragePercentsFromDetail(subjectMarksByExam, orderedExamCols),
+      });
       return '' +
         '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex == null ? 0 : sheetIndex) + '" data-student-id="' + escapeHtml(cardStudentKey) + '">' +
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
@@ -7670,8 +7908,8 @@
             '</div>' +
             examReferenceLegend +
             '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegendMulti + '</p>' +
-            renderReportCardFeedback('') +
-            renderReportCardSignatures() +
+            renderReportCardFeedback(overallFeedbackMulti) +
+            renderReportCardSignatures({ meta: meta, levelId: studentLevelId }) +
           '</div>' +
         '</article>';
     }
@@ -7781,6 +8019,21 @@
       ? '<img src="' + escapeHtml(photoUrlInd) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
       : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
     const gradeLegendInd = gradeLegendHtmlFromMeta(meta);
+    let examAveragesInd = examAveragePercentsFromHistory(bySubject);
+    if (!examAveragesInd.length && overallAvg != null && !isNaN(overallAvg)) {
+      examAveragesInd = [{
+        label: shortExamLabel(examLabelOverride) || examLabelOverride || 'Exam',
+        avg: Math.round(overallAvg),
+      }];
+    }
+    const overallFeedbackInd = buildClassTeacherOverallFeedback({
+      studentName: first.full_name,
+      teacherName: classTeacherNameForLevel(meta, studentLevelId),
+      mean: overallAvg,
+      gp: overallPoints,
+      grade: overallGrade,
+      examAverages: examAveragesInd,
+    });
 
     return '' +
       '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(sheetIndex == null ? 0 : sheetIndex) + '" data-student-id="' + escapeHtml(cardStudentKey) + '">' +
@@ -7814,8 +8067,8 @@
             '</div>' +
           '</div>' +
           '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegendInd + '</p>' +
-          renderReportCardFeedback('') +
-          renderReportCardSignatures() +
+          renderReportCardFeedback(overallFeedbackInd) +
+          renderReportCardSignatures({ meta: meta, levelId: studentLevelId }) +
         '</div>' +
       '</article>';
 

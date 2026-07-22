@@ -69,7 +69,7 @@
     var generated = opts.generatedAt != null ? opts.generatedAt : (opts.generated || '—');
     var logoInner = info.logo
       ? '<img src="' + escapeHtml(info.logo) + '" alt="School logo" class="acr-print-letterhead__logo">'
-      : '';
+      : '<span class="acr-print-letterhead__wordmark" aria-label="Educentric">EDUCENTRIC</span>';
     var metaExtra = opts.metaExtra
       ? '<p class="acr-print-letterhead__meta-extra">' + escapeHtml(opts.metaExtra) + '</p>'
       : '';
