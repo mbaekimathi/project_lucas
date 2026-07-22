@@ -1751,7 +1751,10 @@ function marksSheet() {
         ccSelectedSubjectId: {{ (cc_selected_subject_id|string if cc_selected_subject_id is not none else '')|tojson }},
         ccSubjectEditBase: {{ employee_dash_url('exams-assessments/level/' ~ academic_level.id ~ '/subject')|tojson }},
         isTeacherMarks: {{ 'true' if is_teacher else 'false' }},
+        /** Bumped when marks / out-of change so converted cells refresh. */
         _tick: 0,
+        /** Countdown-only tick — must not re-render the whole marks grid every second. */
+        _countdownTick: 0,
         marksEntryReadonly: false,
         /** 'avg_pct', 'total_raw', or 'total_scaled' (sum of converted /100 marks). */
         summaryMode: {{ (marks_summary_column or 'avg_pct')|tojson }},
@@ -2084,7 +2087,7 @@ function marksSheet() {
         },
 
         get teacherMarksPeriodClosed() {
-            void this._tick;
+            void this._countdownTick;
             if (!this.isTeacherMarks || !this.selectedExam) return false;
             const ex = this._selectedExamMeta();
             if (!ex || !ex.marks_lock_at) return false;
@@ -2093,7 +2096,7 @@ function marksSheet() {
         },
 
         get teacherMarksCountdownLabel() {
-            void this._tick;
+            void this._countdownTick;
             if (!this.isTeacherMarks || !this.selectedExam) return '';
             const ex = this._selectedExamMeta();
             if (!ex || !ex.marks_lock_at) return '';
@@ -2110,7 +2113,7 @@ function marksSheet() {
         },
 
         get marksCountdownSecondsRemaining() {
-            void this._tick;
+            void this._countdownTick;
             if (!this.isTeacherMarks || !this.selectedExam) return null;
             const ex = this._selectedExamMeta();
             if (!ex || !ex.marks_lock_at) return null;
@@ -2120,7 +2123,7 @@ function marksSheet() {
         },
 
         get marksCountdownUrgentLessThan24h() {
-            void this._tick;
+            void this._countdownTick;
             const s = this.marksCountdownSecondsRemaining;
             return s !== null && s > 0 && s < 86400;
         },
@@ -2140,14 +2143,14 @@ function marksSheet() {
         },
 
         get marksCountdownVisible() {
-            void this._tick;
+            void this._countdownTick;
             if (!this.isTeacherMarks || !this.selectedExam) return false;
             if (!this.selectedExamHasMarksDeadline || this.teacherMarksPeriodClosed) return false;
             return !!this.teacherMarksCountdownLabel;
         },
 
         get canEnterMarks() {
-            void this._tick;
+            void this._countdownTick;
             if (!this.canEdit || !this.selectedExam) return false;
             if (this.examIsLocked) return false;
             if (this.isTeacherMarks && (this.marksEntryReadonly || this.teacherMarksPeriodClosed)) return false;
@@ -2498,7 +2501,6 @@ function marksSheet() {
 
         /** Converted /100 label — always nearest whole number (no decimals). */
         livePctLabel(studentId, subjectId) {
-            void this._tick;
             // Prefer live Actual ÷ Out of so Converted tracks what is typed.
             const entryPct = this.entryPctFor(studentId, subjectId);
             if (entryPct !== null && entryPct !== undefined) {
@@ -2871,19 +2873,20 @@ function marksSheet() {
                 this._applyRegisteredYearTerm();
             }
             this.enforceDefaults();
-            await this.loadExamsForFilters();
+            // Server already embedded exams for this class; filter client-side on first paint.
+            // Only refetch when year/term filters change.
+            if (!this.examList || !this.examList.length) {
+                await this.loadExamsForFilters();
+            }
             await this._syncSelectedExamToDropdown(honorUrlFilters);
-            await this.$nextTick();
+            this.filtersReady = true;
             await this.onExamSelected();
             this.syncDefaultsFromUi();
-            this.filtersReady = true;
-            await this.$nextTick();
-            await this._syncSelectedExamToDropdown(honorUrlFilters);
             this.explicitMarksFilters = false;
             this._syncFilterSnapshot();
             this._bindUnsavedLeaveGuard();
             setInterval(() => {
-                this._tick = Date.now();
+                this._countdownTick = Date.now();
                 this._maybeOpenMarksPeriodClosedModal();
             }, 1000);
         },
@@ -3016,8 +3019,7 @@ function marksSheet() {
                 this.gradeRemarksStatus = '';
                 return;
             }
-            await this.loadMarks();
-            await this.loadGradeRemarks();
+            await Promise.all([this.loadMarks(), this.loadGradeRemarks()]);
         },
 
         getMarkNumeric(studentId, subjectId) {

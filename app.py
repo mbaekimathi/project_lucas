@@ -2863,6 +2863,37 @@ def _scheme_of_work_provided():
     return isinstance(body, dict) and 'scheme_of_work' in body
 
 
+# Skip repeated SHOW/ALTER on hot marks-sheet requests within one process.
+_MARKS_SHEET_SCHEMA_READY = False
+
+
+def ensure_marks_sheet_schema(cursor):
+    """One-shot schema ensures for the class marks sheet (safe to call every request)."""
+    global _MARKS_SHEET_SCHEMA_READY
+    if _MARKS_SHEET_SCHEMA_READY:
+        return
+    ensure_subject_exam_total_marks_column(cursor)
+    ensure_subject_exam_display_order_columns(cursor)
+    ensure_subject_exam_combination_tables(cursor)
+    ensure_exams_marks_lock_at_column(cursor)
+    ensure_students_current_grade_index(cursor)
+    _MARKS_SHEET_SCHEMA_READY = True
+
+
+def ensure_students_current_grade_index(cursor):
+    """Index students.current_grade for class lists and marks filters."""
+    try:
+        cursor.execute("SHOW INDEX FROM students WHERE Key_name = 'idx_students_current_grade'")
+        if cursor.fetchone():
+            return
+        cursor.execute(
+            "CREATE INDEX idx_students_current_grade ON students (current_grade)"
+        )
+        print("OK: Added idx_students_current_grade")
+    except Exception as e:
+        print(f"ensure_students_current_grade_index: {e}")
+
+
 def ensure_subject_exam_total_marks_column(cursor):
     """Per-subject maximum marks for exam entry (NULL = use default 100)."""
     try:
@@ -80612,6 +80643,7 @@ def students_by_academic_level(level_id):
     subjects_for_edit = []
     exams = []
     student_marks = {}
+    initial_grade_code_remarks = {}
     academic_years = []
     terms = []
     default_grade_bands = []
@@ -80628,10 +80660,7 @@ def students_by_academic_level(level_id):
     if connection:
         try:
             with connection.cursor() as cursor:
-                ensure_subject_exam_total_marks_column(cursor)
-                ensure_subject_exam_display_order_columns(cursor)
-                ensure_subject_exam_combination_tables(cursor)
-                ensure_exams_marks_lock_at_column(cursor)
+                ensure_marks_sheet_schema(cursor)
                 registered_current_exam_pick = load_registered_current_exam_dict(cursor)
                 # Get academic level information
                 cursor.execute("""
@@ -80893,17 +80922,28 @@ def students_by_academic_level(level_id):
                             sheet_term_id = ex.get('term_id') or sheet_term_id
                             break
 
+                # One snapshot read for all subjects (avoids N identical context queries).
+                sheet_use_live = _should_use_live_exam_settings(
+                    sheet_exam_name, sheet_year_id, sheet_term_id,
+                    registered_current_exam_pick, sheet_exam_type,
+                )
+                sheet_totals_snap = None
+                if (
+                    not sheet_use_live
+                    and sheet_exam_name and sheet_year_id and sheet_term_id
+                ):
+                    sheet_totals_snap = get_exam_context_settings_snapshot(
+                        cursor, sheet_exam_name, sheet_year_id, sheet_term_id, level_id,
+                    )
+                sheet_totals_map = (
+                    (sheet_totals_snap or {}).get('subject_exam_totals') or {}
+                ) if sheet_totals_snap else {}
                 for s in subjects_flat:
                     sid = int(s['id'])
-                    snap_total = subject_exam_total_for_context(
-                        cursor, sid,
-                        sheet_exam_name, sheet_year_id, sheet_term_id, level_id,
-                        live_fallback=s.get('exam_total_marks'),
-                        registered_current=registered_current_exam_pick,
-                        exam_type=sheet_exam_type,
-                    )
-                    if snap_total is not None:
-                        s['exam_total_marks'] = snap_total
+                    if sheet_totals_map:
+                        snap_val = sheet_totals_map.get(str(sid))
+                        if snap_val is not None:
+                            s['exam_total_marks'] = snap_val
 
                 combinations_loaded = fetch_subject_exam_combinations_for_context(
                     cursor, sheet_exam_name, sheet_year_id, sheet_term_id, level_id,
@@ -80944,66 +80984,25 @@ def students_by_academic_level(level_id):
                         section_order=section_order,
                     )
                 
-                # Get marks for students in subjects (if marks table exists)
-                # For teachers, load marks for allocated subjects and combo partners
+                # Marks load via AJAX (get-marks) for the selected exam only —
+                # do not preload all-exam marks into the HTML response.
                 student_marks = {}
+
+                # Grade-code remarks for the selected exam (same connection).
+                initial_grade_code_remarks = {}
                 try:
-                    if is_teacher and teacher_id:
-                        marks_subject_ids = _teacher_marks_subject_ids_for_load(
-                            teacher_subject_ids_list, combinations_loaded,
+                    if sheet_exam_name:
+                        ensure_grade_code_remarks_table(cursor)
+                        initial_grade_code_remarks = fetch_grade_code_remarks_map(
+                            cursor,
+                            academic_year_id=sheet_year_id,
+                            term_id=sheet_term_id,
+                            academic_level_ids=[level_id],
+                            exam_name=sheet_exam_name,
                         )
-                        teacher_subjects = marks_subject_ids or teacher_subject_ids_list
-                        
-                        if teacher_subjects:
-                            placeholders = ','.join(['%s'] * len(teacher_subjects))
-                            cursor.execute(f"""
-                                SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id, e.exam_name
-                                FROM student_marks sm
-                                INNER JOIN students s ON sm.student_id = s.student_id
-                                LEFT JOIN exams e ON sm.exam_id = e.id
-                                WHERE s.current_grade = %s
-                                AND sm.subject_id IN ({placeholders})
-                            """, [level_name] + teacher_subjects)
-                            marks_results = cursor.fetchall()
-                            
-                            for mark_row in marks_results:
-                                student_id = mark_row.get('student_id') if isinstance(mark_row, dict) else mark_row[0]
-                                subject_id = mark_row.get('subject_id') if isinstance(mark_row, dict) else mark_row[1]
-                                marks = mark_row.get('marks') if isinstance(mark_row, dict) else mark_row[2]
-                                exam_id = mark_row.get('exam_id') if isinstance(mark_row, dict) else mark_row[3]
-                                exam_name = mark_row.get('exam_name') if isinstance(mark_row, dict) else mark_row[4]
-                                
-                                if student_id not in student_marks:
-                                    student_marks[student_id] = {}
-                                if subject_id not in student_marks[student_id]:
-                                    student_marks[student_id][subject_id] = {}
-                                student_marks[student_id][subject_id][exam_id] = marks
-                    else:
-                        # For non-teachers, get all marks
-                        cursor.execute("""
-                            SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id, e.exam_name
-                            FROM student_marks sm
-                            INNER JOIN students s ON sm.student_id = s.student_id
-                            LEFT JOIN exams e ON sm.exam_id = e.id
-                            WHERE s.current_grade = %s
-                        """, (level_name,))
-                        marks_results = cursor.fetchall()
-                        
-                        for mark_row in marks_results:
-                            student_id = mark_row.get('student_id') if isinstance(mark_row, dict) else mark_row[0]
-                            subject_id = mark_row.get('subject_id') if isinstance(mark_row, dict) else mark_row[1]
-                            marks = mark_row.get('marks') if isinstance(mark_row, dict) else mark_row[2]
-                            exam_id = mark_row.get('exam_id') if isinstance(mark_row, dict) else mark_row[3]
-                            exam_name = mark_row.get('exam_name') if isinstance(mark_row, dict) else mark_row[4]
-                            
-                            if student_id not in student_marks:
-                                student_marks[student_id] = {}
-                            if subject_id not in student_marks[student_id]:
-                                student_marks[student_id][subject_id] = {}
-                            student_marks[student_id][subject_id][exam_id] = marks
                 except Exception as e:
-                    print(f"Marks table not found or error fetching marks: {e}")
-                    student_marks = {}
+                    print(f"Note: initial grade remarks skipped: {e}")
+                    initial_grade_code_remarks = {}
 
         except Exception as e:
             print(f"Error fetching students by academic level: {e}")
@@ -81087,27 +81086,6 @@ def students_by_academic_level(level_id):
         level_id, selected_exam_name, current_year_id, current_term_id, selected_exam_type,
     )
 
-    # Grade-code remarks (per exam context) for report cards.
-    initial_grade_code_remarks = {}
-    try:
-        if selected_exam_name:
-            connection2 = get_db_connection()
-            if connection2:
-                try:
-                    with connection2.cursor() as cur2:
-                        ensure_grade_code_remarks_table(cur2)
-                        initial_grade_code_remarks = fetch_grade_code_remarks_map(
-                            cur2,
-                            academic_year_id=current_year_id,
-                            term_id=current_term_id,
-                            academic_level_ids=[level_id],
-                            exam_name=selected_exam_name,
-                        )
-                finally:
-                    connection2.close()
-    except Exception as e:
-        print(f"Note: initial grade remarks skipped: {e}")
-    
     return render_template('dashboards/students_by_level.html', 
                          role=user_role,
                          viewing_as_employee_role=viewing_as_role,
@@ -81762,19 +81740,21 @@ def get_marks_by_exam():
                                 cursor.execute(f"""
                                     SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id
                                     FROM student_marks sm
-                                    INNER JOIN exams e ON sm.exam_id = e.id
-                                    WHERE sm.student_id IN (SELECT student_id FROM students WHERE current_grade = %s)
-                                    AND sm.exam_id IN ({exam_placeholders})
-                                    AND sm.subject_id IN ({subject_placeholders})
+                                    INNER JOIN students s
+                                        ON sm.student_id = s.student_id
+                                       AND s.current_grade = %s
+                                    WHERE sm.exam_id IN ({exam_placeholders})
+                                      AND sm.subject_id IN ({subject_placeholders})
                                 """, [level_name] + exam_group_ids + marks_load_subject_ids)
                             else:
-                                cursor.execute("""
+                                cursor.execute(f"""
                                     SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id
                                     FROM student_marks sm
-                                    INNER JOIN exams e ON sm.exam_id = e.id
-                                    WHERE sm.student_id IN (SELECT student_id FROM students WHERE current_grade = %s)
-                                    AND sm.exam_id IN ({})
-                                """.format(exam_placeholders), [level_name] + exam_group_ids)
+                                    INNER JOIN students s
+                                        ON sm.student_id = s.student_id
+                                       AND s.current_grade = %s
+                                    WHERE sm.exam_id IN ({exam_placeholders})
+                                """, [level_name] + exam_group_ids)
                             marks_results = cursor.fetchall()
                             
                             for mark_row in marks_results:
@@ -81798,16 +81778,20 @@ def get_marks_by_exam():
                             if is_teacher and teacher_id and marks_load_subject_ids:
                                 placeholders = ','.join(['%s'] * len(marks_load_subject_ids))
                                 cursor.execute(f"""
-                                    SELECT student_id, subject_id, marks, exam_id
-                                    FROM student_marks
-                                    WHERE student_id IN (SELECT student_id FROM students WHERE current_grade = %s)
-                                    AND subject_id IN ({placeholders})
+                                    SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id
+                                    FROM student_marks sm
+                                    INNER JOIN students s
+                                        ON sm.student_id = s.student_id
+                                       AND s.current_grade = %s
+                                    WHERE sm.subject_id IN ({placeholders})
                                 """, [level_name] + marks_load_subject_ids)
                             else:
                                 cursor.execute("""
-                                    SELECT student_id, subject_id, marks, exam_id
-                                    FROM student_marks
-                                    WHERE student_id IN (SELECT student_id FROM students WHERE current_grade = %s)
+                                    SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id
+                                    FROM student_marks sm
+                                    INNER JOIN students s
+                                        ON sm.student_id = s.student_id
+                                       AND s.current_grade = %s
                                 """, (level_name,))
                             marks_results = cursor.fetchall()
                             
