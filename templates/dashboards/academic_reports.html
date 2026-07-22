@@ -3509,7 +3509,8 @@
     phone: {{ (school_settings.phone or school_settings.phone_number or '')|tojson }},
     email: {{ (school_settings.email or school_settings.school_email or '')|tojson }},
     logo: {% if school_settings.school_logo %}{{ url_for('static', filename=school_settings.school_logo)|tojson }}{% else %}''{% endif %},
-    websiteQrDataUrl: {{ school_website_qr_data_url|default('')|tojson }}
+    parentLoginQrDataUrl: {{ parent_login_qr_data_url|default('')|tojson }},
+    websiteQrDataUrl: ''
   };
   const PARENT_LOGIN_QR_DATA_URL = {{ parent_login_qr_data_url|default('')|tojson }};
   const AR_HUB_SECTION = {{ ar_hub_section|default('')|tojson }};
@@ -5307,6 +5308,8 @@
       showGenerated: opts.showGenerated,
       metaPrimary: opts.metaPrimary,
       metaPrimaryLabel: opts.metaPrimaryLabel,
+      preferParentQr: true,
+      allowWebsiteQr: false,
     });
   }
 
@@ -5317,11 +5320,11 @@
     if (badge && (badge.label || badge.value != null)) {
       metaExtra = (badge.label || 'Rank') + ': ' + (badge.value != null ? badge.value : '—');
     }
-    var header = renderAcademicSheetLetterhead(reportTitle || 'REPORT CARD', { metaExtra: metaExtra });
-    if (opts.showParentQr && PARENT_LOGIN_QR_DATA_URL) {
-      header += '<div class="no-print flex justify-end -mt-2 mb-2 pr-2">' + renderParentPortalQrHtml() + '</div>';
-    }
-    return header;
+    return renderAcademicSheetLetterhead(reportTitle || 'REPORT CARD', {
+      metaExtra: metaExtra,
+      showPeriod: false,
+      showGenerated: false,
+    });
   }
 
   function renderReportCardMetaGrid(pairs) {

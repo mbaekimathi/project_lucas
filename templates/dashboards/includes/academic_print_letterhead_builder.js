@@ -53,8 +53,27 @@
       '</div>';
   }
 
-  function schoolBrandRightHtml(info) {
-    var qr = schoolWebsiteQrHtml(info);
+  function schoolParentPortalQrHtml(info) {
+    var url = (info && info.parentLoginQrDataUrl) || '';
+    if (!url) return '';
+    return '' +
+      '<div class="acr-print-letterhead__qr">' +
+        '<img src="' + escapeHtml(url) + '" alt="QR code — scan to open parent login" class="acr-print-letterhead__qr-img" width="96" height="96">' +
+        '<p class="acr-print-letterhead__qr-label">Parent portal</p>' +
+        '<p class="acr-print-letterhead__qr-hint">Scan to sign in</p>' +
+      '</div>';
+  }
+
+  function schoolBrandRightHtml(info, opts) {
+    opts = opts || {};
+    // Prefer parent portal QR when provided; otherwise optional website QR.
+    var qr = '';
+    if (opts.preferParentQr !== false) {
+      qr = schoolParentPortalQrHtml(info);
+    }
+    if (!qr && opts.allowWebsiteQr !== false) {
+      qr = schoolWebsiteQrHtml(info);
+    }
     if (!qr) {
       return '<div class="acr-print-letterhead__brand-right acr-print-letterhead__brand-right--empty"></div>';
     }
@@ -100,6 +119,10 @@
     var subtitleHtml = opts.subtitle
       ? '<p class="acr-print-letterhead__meta-subtitle">' + escapeHtml(opts.subtitle) + '</p>'
       : '';
+    var brandRight = schoolBrandRightHtml(info, {
+      preferParentQr: opts.preferParentQr !== false,
+      allowWebsiteQr: opts.allowWebsiteQr !== false,
+    });
     return '' +
       '<header class="ar-rc-header">' +
         '<div class="' + letterheadClass + '">' +
@@ -110,7 +133,7 @@
               schoolLocationHtml(info) +
               schoolContactsHtml(info) +
             '</div>' +
-            schoolBrandRightHtml(info) +
+            brandRight +
           '</div>' +
           '<div class="acr-print-letterhead__doc">' +
             '<h2 class="acr-print-letterhead__title">' + escapeHtml(title) + '</h2>' +
