@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response, has_request_context, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response, has_request_context, send_from_directory, current_app
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -12,6 +12,7 @@ import math
 import secrets
 import copy
 import time
+import threading
 from collections import defaultdict
 from functools import wraps
 from urllib.parse import quote, urlencode
@@ -1513,12 +1514,79 @@ def _parse_student_id_digits(val):
 _SCHOOL_SETTINGS_CACHE = {'data': None, 'expires_at': 0.0}
 SCHOOL_SETTINGS_CACHE_TTL = int(os.environ.get('SCHOOL_SETTINGS_CACHE_TTL', '300'))
 
+# Active academic levels for nav/templates (shared across requests in this process)
+_ACADEMIC_LEVELS_CACHE = {'data': None, 'expires_at': 0.0}
+ACADEMIC_LEVELS_CACHE_TTL = int(os.environ.get('ACADEMIC_LEVELS_CACHE_TTL', '300'))
+
+# Portal QR PNGs are expensive — cache by URL for the process lifetime
+_PORTAL_QR_CACHE = {}
+_PORTAL_QR_CACHE_LOCK = threading.Lock()
+_PORTAL_QR_CACHE_MAX = 64
+
 
 def invalidate_school_settings_cache():
     """Call after any INSERT/UPDATE to school_settings."""
     _SCHOOL_SETTINGS_CACHE['data'] = None
     _SCHOOL_SETTINGS_CACHE['expires_at'] = 0.0
 
+
+def invalidate_academic_levels_cache():
+    """Call after academic_levels insert/update/delete."""
+    _ACADEMIC_LEVELS_CACHE['data'] = None
+    _ACADEMIC_LEVELS_CACHE['expires_at'] = 0.0
+
+
+def get_cached_active_academic_levels():
+    """Return active academic levels list (cached). Opens DB only on miss/expiry."""
+    now = time.monotonic()
+    cached = _ACADEMIC_LEVELS_CACHE['data']
+    if cached is not None and now < _ACADEMIC_LEVELS_CACHE['expires_at']:
+        return copy.deepcopy(cached)
+
+    academic_levels = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, level_category, level_name, level_description
+                    FROM academic_levels
+                    WHERE level_status = 'active'
+                    ORDER BY level_name ASC
+                """)
+                results = cursor.fetchall() or []
+                for row in results:
+                    academic_levels.append({
+                        'id': row.get('id'),
+                        'level_category': row.get('level_category', ''),
+                        'level_name': row.get('level_name', ''),
+                        'level_description': row.get('level_description', ''),
+                    })
+        except Exception:
+            pass
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    _ACADEMIC_LEVELS_CACHE['data'] = copy.deepcopy(academic_levels)
+    _ACADEMIC_LEVELS_CACHE['expires_at'] = time.monotonic() + ACADEMIC_LEVELS_CACHE_TTL
+    return academic_levels
+
+
+def _needs_website_qr_for_request():
+    """Only build website QR on print/report surfaces that embed it."""
+    if not has_request_context():
+        return False
+    path = (request.path or '').lower()
+    needles = (
+        'academic-report', 'academic_report', 'fees-report', 'fees_report',
+        'print', 'transcript', 'exam-apply-slip', 'exam_apply_slip',
+        'letterhead', 'booklet', 'certificate', 'lpo', 'stock-print',
+        'attendance-report', 'calendar-report',
+    )
+    return any(n in path for n in needles)
 
 def _default_school_data():
     return {
@@ -1771,44 +1839,34 @@ def get_school_settings():
 @app.context_processor
 def inject_school_settings():
     """Make school settings and active academic levels available to all templates"""
-    academic_levels = []
+    academic_levels = get_cached_active_academic_levels()
     employees_list = []
     viewing_as_employee_info = None
-    
-    connection = get_db_connection()
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT id, level_category, level_name, level_description 
-                    FROM academic_levels 
-                    WHERE level_status = 'active'
-                    ORDER BY level_name ASC
-                """)
-                results = cursor.fetchall()
-                
-                if results:
-                    for row in results:
-                        academic_levels.append({
-                            'id': row.get('id'),
-                            'level_category': row.get('level_category', ''),
-                            'level_name': row.get('level_name', ''),
-                            'level_description': row.get('level_description', '')
-                        })
-                
-                # Update employee profile picture in session if user is logged in as employee
-                if session.get('user_id') and session.get('role'):
-                    user_role = session.get('role', '').lower()
-                    if user_role in EMPLOYEE_SUB_ROLES:
+
+    # Only open DB when technician "view as" needs employee lists, or profile pic is missing.
+    need_employee_db = False
+    user_role = (session.get('role') or '').lower().strip() if session.get('user_id') else ''
+    if session.get('user_id') and user_role:
+        if user_role in EMPLOYEE_SUB_ROLES and not session.get('profile_picture'):
+            need_employee_db = True
+        if user_role == 'technician' and session.get('viewing_as_employee_role'):
+            need_employee_db = True
+
+    if need_employee_db:
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    if user_role in EMPLOYEE_SUB_ROLES and not session.get('profile_picture'):
                         employee_id = session.get('employee_id') or session.get('user_id')
-                        cursor.execute("SELECT profile_picture FROM employees WHERE id = %s OR employee_id = %s", 
-                                     (employee_id, employee_id))
+                        cursor.execute(
+                            "SELECT profile_picture FROM employees WHERE id = %s OR employee_id = %s",
+                            (employee_id, employee_id),
+                        )
                         employee = cursor.fetchone()
                         if employee and employee.get('profile_picture'):
-                            # Update session with latest profile picture
                             session['profile_picture'] = employee.get('profile_picture')
-                    
-                    # For technicians viewing as a role, get employees list for that role
+
                     if user_role == 'technician' and session.get('viewing_as_employee_role'):
                         viewing_as_role = session.get('viewing_as_employee_role', '').lower()
                         role_vals = employee_role_db_match_values(viewing_as_role)
@@ -1823,7 +1881,7 @@ def inject_school_settings():
                                 ORDER BY full_name ASC
                             """, role_vals)
                             employees_results = cursor.fetchall()
-                        
+
                         for row in employees_results:
                             employees_list.append({
                                 'id': row.get('id') if isinstance(row, dict) else row[0],
@@ -1832,8 +1890,7 @@ def inject_school_settings():
                                 'email': row.get('email') if isinstance(row, dict) else row[3],
                                 'role': row.get('role') if isinstance(row, dict) else row[4]
                             })
-                        
-                        # Get info about currently selected employee
+
                         viewing_as_employee_id = session.get('viewing_as_employee_id')
                         if viewing_as_employee_id:
                             cursor.execute("""
@@ -1855,23 +1912,21 @@ def inject_school_settings():
                                         else (employee_result[5] if len(employee_result) > 5 else None)
                                     ),
                                 }
-        except Exception as e:
-            # Table might not exist yet, that's okay
-            pass
-        finally:
-            if connection:
-                connection.close()
+            except Exception:
+                pass
+            finally:
+                if connection:
+                    connection.close()
 
-    user_role = (session.get('role') or '').lower().strip()
     viewing_as_employee = (session.get('viewing_as_employee_role') or '').lower().strip()
     is_technician = user_role == 'technician'
     dashboard_content_role = normalize_employee_dashboard_content_role(
         user_role, is_technician, viewing_as_employee
     )
+    ve_norm = normalize_allocated_role(viewing_as_employee) if viewing_as_employee else ''
     if has_request_context():
         path_role = portal_role_from_request_path()
         path_norm = normalize_allocated_role(path_role) if path_role else ''
-        ve_norm = normalize_allocated_role(viewing_as_employee) if viewing_as_employee else ''
         if is_technician and ve_norm:
             if path_norm and (
                 path_norm == ve_norm
@@ -1898,7 +1953,9 @@ def inject_school_settings():
     settings = get_school_settings()
     active_font = settings.get('font_family', 'Inter')
     school_website_url = public_portal_url('home')
-    school_website_qr_data_url = _portal_qr_data_url(school_website_url)
+    school_website_qr_data_url = (
+        _portal_qr_data_url(school_website_url) if _needs_website_qr_for_request() else ''
+    )
     return {
         'school_settings': settings,
         'school_website_url': school_website_url,
@@ -2610,6 +2667,65 @@ def raw_mark_to_percentage(raw_marks, exam_total_marks_value):
     if mx <= 0:
         return None
     return round(100.0 * r / mx, 2)
+
+
+def combined_papers_percentage(raw_and_max_pairs):
+    """
+    Combined % for papers with possibly different totals (e.g. /30 and /50).
+
+    Formula:  Σ(raw_i) / Σ(max_i) × 100
+    Equivalent to a max-weighted mean of each paper's own percentage.
+    Example: 25/30 and 40/50 → (25+40)/(30+50)×100 = 81.25%
+    (not the unweighted mean of 83.33% and 80%).
+    Members without a mark are skipped (not treated as zero).
+    """
+    raw_sum = 0.0
+    max_sum = 0.0
+    for pair in raw_and_max_pairs or []:
+        if not pair or len(pair) < 2:
+            continue
+        raw_val, max_val = pair[0], pair[1]
+        if raw_val is None:
+            continue
+        try:
+            r = float(raw_val)
+            mx = float(max_val)
+        except (TypeError, ValueError):
+            continue
+        if mx <= 0:
+            continue
+        raw_sum += r
+        max_sum += mx
+    if max_sum <= 0:
+        return None
+    return (100.0 * raw_sum) / max_sum
+
+
+def combined_papers_percentage_from_scaled(pct_and_max_pairs):
+    """
+    Same combined % as combined_papers_percentage, when each paper is already 0–100%.
+    Weight = that paper's exam total (max marks).
+    """
+    weighted_sum = 0.0
+    weight_sum = 0.0
+    for pair in pct_and_max_pairs or []:
+        if not pair or len(pair) < 2:
+            continue
+        pct_val, max_val = pair[0], pair[1]
+        if pct_val is None:
+            continue
+        try:
+            p = float(pct_val)
+            w = float(max_val)
+        except (TypeError, ValueError):
+            continue
+        if w <= 0:
+            continue
+        weighted_sum += p * w
+        weight_sum += w
+    if weight_sum <= 0:
+        return None
+    return weighted_sum / weight_sum
 
 
 def round_mark_display(value):
@@ -7886,10 +8002,11 @@ def build_academic_levels_picker_grouping(academic_levels, cursor):
 
 def merge_subjects_with_exam_combinations(subjects, combinations, id_to_gc=None, section_order=None):
     """
-    Replace member subjects with one synthetic column per applicable combination.
-    Synthetic row uses negative id -combo_id, exam_total_marks 100 (enter unified %); names/codes joined with '/'.
-    When id_to_gc and section_order are provided (same semantics as exam-subject-settings), subjects are ordered
-    by academic category first, then exam_display_order.
+    Replace member subjects with one synthetic column per applicable combination (view-only sheets).
+    Synthetic row uses negative id -combo_id. Combined % is computed live as
+    Σ(pct×max)/Σ(max) from each member's exam_total_marks — not entered as a single cell.
+    Editors (teachers/principals) use expand_teacher_marks_sheet_subjects instead so each
+    paper keeps its own out-of and the Σ column stays read-only.
     """
     if not subjects:
         return subjects
@@ -10035,9 +10152,12 @@ def _merged_registered_subject_labels_by_level_id(cursor):
 
 
 def _exam_combo_scaled_pct_for_column(marks_by_sid, member_ids, exam_total_by_sid):
-    """Weighted mean of scaled % across combination members (matches exams-assessments marks sheet)."""
-    weighted_sum = 0.0
-    weight_sum = 0.0
+    """
+    Combined % across combination members (matches exams-assessments marks sheet).
+    marks_by_sid values are already 0–100%; weights are each paper's exam_total_marks.
+    Result = Σ(pct_i × max_i) / Σ(max_i) ≡ Σ(raw_i) / Σ(max_i) × 100.
+    """
+    pairs = []
     for mid in member_ids or []:
         marks_list = marks_by_sid.get(mid) or []
         if not marks_list:
@@ -10047,11 +10167,8 @@ def _exam_combo_scaled_pct_for_column(marks_by_sid, member_ids, exam_total_by_si
         except (TypeError, ValueError):
             continue
         w = float(exam_total_by_sid.get(mid) or 100) or 100.0
-        weighted_sum += avg_pct * w
-        weight_sum += w
-    if not weight_sum:
-        return None
-    return weighted_sum / weight_sum
+        pairs.append((avg_pct, w))
+    return combined_papers_percentage_from_scaled(pairs)
 
 
 def _academic_report_short_exam_label(exam_name):
@@ -15407,22 +15524,72 @@ def init_db():
             except:
                 pass
 
-def get_db_connection():
-    """Create and return a database connection - automatically creates database and tables if missing"""
+# Shared MySQL connection pool (DBUtils). connection.close() returns to the pool.
+_db_pool = None
+_db_pool_lock = threading.Lock()
+
+
+def reset_db_pool():
+    """Drop the pool so the next checkout recreates it (e.g. after creating the DB)."""
+    global _db_pool
+    with _db_pool_lock:
+        if _db_pool is not None:
+            try:
+                _db_pool.close()
+            except Exception:
+                pass
+            _db_pool = None
+
+
+def _create_db_pool():
+    """Build a PooledDB, or None if DBUtils is unavailable."""
     try:
-        connection = pymysql.connect(**DB_CONFIG)
-        return connection
+        from dbutils.pooled_db import PooledDB
+    except ImportError:
+        print('DBUtils not installed — using unpooled MySQL connections. pip install DBUtils')
+        return None
+    maxconn = max(1, int(os.environ.get('DB_POOL_SIZE', '8')))
+    maxcached = max(1, min(4, maxconn))
+    return PooledDB(
+        creator=pymysql,
+        maxconnections=maxconn,
+        mincached=0,
+        maxcached=maxcached,
+        maxshared=0,
+        blocking=True,
+        maxusage=1000,
+        ping=1,
+        **DB_CONFIG,
+    )
+
+
+def _get_db_pool():
+    global _db_pool
+    with _db_pool_lock:
+        if _db_pool is None:
+            _db_pool = _create_db_pool()
+        return _db_pool
+
+
+def get_db_connection():
+    """Return a database connection from the pool (or a fresh connect as fallback)."""
+    try:
+        pool = _get_db_pool()
+        if pool is not None:
+            return pool.connection()
+        return pymysql.connect(**DB_CONFIG)
     except pymysql.err.OperationalError as e:
         # If database doesn't exist, try to create it and reconnect
         if e.args[0] == 1049:  # Unknown database error
             print(f"Database '{DB_CONFIG['database']}' not found. Creating database and tables...")
             if ensure_database_exists():
                 try:
-                    # Initialize tables in the newly created database
                     if init_db():
-                        # Now connect to the database
-                        connection = pymysql.connect(**DB_CONFIG)
-                        return connection
+                        reset_db_pool()
+                        pool = _get_db_pool()
+                        if pool is not None:
+                            return pool.connection()
+                        return pymysql.connect(**DB_CONFIG)
                     else:
                         print("Failed to initialize database tables.")
                         return None
@@ -79645,8 +79812,7 @@ def exam_analytics_detail(exam_id):
                         if subj.get('is_combined'):
                             member_ids = subj.get('member_subject_ids') or []
                             member_weights = subj.get('member_weights') or []
-                            weighted_sum = 0.0
-                            weight_sum = 0.0
+                            pairs = []
                             for idx_m, mid in enumerate(member_ids):
                                 w = member_weights[idx_m] if idx_m < len(member_weights) else 0.0
                                 if w <= 0:
@@ -79673,10 +79839,10 @@ def exam_analytics_detail(exam_id):
                                             pcts_m.append(p)
                                 p_avg = round(sum(pcts_m) / len(pcts_m), 2) if pcts_m else None
                                 if p_avg is not None:
-                                    weighted_sum += float(p_avg) * float(w)
-                                    weight_sum += float(w)
-                            # Weighted average of member converted marks (0–100), regardless of whether weights sum to 100.
-                            total_for_subject = round((weighted_sum / weight_sum), 2) if weight_sum > 0 else None
+                                    pairs.append((p_avg, float(w)))
+                            # Σ(raw)/Σ(max)×100 via max-weighted mean of per-paper %
+                            combo_pct = combined_papers_percentage_from_scaled(pairs)
+                            total_for_subject = round(combo_pct, 2) if combo_pct is not None else None
                         # Look up by (student_id, subject_id) and exam_id IN all slots – so marks saved under any slot (e.g. same exam_id for all subjects on exams-assessments) are found
                         elif all_slot_ids and subj.get('subject_id') is not None:
                             placeholders = ','.join(['%s'] * len(all_slot_ids))
@@ -80366,6 +80532,16 @@ def students_by_academic_level(level_id):
                     subjects, combination_column_members, teacher_editable_subject_ids = (
                         expand_teacher_marks_sheet_subjects(
                             subjects_flat, combinations_loaded, teacher_subject_ids_list, cursor,
+                        )
+                    )
+                elif is_principal:
+                    # Principals enter each paper separately. Live Σ% =
+                    # Σ(pct×max)/Σ(max) so /30 + /50 combine correctly. Do not collapse to one
+                    # editable % cell (that blanked inputs and overwrote both papers).
+                    all_subject_ids = [int(s['id']) for s in subjects_flat]
+                    subjects, combination_column_members, teacher_editable_subject_ids = (
+                        expand_teacher_marks_sheet_subjects(
+                            subjects_flat, combinations_loaded, all_subject_ids, cursor,
                         )
                     )
                 else:
@@ -81543,10 +81719,273 @@ def exam_audits():
     )
 
 
+def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teacher_id):
+    """
+    Persist many mark cells in one DB transaction.
+    entries: list of {student_id, subject_id, marks}
+    Returns (ok: bool, payload: dict, http_status: int)
+    """
+    if not entries:
+        return True, {'success': True, 'message': 'Nothing to save.', 'saved': 0, 'results': []}, 200
+
+    ensure_subject_exam_total_marks_column(cursor)
+    cursor.execute("SELECT 1 FROM exams WHERE id = %s LIMIT 1", (exam_id,))
+    if not cursor.fetchone():
+        return False, {'success': False, 'message': 'Exam not found.'}, 404
+
+    ensure_exams_marks_lock_at_column(cursor)
+    max_il, mla = _exam_group_max_is_locked_and_marks_lock_at(cursor, exam_id)
+    if max_il:
+        return False, {
+            'success': False,
+            'message': 'This exam is locked. Marks cannot be changed.',
+            'locked': True,
+        }, 403
+    if is_teacher and _marks_lock_deadline_passed(mla):
+        return False, {
+            'success': False,
+            'message': 'The marks entry period for this exam is over. Contact the curriculum office if you need changes.',
+            'marks_period_closed': True,
+        }, 403
+
+    registered_current = load_registered_current_exam_dict(cursor)
+    cursor.execute("""
+        SELECT academic_level_id, exam_name, academic_year_id, term_id, exam_type
+        FROM exams
+        WHERE id = %s
+    """, (exam_id,))
+    exam_scope_row = cursor.fetchone()
+    if not exam_scope_row:
+        return False, {'success': False, 'message': 'Exam not found.'}, 404
+
+    exam_scope_level_id = exam_scope_row.get('academic_level_id') if isinstance(exam_scope_row, dict) else exam_scope_row[0]
+    exam_scope_name = exam_scope_row.get('exam_name') if isinstance(exam_scope_row, dict) else exam_scope_row[1]
+    exam_scope_year_id = exam_scope_row.get('academic_year_id') if isinstance(exam_scope_row, dict) else exam_scope_row[2]
+    exam_scope_term_id = exam_scope_row.get('term_id') if isinstance(exam_scope_row, dict) else exam_scope_row[3]
+    exam_scope_type = (
+        exam_scope_row.get('exam_type') if isinstance(exam_scope_row, dict)
+        else (exam_scope_row[4] if len(exam_scope_row) > 4 else None)
+    )
+
+    ensure_exam_context_snapshot_if_missing(
+        cursor,
+        exam_scope_name,
+        exam_scope_year_id,
+        exam_scope_term_id,
+        exam_scope_level_id,
+        registered_current=registered_current,
+        exam_type=exam_scope_type,
+    )
+
+    subject_ids = []
+    student_ids = []
+    normalized = []
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        sid = item.get('student_id')
+        sub_id = item.get('subject_id')
+        if sid is None or sub_id is None:
+            continue
+        try:
+            sid_i = int(sid)
+            sub_i = int(sub_id)
+        except (TypeError, ValueError):
+            continue
+        if sub_i < 0:
+            # Combo total columns are derived live — never persist them.
+            continue
+        marks_raw = item.get('marks')
+        marks_value = None
+        if marks_raw is not None and str(marks_raw).strip() != '':
+            try:
+                marks_value = float(marks_raw)
+            except (TypeError, ValueError):
+                return False, {
+                    'success': False,
+                    'message': f'Invalid marks value for student {sid_i}, subject {sub_i}.',
+                }, 400
+            if marks_value < 0:
+                return False, {'success': False, 'message': 'Marks cannot be negative.'}, 400
+        subject_ids.append(sub_i)
+        student_ids.append(sid_i)
+        normalized.append((sid_i, sub_i, marks_value))
+
+    if not normalized:
+        return True, {'success': True, 'message': 'Nothing to save.', 'saved': 0, 'results': []}, 200
+
+    uniq_subjects = sorted(set(subject_ids))
+    allowed_subjects = set(uniq_subjects)
+    if is_teacher and teacher_id:
+        ph = ','.join(['%s'] * len(uniq_subjects))
+        cursor.execute(
+            f"""
+            SELECT subject_id
+            FROM teacher_subject_assignments
+            WHERE teacher_id = %s
+              AND academic_level_id = %s
+              AND subject_id IN ({ph})
+            """,
+            tuple([teacher_id, level_id] + uniq_subjects),
+        )
+        allowed_subjects = set()
+        for row in cursor.fetchall() or []:
+            sid = row.get('subject_id') if isinstance(row, dict) else row[0]
+            try:
+                allowed_subjects.add(int(sid))
+            except (TypeError, ValueError):
+                continue
+        denied = [s for s in uniq_subjects if s not in allowed_subjects]
+        if denied:
+            return False, {
+                'success': False,
+                'message': 'You are not assigned to one or more subjects for this level.',
+            }, 403
+
+    # Resolve subject exam row + max once per subject
+    resolved_exam_by_subject = {}
+    max_raw_by_subject = {}
+    for sub_i in uniq_subjects:
+        cursor.execute("""
+            SELECT id
+            FROM exams
+            WHERE academic_level_id = %s
+              AND exam_name = %s
+              AND academic_year_id = %s
+              AND term_id = %s
+              AND subject_id = %s
+            ORDER BY id ASC
+            LIMIT 1
+        """, (exam_scope_level_id, exam_scope_name, exam_scope_year_id, exam_scope_term_id, sub_i))
+        subject_exam_row = cursor.fetchone()
+        if subject_exam_row:
+            resolved_exam_by_subject[sub_i] = (
+                subject_exam_row.get('id') if isinstance(subject_exam_row, dict) else subject_exam_row[0]
+            )
+        else:
+            resolved_exam_by_subject[sub_i] = exam_id
+
+        cursor.execute("SELECT exam_total_marks FROM subjects WHERE id = %s LIMIT 1", (sub_i,))
+        sub_max_row = cursor.fetchone()
+        if not sub_max_row:
+            return False, {'success': False, 'message': f'Subject {sub_i} not found.'}, 404
+        etm = sub_max_row.get('exam_total_marks') if isinstance(sub_max_row, dict) else sub_max_row[0]
+        etm = subject_exam_total_for_context(
+            cursor, sub_i,
+            exam_scope_name, exam_scope_year_id, exam_scope_term_id, exam_scope_level_id,
+            live_fallback=etm,
+            registered_current=registered_current,
+            exam_type=exam_scope_type,
+        )
+        max_raw_by_subject[sub_i] = min(subject_exam_max_raw_marks(etm), 100.0)
+
+    for _, sub_i, marks_value in normalized:
+        max_raw = max_raw_by_subject.get(sub_i, 100.0)
+        if marks_value is not None and marks_value > max_raw + 1e-9:
+            return False, {
+                'success': False,
+                'message': f'Marks cannot exceed {max_raw:g} (maximum 100).',
+            }, 400
+
+    changed_by, changed_by_role, changed_by_name = _exam_marks_audit_actor()
+    audit_level_id = exam_scope_level_id or level_id
+    audit_exam_name = exam_scope_name or ''
+    results = []
+    saved = 0
+
+    for sid_i, sub_i, marks_value in normalized:
+        resolved_exam_id = resolved_exam_by_subject[sub_i]
+        cursor.execute("""
+            SELECT id, marks FROM student_marks
+            WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+        """, (sid_i, sub_i, resolved_exam_id))
+        existing = cursor.fetchone()
+        old_marks = None
+        if existing:
+            old_marks = existing.get('marks') if isinstance(existing, dict) else existing[1]
+
+        if existing:
+            if marks_value is not None:
+                if not _marks_audit_values_equal(old_marks, marks_value):
+                    cursor.execute("""
+                        UPDATE student_marks
+                        SET marks = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                    """, (marks_value, sid_i, sub_i, resolved_exam_id))
+                    _log_exam_marks_audit(
+                        cursor,
+                        student_id=sid_i,
+                        subject_id=sub_i,
+                        exam_id=resolved_exam_id,
+                        academic_level_id=audit_level_id,
+                        exam_name=audit_exam_name,
+                        action_type='UPDATE',
+                        old_marks=old_marks,
+                        new_marks=marks_value,
+                        changed_by=changed_by,
+                        changed_by_role=changed_by_role,
+                        changed_by_name=changed_by_name,
+                    )
+            else:
+                cursor.execute("""
+                    DELETE FROM student_marks
+                    WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                """, (sid_i, sub_i, resolved_exam_id))
+                _log_exam_marks_audit(
+                    cursor,
+                    student_id=sid_i,
+                    subject_id=sub_i,
+                    exam_id=resolved_exam_id,
+                    academic_level_id=audit_level_id,
+                    exam_name=audit_exam_name,
+                    action_type='DELETE',
+                    old_marks=old_marks,
+                    new_marks=None,
+                    changed_by=changed_by,
+                    changed_by_role=changed_by_role,
+                    changed_by_name=changed_by_name,
+                )
+        else:
+            if marks_value is not None:
+                cursor.execute("""
+                    INSERT INTO student_marks (student_id, subject_id, exam_id, marks, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, (sid_i, sub_i, resolved_exam_id, marks_value))
+                _log_exam_marks_audit(
+                    cursor,
+                    student_id=sid_i,
+                    subject_id=sub_i,
+                    exam_id=resolved_exam_id,
+                    academic_level_id=audit_level_id,
+                    exam_name=audit_exam_name,
+                    action_type='INSERT',
+                    old_marks=None,
+                    new_marks=marks_value,
+                    changed_by=changed_by,
+                    changed_by_role=changed_by_role,
+                    changed_by_name=changed_by_name,
+                )
+
+        saved += 1
+        results.append({
+            'student_id': sid_i,
+            'subject_id': sub_i,
+            'marks': marks_value,
+            'success': True,
+        })
+
+    return True, {
+        'success': True,
+        'message': f'Saved {saved} mark(s).',
+        'saved': saved,
+        'results': results,
+    }, 200
+
+
 @app.route('/dashboard/employee/exams-assessments/save-marks', methods=['POST'])
 @login_required
 def save_marks():
-    """Save marks for a student in a subject for an exam"""
+    """Save marks for a student in a subject for an exam (or a batch via entries[])."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
@@ -81569,7 +82008,40 @@ def save_marks():
             return jsonify({'success': False, 'message': 'Teacher ID not found.'}), 400
     
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
+        # Bulk path: one request / one transaction for all dirty cells
+        if isinstance(data.get('entries'), list):
+            exam_id = data.get('exam_id')
+            level_id = data.get('level_id')
+            if exam_id is None or level_id is None:
+                return jsonify({'success': False, 'message': 'Missing required fields.'}), 400
+            connection = get_db_connection()
+            if not connection:
+                return jsonify({'success': False, 'message': 'Database connection failed.'}), 500
+            try:
+                with connection.cursor() as cursor:
+                    ok, payload, status = _save_marks_batch_core(
+                        cursor,
+                        data.get('entries') or [],
+                        exam_id,
+                        level_id,
+                        is_teacher,
+                        teacher_id,
+                    )
+                    if ok:
+                        connection.commit()
+                    else:
+                        connection.rollback()
+                    return jsonify(payload), status
+            except Exception as e:
+                connection.rollback()
+                import traceback
+                print(f"Error saving marks batch: {e}")
+                print(traceback.format_exc())
+                return jsonify({'success': False, 'message': f'Error saving marks: {str(e)}'}), 500
+            finally:
+                connection.close()
+
         student_id = data.get('student_id')
         subject_id = data.get('subject_id')
         exam_id = data.get('exam_id')

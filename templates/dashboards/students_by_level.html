@@ -231,8 +231,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     background: #1f2937;
     color: #6b7280;
 }
-.mark-input.saving { border-color: #f59e0b; background: #fef3c7; color: #92400e; }
-.mark-input.saved { border-color: #10b981; background: #d1fae5; color: #065f46; }
+.mark-input.dirty { border-color: #0ea5e9; background: #f0f9ff; }
 .mark-input.error { border-color: #ef4444; background: #fee2e2; color: #991b1b; }
 
 /* Mobile: larger touch targets; 16px+ font avoids iOS zoom on focus */
@@ -1119,8 +1118,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                         @click="saveAll()"
                         :disabled="marksSaving || !hasUnsavedChanges"
                         class="marks-toolbar-btn-save touch-manipulation"
-                        title="Save entered marks and grade remarks">
-                    <i class="fas fa-save text-xs" aria-hidden="true"></i> Save
+                        title="Submit all changed marks and remarks to the database">
+                    <i class="fas fa-save text-xs" aria-hidden="true"></i> Submit
                 </button>
             </div>
         </div>
@@ -1159,7 +1158,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
                             {% if is_combo_total %}
                             <th class="marks-th-subject marks-th-combo-total px-0.5 py-2 sm:py-3 text-center font-semibold uppercase align-bottom"
-                                title="{{ subject.subject_name }} — live combined % = Σ(paper marks) ÷ Σ(paper totals) × 100 (e.g. /30 + /50)">Σ {{ subj_lbl[:6] }}</th>
+                                title="{{ subject.subject_name }} — live combined % from each paper’s percentage (weighted by paper totals)">Σ {{ subj_lbl[:6] }}</th>
                             {% elif is_combo_member and not subject.get('is_teacher_editable', true) %}
                             <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-500 dark:text-gray-400 uppercase bg-gray-100 dark:bg-gray-700 align-bottom"
                                 title="{{ subject.subject_name }} — view only (entered by another teacher) — out of {{ subj_max }}">{{ subj_lbl }} <i class="fas fa-lock text-[8px] opacity-70" aria-hidden="true"></i></th>
@@ -1330,7 +1329,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <div x-show="selectedExam" x-cloak class="ms-remarks-card mt-4">
             <div class="ms-remarks-card__head">
                 <h3 class="text-sm font-bold text-slate-900 dark:text-white m-0">Grade remarks (report cards)</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400 m-0">Saved with marks via the Save button</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 m-0">Included when you press Submit</p>
             </div>
             <div class="ms-remarks-card__body">
                 <div class="overflow-x-auto">
@@ -1374,8 +1373,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     @click="saveAll()"
                     :disabled="marksSaving || !hasUnsavedChanges"
                     class="marks-toolbar-btn-save touch-manipulation"
-                    title="Save entered marks and grade remarks">
-                <i class="fas fa-save text-xs" aria-hidden="true"></i> Save
+                    title="Submit all changed marks and remarks to the database">
+                <i class="fas fa-save text-xs" aria-hidden="true"></i> Submit
             </button>
         </div>
 
@@ -1457,9 +1456,9 @@ function marksSheet() {
         schoolTermId: "{{ selected_term_id if selected_term_id is not none else '' }}",
         schoolDefaultExamId: "{{ selected_exam_id if selected_exam_id is not none else '' }}",
         marks: {},
-        /** Last loaded/saved stored marks — used so blur never rewrites unchanged cells. */
+        /** Last loaded/submitted stored marks — used to detect changed cells for Submit. */
         marksBaseline: {},
-        /** Cells the user actually edited this session (studentId_subjectId → true). */
+        /** Cells the user edited this session (studentId_subjectId → true). Submitted together. */
         marksDirty: {},
         /**
          * Typed scores shown in inputs (studentId_subjectId → number|null).
@@ -1614,35 +1613,30 @@ function marksSheet() {
             });
         },
 
+        /**
+         * Single submit: send every changed mark in one request, then remarks.
+         * No autosave, no per-cell / sequential saves.
+         */
         async saveAll() {
             if (!this.canEnterMarks || !this.selectedExam || this.examIsLocked) return;
-            if (!this.hasUnsavedChanges) return;
+            if (!this.hasUnsavedChanges || this.marksSaving) return;
+
             this.marksSaving = true;
             this.marksSaveStatus = 'Saving…';
-            let marksFailed = false;
-            let remarksFailed = false;
+            this.saveStatus = {};
+
             try {
+                let marksOk = true;
                 if (this.hasUnsavedMarks) {
-                    const dirtyKeys = [...Object.keys(this.marksDirty || {})];
-                    for (const key of dirtyKeys) {
-                        const sep = key.lastIndexOf('_');
-                        if (sep < 1) continue;
-                        const studentId = key.slice(0, sep);
-                        const subjectId = key.slice(sep + 1);
-                        if (!this.isMarkCellDirty(studentId, subjectId)) continue;
-                        const typed = this._getTypedMark(studentId, subjectId);
-                        const display = typed === null ? '' : this._formatOutOfNumber(typed);
-                        await this.saveMark(studentId, subjectId, display);
-                        if (this.isMarkCellDirty(studentId, subjectId)) marksFailed = true;
-                    }
+                    marksOk = await this._submitMarksOnce();
                 }
-                if (this.hasUnsavedRemarks) {
-                    const remarksOk = await this.saveGradeRemarks({ silent: true });
-                    if (!remarksOk) remarksFailed = true;
+
+                let remarksOk = true;
+                if (marksOk && this.hasUnsavedRemarks) {
+                    remarksOk = await this.saveGradeRemarks({ silent: true });
                 }
-                if (marksFailed || remarksFailed) {
-                    this.marksSaveStatus = 'Save failed';
-                } else if (!this.hasUnsavedChanges) {
+
+                if (marksOk && remarksOk && !this.hasUnsavedChanges) {
                     this.marksSaveStatus = 'Saved';
                     setTimeout(() => {
                         if (this.marksSaveStatus === 'Saved') this.marksSaveStatus = '';
@@ -1658,8 +1652,83 @@ function marksSheet() {
             }
         },
 
-        async saveAllMarks() {
-            return this.saveAll();
+        /** Build all dirty cells and INSERT/UPDATE them in one API call. */
+        async _submitMarksOnce() {
+            const entries = [];
+            const planned = [];
+
+            for (const key of Object.keys(this.marksDirty || {})) {
+                const sep = key.lastIndexOf('_');
+                if (sep < 1) continue;
+                const studentId = key.slice(0, sep);
+                const subjectId = key.slice(sep + 1);
+                if (!this.isMarkCellDirty(studentId, subjectId)) continue;
+                if (this.isComboTotalColumn(subjectId)) continue;
+
+                const typed = this._getTypedMark(studentId, subjectId);
+                let numValue = null;
+                if (typed !== null) {
+                    if (typed < 0) return false;
+                    const maxEntry = this.entryOutOfFor(subjectId);
+                    const clamped = typed > maxEntry + 1e-6 ? maxEntry : typed;
+                    numValue = this.entryToStored(subjectId, clamped);
+                }
+
+                const baseline = this._baselineStoredMark(studentId, subjectId);
+                if (this._marksValuesEqual(numValue, baseline)) {
+                    if (!this.marks[studentId]) this.marks[studentId] = {};
+                    if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
+                    this.marks[studentId][subjectId][this.selectedExam] = baseline;
+                    this.clearMarkCellDirty(studentId, subjectId);
+                    continue;
+                }
+
+                if (!this.marks[studentId]) this.marks[studentId] = {};
+                if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
+                this.marks[studentId][subjectId][this.selectedExam] = numValue;
+
+                entries.push({
+                    student_id: studentId,
+                    subject_id: subjectId,
+                    marks: numValue,
+                });
+                planned.push({ studentId, subjectId, numValue });
+            }
+
+            if (!entries.length) return true;
+
+            const response = await fetch('{{ employee_dash_url('exams-assessments/save-marks') }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    exam_id: this.selectedExam,
+                    level_id: this.levelId,
+                    entries,
+                }),
+            });
+            const result = await response.json();
+
+            if (response.status === 403 && result.locked) {
+                this.showLockedExamModal();
+                await this.loadMarks();
+                return false;
+            }
+            if (response.status === 403 && result.marks_period_closed) {
+                this.marksEntryReadonly = true;
+                await this.loadMarks();
+                return false;
+            }
+            if (!result || !result.success) {
+                await this.loadMarks();
+                return false;
+            }
+
+            for (const item of planned) {
+                this._setBaselineStoredMark(item.studentId, item.subjectId, item.numValue);
+                this.clearMarkCellDirty(item.studentId, item.subjectId);
+            }
+            this._tick = Date.now();
+            return true;
         },
 
         _applyInitialGradeRemarksIfEmpty() {
@@ -2046,6 +2115,7 @@ function marksSheet() {
                     }
                 }
             }
+            this._tick = Date.now();
         },
 
         _formatOutOfNumber(n) {
@@ -2249,46 +2319,59 @@ function marksSheet() {
             return this.formatMarkDisplay(typed, false);
         },
 
+        /** Member paper % (same scale as the live % under each mark cell). */
+        _memberPaperPct(studentId, subjectId) {
+            const raw = this._rawStoredMark(studentId, subjectId);
+            if (raw === null) return null;
+            const mx = this.subjectExamMaxFor(subjectId);
+            if (!mx || mx <= 0) return null;
+            return Math.max(0, Math.min(100, (100 * raw) / mx));
+        },
+
         getComboTotalPct(studentId, columnSubjectId) {
-            // Combined % = Σ(raw) / Σ(max) × 100 for papers with marks.
-            // Example: 25/30 + 40/50 → (25+40)/(30+50)×100 = 81.25%
+            // Pick each combined paper's %, then merge into one total:
+            // Σ(pct_i × paperMax_i) / Σ(paperMax_i)  ≡  Σ(raw) / Σ(max) × 100
+            // Example: 25/30 (83.33%) + 40/50 (80%) → 81.25%
+            void this._tick;
             const members = this.getCombinationMembers(columnSubjectId);
             if (!members || !members.length) return null;
-            let rawSum = 0;
-            let maxSum = 0;
+            let weighted = 0;
+            let weightSum = 0;
             for (const mid of members) {
-                const raw = this._rawStoredMark(studentId, mid);
-                if (raw === null) continue;
+                const pct = this._memberPaperPct(studentId, mid);
+                if (pct === null) continue;
                 const mx = this.subjectExamMaxFor(mid);
                 if (!mx || mx <= 0) continue;
-                rawSum += raw;
-                maxSum += mx;
+                weighted += pct * mx;
+                weightSum += mx;
             }
-            return maxSum ? ((100 * rawSum) / maxSum) : null;
+            return weightSum ? (weighted / weightSum) : null;
         },
 
         comboTotalTitle(studentId, columnSubjectId) {
+            void this._tick;
             const members = this.getCombinationMembers(columnSubjectId);
             if (!members || !members.length) return 'Combined %';
             const parts = [];
             let scored = 0;
             for (const mid of members) {
-                const raw = this._rawStoredMark(studentId, mid);
+                const pct = this._memberPaperPct(studentId, mid);
                 const mx = this.subjectExamMaxFor(mid);
-                if (raw === null) {
-                    parts.push('—/' + this._formatOutOfNumber(mx));
+                if (pct === null) {
+                    parts.push('—% (/' + this._formatOutOfNumber(mx) + ')');
                 } else {
                     scored += 1;
-                    parts.push(this._formatOutOfNumber(raw) + '/' + this._formatOutOfNumber(mx));
+                    parts.push(String(this.roundWhole(pct)) + '%');
                 }
             }
             const pct = this.getComboTotalPct(studentId, columnSubjectId);
             const pctTxt = pct === null ? '—' : String(this.roundWhole(pct)) + '%';
             const incomplete = scored > 0 && scored < members.length ? ' (partial — missing paper not counted as 0)' : '';
-            return 'Combined % = Σ marks ÷ Σ paper totals × 100 → ' + parts.join(' + ') + ' = ' + pctTxt + incomplete;
+            return 'Combined % from paper percentages → ' + parts.join(' + ') + ' = ' + pctTxt + incomplete;
         },
 
         getComboTotalDisplay(studentId, columnSubjectId) {
+            void this._tick;
             const pct = this.getComboTotalPct(studentId, columnSubjectId);
             return this.formatMarkDisplay(pct, true);
         },
@@ -2321,23 +2404,30 @@ function marksSheet() {
             if (!this.marks[studentId]) this.marks[studentId] = {};
             if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
             this.marks[studentId][subjectId][this.selectedExam] = stored;
+            // Refresh live Σ combined % column (and related summaries).
+            this._tick = Date.now();
         },
 
         getCombinationMembers(subjectId) {
-            const m = this.columnMembers[String(subjectId)];
+            const m = this.columnMembers[String(subjectId)]
+                ?? this.columnMembers[subjectId];
             return Array.isArray(m) && m.length ? m : null;
         },
 
         _rawStoredMark(studentId, subjectId) {
-            const studentMarks = this.marks[studentId];
-            if (!studentMarks || !studentMarks[subjectId]) return null;
-            const subjectMark = studentMarks[subjectId];
+            const studentMarks = this.marks[studentId] || this.marks[String(studentId)];
+            if (!studentMarks) return null;
+            const subjectMark = studentMarks[subjectId]
+                ?? studentMarks[String(subjectId)]
+                ?? (Number.isFinite(Number(subjectId)) ? studentMarks[Number(subjectId)] : null);
+            if (subjectMark == null) return null;
             let val = null;
             if (typeof subjectMark === 'object') {
                 const ex = this.selectedExam;
                 if (ex) {
                     val = subjectMark[ex];
                     if (val == null) val = subjectMark[String(ex)];
+                    if (val == null && Number.isFinite(Number(ex))) val = subjectMark[Number(ex)];
                 }
             } else {
                 val = subjectMark;
@@ -3008,11 +3098,8 @@ function marksSheet() {
         },
 
         getStatusClass(studentId, subjectId) {
-            const status = this.saveStatus[`${studentId}_${subjectId}`];
-            if (status === 'saving') return 'saving';
-            if (status === 'saved') return 'saved';
-            if (status === 'error') return 'error';
-            return '';
+            // No per-cell autosave status — only Submit writes to the DB.
+            return this.isMarkCellDirty(studentId, subjectId) ? 'dirty' : '';
         },
 
         handleEnterKey(event) {
@@ -3022,7 +3109,7 @@ function marksSheet() {
             const colIndex = Number(currentInput.dataset.colIndex);
             const movingUp = event.shiftKey;
 
-            // Blur current input before moving to the next cell.
+            // Move focus only — does not save.
             currentInput.blur();
 
             // Move vertically in the same subject column:
@@ -3074,202 +3161,6 @@ function marksSheet() {
                     nextCol += colStep;
                 }
             });
-        },
-
-        async saveCombinationMark(studentId, columnSubjectId, value) {
-            if (!this.selectedExam || !this.canEdit) return;
-            if (this.examIsLocked) {
-                this.showLockedExamModal();
-                return;
-            }
-            if (this.marksInputsDisabled) return;
-            if (!this.isMarkCellDirty(studentId, columnSubjectId)) return;
-            const members = this.getCombinationMembers(columnSubjectId);
-            if (!members || !members.length) return;
-            const cid = Math.abs(Number(columnSubjectId));
-            const key = `${studentId}_${columnSubjectId}`;
-            const trimmed = (value || '').trim().replace(',', '.');
-            let entryValue = null;
-            let numValue = null;
-            if (trimmed) {
-                entryValue = parseFloat(trimmed);
-                if (Number.isNaN(entryValue)) {
-                    this.saveStatus[key] = 'error';
-                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
-                    return;
-                }
-                const maxEntry = this.entryOutOfFor(columnSubjectId);
-                if (entryValue < 0 || entryValue > maxEntry + 1e-6) {
-                    this.saveStatus[key] = 'error';
-                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
-                    return;
-                }
-                numValue = this.entryToStored(columnSubjectId, entryValue);
-            }
-            // Do not rewrite DB when conversion leaves the combined % unchanged.
-            let baselineComboPct = null;
-            {
-                let rawSum = 0;
-                let maxSum = 0;
-                let anyMember = false;
-                for (const mid of members) {
-                    const raw = this._baselineStoredMark(studentId, mid);
-                    if (raw !== null) {
-                        const w = this.subjectExamMaxFor(mid);
-                        if (w > 0) {
-                            rawSum += raw;
-                            maxSum += w;
-                            anyMember = true;
-                        }
-                    }
-                }
-                if (anyMember && maxSum) baselineComboPct = (100 * rawSum) / maxSum;
-            }
-            const bothEmpty = numValue === null && baselineComboPct === null;
-            if (bothEmpty || this._marksValuesEqual(numValue, baselineComboPct)) {
-                if (!this.marks[studentId]) this.marks[studentId] = {};
-                for (const mid of members) {
-                    const b = this._baselineStoredMark(studentId, mid);
-                    if (!this.marks[studentId][mid]) this.marks[studentId][mid] = {};
-                    this.marks[studentId][mid][this.selectedExam] = b;
-                }
-                this.clearMarkCellDirty(studentId, columnSubjectId);
-                return;
-            }
-            this.saveStatus[key] = 'saving';
-            if (!this.marks[studentId]) this.marks[studentId] = {};
-            for (const mid of members) {
-                const mx = this.subjectExamMaxFor(mid);
-                const rw = numValue === null ? null : Math.round((numValue / 100) * mx * 100) / 100;
-                if (!this.marks[studentId][mid]) this.marks[studentId][mid] = {};
-                this.marks[studentId][mid][this.selectedExam] = rw;
-            }
-            try {
-                const response = await fetch('{{ employee_dash_url('exams-assessments/save-combination-marks') }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        combination_id: cid,
-                        student_id: studentId,
-                        exam_id: this.selectedExam,
-                        marks: numValue,
-                        level_id: this.levelId
-                    })
-                });
-                const result = await response.json();
-                if (response.status === 403 && result.locked) {
-                    this.showLockedExamModal();
-                    this.saveStatus[key] = 'error';
-                    await this.loadMarks();
-                } else if (response.status === 403 && result.marks_period_closed) {
-                    this.marksEntryReadonly = true;
-                    this.saveStatus[key] = 'error';
-                    await this.loadMarks();
-                } else {
-                    this.saveStatus[key] = result.success ? 'saved' : 'error';
-                    if (!result.success) await this.loadMarks();
-                    else {
-                        for (const mid of members) {
-                            const mx = this.subjectExamMaxFor(mid);
-                            const rw = numValue === null ? null : Math.round((numValue / 100) * mx * 100) / 100;
-                            this._setBaselineStoredMark(studentId, mid, rw);
-                        }
-                        this.clearMarkCellDirty(studentId, columnSubjectId);
-                    }
-                }
-            } catch (error) {
-                this.saveStatus[key] = 'error';
-                await this.loadMarks();
-            }
-            setTimeout(() => { this.saveStatus[key] = ''; }, 1500);
-        },
-
-        async saveMark(studentId, subjectId, value) {
-            if (!this.selectedExam || !this.canEdit) return;
-            if (this.examIsLocked) {
-                this.showLockedExamModal();
-                return;
-            }
-            if (this.marksInputsDisabled) return;
-
-            if (this.isComboTotalColumn(subjectId)) return;
-
-            if (this.getCombinationMembers(subjectId) && Number(subjectId) < 0) {
-                return this.saveCombinationMark(studentId, subjectId, value);
-            }
-
-            if (!this.isMarkCellDirty(studentId, subjectId)) return;
-
-            const key = `${studentId}_${subjectId}`;
-            const trimmed = (value || '').trim().replace(',', '.');
-            let numValue = null;
-            if (trimmed) {
-                const entryValue = parseFloat(trimmed);
-                if (Number.isNaN(entryValue)) {
-                    this.saveStatus[key] = 'error';
-                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
-                    return;
-                }
-                if (entryValue < 0) {
-                    this.saveStatus[key] = 'error';
-                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
-                    return;
-                }
-                const maxEntry = this.entryOutOfFor(subjectId);
-                const clampedEntry = entryValue > maxEntry + 1e-6 ? maxEntry : entryValue;
-                numValue = this.entryToStored(subjectId, clampedEntry);
-            }
-
-            const baseline = this._baselineStoredMark(studentId, subjectId);
-            if (this._marksValuesEqual(numValue, baseline)) {
-                if (!this.marks[studentId]) this.marks[studentId] = {};
-                if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
-                this.marks[studentId][subjectId][this.selectedExam] = baseline;
-                this.clearMarkCellDirty(studentId, subjectId);
-                return;
-            }
-
-            this.saveStatus[key] = 'saving';
-
-            if (!this.marks[studentId]) this.marks[studentId] = {};
-            if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
-            this.marks[studentId][subjectId][this.selectedExam] = numValue;
-
-            try {
-                const response = await fetch('{{ employee_dash_url('exams-assessments/save-marks') }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        student_id: studentId,
-                        subject_id: subjectId,
-                        exam_id: this.selectedExam,
-                        marks: numValue,
-                        level_id: this.levelId
-                    })
-                });
-                const result = await response.json();
-                if (response.status === 403 && result.locked) {
-                    this.showLockedExamModal();
-                    this.saveStatus[key] = 'error';
-                    await this.loadMarks();
-                } else if (response.status === 403 && result.marks_period_closed) {
-                    this.marksEntryReadonly = true;
-                    this.saveStatus[key] = 'error';
-                    await this.loadMarks();
-                } else {
-                    this.saveStatus[key] = result.success ? 'saved' : 'error';
-                    if (!result.success) await this.loadMarks();
-                    else {
-                        this._setBaselineStoredMark(studentId, subjectId, numValue);
-                        this.clearMarkCellDirty(studentId, subjectId);
-                    }
-                }
-            } catch (error) {
-                this.saveStatus[key] = 'error';
-                await this.loadMarks();
-            }
-            
-            setTimeout(() => { this.saveStatus[key] = ''; }, 1500);
         },
 
         async loadMarks() {
