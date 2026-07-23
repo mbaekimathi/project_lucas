@@ -1469,7 +1469,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% else %}
                             <td class="marks-td-subject marks-th-subject-pair py-1 sm:py-1 text-center align-middle">
                                 {% if can_edit %}
-                                <template x-if="canEnterMarks && canEditSubjectCell({{ subject.id }})">
+                                <template x-if="canEdit && canEditSubjectCell({{ subject.id }})">
                                     <input type="text"
                                            inputmode="decimal"
                                            maxlength="8"
@@ -1488,7 +1488,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                            @keydown.left.prevent="handleArrowKey($event)"
                                            @keydown.right.prevent="handleArrowKey($event)"
                                            @keypress="allowMarkChar($event, {{ subject.id }})"
-                                           :disabled="!selectedExam"
+                                           :disabled="!canEnterMarks || !selectedExam"
                                            placeholder=""
                                            :title="'Actual mark out of ' + entryOutOfFor({{ subject.id }}) + ' → Converted /100%'"
                                            :class="getStatusClass(student.student_id, {{ subject.id }})"
@@ -1496,16 +1496,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                            autocomplete="off"
                                            enterkeyhint="next">
                                 </template>
-                                <template x-if="canEnterMarks && !canEditSubjectCell({{ subject.id }})">
+                                <template x-if="canEdit && !canEditSubjectCell({{ subject.id }})">
                                     <span class="marks-cell-readonly"
                                           title="Entered by another teacher — view only"
-                                          x-text="getMemberRawDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
-                                </template>
-                                <template x-if="!canEnterMarks">
-                                    <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums"
-                                          :class="examIsLocked && selectedExam ? 'cursor-pointer rounded px-0.5 ring-1 ring-amber-200/60 dark:ring-amber-700/50' : ''"
-                                          :title="examIsLocked && selectedExam ? 'Allocations locked — tap for details' : 'Actual input mark'"
-                                          @click="examIsLocked && selectedExam && showLockedExamModal()"
                                           x-text="getMemberRawDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
                                 </template>
                                 {% else %}
@@ -2340,10 +2333,12 @@ function marksSheet() {
         },
 
         get canEnterMarks() {
-            void this._countdownTick;
+            // Do NOT read _countdownTick here. That flag updates every second for the
+            // deadline label; binding it into canEnterMarks remounts every x-if mark
+            // input and blur-clears the cell currently being edited (e.g. STU190).
             if (!this.canEdit || !this.selectedExam) return false;
             if (this.examIsLocked) return false;
-            if (this.isTeacherMarks && (this.marksEntryReadonly || this.teacherMarksPeriodClosed)) return false;
+            if (this.isTeacherMarks && this.marksEntryReadonly) return false;
             return true;
         },
 
@@ -2789,7 +2784,9 @@ function marksSheet() {
         },
 
         canEditSubjectCell(subjectId) {
-            if (!this.canEdit || !this.canEnterMarks || this.isComboTotalColumn(subjectId)) return false;
+            // Assignment-only — must stay stable so x-if does not remount inputs.
+            // Lock / deadline gating uses :disabled via canEnterMarks.
+            if (!this.canEdit || this.isComboTotalColumn(subjectId)) return false;
             const ids = this.teacherEditableSubjectIds || [];
             if (this.isTeacherMarks && ids.length) {
                 const sid = Number(subjectId);
@@ -2886,6 +2883,11 @@ function marksSheet() {
         onMarkInput(studentId, subjectId, value, event) {
             if (!this.selectedExam || !this._subjectIsEditableForSave(subjectId)) return;
             const trimmed = (value || '').trim().replace(',', '.');
+            // Ignore empty blur/change from a detached input (x-if remount / teardown).
+            // That was wiping the last-edited student (e.g. AMOR / STU190) before Submit.
+            if (!trimmed && event && event.target && event.target.isConnected === false) {
+                return;
+            }
             let entryValue = null;
             if (trimmed) {
                 entryValue = parseFloat(trimmed);
@@ -3149,6 +3151,17 @@ function marksSheet() {
             this._bindUnsavedLeaveGuard();
             setInterval(() => {
                 this._countdownTick = Date.now();
+                // Flip readonly once when the deadline passes — do not tie input
+                // x-if to the per-second tick (that remounted/cleared mark cells).
+                if (this.isTeacherMarks && this.selectedExam && !this.marksEntryReadonly) {
+                    const ex = this._selectedExamMeta();
+                    if (ex && ex.marks_lock_at) {
+                        const end = this._marksLockMs(ex.marks_lock_at);
+                        if (end !== null && Date.now() >= end) {
+                            this.marksEntryReadonly = true;
+                        }
+                    }
+                }
                 this._maybeOpenMarksPeriodClosedModal();
             }, 1000);
         },

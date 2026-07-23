@@ -83469,6 +83469,18 @@ def save_marks():
             level_id = data.get('level_id')
             if exam_id is None or level_id is None:
                 return jsonify({'success': False, 'message': 'Missing required fields.'}), 400
+            entries_in = data.get('entries') or []
+            try:
+                alpha_ids = sorted({
+                    str(e.get('student_id') or '').strip()
+                    for e in entries_in
+                    if isinstance(e, dict) and str(e.get('student_id') or '').strip()
+                    and not str(e.get('student_id')).strip().isdigit()
+                })
+                if alpha_ids:
+                    print(f"[save-marks] alphanumeric student_id(s) in payload: {alpha_ids[:12]}")
+            except Exception:
+                pass
             connection = get_db_connection()
             if not connection:
                 return jsonify({'success': False, 'message': 'Database connection failed.'}), 500
@@ -83476,7 +83488,7 @@ def save_marks():
                 with connection.cursor() as cursor:
                     ok, payload, status = _save_marks_batch_core(
                         cursor,
-                        data.get('entries') or [],
+                        entries_in,
                         exam_id,
                         level_id,
                         is_teacher,
