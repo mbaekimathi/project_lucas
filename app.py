@@ -143,6 +143,18 @@ except ImportError:
 load_project_env()
 gdrive_backup.configure_oauth_transport()
 
+
+def _env_int(name, default):
+    """Parse int env var; empty/invalid values fall back to default (avoids import-time crash)."""
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == '':
+        return int(default)
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return int(default)
+
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 # Used when the user checks "Remember me" on login (browser session cookie otherwise).
@@ -955,7 +967,7 @@ class DashboardRolePathRewriteMiddleware:
 
 # Email configuration
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+app.config['MAIL_PORT'] = _env_int('MAIL_PORT', 587)
 app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ['true', '1', 'yes']
 app.config['MAIL_USE_SSL'] = os.environ.get('MAIL_USE_SSL', 'False').lower() in ['true', '1', 'yes']
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
@@ -1742,11 +1754,11 @@ def _parse_student_id_digits(val):
 # In-memory cache for school_settings (avoids 2 DB round-trips per request: info_schema + SELECT)
 # Prefer shared_cache (Redis when REDIS_URL/REDIS_HOST set) so workers share the same snapshot.
 _SCHOOL_SETTINGS_CACHE = {'data': None, 'expires_at': 0.0}
-SCHOOL_SETTINGS_CACHE_TTL = int(os.environ.get('SCHOOL_SETTINGS_CACHE_TTL', '300'))
+SCHOOL_SETTINGS_CACHE_TTL = _env_int('SCHOOL_SETTINGS_CACHE_TTL', 300)
 
 # Active academic levels for nav/templates (shared across requests in this process)
 _ACADEMIC_LEVELS_CACHE = {'data': None, 'expires_at': 0.0}
-ACADEMIC_LEVELS_CACHE_TTL = int(os.environ.get('ACADEMIC_LEVELS_CACHE_TTL', '300'))
+ACADEMIC_LEVELS_CACHE_TTL = _env_int('ACADEMIC_LEVELS_CACHE_TTL', 300)
 
 # Portal QR PNGs are expensive — cache by URL for the process lifetime
 _PORTAL_QR_CACHE = {}
@@ -2085,6 +2097,38 @@ def get_school_settings():
 
 @app.context_processor
 def inject_school_settings():
+    """Make school settings and active academic levels available to all templates"""
+    try:
+        return _inject_school_settings_safe()
+    except Exception as ex:
+        print(f"inject_school_settings failed: {ex}")
+        try:
+            defaults = _default_school_data()
+        except Exception:
+            defaults = {'school_name': os.environ.get('SCHOOL_NAME') or 'School'}
+        return {
+            'school_settings': defaults,
+            'school_website_url': '',
+            'school_website_qr_data_url': '',
+            'academic_levels': [],
+            'employees_list': [],
+            'viewing_as_employee_info': None,
+            'portal_display_name': session.get('full_name', 'User') if session else 'User',
+            'portal_display_role': (session.get('role') or '') if session else '',
+            'is_technician_viewing_as_employee': False,
+            'dashboard_content_role': '',
+            'portal_font_families': PORTAL_FONT_FAMILIES if 'PORTAL_FONT_FAMILIES' in globals() else [],
+            'portal_fonts_grouped': [],
+            'portal_font_css_stack': '',
+            'portal_tailwind_font_family': '',
+            'portal_google_fonts_href': '',
+            'portal_google_fonts_all_href': '',
+            'push_notifications_active': False,
+            'current_year': date_cls.today().year,
+        }
+
+
+def _inject_school_settings_safe():
     """Make school settings and active academic levels available to all templates"""
     academic_levels = get_cached_active_academic_levels()
     employees_list = []
@@ -2449,15 +2493,15 @@ def is_hosted():
 # Database configuration - automatically detect hosted vs local
 # Hosted: keep timeouts under typical Passenger/Apache request limits so the
 # app fails fast instead of hanging until the proxy returns 503.
-_DB_CONNECT_TIMEOUT = max(1, int(os.environ.get('DB_CONNECT_TIMEOUT', '5')))
-_DB_READ_TIMEOUT = max(5, int(os.environ.get(
+_DB_CONNECT_TIMEOUT = max(1, _env_int('DB_CONNECT_TIMEOUT', 5))
+_DB_READ_TIMEOUT = max(5, _env_int(
     'DB_READ_TIMEOUT',
-    '45' if is_hosted() else '120',
-)))
-_DB_WRITE_TIMEOUT = max(5, int(os.environ.get(
+    45 if is_hosted() else 120,
+))
+_DB_WRITE_TIMEOUT = max(5, _env_int(
     'DB_WRITE_TIMEOUT',
-    '45' if is_hosted() else '120',
-)))
+    45 if is_hosted() else 120,
+))
 
 _DB_CONFIG_BASE = {
     'host': os.environ.get('DB_HOST', 'localhost'),
@@ -2485,7 +2529,7 @@ DB_CONFIG = dict(_DB_CONFIG_BASE)
 
 # Long cache for /static on production hosts (repeat visits skip re-downloading CSS/JS)
 if is_hosted():
-    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = int(os.environ.get('STATIC_MAX_AGE', '86400'))
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = _env_int('STATIC_MAX_AGE', 86400)
 
 def _mysql_errno(exc):
     """Best-effort MySQL errno from pymysql / MariaDB exceptions."""
@@ -16064,7 +16108,7 @@ _MYSQL_CAPACITY_ERRNOS = frozenset({
 })
 # Hard ceiling per Passenger/Flask process on shared MySQL.
 # pool_size × PassengerMaxPoolSize must stay under MySQL max_user_connections.
-_HOSTED_POOL_HARD_CAP = max(1, int(os.environ.get('DB_POOL_HARD_CAP', '3')))
+_HOSTED_POOL_HARD_CAP = max(1, _env_int('DB_POOL_HARD_CAP', 3))
 
 
 def reset_db_pool():
@@ -16158,15 +16202,15 @@ def _create_db_pool():
     # Keep few idle sockets on hosted hosts so wait_timeout does not accumulate zombies.
     maxcached = max(mincached, min(1 if is_hosted() else 4, maxconn))
     # ping=1: validate on checkout only (enough for wait_timeout; ping=7 added latency under load)
-    ping = max(0, int(os.environ.get('DB_POOL_PING', '1')))
+    ping = max(0, _env_int('DB_POOL_PING', 1))
     # Hosted: never block forever when the pool is full — that is a leading cause of
     # Passenger/Apache 503s. Fail fast and retry briefly in get_db_connection().
     blocking = (os.environ.get('DB_POOL_BLOCKING', '0' if is_hosted() else '1').strip().lower()
                 in ('1', 'true', 'yes', 'on'))
-    maxusage = max(1, int(os.environ.get(
+    maxusage = max(1, _env_int(
         'DB_POOL_MAXUSAGE',
-        '80' if is_hosted() else '1000',
-    )))
+        80 if is_hosted() else 1000,
+    ))
     print(
         f"MySQL pool: maxconnections={maxconn} mincached={mincached} "
         f"maxcached={maxcached} ping={ping} blocking={blocking} "
@@ -16214,7 +16258,8 @@ def _maybe_reset_pool_after_disconnect():
     now = time.time()
     if (now - _db_last_pool_reset) < 3.0:
         return False
-    print("Database disconnect: resetting connection pool (rate-limited)…")
+    # ASCII-only: cPanel/Passenger stdout is often ascii and crashes on U+2026.
+    print("Database disconnect: resetting connection pool (rate-limited)...")
     reset_db_pool()
     return True
 
@@ -16280,11 +16325,11 @@ def get_db_connection():
                 _record_db_failure()
                 return None
             if _is_mysql_capacity_error(e):
-                print(f"Database capacity limit ({e}); backing off…")
+                print(f"Database capacity limit ({e}); backing off...")
                 time.sleep(0.12 * (attempt + 1))
                 continue
             if _is_mysql_disconnect_error(e):
-                print(f"Database disconnect on checkout ({e}); retrying…")
+                print(f"Database disconnect on checkout ({e}); retrying...")
                 if attempt >= attempts - 2:
                     _maybe_reset_pool_after_disconnect()
                 time.sleep(0.05 * (attempt + 1))
@@ -16295,11 +16340,11 @@ def get_db_connection():
         except Exception as e:
             last_err = e
             if _is_mysql_capacity_error(e):
-                print(f"Database capacity limit ({e}); backing off…")
+                print(f"Database capacity limit ({e}); backing off...")
                 time.sleep(0.12 * (attempt + 1))
                 continue
             if _is_mysql_disconnect_error(e):
-                print(f"Database disconnect on checkout ({e}); retrying…")
+                print(f"Database disconnect on checkout ({e}); retrying...")
                 if attempt >= attempts - 2:
                     _maybe_reset_pool_after_disconnect()
                 time.sleep(0.05 * (attempt + 1))
@@ -16331,7 +16376,7 @@ def db_execute_with_retry(connection, cursor, sql, params=None, retries=1):
             last_exc = e
             if attempt >= retries or not _is_mysql_disconnect_error(e):
                 raise
-            print(f"db_execute_with_retry: disconnect ({e}); reconnecting…")
+            print(f"db_execute_with_retry: disconnect ({e}); reconnecting...")
             try:
                 connection.close()
             except Exception:
@@ -16524,7 +16569,7 @@ def _purge_employee_dependencies(cursor, employee_pk):
         try:
             cursor.execute(sql, params)
         except Exception as ex:
-            print(f"_purge_employee_dependencies ({sql[:48]}…): {ex}")
+            print(f"_purge_employee_dependencies ({sql[:48]}...): {ex}")
 
 
 def has_permission(employee_id, permission_key):
@@ -20194,7 +20239,7 @@ def generate_web_push_vapid_keys():
     return redirect(url_for('system_settings') + '#general-settings')
 
 
-HOME_PREVIEW_CACHE_TTL = int(os.environ.get('HOME_PREVIEW_CACHE_TTL', '60'))
+HOME_PREVIEW_CACHE_TTL = _env_int('HOME_PREVIEW_CACHE_TTL', 60)
 
 
 def _load_home_public_previews():
@@ -28994,7 +29039,7 @@ def finance_overview():
     )
 
 
-FINANCE_OVERVIEW_ANALYTICS_CACHE_TTL = int(os.environ.get('FINANCE_OVERVIEW_ANALYTICS_CACHE_TTL', '60'))
+FINANCE_OVERVIEW_ANALYTICS_CACHE_TTL = _env_int('FINANCE_OVERVIEW_ANALYTICS_CACHE_TTL', 60)
 
 
 @app.route('/dashboard/employee/finance-overview/analytics', methods=['GET'])
@@ -98712,14 +98757,23 @@ def _ensure_db_schema():
 
 
 _db_schema_initialized = False
+_db_schema_lock = threading.Lock()
 
 
 def _ensure_db_schema_once():
     global _db_schema_initialized
     if _db_schema_initialized:
         return
-    _db_schema_initialized = True
-    _ensure_db_schema()
+    with _db_schema_lock:
+        if _db_schema_initialized:
+            return
+        _db_schema_initialized = True
+        try:
+            _ensure_db_schema()
+        except Exception as ex:
+            # Allow a later request to retry if the first cold-start heal failed hard.
+            _db_schema_initialized = False
+            _safe_startup_log(f"[DB] Schema ensure crashed: {ex}")
 
 
 # /<role>/… → /dashboard/… ; /dashboard/<role-slug>/… → /dashboard/employee/…
@@ -98731,7 +98785,10 @@ app.wsgi_app = RootRolePathRewriteMiddleware(DashboardRolePathRewriteMiddleware(
 if is_hosted():
     @app.before_request
     def _hosted_deferred_db_schema():
-        _ensure_db_schema_once()
+        try:
+            _ensure_db_schema_once()
+        except Exception as ex:
+            _safe_startup_log(f"[DB] Hosted deferred schema error: {ex}")
 elif os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     _ensure_db_schema_once()
 else:
@@ -98739,7 +98796,43 @@ else:
     # The reloader parent does not serve requests, so it will not run this.
     @app.before_request
     def _local_deferred_db_schema():
-        _ensure_db_schema_once()
+        try:
+            _ensure_db_schema_once()
+        except Exception as ex:
+            _safe_startup_log(f"[DB] Local deferred schema error: {ex}")
+
+
+@app.errorhandler(500)
+def _handle_internal_server_error(err):
+    """Log 500s to a file on the host so cPanel stderr is not the only clue."""
+    try:
+        import traceback
+        log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tmp', 'app_500.log')
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, 'a', encoding='utf-8') as fh:
+            fh.write('\n==== %s %s %s ====\n' % (
+                datetime.now().isoformat(timespec='seconds'),
+                getattr(request, 'method', '?'),
+                getattr(request, 'path', '?'),
+            ))
+            fh.write(traceback.format_exc())
+            fh.write('\n')
+    except Exception:
+        pass
+    try:
+        accept = (request.headers.get('Accept') or '').lower()
+        if 'application/json' in accept or request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+            return jsonify({'success': False, 'message': 'Internal server error. Please try again.'}), 500
+    except Exception:
+        pass
+    return (
+        '<!DOCTYPE html><html><head><title>Temporary error</title></head>'
+        '<body style="font-family:sans-serif;padding:2rem">'
+        '<h1>Something went wrong</h1>'
+        '<p>Please refresh the page. If this continues, contact the school technician.</p>'
+        '<p><a href="/">Back to home</a></p>'
+        '</body></html>'
+    ), 500
 
 
 @app.cli.command('update-db')
