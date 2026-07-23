@@ -22,12 +22,14 @@ def _path_looks_hosted(base: Path) -> bool:
         return False
     markers = (
         '/home1/',
+        '/home2/',
         '/home/',
         '/public_html',
         '/elimu_centric',
         '/project_lucas',
         '/kwetude',
         '/kanyakine',
+        '/SCHOOL',
     )
     return any(m in p for m in markers)
 

@@ -2473,6 +2473,7 @@ def is_hosted():
     current_path = os.path.abspath(os.getcwd()).replace('\\', '/')
     hosted_path_markers = (
         '/home1/',
+        '/home2/',
         '/home/',
         '/elimu_centric',
         '/project_lucas',
@@ -2480,6 +2481,7 @@ def is_hosted():
         '/project_lucas_git',
         '/kwetude',
         '/kanyakine',
+        '/SCHOOL',
     )
     # Local Windows drives are never hosted
     if not (len(current_path) >= 2 and current_path[1] == ':'):
@@ -16115,6 +16117,7 @@ _MYSQL_DISCONNECT_ERRNOS = frozenset({
     2003,  # Can't connect to MySQL server
     2002,  # Can't connect through socket
     2014,  # Commands out of sync (often after a killed connection)
+    0,     # pymysql InterfaceError (0, '') — dead socket
 })
 # Shared-host connection caps — back off; never nuke the whole pool for these.
 _MYSQL_CAPACITY_ERRNOS = frozenset({
@@ -16122,9 +16125,8 @@ _MYSQL_CAPACITY_ERRNOS = frozenset({
     1203,  # User already has more than max_user_connections
     1226,  # User has exceeded the 'max_user_connections' resource
 })
-# Hard ceiling per Passenger/Flask process on shared MySQL.
-# pool_size × PassengerMaxPoolSize must stay under MySQL max_user_connections.
-_HOSTED_POOL_HARD_CAP = max(1, _env_int('DB_POOL_HARD_CAP', 3))
+# Hard ceiling per process on shared MySQL (workers x pool must stay under account limits).
+_HOSTED_POOL_HARD_CAP = max(1, _env_int('DB_POOL_HARD_CAP', 2))
 
 
 def reset_db_pool():
@@ -16156,7 +16158,7 @@ def _resolve_db_pool_size():
         except (TypeError, ValueError):
             size = None
     if size is None:
-        size = 3 if is_hosted() else 24
+        size = 1 if is_hosted() else 24
     if is_hosted() and size > _HOSTED_POOL_HARD_CAP:
         print(
             f"MySQL pool: clamping DB_POOL_SIZE={size} to hosted hard cap "
@@ -16177,6 +16179,8 @@ def _resolve_db_pool_min_cached(maxconn):
 
 
 def _is_mysql_disconnect_error(exc):
+    if isinstance(exc, pymysql.err.InterfaceError):
+        return True
     errno = _mysql_errno(exc)
     if errno in _MYSQL_DISCONNECT_ERRNOS:
         return True
@@ -16189,6 +16193,9 @@ def _is_mysql_disconnect_error(exc):
         'server closed the connection',
         'connection reset by peer',
         'ssl connection has been closed',
+        'interface error',
+        "(0, '')",
+        '(0, "")',
     )
     return any(m in msg for m in markers)
 
@@ -16286,11 +16293,16 @@ def _record_db_success():
     _db_circuit_open_until = 0.0
 
 
-def _record_db_failure(auth_error=False):
+def _record_db_failure(auth_error=False, capacity_error=False):
     """Open a short circuit after repeated failures so we do not stampede MySQL."""
     global _db_fail_streak, _db_circuit_open_until
     if auth_error:
         # Wrong password/user keeps failing until .env is fixed — don't hide behind a circuit.
+        return
+    if capacity_error:
+        _db_circuit_open_until = time.time() + 5.0
+        _db_fail_streak = 0
+        print("Database circuit open for 5s after too-many-connections")
         return
     _db_fail_streak += 1
     if _db_fail_streak >= 8:
@@ -16359,6 +16371,7 @@ def get_db_connection():
                 return None
             if _is_mysql_capacity_error(e):
                 print(f"Database capacity limit ({e}); backing off...")
+                _record_db_failure(capacity_error=True)
                 time.sleep(0.12 * (attempt + 1))
                 continue
             if _is_mysql_disconnect_error(e):
@@ -16381,6 +16394,7 @@ def get_db_connection():
                 return None
             if _is_mysql_capacity_error(e):
                 print(f"Database capacity limit ({e}); backing off...")
+                _record_db_failure(capacity_error=True)
                 time.sleep(0.12 * (attempt + 1))
                 continue
             if _is_mysql_disconnect_error(e):
@@ -16394,7 +16408,10 @@ def get_db_connection():
             return None
 
     print(f"Database connection failed after {attempts} attempts: {last_err}")
-    _record_db_failure()
+    if _is_mysql_capacity_error(last_err):
+        _record_db_failure(capacity_error=True)
+    else:
+        _record_db_failure()
     return None
 
 
@@ -83405,16 +83422,73 @@ def save_marks():
                     if ok:
                         connection.commit()
                     else:
-                        connection.rollback()
+                        try:
+                            connection.rollback()
+                        except Exception:
+                            pass
                     return jsonify(payload), status
             except Exception as e:
-                connection.rollback()
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                # Dead / overloaded MySQL — one reconnect retry for transient disconnects
+                if _is_mysql_disconnect_error(e) or _is_mysql_capacity_error(e):
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+                    connection = get_db_connection()
+                    if connection:
+                        try:
+                            with connection.cursor() as cursor:
+                                ok, payload, status = _save_marks_batch_core(
+                                    cursor,
+                                    data.get('entries') or [],
+                                    exam_id,
+                                    level_id,
+                                    is_teacher,
+                                    teacher_id,
+                                )
+                                if ok:
+                                    connection.commit()
+                                else:
+                                    try:
+                                        connection.rollback()
+                                    except Exception:
+                                        pass
+                                return jsonify(payload), status
+                        except Exception as e2:
+                            try:
+                                connection.rollback()
+                            except Exception:
+                                pass
+                            import traceback
+                            print(f"Error saving marks batch (retry): {e2}")
+                            print(traceback.format_exc())
+                            return jsonify({
+                                'success': False,
+                                'message': 'Database busy or disconnected. Please try saving again in a moment.',
+                            }), 503
+                        finally:
+                            try:
+                                connection.close()
+                            except Exception:
+                                pass
+                            connection = None
                 import traceback
                 print(f"Error saving marks batch: {e}")
                 print(traceback.format_exc())
-                return jsonify({'success': False, 'message': f'Error saving marks: {str(e)}'}), 500
+                return jsonify({
+                    'success': False,
+                    'message': 'Database busy or disconnected. Please try saving again in a moment.',
+                }), 503
             finally:
-                connection.close()
+                if connection:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
 
         student_id = data.get('student_id')
         subject_id = data.get('subject_id')
@@ -98776,8 +98850,61 @@ def _safe_startup_log(message):
         pass
 
 
+def _hosted_core_tables_ready():
+    """
+    Lightweight hosted check: SELECT 1 + a few required tables.
+    Avoids running full init_db/migrations on every worker (causes 1040 Too many connections).
+    """
+    connection = get_db_connection()
+    if not connection:
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1 AS ok')
+            if not cursor.fetchone():
+                return False
+            for tbl in ('students', 'student_marks', 'school_settings', 'employees', 'exams'):
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM information_schema.TABLES
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s
+                    LIMIT 1
+                    """,
+                    (tbl,),
+                )
+                if not cursor.fetchone():
+                    return False
+        return True
+    except Exception as e:
+        _safe_startup_log(f"[DB] Hosted ready-check failed: {e}")
+        return False
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
 def _ensure_db_schema():
-    """Check DB health and auto-create missing tables. Runs on every app load (local + hosted)."""
+    """Check DB health and auto-create missing tables. Returns True when done (or safely skipped)."""
+    # Hosted shared MySQL: full init_db + migrations on every LSAPI/Passenger worker
+    # floods max_connections (1040) and kills live requests (marks save, dashboards).
+    # Skip the heavy heal when core tables already exist unless forced.
+    if is_hosted():
+        force = (os.environ.get('DB_FORCE_SCHEMA_HEAL') or '').strip().lower() in (
+            '1', 'true', 'yes', 'on',
+        )
+        if not force:
+            if _hosted_core_tables_ready():
+                _safe_startup_log("[DB] Hosted: core tables present; skipping full init_db")
+                return True
+            _safe_startup_log(
+                "[DB] Hosted: core tables missing or DB busy — will retry. "
+                "If this persists, set DB_FORCE_SCHEMA_HEAL=1 once, or run: python update_db.py"
+            )
+            # Do not stampede init_db while MySQL is refusing / over capacity.
+            return False
     try:
         from db_health import check_and_heal
         ok, msg = check_and_heal()
@@ -98785,15 +98912,20 @@ def _ensure_db_schema():
             _safe_startup_log(f"[DB] {msg}")
         else:
             _safe_startup_log(f"[DB] Warning: {msg} - run: python update_db.py")
+        return bool(ok)
     except Exception as e:
         _safe_startup_log(f"[DB] Check failed: {e}")
+        if is_hosted() and _is_mysql_capacity_error(e):
+            return False
         try:
             if init_db():
                 _safe_startup_log("[DB] Tables created/verified (fallback)")
             from migrations.migration_manager import run_all_migrations
             run_all_migrations()
+            return True
         except Exception as e2:
             _safe_startup_log(f"[DB] Fallback failed: {e2}")
+            return False
 
 
 _db_schema_initialized = False
@@ -98807,11 +98939,10 @@ def _ensure_db_schema_once():
     with _db_schema_lock:
         if _db_schema_initialized:
             return
-        _db_schema_initialized = True
         try:
-            _ensure_db_schema()
+            ok = _ensure_db_schema()
+            _db_schema_initialized = bool(ok)
         except Exception as ex:
-            # Allow a later request to retry if the first cold-start heal failed hard.
             _db_schema_initialized = False
             _safe_startup_log(f"[DB] Schema ensure crashed: {ex}")
 
