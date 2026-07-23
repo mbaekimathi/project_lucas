@@ -1445,8 +1445,10 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                         {% endif %}
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        <template x-for="(student, rowIdx) in sortedStudents()" :key="student.student_id">
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <template x-for="(student, rowIdx) in sortedStudents()" :key="'sid-' + student.id">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                            :data-student-pk="student.id"
+                            :data-student-admission="String(student.student_id)">
                             <td class="sticky-col sticky-col-1 px-1 py-1.5 sm:px-2 sm:py-2 text-center text-[11px] sm:text-sm text-gray-500 dark:text-gray-400 font-medium tabular-nums" x-text="rowIdx + 1"></td>
                             <td class="sticky-col sticky-col-2 px-1.5 py-1.5 sm:px-3 sm:py-2 min-w-0">
                                 <span class="font-medium text-gray-900 dark:text-white text-xs sm:text-sm leading-snug max-md:line-clamp-2" x-text="student.full_name"></span>
@@ -1474,6 +1476,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                            :data-row-index="rowIdx"
                                            data-col-index="{{ loop.index0 }}"
                                            :data-student-id="String(student.student_id)"
+                                           :data-student-pk="String(student.id)"
                                            data-subject-id="{{ subject.id }}"
                                            :value="getMemberRawDisplay(student.student_id, {{ subject.id }})"
                                            @input="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
@@ -1970,6 +1973,7 @@ function marksSheet() {
                 return false;
             }
             if (!result || !result.success) {
+                this.marksSaveStatus = (result && result.message) ? result.message : 'Save failed';
                 await this.loadMarks();
                 return false;
             }
@@ -1983,6 +1987,9 @@ function marksSheet() {
                     continue;
                 }
                 confirmed.add(this._markCellKey(r.student_id, r.subject_id));
+            }
+            for (const s of (result.skipped || [])) {
+                if (s && s.student_id) failedIds.push(String(s.student_id));
             }
             // Prefer server confirmations; if API returns no per-cell results, accept all planned.
             const useConfirm = confirmed.size > 0;
@@ -2014,6 +2021,13 @@ function marksSheet() {
                 const k = this._markCellKey(item.studentId, item.subjectId);
                 if (useConfirm && !confirmed.has(k)) continue;
                 if (item.numValue != null) this.flashMarkCellSaved(item.studentId, item.subjectId);
+            }
+            if (failedIds.length || result.partial) {
+                const uniq = [...new Set(failedIds.filter(Boolean))];
+                this.marksSaveStatus = uniq.length
+                    ? (`Some students did not save: ${uniq.slice(0, 5).join(', ')}` + (uniq.length > 5 ? '…' : ''))
+                    : (result.message || 'Some marks did not save');
+                return false;
             }
             return true;
         },
@@ -2055,8 +2069,9 @@ function marksSheet() {
                 });
             }
 
-            const pushEntry = (studentId, subjectId) => {
-                const sid = String(studentId);
+            const pushEntry = (student, subjectId) => {
+                const sid = String(student.student_id);
+                const pk = student.id != null ? Number(student.id) : null;
                 const sub = String(subjectId);
                 const key = this._markCellKey(sid, sub);
                 if (seen.has(key)) return;
@@ -2084,21 +2099,23 @@ function marksSheet() {
                 if (!this.marks[sid][sub]) this.marks[sid][sub] = {};
                 this.marks[sid][sub][this.selectedExam] = numValue;
 
-                entries.push({
+                const entry = {
                     student_id: sid,
                     subject_id: Number(sub),
                     marks: numValue,
-                });
-                planned.push({ studentId: sid, subjectId: sub, numValue });
+                };
+                // Numeric PK fallback for alphanumeric admission numbers (e.g. STU190).
+                if (Number.isFinite(pk) && pk > 0) entry.student_pk = pk;
+                entries.push(entry);
+                planned.push({ studentId: sid, subjectId: sub, numValue, studentPk: pk });
             };
 
             // Always cover every student × editable subject from sheet data
             // (not only inputs currently mounted in the DOM).
             const editableSubjects = (this.subjectIds || []).filter((sid) => this._subjectIsEditableForSave(sid));
             for (const student of (this.studentsList || [])) {
-                const studentId = student.student_id;
                 for (const subjectId of editableSubjects) {
-                    pushEntry(studentId, subjectId);
+                    pushEntry(student, subjectId);
                 }
             }
 

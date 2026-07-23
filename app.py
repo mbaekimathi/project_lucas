@@ -83171,25 +83171,58 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
     subject_ids = []
     student_ids = []
     normalized = []
+    skipped = []
     for item in entries:
         if not isinstance(item, dict):
             continue
         sid = item.get('student_id')
+        student_pk = item.get('student_pk')
         sub_id = item.get('subject_id')
-        if sid is None or sub_id is None:
-            continue
-        # Admission numbers are varchar — keep as string (do not int()).
-        # int() silently dropped non-numeric IDs and could strip leading zeros.
-        sid_s = str(sid).strip()
-        if not sid_s:
+        if sub_id is None:
             continue
         try:
             sub_i = int(sub_id)
         except (TypeError, ValueError):
+            skipped.append({'student_id': sid, 'subject_id': sub_id, 'reason': 'invalid_subject'})
             continue
         if sub_i < 0:
             # Combo total columns are derived live — never persist them.
             continue
+
+        # Admission numbers are varchar (e.g. STU190). Never int()-coerce.
+        # Also accept students.id PK as fallback so alphanumeric IDs always resolve.
+        sid_s = str(sid).strip() if sid is not None else ''
+        resolved_sid = None
+        if sid_s:
+            cursor.execute(
+                "SELECT student_id FROM students WHERE student_id = %s LIMIT 1",
+                (sid_s,),
+            )
+            row = cursor.fetchone()
+            if row:
+                resolved_sid = row.get('student_id') if isinstance(row, dict) else row[0]
+        if not resolved_sid and student_pk is not None:
+            try:
+                pk_i = int(student_pk)
+            except (TypeError, ValueError):
+                pk_i = None
+            if pk_i:
+                cursor.execute(
+                    "SELECT student_id FROM students WHERE id = %s LIMIT 1",
+                    (pk_i,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    resolved_sid = row.get('student_id') if isinstance(row, dict) else row[0]
+        if not resolved_sid:
+            skipped.append({
+                'student_id': sid_s or sid,
+                'student_pk': student_pk,
+                'subject_id': sub_i,
+                'reason': 'student_not_found',
+            })
+            continue
+
         marks_raw = item.get('marks')
         marks_value = None
         if marks_raw is not None and str(marks_raw).strip() != '':
@@ -83198,16 +83231,22 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
             except (TypeError, ValueError):
                 return False, {
                     'success': False,
-                    'message': f'Invalid marks value for student {sid_s}, subject {sub_i}.',
+                    'message': f'Invalid marks value for student {resolved_sid}, subject {sub_i}.',
                 }, 400
             if marks_value < 0:
                 return False, {'success': False, 'message': 'Marks cannot be negative.'}, 400
         subject_ids.append(sub_i)
-        student_ids.append(sid_s)
-        normalized.append((sid_s, sub_i, marks_value))
+        student_ids.append(resolved_sid)
+        normalized.append((resolved_sid, sub_i, marks_value))
 
     if not normalized:
-        return True, {'success': True, 'message': 'Nothing to save.', 'saved': 0, 'results': []}, 200
+        return False, {
+            'success': False,
+            'message': 'No valid student marks to save. Check student admission numbers (e.g. STU190).',
+            'saved': 0,
+            'results': [],
+            'skipped': skipped,
+        }, 400
 
     uniq_subjects = sorted(set(subject_ids))
     allowed_subjects = set(uniq_subjects)
@@ -83386,6 +83425,14 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
     if errors:
         payload['errors'] = errors
         payload['partial'] = True
+    if skipped:
+        payload['skipped'] = skipped
+        payload['partial'] = True
+        if not errors:
+            payload['message'] = (
+                f'Saved {saved} mark(s). '
+                f'{len(skipped)} student row(s) were skipped (invalid or unknown admission number).'
+            )
     return True, payload, 200
 
 
