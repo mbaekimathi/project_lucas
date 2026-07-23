@@ -1842,9 +1842,9 @@ def get_cached_active_academic_levels():
 
 def _default_school_data():
     return {
-        'school_name': 'Modern School',
-        'school_email': '',
-        'school_phone': '',
+        'school_name': (os.environ.get('SCHOOL_NAME') or 'Modern School').strip() or 'Modern School',
+        'school_email': (os.environ.get('SUPPORT_EMAIL') or '').strip(),
+        'school_phone': (os.environ.get('SUPPORT_PHONE') or '').strip(),
         'school_logo': None,
         'school_hero_image': None,
         'about_headline': '',
@@ -2469,25 +2469,32 @@ def inject_teacher_class_teacher_context():
 # Function to detect if running on hosted server
 def is_hosted():
     """Check if the application is running on the hosted server"""
-    # Check if we're in the production path
-    current_path = os.path.abspath(os.getcwd())
-    if any(p in current_path.replace('\\', '/') for p in [
-        '/home1/projectl/elimu_centric',
-        '/home1/projectl/project_lucas',
-        '/home1/projectl/PROJECT_LUCAS_SCHOOL',
-        '/home1/projectl/project_lucas_git',
-    ]):
-        return True
-    
+    # Check if we're in a typical cPanel / production path
+    current_path = os.path.abspath(os.getcwd()).replace('\\', '/')
+    hosted_path_markers = (
+        '/home1/',
+        '/home/',
+        '/elimu_centric',
+        '/project_lucas',
+        '/PROJECT_LUCAS_SCHOOL',
+        '/project_lucas_git',
+        '/kwetude',
+        '/kanyakine',
+    )
+    # Local Windows drives are never hosted
+    if not (len(current_path) >= 2 and current_path[1] == ':'):
+        if any(m in current_path for m in hosted_path_markers):
+            return True
+
     # Check for environment variable that indicates hosting
-    if os.environ.get('IS_HOSTED', '').lower() in ['true', '1', 'yes']:
+    if os.environ.get('IS_HOSTED', '').lower() in ['true', '1', 'yes', 'on']:
         return True
-    
+
     # Check if DB_HOST is set to something other than localhost (indicates hosted)
     db_host = os.environ.get('DB_HOST', 'localhost')
-    if db_host != 'localhost' and db_host != '127.0.0.1':
+    if db_host not in ('localhost', '127.0.0.1', ''):
         return True
-    
+
     return False
 
 # Database configuration - automatically detect hosted vs local
@@ -2526,6 +2533,15 @@ _DB_INIT_COMMAND = (os.environ.get('DB_INIT_COMMAND') or '').strip()
 if _DB_INIT_COMMAND:
     _DB_CONFIG_BASE['init_command'] = _DB_INIT_COMMAND
 DB_CONFIG = dict(_DB_CONFIG_BASE)
+
+# Startup identity (no password) — confirms which env/credentials the process is using.
+try:
+    print(
+        f"Env file: {env_file_label()} | hosted={is_hosted()} | "
+        f"MySQL {DB_CONFIG.get('user')}@{DB_CONFIG.get('host')}/{DB_CONFIG.get('database')}"
+    )
+except Exception:
+    pass
 
 # Long cache for /static on production hosts (repeat visits skip re-downloading CSS/JS)
 if is_hosted():
@@ -16270,9 +16286,12 @@ def _record_db_success():
     _db_circuit_open_until = 0.0
 
 
-def _record_db_failure():
+def _record_db_failure(auth_error=False):
     """Open a short circuit after repeated failures so we do not stampede MySQL."""
     global _db_fail_streak, _db_circuit_open_until
+    if auth_error:
+        # Wrong password/user keeps failing until .env is fixed — don't hide behind a circuit.
+        return
     _db_fail_streak += 1
     if _db_fail_streak >= 8:
         _db_circuit_open_until = time.time() + 2.0
@@ -16306,7 +16325,21 @@ def get_db_connection():
             continue
         except pymysql.err.OperationalError as e:
             last_err = e
-            if e.args and e.args[0] == 1049:  # Unknown database
+            errno = _mysql_errno(e)
+            if errno == 1045:  # Access denied
+                print(
+                    "Database ACCESS DENIED for user '{user}'@'{host}' (database={db}). "
+                    "Check DB_USER/DB_PASSWORD in .env (loaded from {env}). "
+                    "Delete .env.local on the server if present.".format(
+                        user=DB_CONFIG.get('user'),
+                        host=DB_CONFIG.get('host'),
+                        db=DB_CONFIG.get('database'),
+                        env=env_file_label(),
+                    )
+                )
+                _record_db_failure(auth_error=True)
+                return None
+            if errno == 1049:  # Unknown database
                 print(f"Database '{DB_CONFIG['database']}' not found. Creating database and tables...")
                 if ensure_database_exists():
                     try:
@@ -16339,6 +16372,13 @@ def get_db_connection():
             return None
         except Exception as e:
             last_err = e
+            if 'access denied' in str(e or '').lower():
+                print(
+                    f"Database ACCESS DENIED ({e}). Check DB_USER/DB_PASSWORD in .env "
+                    f"(loaded from {env_file_label()})."
+                )
+                _record_db_failure(auth_error=True)
+                return None
             if _is_mysql_capacity_error(e):
                 print(f"Database capacity limit ({e}); backing off...")
                 time.sleep(0.12 * (attempt + 1))
