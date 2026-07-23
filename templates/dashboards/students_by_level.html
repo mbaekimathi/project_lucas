@@ -310,7 +310,26 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     background: #1f2937;
     color: #6b7280;
 }
-.mark-input.dirty { border-color: #0ea5e9; background: #f0f9ff; }
+/* Unsaved edits — amber so it is not confused with sky “Actual” column styling */
+.mark-input.dirty {
+    border-color: #d97706;
+    background: #fffbeb;
+    box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.25);
+}
+.dark .mark-input.dirty {
+    border-color: #fbbf24;
+    background: rgba(120, 53, 15, 0.35);
+}
+/* Just saved — brief green confirmation */
+.mark-input.saved {
+    border-color: #059669;
+    background: #ecfdf5;
+    box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.3);
+}
+.dark .mark-input.saved {
+    border-color: #34d399;
+    background: rgba(6, 78, 59, 0.4);
+}
 .mark-input.error { border-color: #ef4444; background: #fee2e2; color: #991b1b; }
 
 /* Mobile: larger touch targets; 16px+ font avoids iOS zoom on focus */
@@ -1246,6 +1265,10 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <p x-show="selectedExam && examIsLocked" x-cloak class="ms-banner ms-banner--amber">
             <i class="fas fa-lock mr-1.5 opacity-80" aria-hidden="true"></i>Exam allocations are locked — you can view marks here; editing is disabled until an administrator unlocks allocations.
         </p>
+        <p x-show="canEnterMarks && selectedExam && !examIsLocked" x-cloak class="ms-banner ms-banner--slate">
+            <i class="fas fa-info-circle mr-1.5 opacity-80" aria-hidden="true"></i>
+            Enter Actual marks, then press <strong>Submit</strong> — every input on the sheet is saved together. Saved cells flash green.
+        </p>
         <details x-show="selectedExam" x-cloak class="ms-help-details">
             <summary>
                 <i class="fas fa-circle-info opacity-70" aria-hidden="true"></i>
@@ -1291,9 +1314,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <span class="text-xs text-slate-500 dark:text-slate-400" x-show="marksSaveStatus" x-text="marksSaveStatus"></span>
                 <button type="button"
                         @click="saveAll()"
-                        :disabled="marksSaving || !hasUnsavedChanges"
+                        :disabled="marksSaving"
                         class="marks-toolbar-btn-save touch-manipulation"
-                        title="Submit all changed marks and remarks to the database">
+                        title="Submit all Actual marks and remarks to the database">
                     <i class="fas fa-save text-xs" aria-hidden="true"></i> Submit
                 </button>
             </div>
@@ -1450,8 +1473,11 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                            maxlength="8"
                                            :data-row-index="rowIdx"
                                            data-col-index="{{ loop.index0 }}"
+                                           :data-student-id="student.student_id"
+                                           data-subject-id="{{ subject.id }}"
                                            :value="getMemberRawDisplay(student.student_id, {{ subject.id }})"
-                                           @input="markCellDirty(student.student_id, {{ subject.id }}); onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
+                                           @input="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
+                                           @blur="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
                                            @keydown.enter="handleEnterKey($event)"
                                            @keydown.up.prevent="handleArrowKey($event)"
                                            @keydown.down.prevent="handleArrowKey($event)"
@@ -1607,9 +1633,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             <span class="text-xs text-slate-500 dark:text-slate-400" x-show="marksSaveStatus" x-text="marksSaveStatus"></span>
             <button type="button"
                     @click="saveAll()"
-                    :disabled="marksSaving || !hasUnsavedChanges"
+                    :disabled="marksSaving"
                     class="marks-toolbar-btn-save touch-manipulation"
-                    title="Submit all changed marks and remarks to the database">
+                    title="Submit all Actual marks and remarks to the database">
                 <i class="fas fa-save text-xs" aria-hidden="true"></i> Submit
             </button>
         </div>
@@ -1624,9 +1650,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                   x-text="marksSaveStatus"></span>
             <button type="button"
                     @click="saveAll()"
-                    :disabled="marksSaving || !hasUnsavedChanges"
+                    :disabled="marksSaving"
                     class="marks-toolbar-btn-save touch-manipulation"
-                    title="Submit all changed marks and remarks">
+                    title="Submit all Actual marks and remarks">
                 <i class="fas fa-save text-xs" aria-hidden="true"></i> Submit
             </button>
         </div>
@@ -1711,10 +1737,12 @@ function marksSheet() {
         marks: {},
         /** Last loaded/submitted stored marks — used to detect changed cells for Submit. */
         marksBaseline: {},
-        /** Cells the user edited this session (studentId_subjectId → true). Submitted together. */
+        /** Cells the user edited this session (studentId::subjectId → true). Submitted together. */
         marksDirty: {},
+        /** Brief green flash after a successful save (studentId::subjectId → timestamp). */
+        marksSavedFlash: {},
         /**
-         * Typed scores shown in inputs (studentId_subjectId → number|null).
+         * Typed scores shown in inputs (studentId::subjectId → number|null).
          * Kept separate from stored marks so changing “Out of” does not rescale the input —
          * only the converted % / stored value against the subject exam total updates.
          */
@@ -1868,22 +1896,21 @@ function marksSheet() {
         },
 
         /**
-         * Single submit: send every changed mark in one request, then remarks.
+         * Single submit: send every editable Actual mark in one request, then remarks.
          * No autosave, no per-cell / sequential saves.
          */
         async saveAll() {
             if (!this.canEnterMarks || !this.selectedExam || this.examIsLocked) return;
-            if (!this.hasUnsavedChanges || this.marksSaving) return;
+            if (this.marksSaving) return;
 
             this.marksSaving = true;
             this.marksSaveStatus = 'Saving…';
             this.saveStatus = {};
 
             try {
-                let marksOk = true;
-                if (this.hasUnsavedMarks) {
-                    marksOk = await this._submitMarksOnce();
-                }
+                // Always submit the full sheet of editable Actual inputs (not only
+                // cells flagged dirty — that left some inputs unsaved).
+                const marksOk = await this._submitMarksOnce();
 
                 let remarksOk = true;
                 if (marksOk && this.hasUnsavedRemarks) {
@@ -1906,50 +1933,17 @@ function marksSheet() {
             }
         },
 
-        /** Build all dirty cells and INSERT/UPDATE them in one API call. */
+        /** Submit every editable Actual cell currently on the sheet. */
         async _submitMarksOnce() {
-            const entries = [];
-            const planned = [];
+            const built = this._buildAllEditableMarkEntries();
+            const entries = built.entries;
+            const planned = built.planned;
 
-            for (const key of Object.keys(this.marksDirty || {})) {
-                const sep = key.lastIndexOf('_');
-                if (sep < 1) continue;
-                const studentId = key.slice(0, sep);
-                const subjectId = key.slice(sep + 1);
-                if (!this.isMarkCellDirty(studentId, subjectId)) continue;
-                if (this.isComboTotalColumn(subjectId)) continue;
-
-                const typed = this._getTypedMark(studentId, subjectId);
-                let numValue = null;
-                if (typed !== null) {
-                    if (typed < 0) return false;
-                    const maxEntry = this.entryOutOfFor(subjectId);
-                    const clamped = typed > maxEntry + 1e-6 ? maxEntry : typed;
-                    numValue = this.entryToStored(subjectId, clamped);
-                }
-
-                const baseline = this._baselineStoredMark(studentId, subjectId);
-                if (this._marksValuesEqual(numValue, baseline)) {
-                    if (!this.marks[studentId]) this.marks[studentId] = {};
-                    if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
-                    this.marks[studentId][subjectId][this.selectedExam] = baseline;
-                    this.clearMarkCellDirty(studentId, subjectId);
-                    continue;
-                }
-
-                if (!this.marks[studentId]) this.marks[studentId] = {};
-                if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
-                this.marks[studentId][subjectId][this.selectedExam] = numValue;
-
-                entries.push({
-                    student_id: studentId,
-                    subject_id: subjectId,
-                    marks: numValue,
-                });
-                planned.push({ studentId, subjectId, numValue });
+            // Nothing typed and nothing previously stored to clear — done.
+            if (!entries.length) {
+                this.marksDirty = {};
+                return true;
             }
-
-            if (!entries.length) return true;
 
             const response = await fetch('{{ employee_dash_url('exams-assessments/save-marks') }}', {
                 method: 'POST',
@@ -1977,12 +1971,126 @@ function marksSheet() {
                 return false;
             }
 
+            const confirmed = new Set();
+            for (const r of (result.results || [])) {
+                if (!r || r.success === false) continue;
+                confirmed.add(this._markCellKey(r.student_id, r.subject_id));
+            }
+            // Prefer server confirmations; if API returns no per-cell results, accept all planned.
+            const useConfirm = confirmed.size > 0;
+
             for (const item of planned) {
+                const k = this._markCellKey(item.studentId, item.subjectId);
+                if (useConfirm && !confirmed.has(k)) continue;
+                if (!this.marks[item.studentId]) this.marks[item.studentId] = {};
+                if (!this.marks[item.studentId][item.subjectId]) this.marks[item.studentId][item.subjectId] = {};
+                this.marks[item.studentId][item.subjectId][this.selectedExam] = item.numValue;
                 this._setBaselineStoredMark(item.studentId, item.subjectId, item.numValue);
                 this.clearMarkCellDirty(item.studentId, item.subjectId);
+                this.flashMarkCellSaved(item.studentId, item.subjectId);
             }
+
+            // Clear any leftover dirty flags after a full-sheet save.
+            this.marksDirty = {};
             this._tick = Date.now();
             return true;
+        },
+
+        /**
+         * Collect every editable Actual value to persist.
+         * - Non-empty inputs are always included (saved).
+         * - Empty inputs are included only when clearing a previously saved mark.
+         * This way Submit saves the whole sheet without wiping untouched blanks.
+         */
+        _buildAllEditableMarkEntries() {
+            const entries = [];
+            const planned = [];
+            const seen = new Set();
+
+            const pushEntry = (studentId, subjectId, typedRaw, forceInclude) => {
+                const sid = String(studentId);
+                const sub = String(subjectId);
+                const key = this._markCellKey(sid, sub);
+                if (seen.has(key)) return;
+                if (this.isComboTotalColumn(sub)) return;
+                if (!this._subjectIsEditableForSave(sub)) return;
+
+                let typed = null;
+                const hasTyped = typedRaw !== null && typedRaw !== undefined && String(typedRaw).trim() !== '';
+                if (hasTyped) {
+                    const n = Number(String(typedRaw).trim().replace(',', '.'));
+                    if (!Number.isFinite(n) || n < 0) return;
+                    typed = n;
+                }
+
+                const baseline = this._baselineStoredMark(sid, sub);
+                // Skip blank cells that were never saved (unless caller forces include).
+                if (!hasTyped && baseline == null && !forceInclude) return;
+
+                let numValue = null;
+                if (typed !== null) {
+                    const maxEntry = this.entryOutOfFor(sub);
+                    const clamped = typed > maxEntry + 1e-6 ? maxEntry : typed;
+                    numValue = this.entryToStored(sub, clamped);
+                }
+
+                seen.add(key);
+                this._setTypedMark(sid, sub, typed);
+                if (!this.marks[sid]) this.marks[sid] = {};
+                if (!this.marks[sid][sub]) this.marks[sid][sub] = {};
+                this.marks[sid][sub][this.selectedExam] = numValue;
+
+                entries.push({
+                    student_id: sid,
+                    subject_id: Number(sub),
+                    marks: numValue,
+                });
+                planned.push({ studentId: sid, subjectId: sub, numValue });
+            };
+
+            // 1) Prefer live DOM values for every visible mark input.
+            const root = this.$el;
+            if (root && root.querySelectorAll) {
+                root.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
+                    if (el.disabled) return;
+                    const studentId = el.getAttribute('data-student-id');
+                    const subjectId = el.getAttribute('data-subject-id');
+                    if (studentId == null || studentId === '' || subjectId == null || subjectId === '') return;
+                    // Force include so blanking a previously saved cell deletes it.
+                    pushEntry(studentId, subjectId, el.value, true);
+                });
+            }
+
+            // 2) Also include any student/subject cells not currently in the DOM
+            //    from typedMarks / stored marks (filled values only).
+            const editableSubjects = (this.subjectIds || []).filter((sid) => this._subjectIsEditableForSave(sid));
+            for (const student of (this.studentsList || [])) {
+                const studentId = student.student_id;
+                for (const subjectId of editableSubjects) {
+                    const key = this._markCellKey(studentId, subjectId);
+                    if (seen.has(key)) continue;
+                    const typed = this._getTypedMark(studentId, subjectId);
+                    pushEntry(studentId, subjectId, typed, false);
+                }
+            }
+
+            return { entries, planned };
+        },
+
+        /** Assignment check for save — does not depend on countdown / readonly flicker. */
+        _subjectIsEditableForSave(subjectId) {
+            if (!this.canEdit || this.isComboTotalColumn(subjectId)) return false;
+            const ids = this.teacherEditableSubjectIds || [];
+            if (this.isTeacherMarks && ids.length) {
+                const sid = Number(subjectId);
+                return ids.some((x) => Number(x) === sid);
+            }
+            return true;
+        },
+
+        /** @deprecated kept for any callers; Submit now uses _buildAllEditableMarkEntries. */
+        _harvestMarkInputsFromDom() {
+            this._buildAllEditableMarkEntries();
         },
 
         _applyInitialGradeRemarksIfEmpty() {
@@ -2252,8 +2360,13 @@ function marksSheet() {
 
         _getTypedMark(studentId, subjectId) {
             const k = this._markCellKey(studentId, subjectId);
-            if (Object.prototype.hasOwnProperty.call(this.typedMarks || {}, k)) {
-                const v = this.typedMarks[k];
+            const legacy = `${studentId}_${subjectId}`;
+            const typedMap = this.typedMarks || {};
+            if (Object.prototype.hasOwnProperty.call(typedMap, k)
+                || Object.prototype.hasOwnProperty.call(typedMap, legacy)) {
+                const v = Object.prototype.hasOwnProperty.call(typedMap, k)
+                    ? typedMap[k]
+                    : typedMap[legacy];
                 if (v === null || v === undefined || v === '') return null;
                 const n = Number(v);
                 return Number.isFinite(n) ? n : null;
@@ -2265,7 +2378,9 @@ function marksSheet() {
 
         _setTypedMark(studentId, subjectId, value) {
             const k = this._markCellKey(studentId, subjectId);
+            const legacy = `${studentId}_${subjectId}`;
             const next = { ...(this.typedMarks || {}) };
+            if (Object.prototype.hasOwnProperty.call(next, legacy)) delete next[legacy];
             if (value === null || value === undefined || value === '') {
                 next[k] = null;
             } else {
@@ -2443,7 +2558,27 @@ function marksSheet() {
         },
 
         _markCellKey(studentId, subjectId) {
-            return `${studentId}_${subjectId}`;
+            return `${studentId}::${subjectId}`;
+        },
+
+        _parseMarkCellKey(key) {
+            const raw = String(key || '');
+            if (!raw) return null;
+            // Prefer :: (safe for student IDs that contain underscores).
+            let sep = raw.lastIndexOf('::');
+            if (sep >= 1) {
+                return {
+                    studentId: raw.slice(0, sep),
+                    subjectId: raw.slice(sep + 2),
+                };
+            }
+            // Legacy keys: studentId_subjectId
+            sep = raw.lastIndexOf('_');
+            if (sep < 1) return null;
+            return {
+                studentId: raw.slice(0, sep),
+                subjectId: raw.slice(sep + 1),
+            };
         },
 
         _marksValuesEqual(a, b) {
@@ -2491,20 +2626,51 @@ function marksSheet() {
         markCellDirty(studentId, subjectId) {
             const k = this._markCellKey(studentId, subjectId);
             if (this.marksDirty[k]) return;
-            this.marksDirty = { ...this.marksDirty, [k]: true };
+            // Drop legacy underscore key if present so we do not double-count.
+            const legacy = `${studentId}_${subjectId}`;
+            const next = { ...this.marksDirty, [k]: true };
+            if (next[legacy]) delete next[legacy];
+            this.marksDirty = next;
+            if (this.marksSavedFlash[k]) {
+                const flash = { ...this.marksSavedFlash };
+                delete flash[k];
+                this.marksSavedFlash = flash;
+            }
             if (!this.marksSaving) this.marksSaveStatus = 'Unsaved changes';
         },
 
         isMarkCellDirty(studentId, subjectId) {
-            return !!this.marksDirty[this._markCellKey(studentId, subjectId)];
+            const k = this._markCellKey(studentId, subjectId);
+            if (this.marksDirty[k]) return true;
+            // Legacy underscore keys from before the :: separator.
+            return !!this.marksDirty[`${studentId}_${subjectId}`];
         },
 
         clearMarkCellDirty(studentId, subjectId) {
             const k = this._markCellKey(studentId, subjectId);
-            if (!this.marksDirty[k]) return;
+            const legacy = `${studentId}_${subjectId}`;
+            if (!this.marksDirty[k] && !this.marksDirty[legacy]) return;
             const next = { ...this.marksDirty };
             delete next[k];
+            delete next[legacy];
             this.marksDirty = next;
+        },
+
+        flashMarkCellSaved(studentId, subjectId) {
+            const k = this._markCellKey(studentId, subjectId);
+            const token = Date.now();
+            this.marksSavedFlash = { ...this.marksSavedFlash, [k]: token };
+            setTimeout(() => {
+                if (this.marksSavedFlash[k] === token) {
+                    const next = { ...this.marksSavedFlash };
+                    delete next[k];
+                    this.marksSavedFlash = next;
+                }
+            }, 1600);
+        },
+
+        isMarkCellSavedFlash(studentId, subjectId) {
+            return !!this.marksSavedFlash[this._markCellKey(studentId, subjectId)];
         },
 
         _setBaselineStoredMark(studentId, subjectId, value) {
@@ -2671,6 +2837,12 @@ function marksSheet() {
             if (!this.marks[studentId]) this.marks[studentId] = {};
             if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
             this.marks[studentId][subjectId][this.selectedExam] = stored;
+            const baseline = this._baselineStoredMark(studentId, subjectId);
+            if (this._marksValuesEqual(stored, baseline)) {
+                this.clearMarkCellDirty(studentId, subjectId);
+            } else {
+                this.markCellDirty(studentId, subjectId);
+            }
             // Refresh live Σ combined % column (and related summaries).
             this._tick = Date.now();
         },
@@ -3395,8 +3567,9 @@ function marksSheet() {
         },
 
         getStatusClass(studentId, subjectId) {
-            // No per-cell autosave status — only Submit writes to the DB.
-            return this.isMarkCellDirty(studentId, subjectId) ? 'dirty' : '';
+            if (this.isMarkCellDirty(studentId, subjectId)) return 'dirty';
+            if (this.isMarkCellSavedFlash(studentId, subjectId)) return 'saved';
+            return '';
         },
 
         handleEnterKey(event) {

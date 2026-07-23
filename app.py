@@ -83178,8 +83178,12 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
         sub_id = item.get('subject_id')
         if sid is None or sub_id is None:
             continue
+        # Admission numbers are varchar — keep as string (do not int()).
+        # int() silently dropped non-numeric IDs and could strip leading zeros.
+        sid_s = str(sid).strip()
+        if not sid_s:
+            continue
         try:
-            sid_i = int(sid)
             sub_i = int(sub_id)
         except (TypeError, ValueError):
             continue
@@ -83194,13 +83198,13 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
             except (TypeError, ValueError):
                 return False, {
                     'success': False,
-                    'message': f'Invalid marks value for student {sid_i}, subject {sub_i}.',
+                    'message': f'Invalid marks value for student {sid_s}, subject {sub_i}.',
                 }, 400
             if marks_value < 0:
                 return False, {'success': False, 'message': 'Marks cannot be negative.'}, 400
         subject_ids.append(sub_i)
-        student_ids.append(sid_i)
-        normalized.append((sid_i, sub_i, marks_value))
+        student_ids.append(sid_s)
+        normalized.append((sid_s, sub_i, marks_value))
 
     if not normalized:
         return True, {'success': True, 'message': 'Nothing to save.', 'saved': 0, 'results': []}, 200
