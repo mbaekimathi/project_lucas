@@ -1267,7 +1267,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         </p>
         <p x-show="canEnterMarks && selectedExam && !examIsLocked" x-cloak class="ms-banner ms-banner--slate">
             <i class="fas fa-info-circle mr-1.5 opacity-80" aria-hidden="true"></i>
-            Enter Actual marks, then press <strong>Submit</strong> — every input on the sheet is saved together. Saved cells flash green.
+            Enter Actual marks, then press <strong>Submit</strong>. Values are read from the inputs themselves so every cell you typed is saved. Saved cells flash green.
         </p>
         <details x-show="selectedExam" x-cloak class="ms-help-details">
             <summary>
@@ -1303,6 +1303,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <label for="marks-student-sort" class="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">Sort</label>
                 <select id="marks-student-sort"
                         x-model="studentSort"
+                        @change="rebuildSortedStudents()"
                         class="ms-sort-select touch-manipulation flex-1 min-w-0">
                     <option value="name_asc">Name A → Z</option>
                     <option value="name_desc">Name Z → A</option>
@@ -1313,6 +1314,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             <div x-show="canEnterMarks && selectedExam && !examIsLocked" x-cloak class="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                 <span class="text-xs text-slate-500 dark:text-slate-400" x-show="marksSaveStatus" x-text="marksSaveStatus"></span>
                 <button type="button"
+                        @pointerdown="harvestDomDrafts()"
                         @click="saveAll()"
                         :disabled="marksSaving"
                         class="marks-toolbar-btn-save touch-manipulation"
@@ -1445,7 +1447,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                         {% endif %}
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        <template x-for="(student, rowIdx) in sortedStudents()" :key="'sid-' + student.id">
+                        <template x-for="(student, rowIdx) in sortedStudentsList" :key="'sid-' + student.id">
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50"
                             :data-student-pk="student.id"
                             :data-student-admission="String(student.student_id)">
@@ -1468,8 +1470,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             </td>
                             {% else %}
                             <td class="marks-td-subject marks-th-subject-pair py-1 sm:py-1 text-center align-middle">
-                                {% if can_edit %}
-                                <template x-if="canEdit && canEditSubjectCell({{ subject.id }})">
+                                {% if can_edit and subject.get('is_teacher_editable', true) %}
+                                    {# Stable input (no Alpine x-if) — x-if remounts wiped typed values before Submit. #}
                                     <input type="text"
                                            inputmode="decimal"
                                            maxlength="8"
@@ -1478,10 +1480,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                            :data-student-id="String(student.student_id)"
                                            :data-student-pk="String(student.id)"
                                            data-subject-id="{{ subject.id }}"
-                                           :value="getMemberRawDisplay(student.student_id, {{ subject.id }})"
+                                           x-init="$el.value = draftText(student.student_id, {{ subject.id }})"
                                            @input="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
-                                           @change="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
-                                           @blur="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
+                                           @blur="captureLastDomMark(student.student_id, {{ subject.id }}, $event.target.value)"
                                            @keydown.enter="handleEnterKey($event)"
                                            @keydown.up.prevent="handleArrowKey($event)"
                                            @keydown.down.prevent="handleArrowKey($event)"
@@ -1495,16 +1496,14 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                            class="mark-input touch-manipulation"
                                            autocomplete="off"
                                            enterkeyhint="next">
-                                </template>
-                                <template x-if="canEdit && !canEditSubjectCell({{ subject.id }})">
+                                {% elif can_edit %}
                                     <span class="marks-cell-readonly"
                                           title="Entered by another teacher — view only"
-                                          x-text="getMemberRawDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
-                                </template>
+                                          x-text="draftText(student.student_id, {{ subject.id }}) || '-'"></span>
                                 {% else %}
                                 <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums"
                                       title="Actual input mark"
-                                      x-text="getMemberRawDisplay(student.student_id, {{ subject.id }}) || '-'"></span>
+                                      x-text="draftText(student.student_id, {{ subject.id }}) || '-'"></span>
                                 {% endif %}
                             </td>
                             <td class="marks-td-subject marks-td-converted py-1 sm:py-1 text-center align-middle text-xs sm:text-sm"
@@ -1629,7 +1628,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <div x-show="canEnterMarks && selectedExam && !examIsLocked" x-cloak class="marks-save-bar">
             <span class="text-xs text-slate-500 dark:text-slate-400" x-show="marksSaveStatus" x-text="marksSaveStatus"></span>
             <button type="button"
-                    @pointerdown="snapshotMarkInputsForSave()"
+                    @pointerdown="harvestDomDrafts()"
                     @click="saveAll()"
                     :disabled="marksSaving"
                     class="marks-toolbar-btn-save touch-manipulation"
@@ -1647,7 +1646,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                   x-show="marksSaveStatus"
                   x-text="marksSaveStatus"></span>
             <button type="button"
-                    @pointerdown="snapshotMarkInputsForSave()"
+                    @pointerdown="harvestDomDrafts()"
                     @click="saveAll()"
                     :disabled="marksSaving"
                     class="marks-toolbar-btn-save touch-manipulation"
@@ -1746,6 +1745,8 @@ function marksSheet() {
          * only the converted % / stored value against the subject exam total updates.
          */
         typedMarks: {},
+        /** Last non-empty Actual typed per cell — survives blur/Submit focus steal. */
+        _lastDomMark: {},
         filtersReady: false,
         loading: false,
         saveStatus: {},
@@ -1783,6 +1784,12 @@ function marksSheet() {
         studentsList: {{ (students or [])|tojson|safe }},
         /** Row order: name A–Z / Z–A, or summary marks low→high / high→low (uses Total or Avg% for the selected exam). */
         studentSort: 'name_asc',
+        /**
+         * Cached row order for x-for. Must NOT be rebuilt on every keystroke/_tick —
+         * rebuilding remounts uncontrolled mark inputs and wipes in-progress edits
+         * (especially painful for alphanumeric admission numbers like STU190).
+         */
+        sortedStudentsList: [],
 
         get studentIdList() {
             return (this.studentsList || []).map((s) => s.student_id);
@@ -1798,6 +1805,8 @@ function marksSheet() {
         _tick: 0,
         /** Countdown-only tick — must not re-render the whole marks grid every second. */
         _countdownTick: 0,
+        /** Bumped on mark edits so Converted / totals refresh without remounting Actual inputs. */
+        _displayRev: 0,
         marksEntryReadonly: false,
         /** 'avg_pct', 'total_raw', or 'total_scaled' (sum of converted /100 marks). */
         summaryMode: {{ (marks_summary_column or 'avg_pct')|tojson }},
@@ -1895,8 +1904,10 @@ function marksSheet() {
         },
 
         /**
-         * Single submit: send every editable Actual mark in one request, then remarks.
-         * No autosave, no per-cell / sequential saves.
+         * Fresh save path:
+         * 1) harvestDomDrafts() reads every input.value (source of truth on screen)
+         * 2) build entries with student_id + student_pk + stored marks
+         * 3) POST save-marks, then reload from DB and sync inputs
          */
         async saveAll() {
             if (!this.canEnterMarks || !this.selectedExam || this.examIsLocked) return;
@@ -1907,8 +1918,6 @@ function marksSheet() {
             this.saveStatus = {};
 
             try {
-                // Always submit the full sheet of editable Actual inputs (not only
-                // cells flagged dirty — that left some inputs unsaved).
                 const marksOk = await this._submitMarksOnce();
 
                 let remarksOk = true;
@@ -1922,8 +1931,8 @@ function marksSheet() {
                         if (this.marksSaveStatus === 'Saved') this.marksSaveStatus = '';
                     }, 2000);
                 } else if (marksOk && this.hasUnsavedChanges) {
-                    this.marksSaveStatus = 'Some marks may not have saved — check empty cells and Submit again';
-                } else {
+                    this.marksSaveStatus = 'Some marks may not have saved — check highlighted cells and Submit again';
+                } else if (!marksOk && !this.marksSaveStatus) {
                     this.marksSaveStatus = 'Save failed';
                 }
             } catch (e) {
@@ -1934,38 +1943,102 @@ function marksSheet() {
             }
         },
 
-        /**
-         * Flush every visible Actual input into typedMarks BEFORE the Submit button
-         * steals focus. Clicking Submit blurs the active cell first; that blur was
-         * clearing the last-edited value so it never reached the save payload, then
-         * loadMarks() made it look like the mark vanished “after Submit”.
-         */
-        snapshotMarkInputsForSave() {
-            const root = (typeof document !== 'undefined') ? document : null;
-            if (!root || !root.querySelectorAll) return;
-            root.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
+        /** Read every mark input into typedMarks (in-place). Call before Submit. */
+        harvestDomDrafts() {
+            if (typeof document === 'undefined' || !document.querySelectorAll) return;
+            const active = document.activeElement;
+            if (active && active.classList && active.classList.contains('mark-input')) {
+                this._writeDraftFromInput(active);
+            }
+            document.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
                 if (el.disabled) return;
-                const studentId = el.getAttribute('data-student-id');
-                const subjectId = el.getAttribute('data-subject-id');
-                if (studentId == null || studentId === '' || subjectId == null || subjectId === '') return;
-                const raw = String(el.value != null ? el.value : '').trim();
-                if (raw !== '') this._applyTypedFromRaw(studentId, subjectId, raw);
+                this._writeDraftFromInput(el);
             });
         },
 
-        /** Submit every editable Actual cell currently on the sheet. */
+        captureLastDomMark(studentId, subjectId, value) {
+            const key = this._markCellKey(studentId, subjectId);
+            const raw = String(value != null ? value : '').trim().replace(',', '.');
+            if (!this._lastDomMark) this._lastDomMark = {};
+            // Keep last non-empty; only record empty when the cell is already dirty (intentional clear).
+            if (raw !== '') this._lastDomMark[key] = raw;
+            else if (this.isMarkCellDirty(studentId, subjectId)) this._lastDomMark[key] = '';
+        },
+
+        _writeDraftFromInput(el) {
+            if (!el) return;
+            const studentId = el.getAttribute('data-student-id');
+            const subjectId = el.getAttribute('data-subject-id');
+            if (studentId == null || studentId === '' || subjectId == null || subjectId === '') return;
+            if (!this._subjectIsEditableForSave(subjectId)) return;
+            const key = this._markCellKey(studentId, subjectId);
+            let raw = String(el.value != null ? el.value : '').trim().replace(',', '.');
+            // Remount glitch: input empty but we still have a typed/last value — restore, do not clear.
+            if (raw === '') {
+                const last = (this._lastDomMark || {})[key];
+                const typed = this._getTypedMark(studentId, subjectId);
+                if (last != null && String(last).trim() !== '') {
+                    raw = String(last).trim().replace(',', '.');
+                    el.value = raw;
+                } else if (typed !== null && this.isMarkCellDirty(studentId, subjectId)) {
+                    raw = String(typed);
+                    el.value = this.formatMarkDisplay(typed, false);
+                }
+            }
+            if (raw !== '') {
+                if (!this._lastDomMark) this._lastDomMark = {};
+                this._lastDomMark[key] = raw;
+                this._applyDraftValue(studentId, subjectId, raw, { markDirty: true });
+                return;
+            }
+            // Empty input: only clear when dirty AND last capture is also empty (user cleared the cell).
+            if (this.isMarkCellDirty(studentId, subjectId)
+                && Object.prototype.hasOwnProperty.call(this._lastDomMark || {}, key)
+                && String(this._lastDomMark[key] || '').trim() === '') {
+                this._applyDraftValue(studentId, subjectId, null, { markDirty: true });
+            }
+        },
+
+        /** Push draft values into input elements (uncontrolled inputs — no :value binding). */
+        syncDomFromDrafts() {
+            if (typeof document === 'undefined' || !document.querySelectorAll) return;
+            const active = document.activeElement;
+            document.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
+                if (active && el === active) return; // never clobber the cell being typed
+                const studentId = el.getAttribute('data-student-id');
+                const subjectId = el.getAttribute('data-subject-id');
+                if (studentId == null || subjectId == null) return;
+                const text = this.draftText(studentId, subjectId);
+                if (el.value !== text) el.value = text;
+            });
+        },
+
+        /** Display string for Actual cell (empty string when blank). */
+        draftText(studentId, subjectId) {
+            const typed = this._getTypedMark(studentId, subjectId);
+            if (typed === null) return '';
+            return this.formatMarkDisplay(typed, false);
+        },
+
+        /** Alias used by older call sites / readonly spans. */
+        getMemberRawDisplay(studentId, subjectId) {
+            return this.draftText(studentId, subjectId);
+        },
+
         async _submitMarksOnce() {
-            // Capture again in case Submit was triggered without pointerdown (keyboard).
-            this.snapshotMarkInputsForSave();
-            const built = this._buildAllEditableMarkEntries();
+            this.harvestDomDrafts();
+            const built = this._buildMarkEntriesForSave();
             const entries = built.entries;
             const planned = built.planned;
 
-            // Nothing typed and nothing previously stored to clear — done.
             if (!entries.length) {
-                this.marksDirty = {};
-                return true;
+                this.marksSaveStatus = this.hasUnsavedMarks
+                    ? 'Could not read changed marks — try Submit again'
+                    : 'No changes to save';
+                return !this.hasUnsavedMarks;
             }
+
+            console.info('[marks] saving', entries.length, 'cell(s)', entries.slice(0, 5));
 
             const response = await fetch('{{ employee_dash_url('exams-assessments/save-marks') }}', {
                 method: 'POST',
@@ -1996,78 +2069,56 @@ function marksSheet() {
 
             const confirmed = new Set();
             const failedIds = [];
-            const confirmedMarks = {};
             for (const r of (result.results || [])) {
                 if (!r) continue;
                 if (r.success === false) {
                     failedIds.push(String(r.student_id || ''));
                     continue;
                 }
-                // Ignore no-op “clears” of cells that never had a DB row — those used to
-                // flash green then disappear after reload.
                 if (r.marks == null && r.noop) continue;
-                const k = this._markCellKey(r.student_id, r.subject_id);
-                confirmed.add(k);
-                confirmedMarks[k] = r.marks;
+                confirmed.add(this._markCellKey(r.student_id, r.subject_id));
             }
             for (const s of (result.skipped || [])) {
                 if (s && s.student_id) failedIds.push(String(s.student_id));
             }
-            const useConfirm = confirmed.size > 0;
-
-            for (const item of planned) {
-                const k = this._markCellKey(item.studentId, item.subjectId);
-                if (useConfirm && !confirmed.has(k)) continue;
-                if (!this.marks[item.studentId]) this.marks[item.studentId] = {};
-                if (!this.marks[item.studentId][item.subjectId]) this.marks[item.studentId][item.subjectId] = {};
-                this.marks[item.studentId][item.subjectId][this.selectedExam] = item.numValue;
-                this._setBaselineStoredMark(item.studentId, item.subjectId, item.numValue);
-                this.clearMarkCellDirty(item.studentId, item.subjectId);
-                this.flashMarkCellSaved(item.studentId, item.subjectId);
+            for (const sid of (result.verify_misses || [])) {
+                if (sid) failedIds.push(String(sid));
             }
 
-            this.marksDirty = {};
-            this._tick = Date.now();
-
-            try {
-                await this.loadMarks();
-            } catch (e) {
-                console.warn('reload after save:', e);
-            }
-
-            // Re-apply server-confirmed values after reload (keeps UI in sync if get-marks
-            // briefly misses a row) and restore any planned value that did not confirm.
+            // Keep failed drafts on screen; reload confirmed from DB.
+            const keepDrafts = {};
             for (const item of planned) {
                 const k = this._markCellKey(item.studentId, item.subjectId);
-                if (useConfirm && confirmed.has(k)) {
-                    const savedVal = Object.prototype.hasOwnProperty.call(confirmedMarks, k)
-                        ? confirmedMarks[k]
-                        : item.numValue;
-                    if (!this.marks[item.studentId]) this.marks[item.studentId] = {};
-                    if (!this.marks[item.studentId][item.subjectId]) this.marks[item.studentId][item.subjectId] = {};
-                    this.marks[item.studentId][item.subjectId][this.selectedExam] = savedVal;
-                    if (savedVal == null) {
-                        this._setTypedMark(item.studentId, item.subjectId, null);
-                    } else {
-                        this._setTypedMark(item.studentId, item.subjectId, this.storedToEntry(item.subjectId, savedVal));
-                    }
-                    this._setBaselineStoredMark(item.studentId, item.subjectId, savedVal);
-                    if (savedVal != null) this.flashMarkCellSaved(item.studentId, item.subjectId);
-                    continue;
-                }
-                // Not confirmed — put the typed value back so Submit does not “eat” it.
-                if (item.numValue != null) {
-                    if (!this.marks[item.studentId]) this.marks[item.studentId] = {};
-                    if (!this.marks[item.studentId][item.subjectId]) this.marks[item.studentId][item.subjectId] = {};
-                    this.marks[item.studentId][item.subjectId][this.selectedExam] = item.numValue;
-                    this._setTypedMark(item.studentId, item.subjectId, this.storedToEntry(item.subjectId, item.numValue));
-                    this.markCellDirty(item.studentId, item.subjectId);
+                if (!confirmed.has(k) && item.numValue != null) {
+                    keepDrafts[k] = this.storedToEntry(item.subjectId, item.numValue);
                     if (!failedIds.includes(String(item.studentId))) {
                         failedIds.push(String(item.studentId));
                     }
                 }
             }
+
+            await this.loadMarks();
+
+            // Restore any values the server did not confirm so the teacher can retry.
+            for (const k of Object.keys(keepDrafts)) {
+                const parsed = this._parseMarkCellKey(k);
+                if (!parsed) continue;
+                this._setTypedMark(parsed.studentId, parsed.subjectId, keepDrafts[k]);
+                this.markCellDirty(parsed.studentId, parsed.subjectId);
+            }
+            this.syncDomFromDrafts();
+
+            for (const item of planned) {
+                const k = this._markCellKey(item.studentId, item.subjectId);
+                if (confirmed.has(k) && item.numValue != null) {
+                    this.flashMarkCellSaved(item.studentId, item.subjectId);
+                }
+            }
             this._tick = Date.now();
+
+            if (this.studentSort === 'marks_asc' || this.studentSort === 'marks_desc') {
+                this.rebuildSortedStudents();
+            }
 
             if (failedIds.length || result.partial) {
                 const uniq = [...new Set(failedIds.filter(Boolean))];
@@ -2080,46 +2131,21 @@ function marksSheet() {
         },
 
         /**
-         * Collect every editable Actual value to persist.
-         * typedMarks is the source of truth (updated on input/blur).
-         * DOM is synced carefully so empty Alpine-rebound cells cannot wipe typed values.
+         * Build save payload from drafts.
+         * - Non-empty drafts always included (with converted stored mark)
+         * - Empty dirty cells with a baseline = intentional clear
+         * - Always send student_pk for alphanumeric admission numbers
          */
-        _buildAllEditableMarkEntries() {
+        _buildMarkEntriesForSave() {
             const entries = [];
             const planned = [];
             const seen = new Set();
-
-            // Flush the cell currently being edited before reading state.
-            const active = (typeof document !== 'undefined') ? document.activeElement : null;
-            if (active && active.classList && active.classList.contains('mark-input')) {
-                const sid = active.getAttribute('data-student-id');
-                const sub = active.getAttribute('data-subject-id');
-                if (sid != null && sid !== '' && sub != null && sub !== '') {
-                    this._applyTypedFromRaw(sid, sub, active.value);
-                }
+            const byAdmission = {};
+            for (const s of (this.studentsList || [])) {
+                byAdmission[String(s.student_id)] = s;
             }
 
-            // Sync visible inputs into typedMarks:
-            // - non-empty DOM always wins (what the teacher sees)
-            // - empty DOM must NOT clear a typed value (Alpine :value remounts can blank inputs)
-            const root = (typeof document !== 'undefined') ? document : null;
-            if (root && root.querySelectorAll) {
-                root.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
-                    if (el.disabled) return;
-                    const studentId = el.getAttribute('data-student-id');
-                    const subjectId = el.getAttribute('data-subject-id');
-                    if (studentId == null || studentId === '' || subjectId == null || subjectId === '') return;
-                    const raw = (el.value || '').trim();
-                    if (raw !== '') {
-                        this._applyTypedFromRaw(studentId, subjectId, raw);
-                    }
-                });
-            }
-
-            const pushEntry = (student, subjectId) => {
-                const sid = String(student.student_id);
-                const pk = student.id != null ? Number(student.id) : null;
-                const sub = String(subjectId);
+            const push = (sid, sub, pk) => {
                 const key = this._markCellKey(sid, sub);
                 if (seen.has(key)) return;
                 if (this.isComboTotalColumn(sub)) return;
@@ -2127,7 +2153,11 @@ function marksSheet() {
 
                 const typed = this._getTypedMark(sid, sub);
                 const baseline = this._baselineStoredMark(sid, sub);
-                // Skip blanks that were never saved.
+                const dirty = this.isMarkCellDirty(sid, sub);
+
+                // Only persist cells the teacher actually changed — avoids re-POSTing the
+                // whole sheet with stale remounted inputs and masking real edits.
+                if (!dirty) return;
                 if (typed === null && baseline == null) return;
 
                 let numValue = null;
@@ -2135,10 +2165,7 @@ function marksSheet() {
                     const maxEntry = this.entryOutOfFor(sub);
                     const clamped = typed > maxEntry + 1e-6 ? maxEntry : typed;
                     numValue = this.entryToStored(sub, clamped);
-                    if (numValue === null && typed !== null) {
-                        // Fallback: store the typed Actual when conversion fails.
-                        numValue = typed;
-                    }
+                    if (numValue === null) numValue = typed;
                 }
 
                 seen.add(key);
@@ -2151,43 +2178,67 @@ function marksSheet() {
                     subject_id: Number(sub),
                     marks: numValue,
                 };
-                // Numeric PK fallback for alphanumeric admission numbers (e.g. STU190).
                 if (Number.isFinite(pk) && pk > 0) entry.student_pk = pk;
                 entries.push(entry);
                 planned.push({ studentId: sid, subjectId: sub, numValue, studentPk: pk });
             };
 
-            // Always cover every student × editable subject from sheet data
-            // (not only inputs currently mounted in the DOM).
+            // Prefer live inputs (includes student_pk attribute) — DOM value wins.
+            if (typeof document !== 'undefined' && document.querySelectorAll) {
+                document.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
+                    if (el.disabled) return;
+                    const sid = String(el.getAttribute('data-student-id') || '');
+                    const sub = String(el.getAttribute('data-subject-id') || '');
+                    let pk = Number(el.getAttribute('data-student-pk'));
+                    if (!Number.isFinite(pk) || pk <= 0) {
+                        const st = byAdmission[sid];
+                        pk = st && st.id != null ? Number(st.id) : null;
+                    }
+                    this._writeDraftFromInput(el);
+                    push(sid, sub, pk);
+                });
+            }
+
+            // Also cover dirty drafts not currently in DOM.
             const editableSubjects = (this.subjectIds || []).filter((sid) => this._subjectIsEditableForSave(sid));
             for (const student of (this.studentsList || [])) {
+                const pk = student.id != null ? Number(student.id) : null;
                 for (const subjectId of editableSubjects) {
-                    pushEntry(student, subjectId);
+                    push(String(student.student_id), String(subjectId), pk);
                 }
             }
 
             return { entries, planned };
         },
 
-        /** Parse a raw input string into typedMarks without toggling dirty UI. */
-        _applyTypedFromRaw(studentId, subjectId, value) {
+        /** Apply a raw Actual value into draft + stored conversion (mutates typedMarks in place). */
+        _applyDraftValue(studentId, subjectId, rawOrNull, opts = {}) {
             if (!this.selectedExam || !this._subjectIsEditableForSave(subjectId)) return;
-            const trimmed = String(value || '').trim().replace(',', '.');
+            const sid = String(studentId);
+            const sub = String(subjectId);
             let entryValue = null;
-            if (trimmed) {
-                entryValue = parseFloat(trimmed);
+            if (rawOrNull !== null && rawOrNull !== undefined && String(rawOrNull).trim() !== '') {
+                entryValue = parseFloat(String(rawOrNull).trim().replace(',', '.'));
                 if (Number.isNaN(entryValue)) return;
-                const max = this.entryOutOfFor(subjectId);
+                const max = this.entryOutOfFor(sub);
                 if (entryValue > max) entryValue = max;
                 if (entryValue < 0) entryValue = 0;
             }
-            this._setTypedMark(studentId, subjectId, trimmed ? entryValue : null);
-            const stored = trimmed ? this.entryToStored(subjectId, entryValue) : null;
-            const sid = String(studentId);
-            const sub = String(subjectId);
+            this._setTypedMark(sid, sub, entryValue);
+            const stored = entryValue === null ? null : this.entryToStored(sub, entryValue);
             if (!this.marks[sid]) this.marks[sid] = {};
             if (!this.marks[sid][sub]) this.marks[sid][sub] = {};
             this.marks[sid][sub][this.selectedExam] = stored;
+            if (opts.markDirty) {
+                const baseline = this._baselineStoredMark(sid, sub);
+                if (this._marksValuesEqual(stored, baseline)) this.clearMarkCellDirty(sid, sub);
+                else this.markCellDirty(sid, sub);
+            }
+        },
+
+        _applyTypedFromRaw(studentId, subjectId, value) {
+            const trimmed = String(value || '').trim();
+            this._applyDraftValue(studentId, subjectId, trimmed === '' ? null : trimmed, { markDirty: false });
         },
 
         /** Assignment check for save — does not depend on countdown / readonly flicker. */
@@ -2201,9 +2252,16 @@ function marksSheet() {
             return true;
         },
 
-        /** @deprecated kept for any callers; Submit now uses _buildAllEditableMarkEntries. */
         _harvestMarkInputsFromDom() {
-            this._buildAllEditableMarkEntries();
+            this.harvestDomDrafts();
+        },
+
+        snapshotMarkInputsForSave() {
+            this.harvestDomDrafts();
+        },
+
+        _buildAllEditableMarkEntries() {
+            return this._buildMarkEntriesForSave();
         },
 
         _applyInitialGradeRemarksIfEmpty() {
@@ -2404,7 +2462,11 @@ function marksSheet() {
             if (this.examIsLocked) this.lockedModal = true;
         },
 
-        sortedStudents() {
+        rebuildSortedStudents() {
+            this.sortedStudentsList = this._computeSortedStudents();
+        },
+
+        _computeSortedStudents() {
             const base = (this.studentsList || []).slice();
             if (!base.length) return base;
             const tieName = (a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), undefined, { sensitivity: 'base' });
@@ -2495,35 +2557,34 @@ function marksSheet() {
         _setTypedMark(studentId, subjectId, value) {
             const k = this._markCellKey(studentId, subjectId);
             const legacy = `${studentId}_${subjectId}`;
-            const next = { ...(this.typedMarks || {}) };
-            if (Object.prototype.hasOwnProperty.call(next, legacy)) delete next[legacy];
+            // Mutate in place — never replace typedMarks object (that rebound every input).
+            if (!this.typedMarks) this.typedMarks = {};
+            if (Object.prototype.hasOwnProperty.call(this.typedMarks, legacy)) {
+                delete this.typedMarks[legacy];
+            }
             if (value === null || value === undefined || value === '') {
-                next[k] = null;
+                this.typedMarks[k] = null;
             } else {
                 const n = Number(value);
-                next[k] = Number.isFinite(n) ? n : null;
+                this.typedMarks[k] = Number.isFinite(n) ? n : null;
             }
-            this.typedMarks = next;
         },
 
         /** Fill typedMarks from current stored→entry so out-of changes keep the on-screen scores. */
         _ensureTypedMarksForSubjects(subjectIds) {
             if (!this.selectedExam || !subjectIds || !subjectIds.length) return;
-            const next = { ...(this.typedMarks || {}) };
-            let changed = false;
+            if (!this.typedMarks) this.typedMarks = {};
             for (const subjectId of subjectIds) {
                 if (this.isComboTotalColumn(subjectId)) continue;
                 for (const student of (this.studentsList || [])) {
                     const studentId = student.student_id;
                     const k = this._markCellKey(studentId, subjectId);
-                    if (Object.prototype.hasOwnProperty.call(next, k)) continue;
+                    if (Object.prototype.hasOwnProperty.call(this.typedMarks, k)) continue;
                     const raw = this._rawStoredMark(studentId, subjectId);
                     if (raw === null) continue;
-                    next[k] = this.storedToEntry(subjectId, raw);
-                    changed = true;
+                    this.typedMarks[k] = this.storedToEntry(subjectId, raw);
                 }
             }
-            if (changed) this.typedMarks = next;
         },
 
         /** Rebuild all typed scores from stored marks (after load / exam change). */
@@ -2569,6 +2630,7 @@ function marksSheet() {
                 }
             }
             this._tick = Date.now();
+            this.syncDomFromDrafts();
         },
 
         /**
@@ -2793,6 +2855,7 @@ function marksSheet() {
 
         /** Converted /100 label — nearest whole number. Curriculum view: mark only (no %). */
         livePctLabel(studentId, subjectId) {
+            void this._displayRev;
             // Prefer live Actual ÷ Out of so Converted tracks what is typed.
             const entryPct = this.entryPctFor(studentId, subjectId);
             let n = null;
@@ -2854,14 +2917,6 @@ function marksSheet() {
                 return ids.some((x) => Number(x) === sid) || this._storesAsPercent(subjectId);
             }
             return true;
-        },
-
-        getMemberRawDisplay(studentId, subjectId) {
-            // Do NOT depend on _tick — rebinding Actual :value on every keystroke
-            // in other rows can blank inputs and drop them from Submit.
-            const typed = this._getTypedMark(studentId, subjectId);
-            if (typed === null) return '';
-            return this.formatMarkDisplay(typed, false);
         },
 
         /** Member paper % (nearest whole number — same as Converted column). */
@@ -2932,15 +2987,6 @@ function marksSheet() {
         onMarkInput(studentId, subjectId, value, event) {
             if (!this.selectedExam || !this._subjectIsEditableForSave(subjectId)) return;
             const trimmed = (value || '').trim().replace(',', '.');
-            // Ignore empty blur/change from a detached input (x-if remount / teardown).
-            if (!trimmed && event && event.target && event.target.isConnected === false) {
-                return;
-            }
-            // Clicking Submit blurs the active cell with "" AFTER pointerdown snapshot in
-            // some browsers; never clear typedMarks on blur/change — only on real input.
-            if (!trimmed && event && (event.type === 'blur' || event.type === 'change')) {
-                return;
-            }
             let entryValue = null;
             if (trimmed) {
                 entryValue = parseFloat(trimmed);
@@ -2953,22 +2999,12 @@ function marksSheet() {
                     }
                 }
                 if (entryValue < 0) entryValue = 0;
-            }
-            const sid = String(studentId);
-            const sub = String(subjectId);
-            this._setTypedMark(sid, sub, trimmed ? entryValue : null);
-            const stored = trimmed ? this.entryToStored(sub, entryValue) : null;
-            if (!this.marks[sid]) this.marks[sid] = {};
-            if (!this.marks[sid][sub]) this.marks[sid][sub] = {};
-            this.marks[sid][sub][this.selectedExam] = stored;
-            const baseline = this._baselineStoredMark(sid, sub);
-            if (this._marksValuesEqual(stored, baseline)) {
-                this.clearMarkCellDirty(sid, sub);
+                this.captureLastDomMark(studentId, subjectId, String(entryValue));
             } else {
-                this.markCellDirty(sid, sub);
+                this.captureLastDomMark(studentId, subjectId, '');
             }
-            // Refresh Converted / totals only — Actual inputs do not rebind on _tick.
-            this._tick = Date.now();
+            this._applyDraftValue(studentId, subjectId, entryValue, { markDirty: true });
+            this._displayRev = Date.now();
         },
 
         getCombinationMembers(subjectId) {
@@ -3185,6 +3221,7 @@ function marksSheet() {
         async init() {
             this._applyInitialGradeRemarksIfEmpty();
             this._initEntryOutOfFromSettings();
+            this.rebuildSortedStudents();
             const honorUrlFilters = !!this.explicitMarksFilters;
             if (!honorUrlFilters) {
                 this._applyRegisteredYearTerm();
@@ -3341,6 +3378,7 @@ function marksSheet() {
             this.marksEntryReadonly = false;
             this.marksPeriodClosedModalOpen = false;
             this.marksCountdownInfoModalOpen = false;
+            this._lastDomMark = {};
             if (!this.selectedExam) {
                 await this.loadMarks();
                 this.gradeRemarksByCode = {};
@@ -3475,6 +3513,7 @@ function marksSheet() {
         },
 
         getTotal(studentId) {
+            void this._displayRev;
             if (!this.selectedExam) return null;
             const n = this.getSummaryScoreNumeric(studentId);
             if (n === null) return null;
@@ -3564,6 +3603,7 @@ function marksSheet() {
         },
 
         getOverallGradeCode(studentId) {
+            void this._displayRev;
             const pct = this.getOverallMeanPctForGrading(studentId);
             if (pct === null) return null;
             const band = this.findBandForPct(pct);
@@ -3770,16 +3810,16 @@ function marksSheet() {
 
         async loadMarks() {
             if (!this.selectedExam) {
-                // Never show stale/all-exam marks when no exam is selected.
                 this.marks = {};
                 this.marksBaseline = {};
                 this.marksDirty = {};
                 this.typedMarks = {};
                 this.marksEntryReadonly = false;
+                this.syncDomFromDrafts();
                 return;
             }
             this.loading = true;
-            
+
             try {
                 const response = await fetch('{{ employee_dash_url('exams-assessments/get-marks') }}', {
                     method: 'POST',
@@ -3800,15 +3840,19 @@ function marksSheet() {
                     if (result.subject_exam_max && typeof result.subject_exam_max === 'object') {
                         const prevMax = { ...(this.subjectExamMax || {}) };
                         this.subjectExamMax = { ...this.subjectExamMax, ...result.subject_exam_max };
-                        // Keep Actual inputs; only Converted % follows any new out-of totals.
                         this._onSubjectExamMaxUpdated(prevMax);
                     }
-                    this.$nextTick(() => this._maybeOpenMarksPeriodClosedModal());
+                    await this.$nextTick();
+                    this.syncDomFromDrafts();
+                    if (this.studentSort === 'marks_asc' || this.studentSort === 'marks_desc') {
+                        this.rebuildSortedStudents();
+                    }
+                    this._maybeOpenMarksPeriodClosedModal();
                 }
             } catch (error) {
                 console.error('Load error:', error);
             }
-            
+
             this.loading = false;
         }
     };

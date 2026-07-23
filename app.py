@@ -9106,6 +9106,15 @@ def _build_exam_column_order_by_category(name_map, combinations_raw, base_catego
 def ensure_exams_marks_lock_at_column(cursor):
     """Adds marks_lock_at (optional deadline after which teachers may not change marks)."""
     try:
+        cursor.execute("""
+            SELECT 1 FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'exams'
+              AND COLUMN_NAME = 'marks_lock_at'
+            LIMIT 1
+        """)
+        if cursor.fetchone():
+            return
         cursor.execute("ALTER TABLE exams ADD COLUMN marks_lock_at DATETIME NULL")
     except Exception as e:
         _schema_ignore_existing(e, 'exams.marks_lock_at column')
@@ -83248,6 +83257,14 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
             'skipped': skipped,
         }, 400
 
+    # Last entry wins for the same student+subject (client may send DOM + list duplicates).
+    deduped = {}
+    for sid_s, sub_i, marks_value in normalized:
+        deduped[(sid_s, sub_i)] = marks_value
+    normalized = [(sid_s, sub_i, marks_value) for (sid_s, sub_i), marks_value in deduped.items()]
+    subject_ids = [sub_i for _, sub_i, _ in normalized]
+    student_ids = [sid_s for sid_s, _, _ in normalized]
+
     uniq_subjects = sorted(set(subject_ids))
     allowed_subjects = set(uniq_subjects)
     if is_teacher and teacher_id:
@@ -83363,6 +83380,7 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
                     results.append({
                         'student_id': sid_s,
                         'subject_id': sub_i,
+                        'exam_id': resolved_exam_id,
                         'marks': None,
                         'success': True,
                     })
@@ -83371,6 +83389,7 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
                     results.append({
                         'student_id': sid_s,
                         'subject_id': sub_i,
+                        'exam_id': resolved_exam_id,
                         'marks': None,
                         'success': True,
                         'noop': True,
@@ -83405,6 +83424,7 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
                 results.append({
                     'student_id': sid_s,
                     'subject_id': sub_i,
+                    'exam_id': resolved_exam_id,
                     'marks': marks_value,
                     'success': True,
                 })
@@ -83419,6 +83439,7 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
             results.append({
                 'student_id': sid_s,
                 'subject_id': sub_i,
+                'exam_id': resolved_exam_id,
                 'marks': marks_value,
                 'success': False,
                 'message': str(row_err),
@@ -83488,20 +83509,37 @@ def save_marks():
                 return jsonify({'success': False, 'message': 'Missing required fields.'}), 400
             entries_in = data.get('entries') or []
             try:
-                alpha_ids = sorted({
-                    str(e.get('student_id') or '').strip()
-                    for e in entries_in
-                    if isinstance(e, dict) and str(e.get('student_id') or '').strip()
-                    and not str(e.get('student_id')).strip().isdigit()
-                })
-                if alpha_ids:
-                    print(f"[save-marks] alphanumeric student_id(s) in payload: {alpha_ids[:12]}")
+                print(
+                    f"[save-marks] exam_id={exam_id!r} level_id={level_id!r} "
+                    f"entries={len(entries_in)} teacher={is_teacher} tid={teacher_id!r}"
+                )
+                for e in entries_in[:15]:
+                    if isinstance(e, dict):
+                        print(
+                            f"[save-marks] entry sid={e.get('student_id')!r} "
+                            f"pk={e.get('student_pk')!r} sub={e.get('subject_id')!r} "
+                            f"marks={e.get('marks')!r}"
+                        )
+                for e in entries_in:
+                    if not isinstance(e, dict):
+                        continue
+                    sid_dbg = str(e.get('student_id') or '').strip()
+                    if sid_dbg and not sid_dbg.isdigit():
+                        print(
+                            f"[save-marks] alpha entry student_id={sid_dbg!r} "
+                            f"pk={e.get('student_pk')!r} subject_id={e.get('subject_id')!r} "
+                            f"marks={e.get('marks')!r}"
+                        )
             except Exception:
                 pass
             connection = get_db_connection()
             if not connection:
                 return jsonify({'success': False, 'message': 'Database connection failed.'}), 500
             try:
+                alpha_retry = []
+                ok = False
+                payload = {'success': False, 'message': 'Save failed.'}
+                status = 500
                 with connection.cursor() as cursor:
                     ok, payload, status = _save_marks_batch_core(
                         cursor,
@@ -83513,12 +83551,140 @@ def save_marks():
                     )
                     if ok:
                         connection.commit()
+                        try:
+                            for r in (payload.get('results') or []):
+                                if not r or r.get('success') is False or r.get('noop'):
+                                    continue
+                                sid_v = str(r.get('student_id') or '').strip()
+                                if not sid_v or sid_v.isdigit():
+                                    continue
+                                sub_v = r.get('subject_id')
+                                exam_v = r.get('exam_id')
+                                marks_v = r.get('marks')
+                                if sub_v is None or exam_v is None:
+                                    continue
+                                cursor.execute(
+                                    """
+                                    SELECT marks FROM student_marks
+                                    WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                                    LIMIT 1
+                                    """,
+                                    (sid_v, int(sub_v), int(exam_v)),
+                                )
+                                row_v = cursor.fetchone()
+                                db_marks = None
+                                if row_v:
+                                    db_marks = row_v.get('marks') if isinstance(row_v, dict) else row_v[0]
+                                missed = False
+                                if marks_v is None:
+                                    if row_v:
+                                        missed = True
+                                else:
+                                    if row_v is None or abs(float(db_marks) - float(marks_v)) > 1e-6:
+                                        missed = True
+                                if missed:
+                                    alpha_retry.append({
+                                        'student_id': sid_v,
+                                        'subject_id': int(sub_v),
+                                        'exam_id': int(exam_v),
+                                        'marks': marks_v,
+                                    })
+                        except Exception as _vf:
+                            print(f"[save-marks] verify skipped: {_vf}")
+                        try:
+                            skipped = payload.get('skipped') or []
+                            errors = payload.get('errors') or []
+                            if skipped or errors:
+                                print(f"[save-marks] skipped={skipped[:8]} errors={errors[:8]}")
+                            alpha_results = [
+                                r for r in (payload.get('results') or [])
+                                if r and str(r.get('student_id') or '') and not str(r.get('student_id')).isdigit()
+                            ]
+                            if alpha_results:
+                                print(f"[save-marks] alpha results: {alpha_results[:12]}")
+                        except Exception:
+                            pass
                     else:
                         try:
                             connection.rollback()
                         except Exception:
                             pass
-                    return jsonify(payload), status
+
+                # Retry missed alphanumeric rows on a fresh connection (outside first cursor).
+                if ok and alpha_retry:
+                    print(f"[save-marks] verify miss after commit: {[x['student_id'] for x in alpha_retry][:12]} — retrying")
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+                    connection = get_db_connection()
+                    still_bad = [x['student_id'] for x in alpha_retry]
+                    if connection:
+                        try:
+                            with connection.cursor() as cur2:
+                                for item in alpha_retry:
+                                    if item['marks'] is None:
+                                        cur2.execute(
+                                            """
+                                            DELETE FROM student_marks
+                                            WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                                            """,
+                                            (item['student_id'], item['subject_id'], item['exam_id']),
+                                        )
+                                    else:
+                                        cur2.execute(
+                                            """
+                                            INSERT INTO student_marks
+                                                (student_id, subject_id, exam_id, marks, created_at, updated_at)
+                                            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                            ON DUPLICATE KEY UPDATE
+                                                marks = VALUES(marks),
+                                                updated_at = CURRENT_TIMESTAMP
+                                            """,
+                                            (
+                                                item['student_id'],
+                                                item['subject_id'],
+                                                item['exam_id'],
+                                                float(item['marks']),
+                                            ),
+                                        )
+                                connection.commit()
+                                still_bad = []
+                                for item in alpha_retry:
+                                    cur2.execute(
+                                        """
+                                        SELECT marks FROM student_marks
+                                        WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                                        LIMIT 1
+                                        """,
+                                        (item['student_id'], item['subject_id'], item['exam_id']),
+                                    )
+                                    row2 = cur2.fetchone()
+                                    db2 = row2.get('marks') if isinstance(row2, dict) else (row2[0] if row2 else None)
+                                    if item['marks'] is None:
+                                        if row2:
+                                            still_bad.append(item['student_id'])
+                                    elif row2 is None or abs(float(db2) - float(item['marks'])) > 1e-6:
+                                        still_bad.append(item['student_id'])
+                                if still_bad:
+                                    print(f"[save-marks] retry still missing: {still_bad[:12]}")
+                                else:
+                                    print("[save-marks] retry verified OK")
+                        except Exception as _rt:
+                            print(f"[save-marks] retry failed: {_rt}")
+                            still_bad = [x['student_id'] for x in alpha_retry]
+                    if still_bad:
+                        payload['success'] = False
+                        payload['partial'] = True
+                        payload['verify_misses'] = list(dict.fromkeys(still_bad))[:20]
+                        payload['message'] = (
+                            'Some marks did not save for: '
+                            + ', '.join(payload['verify_misses'][:5])
+                            + '. Please Submit again.'
+                        )
+                        status = 500
+
+                return jsonify(payload), status
             except Exception as e:
                 try:
                     connection.rollback()
