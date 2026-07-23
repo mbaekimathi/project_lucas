@@ -90886,7 +90886,13 @@ def _run_academic_excel_export_job(flask_app, job_id, report_type, filters):
             filepath = os.path.join(EXPORT_FOLDER, out_name)
             with open(filepath, 'wb') as fh:
                 fh.write(data)
-            download_url = url_for('api_academic_reports_export_download', job_id=job_id)
+            # Background thread has app_context but no HTTP request; url_for needs a
+            # request context (or SERVER_NAME). Use a test request for a relative path.
+            with flask_app.test_request_context('/'):
+                download_url = url_for(
+                    'api_academic_reports_export_download',
+                    job_id=job_id,
+                )
             _set_export_job(
                 job_id,
                 status='success',
