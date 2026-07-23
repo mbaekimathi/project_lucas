@@ -83274,107 +83274,119 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
         )
         max_raw_by_subject[sub_i] = min(subject_exam_max_raw_marks(etm), 100.0)
 
-    for _, sub_i, marks_value in normalized:
+    for idx, (sid_s, sub_i, marks_value) in enumerate(normalized):
         max_raw = max_raw_by_subject.get(sub_i, 100.0)
         if marks_value is not None and marks_value > max_raw + 1e-9:
-            return False, {
-                'success': False,
-                'message': f'Marks cannot exceed {max_raw:g} (maximum 100).',
-            }, 400
+            # Clamp instead of failing the whole batch — one oversize cell
+            # must not prevent the rest of the class from saving.
+            normalized[idx] = (sid_s, sub_i, float(max_raw))
 
     changed_by, changed_by_role, changed_by_name = _exam_marks_audit_actor()
     audit_level_id = exam_scope_level_id or level_id
     audit_exam_name = exam_scope_name or ''
     results = []
     saved = 0
+    errors = []
 
-    for sid_i, sub_i, marks_value in normalized:
+    for sid_s, sub_i, marks_value in normalized:
         resolved_exam_id = resolved_exam_by_subject[sub_i]
-        cursor.execute("""
-            SELECT id, marks FROM student_marks
-            WHERE student_id = %s AND subject_id = %s AND exam_id = %s
-        """, (sid_i, sub_i, resolved_exam_id))
-        existing = cursor.fetchone()
-        old_marks = None
-        if existing:
-            old_marks = existing.get('marks') if isinstance(existing, dict) else existing[1]
+        try:
+            cursor.execute("""
+                SELECT id, marks FROM student_marks
+                WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+            """, (sid_s, sub_i, resolved_exam_id))
+            existing = cursor.fetchone()
+            old_marks = None
+            if existing:
+                old_marks = existing.get('marks') if isinstance(existing, dict) else existing[1]
 
-        if existing:
-            if marks_value is not None:
-                if not _marks_audit_values_equal(old_marks, marks_value):
+            if marks_value is None:
+                if existing:
                     cursor.execute("""
-                        UPDATE student_marks
-                        SET marks = %s, updated_at = CURRENT_TIMESTAMP
+                        DELETE FROM student_marks
                         WHERE student_id = %s AND subject_id = %s AND exam_id = %s
-                    """, (marks_value, sid_i, sub_i, resolved_exam_id))
+                    """, (sid_s, sub_i, resolved_exam_id))
                     _log_exam_marks_audit(
                         cursor,
-                        student_id=sid_i,
+                        student_id=sid_s,
                         subject_id=sub_i,
                         exam_id=resolved_exam_id,
                         academic_level_id=audit_level_id,
                         exam_name=audit_exam_name,
-                        action_type='UPDATE',
+                        action_type='DELETE',
+                        old_marks=old_marks,
+                        new_marks=None,
+                        changed_by=changed_by,
+                        changed_by_role=changed_by_role,
+                        changed_by_name=changed_by_name,
+                    )
+            else:
+                # UPSERT so concurrent/retry saves never drop a student row.
+                cursor.execute("""
+                    INSERT INTO student_marks (student_id, subject_id, exam_id, marks, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON DUPLICATE KEY UPDATE
+                        marks = VALUES(marks),
+                        updated_at = CURRENT_TIMESTAMP
+                """, (sid_s, sub_i, resolved_exam_id, marks_value))
+                if not _marks_audit_values_equal(old_marks, marks_value):
+                    _log_exam_marks_audit(
+                        cursor,
+                        student_id=sid_s,
+                        subject_id=sub_i,
+                        exam_id=resolved_exam_id,
+                        academic_level_id=audit_level_id,
+                        exam_name=audit_exam_name,
+                        action_type='UPDATE' if existing else 'INSERT',
                         old_marks=old_marks,
                         new_marks=marks_value,
                         changed_by=changed_by,
                         changed_by_role=changed_by_role,
                         changed_by_name=changed_by_name,
                     )
-            else:
-                cursor.execute("""
-                    DELETE FROM student_marks
-                    WHERE student_id = %s AND subject_id = %s AND exam_id = %s
-                """, (sid_i, sub_i, resolved_exam_id))
-                _log_exam_marks_audit(
-                    cursor,
-                    student_id=sid_i,
-                    subject_id=sub_i,
-                    exam_id=resolved_exam_id,
-                    academic_level_id=audit_level_id,
-                    exam_name=audit_exam_name,
-                    action_type='DELETE',
-                    old_marks=old_marks,
-                    new_marks=None,
-                    changed_by=changed_by,
-                    changed_by_role=changed_by_role,
-                    changed_by_name=changed_by_name,
-                )
-        else:
-            if marks_value is not None:
-                cursor.execute("""
-                    INSERT INTO student_marks (student_id, subject_id, exam_id, marks, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, (sid_i, sub_i, resolved_exam_id, marks_value))
-                _log_exam_marks_audit(
-                    cursor,
-                    student_id=sid_i,
-                    subject_id=sub_i,
-                    exam_id=resolved_exam_id,
-                    academic_level_id=audit_level_id,
-                    exam_name=audit_exam_name,
-                    action_type='INSERT',
-                    old_marks=None,
-                    new_marks=marks_value,
-                    changed_by=changed_by,
-                    changed_by_role=changed_by_role,
-                    changed_by_name=changed_by_name,
-                )
 
-        saved += 1
-        results.append({
-            'student_id': sid_i,
-            'subject_id': sub_i,
-            'marks': marks_value,
-            'success': True,
-        })
+            saved += 1
+            results.append({
+                'student_id': sid_s,
+                'subject_id': sub_i,
+                'marks': marks_value,
+                'success': True,
+            })
+        except Exception as row_err:
+            print(f"Error saving mark student={sid_s} subject={sub_i} exam={resolved_exam_id}: {row_err}")
+            errors.append({
+                'student_id': sid_s,
+                'subject_id': sub_i,
+                'success': False,
+                'message': str(row_err),
+            })
+            results.append({
+                'student_id': sid_s,
+                'subject_id': sub_i,
+                'marks': marks_value,
+                'success': False,
+                'message': str(row_err),
+            })
 
-    return True, {
+    if errors and saved == 0:
+        return False, {
+            'success': False,
+            'message': errors[0].get('message') or 'Failed to save marks.',
+            'saved': 0,
+            'results': results,
+            'errors': errors,
+        }, 500
+
+    payload = {
         'success': True,
-        'message': f'Saved {saved} mark(s).',
+        'message': f'Saved {saved} mark(s).' + (f' {len(errors)} failed.' if errors else ''),
         'saved': saved,
         'results': results,
-    }, 200
+    }
+    if errors:
+        payload['errors'] = errors
+        payload['partial'] = True
+    return True, payload, 200
 
 
 @app.route('/dashboard/employee/exams-assessments/save-marks', methods=['POST'])

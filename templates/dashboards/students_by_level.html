@@ -1473,10 +1473,11 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                            maxlength="8"
                                            :data-row-index="rowIdx"
                                            data-col-index="{{ loop.index0 }}"
-                                           :data-student-id="student.student_id"
+                                           :data-student-id="String(student.student_id)"
                                            data-subject-id="{{ subject.id }}"
                                            :value="getMemberRawDisplay(student.student_id, {{ subject.id }})"
                                            @input="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
+                                           @change="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
                                            @blur="onMarkInput(student.student_id, {{ subject.id }}, $event.target.value, $event)"
                                            @keydown.enter="handleEnterKey($event)"
                                            @keydown.up.prevent="handleArrowKey($event)"
@@ -1922,6 +1923,8 @@ function marksSheet() {
                     setTimeout(() => {
                         if (this.marksSaveStatus === 'Saved') this.marksSaveStatus = '';
                     }, 2000);
+                } else if (marksOk && this.hasUnsavedChanges) {
+                    this.marksSaveStatus = 'Some marks may not have saved — check empty cells and Submit again';
                 } else {
                     this.marksSaveStatus = 'Save failed';
                 }
@@ -1972,8 +1975,13 @@ function marksSheet() {
             }
 
             const confirmed = new Set();
+            const failedIds = [];
             for (const r of (result.results || [])) {
-                if (!r || r.success === false) continue;
+                if (!r) continue;
+                if (r.success === false) {
+                    failedIds.push(String(r.student_id || ''));
+                    continue;
+                }
                 confirmed.add(this._markCellKey(r.student_id, r.subject_id));
             }
             // Prefer server confirmations; if API returns no per-cell results, accept all planned.
@@ -1993,21 +2001,61 @@ function marksSheet() {
             // Clear any leftover dirty flags after a full-sheet save.
             this.marksDirty = {};
             this._tick = Date.now();
+
+            // Re-load from DB so the sheet matches what was actually persisted
+            // (surfaces any student that still failed to save).
+            try {
+                await this.loadMarks();
+            } catch (e) {
+                console.warn('reload after save:', e);
+            }
+            // Re-apply green flash for confirmed cells after reload.
+            for (const item of planned) {
+                const k = this._markCellKey(item.studentId, item.subjectId);
+                if (useConfirm && !confirmed.has(k)) continue;
+                if (item.numValue != null) this.flashMarkCellSaved(item.studentId, item.subjectId);
+            }
             return true;
         },
 
         /**
          * Collect every editable Actual value to persist.
-         * - Non-empty inputs are always included (saved).
-         * - Empty inputs are included only when clearing a previously saved mark.
-         * This way Submit saves the whole sheet without wiping untouched blanks.
+         * typedMarks is the source of truth (updated on input/blur).
+         * DOM is synced carefully so empty Alpine-rebound cells cannot wipe typed values.
          */
         _buildAllEditableMarkEntries() {
             const entries = [];
             const planned = [];
             const seen = new Set();
 
-            const pushEntry = (studentId, subjectId, typedRaw, forceInclude) => {
+            // Flush the cell currently being edited before reading state.
+            const active = (typeof document !== 'undefined') ? document.activeElement : null;
+            if (active && active.classList && active.classList.contains('mark-input')) {
+                const sid = active.getAttribute('data-student-id');
+                const sub = active.getAttribute('data-subject-id');
+                if (sid != null && sid !== '' && sub != null && sub !== '') {
+                    this._applyTypedFromRaw(sid, sub, active.value);
+                }
+            }
+
+            // Sync visible inputs into typedMarks:
+            // - non-empty DOM always wins (what the teacher sees)
+            // - empty DOM must NOT clear a typed value (Alpine :value remounts can blank inputs)
+            const root = this.$el;
+            if (root && root.querySelectorAll) {
+                root.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
+                    if (el.disabled) return;
+                    const studentId = el.getAttribute('data-student-id');
+                    const subjectId = el.getAttribute('data-subject-id');
+                    if (studentId == null || studentId === '' || subjectId == null || subjectId === '') return;
+                    const raw = (el.value || '').trim();
+                    if (raw !== '') {
+                        this._applyTypedFromRaw(studentId, subjectId, raw);
+                    }
+                });
+            }
+
+            const pushEntry = (studentId, subjectId) => {
                 const sid = String(studentId);
                 const sub = String(subjectId);
                 const key = this._markCellKey(sid, sub);
@@ -2015,27 +2063,23 @@ function marksSheet() {
                 if (this.isComboTotalColumn(sub)) return;
                 if (!this._subjectIsEditableForSave(sub)) return;
 
-                let typed = null;
-                const hasTyped = typedRaw !== null && typedRaw !== undefined && String(typedRaw).trim() !== '';
-                if (hasTyped) {
-                    const n = Number(String(typedRaw).trim().replace(',', '.'));
-                    if (!Number.isFinite(n) || n < 0) return;
-                    typed = n;
-                }
-
+                const typed = this._getTypedMark(sid, sub);
                 const baseline = this._baselineStoredMark(sid, sub);
-                // Skip blank cells that were never saved (unless caller forces include).
-                if (!hasTyped && baseline == null && !forceInclude) return;
+                // Skip blanks that were never saved.
+                if (typed === null && baseline == null) return;
 
                 let numValue = null;
                 if (typed !== null) {
                     const maxEntry = this.entryOutOfFor(sub);
                     const clamped = typed > maxEntry + 1e-6 ? maxEntry : typed;
                     numValue = this.entryToStored(sub, clamped);
+                    if (numValue === null && typed !== null) {
+                        // Fallback: store the typed Actual when conversion fails.
+                        numValue = typed;
+                    }
                 }
 
                 seen.add(key);
-                this._setTypedMark(sid, sub, typed);
                 if (!this.marks[sid]) this.marks[sid] = {};
                 if (!this.marks[sid][sub]) this.marks[sid][sub] = {};
                 this.marks[sid][sub][this.selectedExam] = numValue;
@@ -2048,33 +2092,38 @@ function marksSheet() {
                 planned.push({ studentId: sid, subjectId: sub, numValue });
             };
 
-            // 1) Prefer live DOM values for every visible mark input.
-            const root = this.$el;
-            if (root && root.querySelectorAll) {
-                root.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
-                    if (el.disabled) return;
-                    const studentId = el.getAttribute('data-student-id');
-                    const subjectId = el.getAttribute('data-subject-id');
-                    if (studentId == null || studentId === '' || subjectId == null || subjectId === '') return;
-                    // Force include so blanking a previously saved cell deletes it.
-                    pushEntry(studentId, subjectId, el.value, true);
-                });
-            }
-
-            // 2) Also include any student/subject cells not currently in the DOM
-            //    from typedMarks / stored marks (filled values only).
+            // Always cover every student × editable subject from sheet data
+            // (not only inputs currently mounted in the DOM).
             const editableSubjects = (this.subjectIds || []).filter((sid) => this._subjectIsEditableForSave(sid));
             for (const student of (this.studentsList || [])) {
                 const studentId = student.student_id;
                 for (const subjectId of editableSubjects) {
-                    const key = this._markCellKey(studentId, subjectId);
-                    if (seen.has(key)) continue;
-                    const typed = this._getTypedMark(studentId, subjectId);
-                    pushEntry(studentId, subjectId, typed, false);
+                    pushEntry(studentId, subjectId);
                 }
             }
 
             return { entries, planned };
+        },
+
+        /** Parse a raw input string into typedMarks without toggling dirty UI. */
+        _applyTypedFromRaw(studentId, subjectId, value) {
+            if (!this.selectedExam || !this._subjectIsEditableForSave(subjectId)) return;
+            const trimmed = String(value || '').trim().replace(',', '.');
+            let entryValue = null;
+            if (trimmed) {
+                entryValue = parseFloat(trimmed);
+                if (Number.isNaN(entryValue)) return;
+                const max = this.entryOutOfFor(subjectId);
+                if (entryValue > max) entryValue = max;
+                if (entryValue < 0) entryValue = 0;
+            }
+            this._setTypedMark(studentId, subjectId, trimmed ? entryValue : null);
+            const stored = trimmed ? this.entryToStored(subjectId, entryValue) : null;
+            const sid = String(studentId);
+            const sub = String(subjectId);
+            if (!this.marks[sid]) this.marks[sid] = {};
+            if (!this.marks[sid][sub]) this.marks[sid][sub] = {};
+            this.marks[sid][sub][this.selectedExam] = stored;
         },
 
         /** Assignment check for save — does not depend on countdown / readonly flicker. */
@@ -2745,7 +2794,8 @@ function marksSheet() {
         },
 
         getMemberRawDisplay(studentId, subjectId) {
-            void this._tick;
+            // Do NOT depend on _tick — rebinding Actual :value on every keystroke
+            // in other rows can blank inputs and drop them from Submit.
             const typed = this._getTypedMark(studentId, subjectId);
             if (typed === null) return '';
             return this.formatMarkDisplay(typed, false);
@@ -2817,7 +2867,7 @@ function marksSheet() {
         },
 
         onMarkInput(studentId, subjectId, value, event) {
-            if (!this.selectedExam || !this.canEditSubjectCell(subjectId)) return;
+            if (!this.selectedExam || !this._subjectIsEditableForSave(subjectId)) return;
             const trimmed = (value || '').trim().replace(',', '.');
             let entryValue = null;
             if (trimmed) {
@@ -2832,18 +2882,20 @@ function marksSheet() {
                 }
                 if (entryValue < 0) entryValue = 0;
             }
-            this._setTypedMark(studentId, subjectId, trimmed ? entryValue : null);
-            const stored = trimmed ? this.entryToStored(subjectId, entryValue) : null;
-            if (!this.marks[studentId]) this.marks[studentId] = {};
-            if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
-            this.marks[studentId][subjectId][this.selectedExam] = stored;
-            const baseline = this._baselineStoredMark(studentId, subjectId);
+            const sid = String(studentId);
+            const sub = String(subjectId);
+            this._setTypedMark(sid, sub, trimmed ? entryValue : null);
+            const stored = trimmed ? this.entryToStored(sub, entryValue) : null;
+            if (!this.marks[sid]) this.marks[sid] = {};
+            if (!this.marks[sid][sub]) this.marks[sid][sub] = {};
+            this.marks[sid][sub][this.selectedExam] = stored;
+            const baseline = this._baselineStoredMark(sid, sub);
             if (this._marksValuesEqual(stored, baseline)) {
-                this.clearMarkCellDirty(studentId, subjectId);
+                this.clearMarkCellDirty(sid, sub);
             } else {
-                this.markCellDirty(studentId, subjectId);
+                this.markCellDirty(sid, sub);
             }
-            // Refresh live Σ combined % column (and related summaries).
+            // Refresh Converted / totals only — Actual inputs do not rebind on _tick.
             this._tick = Date.now();
         },
 
