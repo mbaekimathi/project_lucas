@@ -1,6 +1,5 @@
-# Passenger configuration for Flask application (cPanel)
+# Passenger / LiteSpeed configuration for Flask (cPanel)
 # IMPORTANT: Update PassengerAppRoot to your actual server path after git pull
-# Example: /home/username/public_html or /home1/account/elimu_centric
 PassengerEnabled On
 PassengerAppRoot /home1/projectl/elimu_centric
 PassengerBaseURI /
@@ -8,11 +7,32 @@ PassengerAppType wsgi
 PassengerStartupFile passenger_wsgi.py
 PassengerPython /usr/bin/python3
 
-# Enable Passenger
+# Keep worker count low on shared MySQL.
+# Each worker has its own DB pool (hosted hard-cap 3). workers × pool must stay
+# under the account's max_user_connections or MySQL drops sockets → 503.
+PassengerMaxPoolSize 4
+PassengerMinInstances 1
+PassengerPoolIdleTime 120
+PassengerMaxRequests 500
+PassengerMaxRequestQueueSize 40
+
+# LiteSpeed LSAPI (used on many cPanel hosts instead of / alongside Passenger)
+<IfModule LiteSpeed>
+  SetEnv LSAPI_CHILDREN 4
+  SetEnv LSAPI_MAX_REQS 500
+</IfModule>
+
 PassengerFriendlyErrorPages On
 
-# Set environment variables (if needed)
-# SetEnv SECRET_KEY your-secret-key-here
+# Recommended hosted .env (never copy local DB_POOL_SIZE=24 to production):
+#   IS_HOSTED=true
+#   DB_POOL_SIZE=2
+#   DB_POOL_HARD_CAP=3
+#   DB_POOL_BLOCKING=0
+#   DB_CONNECT_TIMEOUT=5
+#   DB_READ_TIMEOUT=45
+#   DB_WRITE_TIMEOUT=45
+#   SYSTEM_HEALTH_SAMPLER=0
 
 # Security headers
 <IfModule mod_headers.c>
@@ -20,4 +40,3 @@ PassengerFriendlyErrorPages On
     Header set X-Frame-Options "SAMEORIGIN"
     Header set X-XSS-Protection "1; mode=block"
 </IfModule>
-

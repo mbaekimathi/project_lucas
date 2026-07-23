@@ -2447,44 +2447,41 @@ def is_hosted():
     return False
 
 # Database configuration - automatically detect hosted vs local
+# Hosted: keep timeouts under typical Passenger/Apache request limits so the
+# app fails fast instead of hanging until the proxy returns 503.
 _DB_CONNECT_TIMEOUT = max(1, int(os.environ.get('DB_CONNECT_TIMEOUT', '5')))
 _DB_READ_TIMEOUT = max(5, int(os.environ.get(
     'DB_READ_TIMEOUT',
-    '90' if is_hosted() else '120',
+    '45' if is_hosted() else '120',
 )))
 _DB_WRITE_TIMEOUT = max(5, int(os.environ.get(
     'DB_WRITE_TIMEOUT',
-    '90' if is_hosted() else '120',
+    '45' if is_hosted() else '120',
 )))
 
-if is_hosted():
-    # Hosted server credentials (shared MySQL — keep timeouts tight)
-    DB_CONFIG = {
-        'host': os.environ.get('DB_HOST', 'localhost'),
-        'user': os.environ.get('DB_USER', 'elimucentric_school'),
-        'password': os.environ.get('DB_PASSWORD', ''),
-        'database': os.environ.get('DB_NAME', 'elimucentric_school'),
-        'charset': 'utf8mb4',
-        'cursorclass': pymysql.cursors.DictCursor,
-        'connect_timeout': _DB_CONNECT_TIMEOUT,
-        'read_timeout': _DB_READ_TIMEOUT,
-        'write_timeout': _DB_WRITE_TIMEOUT,
-        'autocommit': False,
-    }
-else:
-    # Local development credentials
-    DB_CONFIG = {
-        'host': os.environ.get('DB_HOST', 'localhost'),
-        'user': os.environ.get('DB_USER', 'root'),
-        'password': os.environ.get('DB_PASSWORD', ''),
-        'database': os.environ.get('DB_NAME', 'modern_school'),
-        'charset': 'utf8mb4',
-        'cursorclass': pymysql.cursors.DictCursor,
-        'connect_timeout': _DB_CONNECT_TIMEOUT,
-        'read_timeout': _DB_READ_TIMEOUT,
-        'write_timeout': _DB_WRITE_TIMEOUT,
-        'autocommit': False,
-    }
+_DB_CONFIG_BASE = {
+    'host': os.environ.get('DB_HOST', 'localhost'),
+    'user': os.environ.get(
+        'DB_USER',
+        'elimucentric_school' if is_hosted() else 'root',
+    ),
+    'password': os.environ.get('DB_PASSWORD', ''),
+    'database': os.environ.get(
+        'DB_NAME',
+        'elimucentric_school' if is_hosted() else 'modern_school',
+    ),
+    'charset': 'utf8mb4',
+    'cursorclass': pymysql.cursors.DictCursor,
+    'connect_timeout': _DB_CONNECT_TIMEOUT,
+    'read_timeout': _DB_READ_TIMEOUT,
+    'write_timeout': _DB_WRITE_TIMEOUT,
+    'autocommit': False,
+}
+# Optional session init (some shared hosts reject SET SESSION wait_timeout).
+_DB_INIT_COMMAND = (os.environ.get('DB_INIT_COMMAND') or '').strip()
+if _DB_INIT_COMMAND:
+    _DB_CONFIG_BASE['init_command'] = _DB_INIT_COMMAND
+DB_CONFIG = dict(_DB_CONFIG_BASE)
 
 # Long cache for /static on production hosts (repeat visits skip re-downloading CSS/JS)
 if is_hosted():
@@ -16046,20 +16043,33 @@ def init_db():
 # Shared MySQL connection pool (DBUtils). connection.close() returns to the pool.
 _db_pool = None
 _db_pool_lock = threading.Lock()
+_db_fail_streak = 0
+_db_circuit_open_until = 0.0
+_db_last_pool_reset = 0.0
 
-# MySQL disconnect / gone-away style errors (retry once after pool reset).
+# Stale / dropped sockets (retry checkout). Do NOT include generic query timeouts —
+# those are workload issues; treating them as disconnects caused cascading pool resets.
 _MYSQL_DISCONNECT_ERRNOS = frozenset({
     2006,  # MySQL server has gone away
     2013,  # Lost connection during query
     2003,  # Can't connect to MySQL server
     2002,  # Can't connect through socket
-    2045,  # Idle disconnect / wait_timeout variants on some hosts
+    2014,  # Commands out of sync (often after a killed connection)
 })
+# Shared-host connection caps — back off; never nuke the whole pool for these.
+_MYSQL_CAPACITY_ERRNOS = frozenset({
+    1040,  # Too many connections
+    1203,  # User already has more than max_user_connections
+    1226,  # User has exceeded the 'max_user_connections' resource
+})
+# Hard ceiling per Passenger/Flask process on shared MySQL.
+# pool_size × PassengerMaxPoolSize must stay under MySQL max_user_connections.
+_HOSTED_POOL_HARD_CAP = max(1, int(os.environ.get('DB_POOL_HARD_CAP', '3')))
 
 
 def reset_db_pool():
     """Drop the pool so the next checkout recreates it (e.g. after creating the DB)."""
-    global _db_pool
+    global _db_pool, _db_last_pool_reset
     with _db_pool_lock:
         if _db_pool is not None:
             try:
@@ -16067,23 +16077,33 @@ def reset_db_pool():
             except Exception:
                 pass
             _db_pool = None
+        _db_last_pool_reset = time.time()
 
 
 def _resolve_db_pool_size():
     """
     Pool size per Passenger/Flask process.
     Honors DB_POOL_SIZE, then hosted DB_POOL_MAX (legacy .env name), then safe defaults.
-    Hosted shared MySQL often caps max_user_connections; keep this small.
+    Hosted shared MySQL often caps max_user_connections — always hard-cap there.
     """
     raw = (os.environ.get('DB_POOL_SIZE') or '').strip()
     if not raw:
         raw = (os.environ.get('DB_POOL_MAX') or '').strip()
+    size = None
     if raw:
         try:
-            return max(1, int(raw))
+            size = max(1, int(raw))
         except (TypeError, ValueError):
-            pass
-    return 4 if is_hosted() else 24
+            size = None
+    if size is None:
+        size = 3 if is_hosted() else 24
+    if is_hosted() and size > _HOSTED_POOL_HARD_CAP:
+        print(
+            f"MySQL pool: clamping DB_POOL_SIZE={size} to hosted hard cap "
+            f"{_HOSTED_POOL_HARD_CAP} (set DB_POOL_HARD_CAP to raise)"
+        )
+        size = _HOSTED_POOL_HARD_CAP
+    return size
 
 
 def _resolve_db_pool_min_cached(maxconn):
@@ -16104,15 +16124,26 @@ def _is_mysql_disconnect_error(exc):
     markers = (
         'mysql server has gone away',
         'lost connection',
-        'connection not available',
         'broken pipe',
         'not connected',
         'server closed the connection',
-        'connection reset',
-        'timed out',
-        'timeout',
+        'connection reset by peer',
+        'ssl connection has been closed',
     )
     return any(m in msg for m in markers)
+
+
+def _is_mysql_capacity_error(exc):
+    errno = _mysql_errno(exc)
+    if errno in _MYSQL_CAPACITY_ERRNOS:
+        return True
+    msg = str(exc or '').lower()
+    return (
+        'too many connections' in msg
+        or 'max_user_connections' in msg
+        or 'connection not available' in msg
+        or 'too many connections error' in msg
+    )
 
 
 def _create_db_pool():
@@ -16125,12 +16156,21 @@ def _create_db_pool():
     maxconn = _resolve_db_pool_size()
     mincached = _resolve_db_pool_min_cached(maxconn)
     # Keep few idle sockets on hosted hosts so wait_timeout does not accumulate zombies.
-    maxcached = max(mincached, min(2 if is_hosted() else 4, maxconn))
-    # ping bitmask: 1=checkout, 2=cursor, 4=execute → 7 = all (recovers stale pooled sockets)
-    ping = max(0, int(os.environ.get('DB_POOL_PING', '7')))
+    maxcached = max(mincached, min(1 if is_hosted() else 4, maxconn))
+    # ping=1: validate on checkout only (enough for wait_timeout; ping=7 added latency under load)
+    ping = max(0, int(os.environ.get('DB_POOL_PING', '1')))
+    # Hosted: never block forever when the pool is full — that is a leading cause of
+    # Passenger/Apache 503s. Fail fast and retry briefly in get_db_connection().
+    blocking = (os.environ.get('DB_POOL_BLOCKING', '0' if is_hosted() else '1').strip().lower()
+                in ('1', 'true', 'yes', 'on'))
+    maxusage = max(1, int(os.environ.get(
+        'DB_POOL_MAXUSAGE',
+        '80' if is_hosted() else '1000',
+    )))
     print(
         f"MySQL pool: maxconnections={maxconn} mincached={mincached} "
-        f"maxcached={maxcached} ping={ping} hosted={is_hosted()}"
+        f"maxcached={maxcached} ping={ping} blocking={blocking} "
+        f"maxusage={maxusage} hosted={is_hosted()}"
     )
     return PooledDB(
         creator=pymysql,
@@ -16138,9 +16178,15 @@ def _create_db_pool():
         mincached=mincached,
         maxcached=maxcached,
         maxshared=0,
-        blocking=True,
-        maxusage=500 if is_hosted() else 1000,
+        blocking=blocking,
+        maxusage=maxusage,
         ping=ping,
+        reset=True,
+        failures=(
+            pymysql.err.OperationalError,
+            pymysql.err.InterfaceError,
+            pymysql.err.InternalError,
+        ),
         **DB_CONFIG,
     )
 
@@ -16162,47 +16208,109 @@ def _checkout_db_connection(force_fresh_pool=False):
     return pymysql.connect(**DB_CONFIG)
 
 
+def _maybe_reset_pool_after_disconnect():
+    """Reset the pool at most once every few seconds after real disconnects."""
+    global _db_last_pool_reset
+    now = time.time()
+    if (now - _db_last_pool_reset) < 3.0:
+        return False
+    print("Database disconnect: resetting connection pool (rate-limited)…")
+    reset_db_pool()
+    return True
+
+
+def _record_db_success():
+    global _db_fail_streak, _db_circuit_open_until
+    _db_fail_streak = 0
+    _db_circuit_open_until = 0.0
+
+
+def _record_db_failure():
+    """Open a short circuit after repeated failures so we do not stampede MySQL."""
+    global _db_fail_streak, _db_circuit_open_until
+    _db_fail_streak += 1
+    if _db_fail_streak >= 8:
+        _db_circuit_open_until = time.time() + 2.0
+        _db_fail_streak = 0
+        print("Database circuit open for 2s after repeated connection failures")
+
+
 def get_db_connection():
     """Return a database connection from the pool (or a fresh connect as fallback)."""
+    global _db_circuit_open_until
+    if time.time() < _db_circuit_open_until:
+        return None
+
     try:
-        return _checkout_db_connection()
-    except pymysql.err.OperationalError as e:
-        # If database doesn't exist, try to create it and reconnect
-        if e.args and e.args[0] == 1049:  # Unknown database error
-            print(f"Database '{DB_CONFIG['database']}' not found. Creating database and tables...")
-            if ensure_database_exists():
-                try:
-                    if init_db():
-                        return _checkout_db_connection(force_fresh_pool=True)
-                    else:
+        from dbutils.pooled_db import TooManyConnections as _PoolExhausted
+    except ImportError:
+        class _PoolExhausted(Exception):
+            """DBUtils not installed — never raised."""
+
+    last_err = None
+    attempts = 4 if is_hosted() else 3
+    for attempt in range(attempts):
+        try:
+            conn = _checkout_db_connection(force_fresh_pool=False)
+            _record_db_success()
+            return conn
+        except _PoolExhausted as e:
+            last_err = e
+            # Pool exhausted in this worker — brief wait; do not reset the pool.
+            time.sleep(0.05 * (attempt + 1))
+            continue
+        except pymysql.err.OperationalError as e:
+            last_err = e
+            if e.args and e.args[0] == 1049:  # Unknown database
+                print(f"Database '{DB_CONFIG['database']}' not found. Creating database and tables...")
+                if ensure_database_exists():
+                    try:
+                        if init_db():
+                            conn = _checkout_db_connection(force_fresh_pool=True)
+                            _record_db_success()
+                            return conn
                         print("Failed to initialize database tables.")
+                        _record_db_failure()
                         return None
-                except Exception as e2:
-                    print(f"Database connection error after creation: {e2}")
-                    return None
-            else:
+                    except Exception as e2:
+                        print(f"Database connection error after creation: {e2}")
+                        _record_db_failure()
+                        return None
                 print(f"Failed to create database '{DB_CONFIG['database']}'.")
+                _record_db_failure()
                 return None
-        # Stale / dropped connections under hosted wait_timeout or connection caps
-        if _is_mysql_disconnect_error(e):
-            print(f"Database disconnect on checkout ({e}); resetting pool and retrying once…")
-            try:
-                return _checkout_db_connection(force_fresh_pool=True)
-            except Exception as e2:
-                print(f"Database reconnect failed: {e2}")
-                return None
-        print(f"Database connection error: {e}")
-        return None
-    except Exception as e:
-        if _is_mysql_disconnect_error(e):
-            print(f"Database disconnect on checkout ({e}); resetting pool and retrying once…")
-            try:
-                return _checkout_db_connection(force_fresh_pool=True)
-            except Exception as e2:
-                print(f"Database reconnect failed: {e2}")
-                return None
-        print(f"Database connection error: {e}")
-        return None
+            if _is_mysql_capacity_error(e):
+                print(f"Database capacity limit ({e}); backing off…")
+                time.sleep(0.12 * (attempt + 1))
+                continue
+            if _is_mysql_disconnect_error(e):
+                print(f"Database disconnect on checkout ({e}); retrying…")
+                if attempt >= attempts - 2:
+                    _maybe_reset_pool_after_disconnect()
+                time.sleep(0.05 * (attempt + 1))
+                continue
+            print(f"Database connection error: {e}")
+            _record_db_failure()
+            return None
+        except Exception as e:
+            last_err = e
+            if _is_mysql_capacity_error(e):
+                print(f"Database capacity limit ({e}); backing off…")
+                time.sleep(0.12 * (attempt + 1))
+                continue
+            if _is_mysql_disconnect_error(e):
+                print(f"Database disconnect on checkout ({e}); retrying…")
+                if attempt >= attempts - 2:
+                    _maybe_reset_pool_after_disconnect()
+                time.sleep(0.05 * (attempt + 1))
+                continue
+            print(f"Database connection error: {e}")
+            _record_db_failure()
+            return None
+
+    print(f"Database connection failed after {attempts} attempts: {last_err}")
+    _record_db_failure()
+    return None
 
 
 def db_execute_with_retry(connection, cursor, sql, params=None, retries=1):
