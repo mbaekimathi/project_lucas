@@ -1,0 +1,134 @@
+[
+  {
+    "users": 5,
+    "req": 89,
+    "ok": 79,
+    "fail": 10,
+    "err": 11.24,
+    "p50": 188.9,
+    "p95": 1448.7,
+    "rps": 12.33,
+    "healthy": false,
+    "slow": [
+      {
+        "p95": 1583.2076299702749,
+        "path": "/dashboard/employee/student-fees/students?page=1&per_page=50",
+        "n": 15
+      },
+      {
+        "p95": 667.3229999840258,
+        "path": "/dashboard/employee/staff-and-salaries",
+        "n": 13
+      },
+      {
+        "p95": 434.0257200063206,
+        "path": "/staff-management/employees?page=1&per_page=50",
+        "n": 13
+      },
+      {
+        "p95": 362.94346998911345,
+        "path": "/dashboard/employee/student-fees",
+        "n": 15
+      }
+    ]
+  },
+  {
+    "users": 10,
+    "req": 99,
+    "ok": 89,
+    "fail": 10,
+    "err": 10.1,
+    "p50": 371.7,
+    "p95": 2464.5,
+    "rps": 13.2,
+    "healthy": false,
+    "slow": [
+      {
+        "p95": 2686.2061450083274,
+        "path": "/dashboard/employee/student-fees/students?page=1&per_page=50",
+        "n": 20
+      },
+      {
+        "p95": 783.7467300123536,
+        "path": "/dashboard/employee/student-fees",
+        "n": 20
+      },
+      {
+        "p95": 541.9170999899505,
+        "path": "/dashboard/employee/staff-and-salaries",
+        "n": 13
+      },
+      {
+        "p95": 281.0585200204514,
+        "path": "/staff-management/employees?page=1&per_page=50",
+        "n": 13
+      }
+    ]
+  },
+  {
+    "users": 20,
+    "req": 86,
+    "ok": 83,
+    "fail": 3,
+    "err": 3.49,
+    "p50": 1017.3,
+    "p95": 5866.5,
+    "rps": 9.26,
+    "healthy": false,
+    "slow": [
+      {
+        "p95": 6036.788889949094,
+        "path": "/dashboard/employee/student-fees/students?page=1&per_page=50",
+        "n": 22
+      },
+      {
+        "p95": 1958.1410849816164,
+        "path": "/dashboard/employee/student-fees",
+        "n": 22
+      },
+      {
+        "p95": 1688.2732349738944,
+        "path": "/dashboard/employee/staff-and-salaries",
+        "n": 12
+      },
+      {
+        "p95": 1244.7736500122119,
+        "path": "/staff-management/employees?page=1&per_page=50",
+        "n": 12
+      }
+    ]
+  },
+  {
+    "users": 40,
+    "req": 95,
+    "ok": 95,
+    "fail": 0,
+    "err": 0.0,
+    "p50": 3808.3,
+    "p95": 8998.7,
+    "rps": 7.18,
+    "healthy": false,
+    "slow": [
+      {
+        "p95": 9535.949204958159,
+        "path": "/dashboard/employee/student-fees/students?page=1&per_page=50",
+        "n": 40
+      },
+      {
+        "p95": 7368.350590023325,
+        "path": "/dashboard/employee/student-fees",
+        "n": 40
+      },
+      {
+        "p95": 4777.478599990718,
+        "path": "/dashboard/employee/staff-and-salaries",
+        "n": 5
+      },
+      {
+        "p95": 2418.2286999886855,
+        "path": "/staff-management/employees?page=1&per_page=50",
+        "n": 5
+      }
+    ]
+  }
+]
