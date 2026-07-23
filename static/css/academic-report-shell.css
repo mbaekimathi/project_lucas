@@ -315,21 +315,26 @@
         border: 1px solid #94a3b8 !important;
         box-sizing: border-box !important;
         vertical-align: middle !important;
+        overflow: hidden !important;
     }
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-mark {
-        white-space: normal !important;
-        overflow: visible !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
+        text-align: center !important;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade {
         display: inline-flex;
         flex-direction: row;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         align-items: center;
         justify-content: center;
-        gap: 2px 4px;
-        line-height: 1.2;
+        gap: 0 2px;
+        line-height: 1.1;
         min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-sep {
         opacity: 0.55;
@@ -349,7 +354,7 @@
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-sum,
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-grade {
         white-space: nowrap !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
     }
     #ar-preview-wrap table.ar-marks-matrix--dense {
@@ -378,14 +383,20 @@
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
         text-align: left !important;
-        white-space: normal !important;
-        word-break: break-word !important;
-        max-width: none !important;
-        overflow: visible !important;
-        text-overflow: clip !important;
-        padding-left: 3px !important;
-        padding-right: 4px !important;
+        white-space: nowrap !important;
+        word-break: normal !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        padding-left: 2px !important;
+        padding-right: 3px !important;
         font-weight: 600 !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-student .ar-student-name {
+        display: block !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
         max-width: 6.5mm !important;
@@ -410,9 +421,6 @@
         font-weight: 600 !important;
         overflow: visible !important;
         text-overflow: clip !important;
-    }
-    #ar-preview-wrap table.ar-marks-matrix col.ar-col-subj {
-        width: auto !important;
     }
     #ar-preview-wrap table.ar-marks-matrix th.ar-col-subj {
         text-align: center !important;
@@ -1174,16 +1182,34 @@
     }
   /* Class marks matrix — full sheet width */
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix {
-        font-size: 9pt !important;
+        font-size: 8pt !important;
+        table-layout: fixed !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix th,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix td {
+        overflow: hidden !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
-        width: 20% !important;
         min-width: 0 !important;
+        max-width: none !important;
+        white-space: nowrap !important;
+        word-break: normal !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-student .ar-student-name {
+        display: block !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
         max-width: none !important;
-        width: auto !important;
-        white-space: normal !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap .ar-subj-mark-grade .ar-subj-grd {
         -webkit-print-color-adjust: exact;
@@ -1192,16 +1218,18 @@
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-grade,
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-grade {
         max-width: none !important;
-        min-width: 14mm !important;
-        width: 7% !important;
-        overflow: visible !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-sum {
         max-width: none !important;
-        min-width: 10mm !important;
-        overflow: visible !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
+    }
+    html.ar-print-marks-landscape #ar-preview-wrap table.ar-marks-matrix {
+        font-size: 8.25pt !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner,
     html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner + article.ar-rc {
@@ -1397,11 +1425,18 @@
 }
 #ar-details-list .ar-marks-matrix .ar-col-student {
     text-align: left;
-    white-space: normal;
-    word-break: break-word;
-    overflow: visible;
-    text-overflow: clip;
+    white-space: nowrap;
+    word-break: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix .ar-col-student .ar-student-name {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 #ar-details-list .ar-marks-matrix .ar-col-mark {
     max-width: 2.1rem;

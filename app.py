@@ -2447,15 +2447,29 @@ def is_hosted():
     return False
 
 # Database configuration - automatically detect hosted vs local
+_DB_CONNECT_TIMEOUT = max(1, int(os.environ.get('DB_CONNECT_TIMEOUT', '5')))
+_DB_READ_TIMEOUT = max(5, int(os.environ.get(
+    'DB_READ_TIMEOUT',
+    '90' if is_hosted() else '120',
+)))
+_DB_WRITE_TIMEOUT = max(5, int(os.environ.get(
+    'DB_WRITE_TIMEOUT',
+    '90' if is_hosted() else '120',
+)))
+
 if is_hosted():
-    # Hosted server credentials
+    # Hosted server credentials (shared MySQL — keep timeouts tight)
     DB_CONFIG = {
         'host': os.environ.get('DB_HOST', 'localhost'),
         'user': os.environ.get('DB_USER', 'elimucentric_school'),
         'password': os.environ.get('DB_PASSWORD', ''),
         'database': os.environ.get('DB_NAME', 'elimucentric_school'),
         'charset': 'utf8mb4',
-        'cursorclass': pymysql.cursors.DictCursor
+        'cursorclass': pymysql.cursors.DictCursor,
+        'connect_timeout': _DB_CONNECT_TIMEOUT,
+        'read_timeout': _DB_READ_TIMEOUT,
+        'write_timeout': _DB_WRITE_TIMEOUT,
+        'autocommit': False,
     }
 else:
     # Local development credentials
@@ -2465,7 +2479,11 @@ else:
         'password': os.environ.get('DB_PASSWORD', ''),
         'database': os.environ.get('DB_NAME', 'modern_school'),
         'charset': 'utf8mb4',
-        'cursorclass': pymysql.cursors.DictCursor
+        'cursorclass': pymysql.cursors.DictCursor,
+        'connect_timeout': _DB_CONNECT_TIMEOUT,
+        'read_timeout': _DB_READ_TIMEOUT,
+        'write_timeout': _DB_WRITE_TIMEOUT,
+        'autocommit': False,
     }
 
 # Long cache for /static on production hosts (repeat visits skip re-downloading CSS/JS)
@@ -16029,6 +16047,15 @@ def init_db():
 _db_pool = None
 _db_pool_lock = threading.Lock()
 
+# MySQL disconnect / gone-away style errors (retry once after pool reset).
+_MYSQL_DISCONNECT_ERRNOS = frozenset({
+    2006,  # MySQL server has gone away
+    2013,  # Lost connection during query
+    2003,  # Can't connect to MySQL server
+    2002,  # Can't connect through socket
+    2045,  # Idle disconnect / wait_timeout variants on some hosts
+})
+
 
 def reset_db_pool():
     """Drop the pool so the next checkout recreates it (e.g. after creating the DB)."""
@@ -16042,6 +16069,52 @@ def reset_db_pool():
             _db_pool = None
 
 
+def _resolve_db_pool_size():
+    """
+    Pool size per Passenger/Flask process.
+    Honors DB_POOL_SIZE, then hosted DB_POOL_MAX (legacy .env name), then safe defaults.
+    Hosted shared MySQL often caps max_user_connections; keep this small.
+    """
+    raw = (os.environ.get('DB_POOL_SIZE') or '').strip()
+    if not raw:
+        raw = (os.environ.get('DB_POOL_MAX') or '').strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except (TypeError, ValueError):
+            pass
+    return 4 if is_hosted() else 24
+
+
+def _resolve_db_pool_min_cached(maxconn):
+    raw = (os.environ.get('DB_POOL_MIN_CACHED') or '').strip()
+    if raw:
+        try:
+            return max(0, min(int(raw), maxconn))
+        except (TypeError, ValueError):
+            pass
+    return 0
+
+
+def _is_mysql_disconnect_error(exc):
+    errno = _mysql_errno(exc)
+    if errno in _MYSQL_DISCONNECT_ERRNOS:
+        return True
+    msg = str(exc or '').lower()
+    markers = (
+        'mysql server has gone away',
+        'lost connection',
+        'connection not available',
+        'broken pipe',
+        'not connected',
+        'server closed the connection',
+        'connection reset',
+        'timed out',
+        'timeout',
+    )
+    return any(m in msg for m in markers)
+
+
 def _create_db_pool():
     """Build a PooledDB, or None if DBUtils is unavailable."""
     try:
@@ -16049,17 +16122,25 @@ def _create_db_pool():
     except ImportError:
         print('DBUtils not installed — using unpooled MySQL connections. pip install DBUtils')
         return None
-    maxconn = max(1, int(os.environ.get('DB_POOL_SIZE', '24')))
-    maxcached = max(1, min(4, maxconn))
+    maxconn = _resolve_db_pool_size()
+    mincached = _resolve_db_pool_min_cached(maxconn)
+    # Keep few idle sockets on hosted hosts so wait_timeout does not accumulate zombies.
+    maxcached = max(mincached, min(2 if is_hosted() else 4, maxconn))
+    # ping bitmask: 1=checkout, 2=cursor, 4=execute → 7 = all (recovers stale pooled sockets)
+    ping = max(0, int(os.environ.get('DB_POOL_PING', '7')))
+    print(
+        f"MySQL pool: maxconnections={maxconn} mincached={mincached} "
+        f"maxcached={maxcached} ping={ping} hosted={is_hosted()}"
+    )
     return PooledDB(
         creator=pymysql,
         maxconnections=maxconn,
-        mincached=0,
+        mincached=mincached,
         maxcached=maxcached,
         maxshared=0,
         blocking=True,
-        maxusage=1000,
-        ping=1,
+        maxusage=500 if is_hosted() else 1000,
+        ping=ping,
         **DB_CONFIG,
     )
 
@@ -16072,25 +16153,27 @@ def _get_db_pool():
         return _db_pool
 
 
+def _checkout_db_connection(force_fresh_pool=False):
+    if force_fresh_pool:
+        reset_db_pool()
+    pool = _get_db_pool()
+    if pool is not None:
+        return pool.connection()
+    return pymysql.connect(**DB_CONFIG)
+
+
 def get_db_connection():
     """Return a database connection from the pool (or a fresh connect as fallback)."""
     try:
-        pool = _get_db_pool()
-        if pool is not None:
-            return pool.connection()
-        return pymysql.connect(**DB_CONFIG)
+        return _checkout_db_connection()
     except pymysql.err.OperationalError as e:
         # If database doesn't exist, try to create it and reconnect
-        if e.args[0] == 1049:  # Unknown database error
+        if e.args and e.args[0] == 1049:  # Unknown database error
             print(f"Database '{DB_CONFIG['database']}' not found. Creating database and tables...")
             if ensure_database_exists():
                 try:
                     if init_db():
-                        reset_db_pool()
-                        pool = _get_db_pool()
-                        if pool is not None:
-                            return pool.connection()
-                        return pymysql.connect(**DB_CONFIG)
+                        return _checkout_db_connection(force_fresh_pool=True)
                     else:
                         print("Failed to initialize database tables.")
                         return None
@@ -16100,12 +16183,60 @@ def get_db_connection():
             else:
                 print(f"Failed to create database '{DB_CONFIG['database']}'.")
                 return None
-        else:
-            print(f"Database connection error: {e}")
-            return None
-    except Exception as e:
+        # Stale / dropped connections under hosted wait_timeout or connection caps
+        if _is_mysql_disconnect_error(e):
+            print(f"Database disconnect on checkout ({e}); resetting pool and retrying once…")
+            try:
+                return _checkout_db_connection(force_fresh_pool=True)
+            except Exception as e2:
+                print(f"Database reconnect failed: {e2}")
+                return None
         print(f"Database connection error: {e}")
         return None
+    except Exception as e:
+        if _is_mysql_disconnect_error(e):
+            print(f"Database disconnect on checkout ({e}); resetting pool and retrying once…")
+            try:
+                return _checkout_db_connection(force_fresh_pool=True)
+            except Exception as e2:
+                print(f"Database reconnect failed: {e2}")
+                return None
+        print(f"Database connection error: {e}")
+        return None
+
+
+def db_execute_with_retry(connection, cursor, sql, params=None, retries=1):
+    """
+    Execute SQL; on MySQL gone-away / lost connection, replace connection once and retry.
+    Returns (connection, cursor). Caller must close the returned connection.
+    """
+    last_exc = None
+    attempt = 0
+    while attempt <= max(0, int(retries)):
+        try:
+            if params is None:
+                cursor.execute(sql)
+            else:
+                cursor.execute(sql, params)
+            return connection, cursor
+        except Exception as e:
+            last_exc = e
+            if attempt >= retries or not _is_mysql_disconnect_error(e):
+                raise
+            print(f"db_execute_with_retry: disconnect ({e}); reconnecting…")
+            try:
+                connection.close()
+            except Exception:
+                pass
+            connection = get_db_connection()
+            if not connection:
+                raise
+            cursor = connection.cursor()
+            attempt += 1
+    if last_exc:
+        raise last_exc
+    return connection, cursor
+
 
 def login_required(f):
     """Decorator to require login"""
@@ -87467,14 +87598,14 @@ def _academic_report_export_cell_value(col_key, row, meta=None, report_type=None
     if ck in row:
         v = row[ck]
     else:
-        v = None
-        ck_st = ck.strip()
-        for rk in row:
-            if isinstance(rk, str) and rk.strip() == ck_st:
-                v = row[rk]
-                break
-        if v is None:
-            return ''
+        # Fast path: exact key only (avoid O(keys) fuzzy scan on every miss).
+        v = row.get(ck)
+        if v is None and ck:
+            ck_st = ck.strip()
+            if ck_st != ck:
+                v = row.get(ck_st)
+            if v is None:
+                return ''
     # Single-value list/tuple from DB/ORM (would otherwise export as blank)
     while isinstance(v, (list, tuple)) and len(v) == 1:
         v = v[0]
@@ -87767,7 +87898,7 @@ def _trim_academic_report_json_bundle(bundle, report_type):
             continue
         slim = {}
         for k, v in row.items():
-            if k in ('rank_sort_total', 'rank_sort_mean', 'subject_grades'):
+            if k in ('rank_sort_total', 'rank_sort_mean'):
                 continue
             if k in subject_cols and isinstance(row.get('subject_marks'), dict):
                 continue
@@ -87776,6 +87907,9 @@ def _trim_academic_report_json_bundle(bundle, report_type):
             sm = row.get('subject_marks')
             if isinstance(sm, dict):
                 slim['subject_marks'] = sm
+            sg = row.get('subject_grades')
+            if isinstance(sg, dict) and sg:
+                slim['subject_grades'] = sg
             smb = row.get('subject_marks_by_exam')
             if isinstance(smb, dict) and smb:
                 slim['subject_marks_by_exam'] = smb
@@ -87791,14 +87925,19 @@ def _academic_report_grade_code_for_pct(marks_value, meta, level_id=None):
     if marks_value is None or marks_value == '':
         return ''
     default_bands = meta.get('grade_bands') or []
-    class_bands_raw = meta.get('class_grade_bands') or {}
-    class_bands = {}
-    if isinstance(class_bands_raw, dict):
-        for k, v in class_bands_raw.items():
-            try:
-                class_bands[int(k)] = v
-            except (TypeError, ValueError):
-                continue
+    # Cache int-keyed class bands on the meta dict (mutated once per export/payload).
+    class_bands = meta.get('_class_grade_bands_int')
+    if class_bands is None:
+        class_bands = {}
+        class_bands_raw = meta.get('class_grade_bands') or {}
+        if isinstance(class_bands_raw, dict):
+            for k, v in class_bands_raw.items():
+                try:
+                    class_bands[int(k)] = v
+                except (TypeError, ValueError):
+                    continue
+        if isinstance(meta, dict):
+            meta['_class_grade_bands_int'] = class_bands
     bands = resolve_grade_bands(level_id, class_bands, default_bands)
     code, _ = grade_code_and_points_from_pct(marks_value, bands)
     return (code or '').strip()
@@ -87991,9 +88130,20 @@ def _make_academic_report_excel_response(bundle, report_type):
     return output
 
 
-def _build_academic_report_excel_bytes(bundle, report_type):
-    """Build a real .xlsx workbook (openpyxl). Returns (bytes, filename) or an error Response."""
+_XLSX_NUMERIC_RE = re.compile(r'-?\d+(\.\d+)?')
+_XLSX_STRING_ID_COLS = frozenset({
+    'student_id', 'admission_number', 'teacher_id', 'invigilator_employee_id',
+})
+
+
+def _build_academic_report_excel_bytes(bundle, report_type, filepath=None):
+    """
+    Build a real .xlsx workbook (openpyxl).
+    Returns (bytes, filename), or (filepath, filename) when filepath is set,
+    or an error Response.
+    """
     from io import BytesIO
+    from decimal import Decimal
 
     try:
         from openpyxl import Workbook
@@ -88011,6 +88161,9 @@ def _build_academic_report_excel_bytes(bundle, report_type):
     sections = _academic_report_export_body_sections(bundle, report_type)
     meta = bundle.get('meta') or {}
     ncol = max(1, len(columns))
+    subject_col_set = frozenset()
+    if report_type == 'exam_all_students_performance':
+        subject_col_set = frozenset(str(c) for c in (meta.get('subject_columns') or []))
 
     wb = Workbook()
     ws = wb.active
@@ -88025,11 +88178,15 @@ def _build_academic_report_excel_bytes(bundle, report_type):
     school_head_font = Font(bold=True, size=14)
     school_meta_font = Font(bold=True, size=11)
     letterhead_sub_font = Font(size=10)
+    center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
     nrow = 1
-    xls_string_id_cols = frozenset({
-        'student_id', 'admission_number', 'teacher_id', 'invigilator_employee_id',
-    })
+    # Skip embedded logo on large sheets — biggest openpyxl cost for little export value.
+    row_estimate = len(rows) if isinstance(rows, list) else 0
+    if sections:
+        row_estimate = sum(len(sec.get('rows') or []) for sec in sections)
+    skip_logo = row_estimate > 40
 
     def merge_full_data_width():
         if ncol > 1:
@@ -88039,7 +88196,7 @@ def _build_academic_report_excel_bytes(bundle, report_type):
         nonlocal nrow
         merge_full_data_width()
         cell = ws.cell(row=nrow, column=1, value=text)
-        cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=wrap)
+        cell.alignment = left_align if wrap else Alignment(horizontal='left', vertical='center')
         if font:
             cell.font = font
         nrow += 1
@@ -88051,7 +88208,7 @@ def _build_academic_report_excel_bytes(bundle, report_type):
         name = (school.get('school_name') or 'School').strip() or 'School'
         logo_key = school.get('school_logo')
         logo_path = None
-        if logo_key:
+        if logo_key and not skip_logo:
             raw = str(logo_key).strip().replace('\\', '/').lstrip('/')
             if raw and not raw.startswith('..'):
                 cand = os.path.normpath(os.path.join(app.root_path, 'static', raw))
@@ -88074,7 +88231,7 @@ def _build_academic_report_excel_bytes(bundle, report_type):
                 ws.merge_cells(start_row=anchor_row, start_column=2, end_row=anchor_row, end_column=ncol)
                 c = ws.cell(row=anchor_row, column=2, value=name)
                 c.font = school_head_font
-                c.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+                c.alignment = left_align
                 try:
                     ws.row_dimensions[anchor_row].height = min(96, max(48, float(img.height) * 0.75 + 12))
                 except (TypeError, ValueError):
@@ -88109,7 +88266,7 @@ def _build_academic_report_excel_bytes(bundle, report_type):
             cell = ws.cell(row=nrow, column=ci, value=label)
             cell.font = header_font
             cell.fill = header_fill
-            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            cell.alignment = center_align
         nrow += 1
 
     def write_banner(text):
@@ -88119,46 +88276,58 @@ def _build_academic_report_excel_bytes(bundle, report_type):
         cell = ws.cell(row=nrow, column=1, value=str(text))
         cell.font = banner_font
         cell.fill = banner_fill
-        cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        cell.alignment = left_align
         nrow += 1
+
+    def coerce_cell_value(col_key, val):
+        if val is None:
+            return None
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, (int, float, Decimal)) and not isinstance(val, bool):
+            if isinstance(val, float) and (val != val):  # NaN
+                return None
+            return val
+        if isinstance(val, str):
+            st = val.strip()
+            if not st:
+                return None
+            if str(col_key) in _XLSX_STRING_ID_COLS:
+                return st
+            if _XLSX_NUMERIC_RE.fullmatch(st):
+                try:
+                    f = float(st)
+                    return int(f) if abs(f - round(f)) < 1e-9 else f
+                except (TypeError, ValueError, ArithmeticError):
+                    return st
+            return st
+        st = str(val).strip()
+        if not st:
+            return None
+        if str(col_key) in _XLSX_STRING_ID_COLS:
+            return st
+        if _XLSX_NUMERIC_RE.fullmatch(st):
+            try:
+                f = float(st)
+                return int(f) if abs(f - round(f)) < 1e-9 else f
+            except (TypeError, ValueError, ArithmeticError):
+                return st
+        return st
 
     def write_data_row(row_dict):
         nonlocal nrow
         if not isinstance(row_dict, dict):
             nrow += 1
             return
-        from decimal import Decimal
-
         for ci, col_key in enumerate(columns, start=1):
-            val = _academic_report_export_cell_value(
-                col_key, row_dict, meta=meta, report_type=report_type,
-            )
-            cell = ws.cell(row=nrow, column=ci)
-            if val is None:
-                cell.value = None
-            elif isinstance(val, str) and val.strip() == '':
-                cell.value = None
-            elif isinstance(val, bool):
-                cell.value = val
-            elif isinstance(val, (int, float, Decimal)) and not isinstance(val, bool):
-                if isinstance(val, float) and (val != val):  # NaN
-                    cell.value = None
-                else:
-                    cell.value = val
+            ck = str(col_key)
+            if ck in subject_col_set:
+                val = _academic_report_subject_cell_export_value(row_dict, ck, meta)
             else:
-                st = str(val).strip()
-                if not st:
-                    cell.value = None
-                elif str(col_key) in xls_string_id_cols:
-                    cell.value = st
-                elif re.fullmatch(r'-?\d+(\.\d+)?', st):
-                    try:
-                        f = float(st)
-                        cell.value = int(f) if abs(f - round(f)) < 1e-9 else f
-                    except (TypeError, ValueError, ArithmeticError):
-                        cell.value = st
-                else:
-                    cell.value = st
+                val = _academic_report_export_cell_value(
+                    ck, row_dict, meta=meta, report_type=report_type,
+                )
+            ws.cell(row=nrow, column=ci, value=coerce_cell_value(ck, val))
         nrow += 1
 
     if not columns:
@@ -88193,14 +88362,24 @@ def _build_academic_report_excel_bytes(bundle, report_type):
         for ci in range(1, ncol + 1):
             letter = get_column_letter(ci)
             key = str(columns[ci - 1]) if ci <= len(columns) else ''
-            ws.column_dimensions[letter].width = min(48, max(10, len(key) + 4))
+            if key in subject_col_set:
+                width = 12
+            elif key in ('total_marks', 'mean', 'grade_points', 'grade'):
+                width = 10
+            elif key in ('full_name', 'student_name'):
+                width = 28
+            else:
+                width = min(48, max(10, len(key) + 4))
+            ws.column_dimensions[letter].width = width
 
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]+', '_', report_type)[:60]
+    filename = f'{safe_name}.xlsx'
+    if filepath:
+        wb.save(filepath)
+        return filepath, filename
     buf = BytesIO()
     wb.save(buf)
-    buf.seek(0)
-    data = buf.getvalue()
-    safe_name = re.sub(r'[^a-zA-Z0-9_-]+', '_', report_type)[:60]
-    return data, f'{safe_name}.xlsx'
+    return buf.getvalue(), filename
 
 
 def _build_timetable_grid(rows, teacher_mode=False, compact_class_cell=False):
@@ -89953,12 +90132,15 @@ def _build_academic_report_payload(cursor, report_type, f):
         if student_id:
             q += " AND st.student_id = %s"
             params.append(student_id)
-        order_limit = (
+        # No row cap — same as exam_all_students_performance. A class × subjects × exams
+        # matrix routinely exceeds 3000 rows; LIMIT truncated later students/subjects so
+        # marks appeared in All students but were missing on Individual report cards.
+        order_clause = (
             " ORDER BY st.full_name, e.exam_date, "
-            "COALESCE(sub.exam_display_order, 1000000000), sub.subject_name LIMIT 3000"
+            "COALESCE(sub.exam_display_order, 1000000000), sub.subject_name"
         )
         if include_profile_image:
-            cursor.execute(q + order_limit, params)
+            cursor.execute(q + order_clause, params)
         else:
             # Backward-compatible fallback for databases without students.profile_image.
             q_no_image = """
@@ -89990,7 +90172,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             if student_id:
                 q_no_image += " AND st.student_id = %s"
                 params_no_img.append(student_id)
-            cursor.execute(q_no_image + order_limit, params_no_img)
+            cursor.execute(q_no_image + order_clause, params_no_img)
         raw_rows = cursor.fetchall() or []
         photo_url_by_student = {}
         if include_profile_image and raw_rows:
@@ -90192,7 +90374,6 @@ def _build_academic_report_payload(cursor, report_type, f):
                 str(row.get('subject_name') or '').lower(),
             )
         )
-        meta['row_limit'] = 3000
         if _academic_report_multi_exam_mode(exam_name, exam_names):
             meta['all_exams_mode'] = True
         try:
@@ -90229,6 +90410,42 @@ def _build_academic_report_payload(cursor, report_type, f):
                 meta['subject_columns'] = list((reg_labels_by_lid or {}).get(int(level_ids[0]), []) or [])
             meta['subject_columns_by_class'] = subject_columns_by_class_ind
             meta['subject_columns_by_level_id'] = subject_columns_by_level_id_ind
+            # Map paper subject_id → registered/combination column label (same as all-students).
+            sid_to_label_by_level = {}
+            for lid_k, plan_row in (_combo_plan_by_lid or {}).items():
+                mapping = {}
+                for sid_k, lbl in ((plan_row or {}).get('sid_to_label') or {}).items():
+                    try:
+                        mapping[str(int(sid_k))] = lbl
+                    except (TypeError, ValueError):
+                        mapping[str(sid_k)] = lbl
+                if mapping:
+                    try:
+                        sid_to_label_by_level[str(int(lid_k))] = mapping
+                    except (TypeError, ValueError):
+                        sid_to_label_by_level[str(lid_k)] = mapping
+            if sid_to_label_by_level:
+                meta['subject_sid_to_label_by_level_id'] = sid_to_label_by_level
+                # Remap paper subject labels to registered/combination columns so individual
+                # cards match all-students (e.g. AGN. + SCI/T → AGN./SCI/T) and marks land
+                # on the combo row instead of leaving the combo empty and members duplicated.
+                for rw in rows:
+                    try:
+                        lid_key = str(int(rw.get('academic_level_id'))) if rw.get('academic_level_id') is not None else None
+                    except (TypeError, ValueError):
+                        lid_key = str(rw.get('academic_level_id') or '').strip() or None
+                    if not lid_key:
+                        continue
+                    mapping = sid_to_label_by_level.get(lid_key) or {}
+                    sid_raw = rw.get('subject_id')
+                    if sid_raw is None or sid_raw == '':
+                        continue
+                    try:
+                        mapped = mapping.get(str(int(sid_raw))) or mapping.get(str(sid_raw))
+                    except (TypeError, ValueError):
+                        mapped = mapping.get(str(sid_raw))
+                    if mapped and str(mapped).strip():
+                        rw['subject_name'] = str(mapped).strip()
         except Exception as e:
             _schema_ignore_existing(e, 'subject column order meta for individual report')
         title = 'Individual student — exam performance' if report_type == 'exam_individual_performance' else 'Individual exam performance'
@@ -90774,8 +90991,13 @@ def api_academic_reports_generate():
     report_type = (payload.get('report_type') or '').strip()
     fmt = (payload.get('format') or 'json').strip().lower()
     filters = payload.get('filters') or {}
+    export_cache_key = (
+        (payload.get('export_cache_key') or payload.get('cache_key') or '').strip()
+    )
     if not report_type:
         return jsonify({'success': False, 'message': 'report_type is required'}), 400
+
+    owner_key = str(session.get('user_id') or session.get('employee_id') or '')
 
     # Heavy Excel builds run in a background thread so other users keep browsing.
     if fmt in ('excel', 'xls', 'xlsx'):
@@ -90783,7 +91005,14 @@ def api_academic_reports_generate():
         _set_export_job(job_id, status='queued', message='Export queued…', progress=5)
         thread = threading.Thread(
             target=_run_academic_excel_export_job,
-            args=(current_app._get_current_object(), job_id, report_type, filters),
+            args=(
+                current_app._get_current_object(),
+                job_id,
+                report_type,
+                filters,
+                export_cache_key,
+                owner_key,
+            ),
             daemon=True,
             name=f'academic-excel-{job_id}',
         )
@@ -90808,6 +91037,11 @@ def api_academic_reports_generate():
             if bundle.get('error'):
                 return jsonify({'success': False, 'message': bundle['error']}), 400
 
+            # Cache full payload so Spreadsheet reuse skips a second DB rebuild.
+            cache_key = _store_academic_report_payload_cache(
+                owner_key, report_type, filters, bundle,
+            )
+
             title = bundle.get('title', 'Report')
             columns = bundle.get('columns') or []
             rows = bundle.get('rows') or []
@@ -90828,6 +91062,7 @@ def api_academic_reports_generate():
                 'columns': columns,
                 'rows': rows,
                 'meta': meta,
+                'export_cache_key': cache_key,
             })
     except Exception as e:
         print(f"api_academic_reports_generate: {e}")
@@ -90841,6 +91076,82 @@ def api_academic_reports_generate():
 # Academic report Excel export jobs (background)
 _EXPORT_JOBS = {}
 _EXPORT_JOBS_LOCK = threading.Lock()
+
+# Short-lived report payloads so Excel export reuses the last Generate result.
+_ACADEMIC_REPORT_PAYLOAD_CACHE = {}
+_ACADEMIC_REPORT_PAYLOAD_CACHE_LOCK = threading.Lock()
+_ACADEMIC_REPORT_PAYLOAD_CACHE_TTL = 600  # seconds
+_ACADEMIC_REPORT_PAYLOAD_CACHE_MAX = 32
+
+
+def _academic_report_payload_cache_fingerprint(owner_key, report_type, filters):
+    import hashlib
+    import json as _json
+    raw = _json.dumps(
+        {'o': str(owner_key or ''), 't': str(report_type or ''), 'f': filters or {}},
+        sort_keys=True,
+        default=str,
+        separators=(',', ':'),
+    )
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:40]
+
+
+def _prune_academic_report_payload_cache(now=None):
+    now = time.time() if now is None else now
+    stale = [
+        k for k, v in _ACADEMIC_REPORT_PAYLOAD_CACHE.items()
+        if (v.get('expires_at') or 0) < now
+    ]
+    for k in stale:
+        _ACADEMIC_REPORT_PAYLOAD_CACHE.pop(k, None)
+    while len(_ACADEMIC_REPORT_PAYLOAD_CACHE) > _ACADEMIC_REPORT_PAYLOAD_CACHE_MAX:
+        oldest = min(
+            _ACADEMIC_REPORT_PAYLOAD_CACHE.items(),
+            key=lambda kv: kv[1].get('expires_at') or 0,
+        )[0]
+        _ACADEMIC_REPORT_PAYLOAD_CACHE.pop(oldest, None)
+
+
+def _store_academic_report_payload_cache(owner_key, report_type, filters, bundle):
+    """Store full (untrimmed) report bundle for fast Excel reuse. Returns cache key."""
+    if not isinstance(bundle, dict) or bundle.get('error'):
+        return ''
+    key = secrets.token_hex(12)
+    fp = _academic_report_payload_cache_fingerprint(owner_key, report_type, filters)
+    now = time.time()
+    with _ACADEMIC_REPORT_PAYLOAD_CACHE_LOCK:
+        _prune_academic_report_payload_cache(now)
+        _ACADEMIC_REPORT_PAYLOAD_CACHE[key] = {
+            'owner': str(owner_key or ''),
+            'report_type': str(report_type or ''),
+            'fingerprint': fp,
+            'bundle': bundle,
+            'expires_at': now + _ACADEMIC_REPORT_PAYLOAD_CACHE_TTL,
+        }
+    return key
+
+
+def _get_academic_report_payload_cache(cache_key, owner_key, report_type, filters):
+    """Return cached bundle when key + owner + filters match; else None."""
+    key = (cache_key or '').strip()
+    if not key:
+        return None
+    now = time.time()
+    with _ACADEMIC_REPORT_PAYLOAD_CACHE_LOCK:
+        entry = _ACADEMIC_REPORT_PAYLOAD_CACHE.get(key)
+        if not entry:
+            return None
+        if (entry.get('expires_at') or 0) < now:
+            _ACADEMIC_REPORT_PAYLOAD_CACHE.pop(key, None)
+            return None
+        if str(entry.get('owner') or '') != str(owner_key or ''):
+            return None
+        if str(entry.get('report_type') or '') != str(report_type or ''):
+            return None
+        fp = _academic_report_payload_cache_fingerprint(owner_key, report_type, filters)
+        if entry.get('fingerprint') != fp:
+            return None
+        return entry.get('bundle')
 
 
 def _export_job_snapshot(job_id):
@@ -90856,36 +91167,54 @@ def _set_export_job(job_id, **fields):
         job['updated_at'] = time.time()
 
 
-def _run_academic_excel_export_job(flask_app, job_id, report_type, filters):
+def _run_academic_excel_export_job(
+    flask_app, job_id, report_type, filters, export_cache_key='', owner_key='',
+):
     with flask_app.app_context():
-        _set_export_job(job_id, status='running', message='Building report…', progress=20)
-        connection = get_db_connection()
-        if not connection:
-            _set_export_job(job_id, status='error', message='Database unavailable', progress=100)
-            return
+        _set_export_job(job_id, status='running', message='Preparing Excel…', progress=15)
+        connection = None
         try:
-            with connection.cursor() as cursor:
-                filters = _coerce_academic_report_filters(filters or {})
-                bundle = _build_academic_report_payload(cursor, report_type, filters)
-            if not bundle or bundle.get('error'):
+            filters = _coerce_academic_report_filters(filters or {})
+            bundle = _get_academic_report_payload_cache(
+                export_cache_key, owner_key, report_type, filters,
+            )
+            if bundle:
                 _set_export_job(
-                    job_id,
-                    status='error',
-                    message=(bundle or {}).get('error') or 'Could not build report',
-                    progress=100,
+                    job_id, status='running', message='Writing Excel (cached report)…', progress=55,
                 )
-                return
-            _set_export_job(job_id, status='running', message='Writing Excel file…', progress=70)
-            built = _build_academic_report_excel_bytes(bundle, report_type)
-            if not (isinstance(built, tuple) and len(built) == 2 and isinstance(built[0], (bytes, bytearray))):
+            else:
+                _set_export_job(job_id, status='running', message='Building report…', progress=25)
+                connection = get_db_connection()
+                if not connection:
+                    _set_export_job(job_id, status='error', message='Database unavailable', progress=100)
+                    return
+                with connection.cursor() as cursor:
+                    bundle = _build_academic_report_payload(cursor, report_type, filters)
+                if not bundle or bundle.get('error'):
+                    _set_export_job(
+                        job_id,
+                        status='error',
+                        message=(bundle or {}).get('error') or 'Could not build report',
+                        progress=100,
+                    )
+                    return
+                # Refresh cache for subsequent exports of the same report.
+                _store_academic_report_payload_cache(owner_key, report_type, filters, bundle)
+                _set_export_job(job_id, status='running', message='Writing Excel file…', progress=70)
+
+            safe_job = re.sub(r'[^a-zA-Z0-9_-]+', '', job_id)[:32]
+            out_name = f'{safe_job}_{re.sub(r"[^a-zA-Z0-9_-]+", "_", report_type)[:60]}.xlsx'
+            filepath = os.path.join(EXPORT_FOLDER, out_name)
+            built = _build_academic_report_excel_bytes(bundle, report_type, filepath=filepath)
+            if not (
+                isinstance(built, tuple)
+                and len(built) == 2
+                and isinstance(built[0], str)
+                and os.path.isfile(built[0])
+            ):
                 _set_export_job(job_id, status='error', message='Excel export failed', progress=100)
                 return
-            data, filename = built
-            safe_job = re.sub(r'[^a-zA-Z0-9_-]+', '', job_id)[:32]
-            out_name = f'{safe_job}_{filename}'
-            filepath = os.path.join(EXPORT_FOLDER, out_name)
-            with open(filepath, 'wb') as fh:
-                fh.write(data)
+            filepath, filename = built
             # Background thread has app_context but no HTTP request; url_for needs a
             # request context (or SERVER_NAME). Use a test request for a relative path.
             with flask_app.test_request_context('/'):
@@ -90908,10 +91237,11 @@ def _run_academic_excel_export_job(flask_app, job_id, report_type, filters):
             traceback.print_exc()
             _set_export_job(job_id, status='error', message=str(e), progress=100)
         finally:
-            try:
-                connection.close()
-            except Exception:
-                pass
+            if connection is not None:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
 
 
 @app.route('/api/employee/academic-reports/export-status/<job_id>', methods=['GET'])

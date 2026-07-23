@@ -445,10 +445,11 @@
         border: 1px solid #94a3b8 !important;
         box-sizing: border-box !important;
         vertical-align: middle !important;
+        overflow: hidden !important;
     }
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-mark {
         white-space: nowrap !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
         text-align: center !important;
     }
@@ -458,10 +459,12 @@
         flex-wrap: nowrap !important;
         align-items: center !important;
         justify-content: center !important;
-        gap: 1px 3px !important;
+        gap: 0 2px !important;
         line-height: 1.1 !important;
-        min-width: 0;
+        max-width: 100% !important;
+        min-width: 0 !important;
         white-space: nowrap !important;
+        overflow: hidden !important;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-sep {
         display: inline !important;
@@ -532,7 +535,7 @@
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-sum,
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-grade {
         white-space: nowrap !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
     }
     #ar-preview-wrap table.ar-marks-matrix--dense {
@@ -561,59 +564,50 @@
         padding: 0 !important;
         letter-spacing: -0.03em;
     }
-    #ar-preview-wrap table.ar-marks-matrix col.ar-col-sum {
-        width: 5% !important;
-    }
-    #ar-preview-wrap table.ar-marks-matrix col.ar-col-grade {
-        width: 7% !important;
-    }
     #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
         text-align: left !important;
-        white-space: normal !important;
-        word-break: break-word !important;
-        max-width: none !important;
-        overflow: visible !important;
-        text-overflow: clip !important;
-        padding-left: 3px !important;
-        padding-right: 4px !important;
+        white-space: nowrap !important;
+        word-break: normal !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        padding-left: 2px !important;
+        padding-right: 3px !important;
         font-weight: 600 !important;
     }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-student .ar-student-name {
+        display: block !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+    }
     #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
-        max-width: 6.5mm !important;
         padding-left: 1px !important;
         padding-right: 1px !important;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-col-sum {
-        max-width: none !important;
-        min-width: 10mm !important;
-        padding-left: 2px !important;
-        padding-right: 2px !important;
+        padding-left: 1px !important;
+        padding-right: 1px !important;
         font-weight: 600 !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-col-grade {
-        max-width: none !important;
-        min-width: 14mm !important;
-        width: 7% !important;
-        padding-left: 2px !important;
-        padding-right: 3px !important;
+        padding-left: 1px !important;
+        padding-right: 2px !important;
         font-weight: 600 !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
-    }
-    #ar-preview-wrap table.ar-marks-matrix col.ar-col-subj {
-        width: auto !important;
     }
     #ar-preview-wrap table.ar-marks-matrix th.ar-col-subj {
         text-align: center !important;
-        font-size: 0.92em !important;
+        font-size: 0.88em !important;
         font-weight: 700 !important;
         white-space: normal !important;
         word-break: break-word !important;
         hyphens: auto !important;
         line-height: 1.05 !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
     }
     #ar-preview-wrap table.ar-marks-matrix--xdense th.ar-col-subj,
@@ -1487,6 +1481,8 @@
         font-size: 8pt !important;
         width: 100% !important;
         max-width: 100% !important;
+        table-layout: fixed !important;
+        border-collapse: collapse !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--dense {
         font-size: 7.25pt !important;
@@ -1500,30 +1496,78 @@
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix th,
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix td {
-        padding: 0.5px 1px !important;
-        line-height: 1.1 !important;
+        padding: 1.5px 2px !important;
+        line-height: 1.2 !important;
+        overflow: hidden !important;
+        vertical-align: middle !important;
+    }
+    /* Fill A4 when the class is not huge — taller rows, clearer type */
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--airy {
+        font-size: 10pt !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--airy th,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--airy td {
+        padding: 3.5px 3px !important;
+        line-height: 1.35 !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--roomy {
+        font-size: 9.5pt !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--roomy th,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--roomy td {
+        padding: 3px 2.5px !important;
+        line-height: 1.32 !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--balanced {
+        font-size: 8.75pt !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--balanced th,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix--balanced td {
+        padding: 2.25px 2px !important;
+        line-height: 1.28 !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
-        width: auto !important;
         min-width: 0 !important;
-        max-width: 24% !important;
-        font-size: 0.95em !important;
+        max-width: none !important;
+        font-size: 1em !important;
+        white-space: nowrap !important;
+        word-break: normal !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        padding-left: 3px !important;
+        padding-right: 4px !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix th.ar-col-subj,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix td.ar-col-mark {
+        padding-left: 1px !important;
+        padding-right: 1px !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-student .ar-student-name {
+        display: block !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-class {
-        max-width: 9% !important;
-        font-size: 0.92em !important;
+        max-width: none !important;
+        font-size: 0.9em !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
     }
-    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-mark,
-    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-subj {
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
         max-width: none !important;
         min-width: 0 !important;
-        width: auto !important;
     }
+    /* Keep colgroup % widths — do not reset subject cols to auto (steals name space). */
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-mark {
         white-space: nowrap !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
         text-align: center !important;
+        padding-left: 1px !important;
+        padding-right: 1px !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade {
         display: inline-flex !important;
@@ -1531,17 +1575,18 @@
         flex-wrap: nowrap !important;
         align-items: center !important;
         justify-content: center !important;
-        gap: 1px 2px !important;
+        gap: 0 1px !important;
         line-height: 1.1 !important;
         min-width: 0 !important;
         max-width: 100% !important;
         white-space: nowrap !important;
+        overflow: hidden !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-subj-sep {
         display: inline !important;
         opacity: 0.55 !important;
         font-weight: 600 !important;
-        font-size: 0.72em !important;
+        font-size: 0.7em !important;
         line-height: 1 !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-subj-pct {
@@ -1551,7 +1596,7 @@
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-subj-grd {
         display: inline !important;
-        font-size: 0.78em !important;
+        font-size: 0.76em !important;
         line-height: 1 !important;
         padding: 0 !important;
         white-space: nowrap !important;
@@ -1562,27 +1607,48 @@
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-grade {
         max-width: none !important;
         min-width: 0 !important;
-        width: 5.5% !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-sum,
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-sum {
         max-width: none !important;
         min-width: 0 !important;
-        width: 4.5% !important;
-        overflow: visible !important;
+        overflow: hidden !important;
         text-overflow: clip !important;
+        white-space: nowrap !important;
+        padding-left: 2px !important;
+        padding-right: 2px !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix th.ar-col-subj {
-        font-size: 0.88em !important;
-        line-height: 1.02 !important;
-        letter-spacing: -0.03em !important;
+        font-size: 0.86em !important;
+        line-height: 1.05 !important;
+        letter-spacing: -0.02em !important;
         hyphens: auto !important;
+        overflow: hidden !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .inline-flex {
         display: inline !important;
         padding: 0 !important;
+    }
+    /* Landscape: more horizontal room — clearer names + subject marks */
+    html.ar-print-marks-landscape #ar-preview-wrap table.ar-marks-matrix {
+        font-size: 8.25pt !important;
+    }
+    html.ar-print-marks-landscape #ar-preview-wrap table.ar-marks-matrix--dense {
+        font-size: 7.5pt !important;
+    }
+    html.ar-print-marks-landscape #ar-preview-wrap table.ar-marks-matrix--xdense {
+        font-size: 7pt !important;
+    }
+    html.ar-print-marks-landscape #ar-preview-wrap table.ar-marks-matrix--xxdense,
+    html.ar-print-marks-landscape #ar-preview-wrap table.ar-marks-matrix--xxxdense {
+        font-size: 6.5pt !important;
+    }
+    html.ar-print-marks-landscape #ar-preview-wrap table.ar-marks-matrix th,
+    html.ar-print-marks-landscape #ar-preview-wrap table.ar-marks-matrix td {
+        padding: 1.5px 2px !important;
+        line-height: 1.2 !important;
     }
     html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner,
     html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner + article.ar-rc {
@@ -1809,11 +1875,18 @@
 }
 #ar-details-list .ar-marks-matrix .ar-col-student {
     text-align: left;
-    white-space: normal;
-    word-break: break-word;
-    overflow: visible;
-    text-overflow: clip;
+    white-space: nowrap;
+    word-break: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix .ar-col-student .ar-student-name {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 #ar-details-list .ar-marks-matrix .ar-col-mark {
     max-width: 2.1rem;
@@ -3717,6 +3790,8 @@
   var reportLoadTimer = null;
   var reportLoadAbort = null;
   var reportLoadToken = 0;
+  var lastExportCacheKey = '';
+  var lastExportReportType = '';
   var REPORT_LOAD_DEBOUNCE_MS = 360;
   var REPORT_CARD_CHUNK_SIZE = 4;
   const examOptions = {{ (exam_names or [])|tojson|safe }};
@@ -4722,7 +4797,8 @@
     var subjCols = marksMatrixSubjectColumnCount();
     var includeHome = !!document.querySelector('#ar-details-list table.ar-marks-matrix col.ar-col-class');
     var totalCols = subjCols + 3 + (includeHome ? 2 : 1);
-    if (subjCols > 9 || totalCols > 13) {
+    /* Landscape only when many subjects — keeps typical class sheets portrait to fill the page. */
+    if (subjCols >= 9 || totalCols >= 13) {
       document.documentElement.classList.add('ar-print-marks-landscape');
     }
   }
@@ -4978,6 +5054,7 @@
   function examNamesReferToSameSitting(exName, examCol) {
     var a = normalizedExamNameKey(exName);
     if (!a) return false;
+    var aShort = normalizedExamNameKey(shortExamLabel(exName));
     var candidates = [
       examCol.exam_name,
       examCol.label,
@@ -4985,17 +5062,14 @@
       shortExamLabel(examCol.label),
     ];
     for (var i = 0; i < candidates.length; i++) {
-      var b = normalizedExamNameKey(candidates[i]);
+      var raw = candidates[i];
+      var b = normalizedExamNameKey(raw);
       if (!b) continue;
       if (a === b) return true;
-      if (a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return true;
-    }
-    var shortEx = normalizedExamNameKey(shortExamLabel(exName));
-    if (shortEx) {
-      for (var j = 0; j < candidates.length; j++) {
-        var c = normalizedExamNameKey(candidates[j]);
-        if (c && (shortEx === c || shortEx.indexOf(c) >= 0 || c.indexOf(shortEx) >= 0)) return true;
-      }
+      var bShort = normalizedExamNameKey(shortExamLabel(raw));
+      if (aShort && bShort && aShort === bShort) return true;
+      if (aShort && aShort === b) return true;
+      if (bShort && a === bShort) return true;
     }
     return false;
   }
@@ -5055,11 +5129,16 @@
 
   function markForSubjectExam(detail, subjectName, examCol) {
     const entries = (detail && detail[subjectName]) || [];
-    var mark = null;
+    var nums = [];
     entries.forEach(function(ex) {
-      if (examEntryMatchesExamCol(ex, examCol)) mark = ex.mark;
+      if (!examEntryMatchesExamCol(ex, examCol)) return;
+      if (ex.mark == null || ex.mark === '') return;
+      const n = parseFloat(ex.mark);
+      if (!isNaN(n)) nums.push(n);
     });
-    return mark;
+    if (!nums.length) return null;
+    if (nums.length === 1) return nums[0];
+    return Math.round(nums.reduce(function(a, b) { return a + b; }, 0) / nums.length);
   }
 
   function examColHasMarks(col, detail) {
@@ -5122,9 +5201,12 @@
   }
 
   function prepareIndividualReportExamCols(examCols, detail) {
+    // Keep a stable chronological order for every student so "Exam 3" always
+    // means the same sitting (e.g. Closing). Do not push empty sittings to the
+    // end per student — that made Exam 3 mean Midterm for some cards and Closing
+    // for others, and hid Closing marks under a different number.
     return enrichExamColsWithDates(examCols, detail)
       .sort(function(a, b) {
-        if (!!a._hasMarks !== !!b._hasMarks) return a._hasMarks ? -1 : 1;
         var da = String(a.exam_date || a.date || '').trim();
         var db = String(b.exam_date || b.date || '').trim();
         var aHas = !!da;
@@ -5205,12 +5287,12 @@
     return { head: head, html: lines.join('') };
   }
 
-  function buildExamDetailFromPerformanceRows(rows) {
+  function buildExamDetailFromPerformanceRows(rows, meta) {
     const detail = {};
     const examSeen = {};
     const examCols = [];
     (rows || []).forEach(function(r) {
-      const subject = reportCardSubjectLabel(r);
+      const subject = reportCardColumnLabel(r, meta);
       const mark = r.marks;
       if (mark === '' || mark == null) return;
       const eid = r.exam_id != null && r.exam_id !== '' ? String(r.exam_id) : '';
@@ -5843,35 +5925,55 @@
     return !!(meta.is_combined_level_view || meta.merge_single_cohort || isCombinedLevelView());
   }
 
-  function marksMatrixTableClass(subjectCount) {
+  function marksMatrixTableClass(subjectCount, studentCount) {
     var n = subjectCount || 0;
+    var rows = studentCount || 0;
     var cls = 'ar-marks-matrix ar-fit-table';
-    if (n > 7) cls += ' ar-marks-matrix--dense';
-    if (n > 10) cls += ' ar-marks-matrix--xdense';
-    if (n > 13) cls += ' ar-marks-matrix--xxdense';
-    if (n > 16) cls += ' ar-marks-matrix--xxxdense';
+    if (n > 6) cls += ' ar-marks-matrix--dense';
+    if (n > 9) cls += ' ar-marks-matrix--xdense';
+    if (n > 12) cls += ' ar-marks-matrix--xxdense';
+    if (n > 15) cls += ' ar-marks-matrix--xxxdense';
+    /* Vertical fill: fewer students → taller rows so the sheet is not top-heavy */
+    if (rows > 0 && rows <= 20) cls += ' ar-marks-matrix--airy';
+    else if (rows <= 34) cls += ' ar-marks-matrix--roomy';
+    else if (rows <= 48) cls += ' ar-marks-matrix--balanced';
     return cls;
   }
 
-  /** Short label for narrow portrait columns (screen + print). */
+  /** Short label for narrow subject columns (screen + print). */
   function marksMatrixSubjectLabel(name, subjectCount) {
     var s = String(name || '').trim();
     if (!s) return '—';
     var n = subjectCount || 0;
-    var maxLen = n > 14 ? 4 : (n > 10 ? 5 : (n > 7 ? 6 : (n > 4 ? 8 : 24)));
+    var maxLen = n > 14 ? 3 : (n > 10 ? 4 : (n > 7 ? 5 : (n > 4 ? 6 : 10)));
     if (s.length <= maxLen) return s;
     return s.slice(0, Math.max(1, maxLen - 1)) + '…';
   }
 
+  /**
+   * Column widths: wide student column for full names; compact subject / summary cols.
+   */
   function buildMarksMatrixColgroup(subjectCount, includeHomeClassCol) {
     var n = Math.max(0, subjectCount | 0);
-    var totPct = n > 12 ? 4 : 5;
-    var ptsPct = n > 12 ? 3.5 : 4.5;
-    var grdPct = n > 12 ? 5.5 : 7;
-    var homePct = includeHomeClassCol ? (n > 12 ? 7 : 10) : 0;
-    var studentPct = Math.min(28, Math.max(14, 30 - n * 0.9 - homePct * 0.2));
+    var totPct = n > 10 ? 3.6 : (n > 6 ? 4.2 : 4.8);
+    var ptsPct = n > 10 ? 2.6 : (n > 6 ? 3.0 : 3.4);
+    var grdPct = n > 10 ? 3.4 : (n > 6 ? 4.0 : 4.6);
+    var homePct = 0;
+    if (includeHomeClassCol) {
+      homePct = n > 10 ? 4.5 : (n > 6 ? 5.5 : 6.5);
+    }
+    /* Give names the largest share; subjects share what remains. */
+    var studentPct;
+    if (n <= 3) studentPct = 42;
+    else if (n <= 5) studentPct = 38;
+    else if (n <= 7) studentPct = 34;
+    else if (n <= 10) studentPct = 28;
+    else if (n <= 13) studentPct = 22;
+    else studentPct = 18;
+    if (includeHomeClassCol) studentPct = Math.max(16, studentPct - 2);
     var fixed = studentPct + homePct + totPct + ptsPct + grdPct;
-    var subjPct = n > 0 ? Math.max(1.1, (100 - fixed) / n) : 0;
+    var rem = Math.max(0, 100 - fixed);
+    var subjPct = n > 0 ? rem / n : 0;
     var html = '<colgroup>' +
       '<col class="ar-col-student" style="width:' + studentPct.toFixed(2) + '%">';
     if (includeHomeClassCol) {
@@ -6034,6 +6136,56 @@
       return meta.subject_columns.slice();
     }
     return [];
+  }
+
+  /** Paper subject_id → registered/combination column label for a class (from exam subject settings). */
+  function subjectSidToLabelMap(meta, levelId) {
+    var byLevel = (meta && meta.subject_sid_to_label_by_level_id) || {};
+    if (levelId == null || levelId === '') return {};
+    return byLevel[String(levelId)] || byLevel[levelId] || {};
+  }
+
+  /** Prefer combination/registered column label when settings map this paper subject_id. */
+  function reportCardColumnLabel(row, meta) {
+    if (!row) return 'Subject';
+    var map = subjectSidToLabelMap(meta, row.academic_level_id);
+    var sid = row.subject_id;
+    if (sid != null && sid !== '' && map && typeof map === 'object') {
+      var mapped = map[String(sid)] || map[sid];
+      if (mapped && String(mapped).trim()) return String(mapped).trim();
+    }
+    return reportCardSubjectLabel(row);
+  }
+
+  /**
+   * Prefer registered/combination columns from exam settings (same as all-students).
+   * Only fall back to mark-only labels when settings have no column list.
+   */
+  function subjectOrderWithEmptyRegisteredSlots(markLabels, meta, levelId, classKeys, orderMap) {
+    var registered = reportSettingsSubjectOrder(meta, levelId, classKeys) || [];
+    var marks = (markLabels || []).map(function(n) { return String(n || '').trim(); }).filter(Boolean);
+    if (!registered.length) {
+      return orderSubjectLabelsByReportSettings(
+        marks,
+        meta,
+        levelId,
+        classKeys,
+        function(names) {
+          return sortSubjectLabelsByExamDisplayOrder(names, orderMap || {});
+        }
+      );
+    }
+    // Registered columns only — do not also append member papers (SCI/T, AGN., …)
+    // or combo rows stay empty while members duplicate underneath.
+    var seen = {};
+    var out = [];
+    registered.forEach(function(label) {
+      label = String(label || '').trim();
+      if (!label || seen[label]) return;
+      seen[label] = true;
+      out.push(label);
+    });
+    return out;
   }
 
   function classKeysForSubjectOrder(row, className, af) {
@@ -6436,7 +6588,7 @@
         return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-lg border border-dashed border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 px-4 py-8 text-center">No students with marks in this class for the selected exam filters.</p>';
       }
       const classSubjectColumns = subjectColumnsForClass(className, list);
-      const matrixClass = marksMatrixTableClass(classSubjectColumns.length);
+      const matrixClass = marksMatrixTableClass(classSubjectColumns.length, list.length);
       const showHomeClassCol = mergeSingleCohort;
       const colgroup = buildMarksMatrixColgroup(classSubjectColumns.length, showHomeClassCol);
       const head = '' +
@@ -6503,7 +6655,7 @@
         }).join('');
         return '' +
           '<tr class="' + rowCls + '">' +
-            '<td class="ar-col-student font-bold text-left text-slate-900 dark:text-slate-100">' + escapeHtml(label) + '</td>' +
+            '<td class="ar-col-student font-bold text-left text-slate-900 dark:text-slate-100"><span class="ar-student-name">' + escapeHtml(label) + '</span></td>' +
             (showHomeClassCol
               ? '<td class="ar-col-class font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">' + escapeHtml(classColText) + '</td>'
               : '') +
@@ -6587,7 +6739,7 @@
         return '' +
           '<tr class="' + zebra + ' border-b border-slate-100 dark:border-slate-800">' +
             '<td class="ar-col-student text-slate-900 dark:text-white" title="' + studentTitle + (showHomeClassCol ? ' · ' + homeClassLabel : '') + '">' +
-              '<span class="font-semibold">' + studentTitle + '</span>' +
+              '<span class="ar-student-name font-semibold">' + studentTitle + '</span>' +
             '</td>' +
             (showHomeClassCol
               ? '<td class="ar-col-class text-slate-700 dark:text-slate-300 whitespace-nowrap">' + homeClassLabel + '</td>'
@@ -7678,7 +7830,7 @@
         });
         return;
       }
-      const built = buildExamDetailFromPerformanceRows(studentRows);
+      const built = buildExamDetailFromPerformanceRows(studentRows, meta);
       let examCols = built.examCols;
       if (allExamsUi) {
         const filterCols = buildExamColsFromVisibleFilter(built.detail, studentRows);
@@ -7703,9 +7855,11 @@
       if (examCols.length === 1) {
         const exCol = examCols[0];
         const filtered = studentRows.filter(function(r) {
-          const key = String(r.exam_id != null ? r.exam_id : (r.exam_name || '')) + '\x1f' + String(r.exam_date || '');
-          const want = String(exCol.key || '');
-          return key === want || String(r.exam_id) === want;
+          return examEntryMatchesExamCol({
+            exam_id: r.exam_id,
+            exam_name: r.exam_name,
+            exam_date: r.exam_date,
+          }, exCol);
         });
         jobs.push({
           bundle: Object.assign({}, bundle, { rows: filtered.length ? filtered : studentRows, examLabel: exCol.label }),
@@ -7827,7 +7981,7 @@
       const orderedExamCols = prepareIndividualReportExamCols(multiExamCols, subjectMarksByExam);
       const subjectOrderMap = {};
       rows.forEach(function(r) {
-        const s = reportCardSubjectLabel(r);
+        const s = reportCardColumnLabel(r, meta);
         const eo = parseInt(String(r.exam_display_order || ''), 10);
         if (!subjectOrderMap[s] || (!isNaN(eo) && eo < subjectOrderMap[s])) {
           subjectOrderMap[s] = isNaN(eo) ? 1000000000 : eo;
@@ -7836,14 +7990,13 @@
       Object.keys(subjectMarksByExam).forEach(function(s) {
         if (subjectOrderMap[s] == null) subjectOrderMap[s] = 1000000000;
       });
-      const subjectOrder = orderSubjectLabelsByReportSettings(
+      const classKeysInd = classKeysForSubjectOrder(first, first.level_name, af);
+      const subjectOrder = subjectOrderWithEmptyRegisteredSlots(
         Object.keys(subjectMarksByExam),
         meta,
         studentLevelId,
-        classKeysForSubjectOrder(first, first.level_name, af),
-        function(names) {
-          return sortSubjectLabelsByExamDisplayOrder(names, subjectOrderMap);
-        }
+        classKeysInd,
+        subjectOrderMap
       );
       const syntheticRow = { subject_marks_by_exam: subjectMarksByExam };
       const subjectTableInd = buildReportCardMultiExamSubjectTable(
@@ -7918,7 +8071,7 @@
     }
 
     rows.forEach(function(r) {
-      const subject = reportCardSubjectLabel(r);
+      const subject = reportCardColumnLabel(r, meta);
       const mark = Number(r.marks);
       if (!bySubject[subject]) {
         bySubject[subject] = {
@@ -7957,11 +8110,15 @@
         ? bySubject[s].minExamOrder
         : 1000000000;
     });
+    // Single-exam cards: only subjects with marks for this sitting (do not pad empty
+    // registered rows — those subjects may have marks in other exams).
+    // All-exams multi-exam cards pad registered slots so missing sittings show as "-".
+    const classKeysIndSingle = classKeysForSubjectOrder(first, first.level_name, af);
     const subjectNames = orderSubjectLabelsByReportSettings(
       Object.keys(bySubject),
       meta,
       studentLevelId,
-      classKeysForSubjectOrder(first, first.level_name, af),
+      classKeysIndSingle,
       function(names) {
         return sortSubjectLabelsByExamDisplayOrder(names, subjectOrderMap);
       }
@@ -7969,7 +8126,9 @@
     const subjects = subjectNames.map(function(subject) {
       const marks = bySubject[subject].marks;
       const subjectId = bySubject[subject].subjectId;
-      const markNum = marks.length ? marks[0] : null;
+      const markNum = marks.length
+        ? (marks.reduce(function(a, b) { return a + b; }, 0) / marks.length)
+        : null;
       const markVal = markNum === null ? '-' : String(Math.round(markNum));
       const grade = markNum === null ? '-' : gradeFromSettings(subjectId, markNum);
       const points = markNum === null ? '-' : gradePointsFromMark(markNum, activeBands);
@@ -8234,6 +8393,8 @@
         detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">' + escapeHtml(data.message || 'Could not load report details.') + '</p>';
         return;
       }
+      lastExportCacheKey = (data.export_cache_key || '').trim();
+      lastExportReportType = reportType;
       const bundle = {
         title: data.title || '',
         columns: Array.isArray(data.columns) ? data.columns : [],
@@ -8628,15 +8789,19 @@
       const prevLabel = exportBtn.innerHTML;
       exportBtn.disabled = true;
       exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Preparing Excel…';
+      const exportBody = {
+        report_type: reportType,
+        format: 'excel',
+        filters: getFiltersForReport(reportType),
+      };
+      if (lastExportCacheKey && lastExportReportType === reportType) {
+        exportBody.export_cache_key = lastExportCacheKey;
+      }
       fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({
-          report_type: reportType,
-          format: 'excel',
-          filters: getFiltersForReport(reportType),
-        }),
+        body: JSON.stringify(exportBody),
       }).then(function(r) { return r.json(); }).then(function(data) {
         if (!data || !data.success || !data.job_id) {
           window.alert((data && data.message) || 'Could not start Excel export.');
@@ -8645,6 +8810,7 @@
           return;
         }
         const statusUrl = data.status_url || (API.replace(/\/generate\/?$/, '/export-status/') + data.job_id);
+        var pollDelay = 350;
         function poll() {
           fetch(statusUrl, {
             headers: { 'Accept': 'application/json' },
@@ -8669,9 +8835,10 @@
               return;
             }
             exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> ' + (st.message || 'Building…');
-            setTimeout(poll, 2000);
+            pollDelay = Math.min(1500, Math.round(pollDelay * 1.35));
+            setTimeout(poll, pollDelay);
           }).catch(function() {
-            setTimeout(poll, 3000);
+            setTimeout(poll, Math.min(2500, pollDelay + 500));
           });
         }
         poll();
