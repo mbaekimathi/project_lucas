@@ -83359,6 +83359,23 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
                         changed_by_role=changed_by_role,
                         changed_by_name=changed_by_name,
                     )
+                    saved += 1
+                    results.append({
+                        'student_id': sid_s,
+                        'subject_id': sub_i,
+                        'marks': None,
+                        'success': True,
+                    })
+                else:
+                    # No DB row and no mark — not a successful save (avoids green flash then empty reload).
+                    results.append({
+                        'student_id': sid_s,
+                        'subject_id': sub_i,
+                        'marks': None,
+                        'success': True,
+                        'noop': True,
+                    })
+                continue
             else:
                 # UPSERT so concurrent/retry saves never drop a student row.
                 cursor.execute("""
@@ -83384,13 +83401,13 @@ def _save_marks_batch_core(cursor, entries, exam_id, level_id, is_teacher, teach
                         changed_by_name=changed_by_name,
                     )
 
-            saved += 1
-            results.append({
-                'student_id': sid_s,
-                'subject_id': sub_i,
-                'marks': marks_value,
-                'success': True,
-            })
+                saved += 1
+                results.append({
+                    'student_id': sid_s,
+                    'subject_id': sub_i,
+                    'marks': marks_value,
+                    'success': True,
+                })
         except Exception as row_err:
             print(f"Error saving mark student={sid_s} subject={sub_i} exam={resolved_exam_id}: {row_err}")
             errors.append({

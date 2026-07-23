@@ -1629,6 +1629,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <div x-show="canEnterMarks && selectedExam && !examIsLocked" x-cloak class="marks-save-bar">
             <span class="text-xs text-slate-500 dark:text-slate-400" x-show="marksSaveStatus" x-text="marksSaveStatus"></span>
             <button type="button"
+                    @pointerdown="snapshotMarkInputsForSave()"
                     @click="saveAll()"
                     :disabled="marksSaving"
                     class="marks-toolbar-btn-save touch-manipulation"
@@ -1646,6 +1647,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                   x-show="marksSaveStatus"
                   x-text="marksSaveStatus"></span>
             <button type="button"
+                    @pointerdown="snapshotMarkInputsForSave()"
                     @click="saveAll()"
                     :disabled="marksSaving"
                     class="marks-toolbar-btn-save touch-manipulation"
@@ -1932,8 +1934,29 @@ function marksSheet() {
             }
         },
 
+        /**
+         * Flush every visible Actual input into typedMarks BEFORE the Submit button
+         * steals focus. Clicking Submit blurs the active cell first; that blur was
+         * clearing the last-edited value so it never reached the save payload, then
+         * loadMarks() made it look like the mark vanished “after Submit”.
+         */
+        snapshotMarkInputsForSave() {
+            const root = (typeof document !== 'undefined') ? document : null;
+            if (!root || !root.querySelectorAll) return;
+            root.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
+                if (el.disabled) return;
+                const studentId = el.getAttribute('data-student-id');
+                const subjectId = el.getAttribute('data-subject-id');
+                if (studentId == null || studentId === '' || subjectId == null || subjectId === '') return;
+                const raw = String(el.value != null ? el.value : '').trim();
+                if (raw !== '') this._applyTypedFromRaw(studentId, subjectId, raw);
+            });
+        },
+
         /** Submit every editable Actual cell currently on the sheet. */
         async _submitMarksOnce() {
+            // Capture again in case Submit was triggered without pointerdown (keyboard).
+            this.snapshotMarkInputsForSave();
             const built = this._buildAllEditableMarkEntries();
             const entries = built.entries;
             const planned = built.planned;
@@ -1973,18 +1996,23 @@ function marksSheet() {
 
             const confirmed = new Set();
             const failedIds = [];
+            const confirmedMarks = {};
             for (const r of (result.results || [])) {
                 if (!r) continue;
                 if (r.success === false) {
                     failedIds.push(String(r.student_id || ''));
                     continue;
                 }
-                confirmed.add(this._markCellKey(r.student_id, r.subject_id));
+                // Ignore no-op “clears” of cells that never had a DB row — those used to
+                // flash green then disappear after reload.
+                if (r.marks == null && r.noop) continue;
+                const k = this._markCellKey(r.student_id, r.subject_id);
+                confirmed.add(k);
+                confirmedMarks[k] = r.marks;
             }
             for (const s of (result.skipped || [])) {
                 if (s && s.student_id) failedIds.push(String(s.student_id));
             }
-            // Prefer server confirmations; if API returns no per-cell results, accept all planned.
             const useConfirm = confirmed.size > 0;
 
             for (const item of planned) {
@@ -1998,23 +2026,49 @@ function marksSheet() {
                 this.flashMarkCellSaved(item.studentId, item.subjectId);
             }
 
-            // Clear any leftover dirty flags after a full-sheet save.
             this.marksDirty = {};
             this._tick = Date.now();
 
-            // Re-load from DB so the sheet matches what was actually persisted
-            // (surfaces any student that still failed to save).
             try {
                 await this.loadMarks();
             } catch (e) {
                 console.warn('reload after save:', e);
             }
-            // Re-apply green flash for confirmed cells after reload.
+
+            // Re-apply server-confirmed values after reload (keeps UI in sync if get-marks
+            // briefly misses a row) and restore any planned value that did not confirm.
             for (const item of planned) {
                 const k = this._markCellKey(item.studentId, item.subjectId);
-                if (useConfirm && !confirmed.has(k)) continue;
-                if (item.numValue != null) this.flashMarkCellSaved(item.studentId, item.subjectId);
+                if (useConfirm && confirmed.has(k)) {
+                    const savedVal = Object.prototype.hasOwnProperty.call(confirmedMarks, k)
+                        ? confirmedMarks[k]
+                        : item.numValue;
+                    if (!this.marks[item.studentId]) this.marks[item.studentId] = {};
+                    if (!this.marks[item.studentId][item.subjectId]) this.marks[item.studentId][item.subjectId] = {};
+                    this.marks[item.studentId][item.subjectId][this.selectedExam] = savedVal;
+                    if (savedVal == null) {
+                        this._setTypedMark(item.studentId, item.subjectId, null);
+                    } else {
+                        this._setTypedMark(item.studentId, item.subjectId, this.storedToEntry(item.subjectId, savedVal));
+                    }
+                    this._setBaselineStoredMark(item.studentId, item.subjectId, savedVal);
+                    if (savedVal != null) this.flashMarkCellSaved(item.studentId, item.subjectId);
+                    continue;
+                }
+                // Not confirmed — put the typed value back so Submit does not “eat” it.
+                if (item.numValue != null) {
+                    if (!this.marks[item.studentId]) this.marks[item.studentId] = {};
+                    if (!this.marks[item.studentId][item.subjectId]) this.marks[item.studentId][item.subjectId] = {};
+                    this.marks[item.studentId][item.subjectId][this.selectedExam] = item.numValue;
+                    this._setTypedMark(item.studentId, item.subjectId, this.storedToEntry(item.subjectId, item.numValue));
+                    this.markCellDirty(item.studentId, item.subjectId);
+                    if (!failedIds.includes(String(item.studentId))) {
+                        failedIds.push(String(item.studentId));
+                    }
+                }
             }
+            this._tick = Date.now();
+
             if (failedIds.length || result.partial) {
                 const uniq = [...new Set(failedIds.filter(Boolean))];
                 this.marksSaveStatus = uniq.length
@@ -2048,7 +2102,7 @@ function marksSheet() {
             // Sync visible inputs into typedMarks:
             // - non-empty DOM always wins (what the teacher sees)
             // - empty DOM must NOT clear a typed value (Alpine :value remounts can blank inputs)
-            const root = this.$el;
+            const root = (typeof document !== 'undefined') ? document : null;
             if (root && root.querySelectorAll) {
                 root.querySelectorAll('input.mark-input[data-student-id][data-subject-id]').forEach((el) => {
                     if (el.disabled) return;
@@ -2428,6 +2482,7 @@ function marksSheet() {
                 const v = Object.prototype.hasOwnProperty.call(typedMap, k)
                     ? typedMap[k]
                     : typedMap[legacy];
+                // Explicit null = user cleared the cell (via input), not “fall through”.
                 if (v === null || v === undefined || v === '') return null;
                 const n = Number(v);
                 return Number.isFinite(n) ? n : null;
@@ -2463,12 +2518,8 @@ function marksSheet() {
                     const k = this._markCellKey(studentId, subjectId);
                     if (Object.prototype.hasOwnProperty.call(next, k)) continue;
                     const raw = this._rawStoredMark(studentId, subjectId);
-                    if (raw === null) {
-                        next[k] = null;
-                    } else {
-                        const entry = this.storedToEntry(subjectId, raw);
-                        next[k] = entry;
-                    }
+                    if (raw === null) continue;
+                    next[k] = this.storedToEntry(subjectId, raw);
                     changed = true;
                 }
             }
@@ -2488,11 +2539,9 @@ function marksSheet() {
                     const studentId = student.student_id;
                     const k = this._markCellKey(studentId, subjectId);
                     const raw = this._rawStoredMark(studentId, subjectId);
-                    if (raw === null) {
-                        next[k] = null;
-                    } else {
-                        next[k] = this.storedToEntry(subjectId, raw);
-                    }
+                    // Omit empty keys — do not store null (that blocked fallthrough to stored).
+                    if (raw === null) continue;
+                    next[k] = this.storedToEntry(subjectId, raw);
                 }
             }
             this.typedMarks = next;
@@ -2884,8 +2933,12 @@ function marksSheet() {
             if (!this.selectedExam || !this._subjectIsEditableForSave(subjectId)) return;
             const trimmed = (value || '').trim().replace(',', '.');
             // Ignore empty blur/change from a detached input (x-if remount / teardown).
-            // That was wiping the last-edited student (e.g. AMOR / STU190) before Submit.
             if (!trimmed && event && event.target && event.target.isConnected === false) {
+                return;
+            }
+            // Clicking Submit blurs the active cell with "" AFTER pointerdown snapshot in
+            // some browsers; never clear typedMarks on blur/change — only on real input.
+            if (!trimmed && event && (event.type === 'blur' || event.type === 'change')) {
                 return;
             }
             let entryValue = null;
